@@ -53,7 +53,7 @@ import { signPayload, verifySignedPayload } from "./tokens";
  *    ouverts pour autant ;
  *  - **l'inactivité** (10 min, en base) : rouvrir l'application le lendemain redemande mot de passe
  *    et code, même si le navigateur a rendu son cookie intact ;
- *  - **la sortie de l'application** (2 min de grâce, en base) : partie pour de bon, l'application
+ *  - **la sortie de l'application** (10 min de grâce, en base) : partie pour de bon, l'application
  *    ne rouvre plus l'administration.
  *
  * Ce que ce cookie ne fait **pas** : donner un droit. Le rôle décide (`peutOuvrirSessionForte` :

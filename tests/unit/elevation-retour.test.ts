@@ -84,8 +84,8 @@ describe("l'absence se mesure, elle ne se déduit pas de l'âge du signal", () =
 
   it("l'application vraiment partie referme pour de bon, comme le bouton « Quitter »", async () => {
     await signalerSortieElevation(session.id);
-    avancerDe(5 * 60_000);
-    await signalerRetourElevation(session.id, 5 * 60_000);
+    avancerDe(GRACE_SORTIE_ELEVATION_MS + 60_000);
+    await signalerRetourElevation(session.id, GRACE_SORTIE_ELEVATION_MS + 60_000);
     // Même remise à plat que `refermerElevationSortie` : la session ordinaire, elle, n'est pas touchée.
     expect(session).toMatchObject({ forte: false, reauthAt: null, elevationVueLe: null, elevationSortieLe: null });
     expect(await etat()).toBe("aucune");

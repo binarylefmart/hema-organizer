@@ -190,11 +190,13 @@ describe("désactivation de tous les comptes", () => {
    */
   it("l'écran annonce les deux comptes qu'il épargne", () => {
     const page = fs.readFileSync(path.join(process.cwd(), "src/app/(app)/admin/membres/page.tsx"), "utf8");
-    const bouton = page.slice(page.indexOf("definirActifTous.bind(null, false"));
+    // Les confirmations du volet « Pour tout le monde » sont rangées par geste (`confirmations=`) :
+    // celle de la désactivation est l'entrée `desactiver`.
+    const bloc = page.slice(page.indexOf("confirmations={{"));
     // La phrase est un gabarit (`${aDesactiver > 1 …}`) : on la découpe sur ses accents graves, pas
     // sur le premier `>`, qui tombe au milieu d'une interpolation.
-    const debut = bouton.indexOf("confirmation={`");
-    const phrase = bouton.slice(debut, bouton.indexOf("`}", debut));
+    const debut = bloc.indexOf("desactiver: `");
+    const phrase = bloc.slice(debut, bloc.indexOf("`,", debut));
     expect(phrase).toContain("administrateurs compris");
     expect(phrase).toMatch(/[Ll]e vôtre/);
     expect(phrase).toContain("portail");

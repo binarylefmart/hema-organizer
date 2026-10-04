@@ -2,6 +2,17 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.67.0
+
+### Nouveautés
+
+- **membres** : « Que veux-tu faire ? » — un geste, une explication, un bouton
+
+### Corrections
+
+- **membres** : « Au club depuis » se choisit en saison d'arrivée
+- **admin** : l'espace admin ne se referme plus en plein travail
+
 ## 0.66.0
 
 ### Corrections

@@ -209,7 +209,9 @@ export const ACCUEIL_ELEVATION_REFERMEE = "/?admin=expire";
 
 export const DUREE_INACTIVITE_ELEVATION_MS = 10 * 60 * 1000;
 /**
- * **Temps toléré hors de l'application avant que l'espace admin se referme : 2 min**.
+ * **Temps toléré hors de l'application avant que l'espace admin se referme : 10 min**, comme
+ * l'inactivité. Deux minutes refermaient l'espace admin dès qu'on allait vérifier quelque chose dans
+ * un autre onglet (la console du serveur, un email) : on revenait devant une demande de code.
  *
  * Le navigateur prévient quand la page passe en arrière-plan — mais il envoie **exactement le même
  * signal** quand on change simplement de page dans l'application (elle passe cachée le temps de la
@@ -217,7 +219,7 @@ export const DUREE_INACTIVITE_ELEVATION_MS = 10 * 60 * 1000;
  * délai : l'application qui revient (page suivante, retour au premier plan) annule la sortie ; celle
  * qui ne revient pas la laisse expirer.
  */
-export const GRACE_SORTIE_ELEVATION_MS = 2 * 60 * 1000;
+export const GRACE_SORTIE_ELEVATION_MS = 10 * 60 * 1000;
 export const DUREE_REAUTH_MS = 10 * 60 * 1000; // ré-authentification 2FA valable 10 min pour les actions sensibles
 export const DUREE_RESET_MS = 30 * 60 * 1000; // lien "mot de passe oublié" : 30 min
 

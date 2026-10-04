@@ -24,21 +24,47 @@ import { ACCUEIL_ELEVATION_REFERMEE, DUREE_INACTIVITE_ELEVATION_MS } from "@/lib
  * JavaScript coupé) est de laisser l'écran affiché : la première requête se heurtera quand même au
  * serveur. On peut donc le poser sans jamais rien lui devoir.
  *
- * **Le minuteur repart à chaque page de l'espace admin** (`usePathname` en dépendance), c'est-à-dire
- * exactement quand `toucherElevation` repousse l'échéance côté serveur : les deux comptent le même
- * temps, à partir du même instant. Une action envoyée sans changer d'URL repousse l'échéance du
- * serveur sans relancer le minuteur — il part alors **en avance**, jamais en retard, et c'est le bon
- * sens de l'erreur : on referme trop tôt, pas trop tard.
+ * **Le minuteur repart à chaque page de l'espace admin, et à chaque geste réel** (clic, toucher,
+ * clavier, défilement). Un geste prévient aussi le serveur (`/api/admin/activite`, au plus une fois
+ * toutes les {@link INTERVALLE_SIGNAL_MS} ms), qui repousse son échéance comme pour une page : sans
+ * cela, cocher des lignes ou faire défiler une liste pendant dix minutes refermait l'espace admin en
+ * plein travail. Le minuteur se cale sur le **dernier signal envoyé**, pas sur le dernier geste :
+ * c'est l'instant que le serveur connaît, et le minuteur part ainsi un peu en avance, jamais en
+ * retard — on referme trop tôt, pas trop tard.
  */
+/** Au plus un signal d'activité au serveur toutes les 30 s : assez pour ne jamais le laisser derrière. */
+const INTERVALLE_SIGNAL_MS = 30_000;
+const GESTES = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
+
 export function SortirApresInactivite() {
   const chemin = usePathname();
   useEffect(() => {
-    const minuteur = window.setTimeout(() => {
-      void fetch("/api/admin/quitter?parti=1", { method: "POST", keepalive: true, cache: "no-store" })
-        .catch(() => {})
-        .finally(() => window.location.assign(ACCUEIL_ELEVATION_REFERMEE));
-    }, DUREE_INACTIVITE_ELEVATION_MS);
-    return () => window.clearTimeout(minuteur);
+    // Une page de l'espace admin vient d'être servie : le serveur a repoussé son échéance à l'instant.
+    let dernierSignal = Date.now();
+    let minuteur = 0;
+    const armer = () => {
+      window.clearTimeout(minuteur);
+      minuteur = window.setTimeout(
+        () => {
+          void fetch("/api/admin/quitter?parti=1", { method: "POST", keepalive: true, cache: "no-store" })
+            .catch(() => {})
+            .finally(() => window.location.assign(ACCUEIL_ELEVATION_REFERMEE));
+        },
+        DUREE_INACTIVITE_ELEVATION_MS - (Date.now() - dernierSignal),
+      );
+    };
+    const geste = () => {
+      if (Date.now() - dernierSignal < INTERVALLE_SIGNAL_MS) return;
+      dernierSignal = Date.now();
+      void fetch("/api/admin/activite", { method: "POST", keepalive: true, cache: "no-store" }).catch(() => {});
+      armer();
+    };
+    armer();
+    for (const g of GESTES) window.addEventListener(g, geste, { passive: true, capture: true });
+    return () => {
+      window.clearTimeout(minuteur);
+      for (const g of GESTES) window.removeEventListener(g, geste, { capture: true });
+    };
   }, [chemin]);
   return null;
 }

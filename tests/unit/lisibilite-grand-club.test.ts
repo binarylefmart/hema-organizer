@@ -175,7 +175,9 @@ describe("annuaire — quatre-vingts comptes, une ligne par personne", () => {
   it("met la recherche au-dessus de tout le reste, sous le titre", () => {
     const code = source(ADMIN_MEMBRES);
     const recherche = code.indexOf('label="Rechercher"');
-    const masse = code.indexOf("Désactiver tous les comptes");
+    // Les gestes « pour tout le monde » vivent dans un seul composant, le volet du même motif que la
+    // barre de sélection : c'est sa place dans la page qui compte, pas un libellé de bouton.
+    const masse = code.indexOf("<ChoixToutLeMonde");
     expect(recherche).toBeGreaterThan(0);
     expect(masse).toBeGreaterThan(recherche);
   });
@@ -183,8 +185,10 @@ describe("annuaire — quatre-vingts comptes, une ligne par personne", () => {
   it("garde « Désactiver tous les comptes » hors du chemin quotidien", () => {
     const code = source(ADMIN_MEMBRES);
     const liste = code.indexOf("membres.map(");
-    const masse = code.indexOf("Désactiver tous les comptes");
+    const masse = code.indexOf("<ChoixToutLeMonde");
     expect(masse).toBeGreaterThan(liste);
+    // Et le geste n'est jamais en rouge : ce volet ne supprime rien.
+    expect(source("src/app/(app)/admin/membres/ChoixToutLeMonde.tsx")).not.toMatch(/variante="danger"/);
   });
 });
 
@@ -253,9 +257,10 @@ describe("annuaire — cocher plusieurs comptes et changer leur rôle une fois",
     // La condition vient du module partagé avec les présences, jamais d'un `selection.size` recopié.
     expect(code).toContain("barreDeMasseVisible(selection)");
     expect(code).toMatch(/\{montrerBarre && \(\s*<div\s+role="group"/);
-    // Les boutons ne sont inertes que le temps d'une écriture : sans sélection, il n'y a plus de barre.
-    expect(code).toMatch(/const bloque = enCours/);
-    expect(code).toContain("disabled={bloque}");
+    // L'unique bouton est inerte pendant une écriture et tant qu'aucun geste n'est choisi : sans
+    // sélection, il n'y a plus de barre du tout.
+    expect(code).toMatch(/const boutonInerte = enCours \|\| geste === ""/);
+    expect(code).toContain("disabled={boutonInerte}");
     // Et la phrase du geste d'entrée est rendue **quand la barre ne l'est pas**.
     expect(code).toMatch(/\{!montrerBarre && <p[\s\S]{0,200}INVITE_SELECTION/);
     expect(source(SELECTION_GESTES)).toContain('texteInviteMasse("agir sur plusieurs personnes à la fois")');
@@ -282,9 +287,12 @@ describe("annuaire — cocher plusieurs comptes et changer leur rôle une fois",
     expect(code).toContain('{ valeur: "", libelle: "Choisir un rôle…" }');
     // … le choix n'est que retenu…
     expect(code).toContain("onChoisir={setRoleChoisi}");
-    // … et c'est le bouton qui écrit : inerte sans rôle, et la garde tient aussi côté fonction.
-    expect(code).toMatch(/disabled=\{bloque \|\| roleChoisi === ""\}/);
+    // … et c'est le bouton qui écrit : inerte sans rôle (ou si le rôle choisi ne change personne),
+    // et la garde tient aussi côté fonction.
+    expect(code).toMatch(/geste === "role" && \(resumeRole === null \|\| resumeRole\.changent === 0\)/);
     expect(code).toMatch(/roleChoisi === ""\) return/);
+    // Le choix du rôle n'apparaît que si « Changer le rôle… » est demandé.
+    expect(code).toMatch(/\{geste === "role" && \(/);
   });
 
   /**

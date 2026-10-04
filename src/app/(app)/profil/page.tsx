@@ -185,7 +185,7 @@ export default async function PageProfil({ searchParams }: Props) {
               {activationAFaire
                 ? "Il te reste une étape : choisis un mot de passe et active la double authentification pour ouvrir l'administration."
                 : user.sessionForte
-                  ? "Tu es connecté(e) en tant qu'administrateur sur cet appareil. Cet accès se referme dès que tu quittes l'application, et après 10 minutes sans rien y faire — tu es alors ramené(e) à l'accueil, sans rien perdre du reste. Le bouton ci-dessous le referme tout de suite."
+                  ? "Tu es connecté(e) en tant qu'administrateur sur cet appareil. Cet accès se referme après 10 minutes sans rien y faire, ou 10 minutes après avoir quitté l'application — tu es alors ramené(e) à l'accueil, sans rien perdre du reste. Le bouton ci-dessous le referme tout de suite."
                   : "L'administration technique ne s'ouvre qu'en redonnant ton mot de passe et ton code à usage unique. Ton compte, lui, reste connecté comme d'habitude."}
             </p>
             {activationAFaire ? (

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { joursAvant } from "@/lib/dates";
 import { ATELIER_STATUTS, FORME_WEBHOOK_DISCORD, NIVEAU_DEFAUT, NIVEAUX, PARTIE_DESCRIPTION_MAX, ROLES, THEME_MAX } from "@/lib/constants";
-import { dateDepuisDuree } from "@/lib/blasons";
+import { dateDepuisSaison, saisonsProposees } from "@/lib/blasons";
 import { isHHMM, isIsoDate } from "@/lib/dates";
 import { emailSchema } from "./auth";
 
@@ -221,45 +221,39 @@ export const annulationSchema = z.object({
 });
 
 /**
- * Un des deux nombres de « Au club depuis » : entier, jamais négatif, borné. **Une case vide vaut
- * zéro** — « je ne sais pas » se dit en laissant les deux cases tranquilles, et il ne faut pas deux
- * gestes différents (vider *ou* remettre à zéro) pour la même intention.
+ * **La fiche d'un membre**, telle que l'annuaire l'enregistre — plus « Au club depuis », choisi en
+ * **saison d'arrivée** (« 2024-2025 », envoyée comme l'année de sa rentrée) et rangé en **date**
+ * (`auClubDepuis`, le 1er septembre de cette saison).
+ *
+ * Le club se compte en saisons : on choisit la saison, on relit la même. Une saisie en durée
+ * (années + mois) était reculée depuis le jour de la saisie puis ramenée à la rentrée, et se relisait
+ * autrement qu'on l'avait tapée. **Vide vaut `null`**, c'est-à-dire « le club ne sait pas » :
+ * l'ancienneté repart alors de la création du compte, et c'est aussi la façon d'effacer une saisie
+ * approximative. Seules les saisons proposées par la liste sont acceptées : jamais une saison à
+ * venir, jamais une faute de frappe de trois siècles.
  */
-const dureeAuClub = (max: number, message: string) =>
-  z.preprocess(
-    (v) => (typeof v === "string" ? v.trim() : v == null ? "" : v),
-    z.union([z.literal("").transform(() => 0), z.coerce.number().int(message).min(0, message).max(max, message)]),
-  );
+const saisonArrivee = z.preprocess(
+  (v) => (typeof v === "string" ? v.trim() : v == null ? "" : v),
+  z.union([
+    z.literal("").transform(() => null),
+    z.coerce
+      .number()
+      .int("Choisis une saison dans la liste.")
+      .refine((an) => saisonsProposees().includes(an), "Choisis une saison dans la liste."),
+  ]),
+);
 
-/**
- * **La fiche d'un membre**, telle que l'annuaire l'enregistre — plus « Au club depuis », saisi en
- * **durée** (années + mois) et rangé en **date** (`auClubDepuis`).
- *
- * La conversion se fait ici, une fois pour toutes, par `dateDepuisDuree` (src/lib/blasons.ts) : le
- * reste de l'application ne voit qu'une date — **toujours un 1er septembre**, celui de la saison
- * d'arrivée, parce que le club compte en saisons et non en dates anniversaires —, et la règle de
- * repli sur `createdAt` reste écrite au même endroit que le calcul du rang. Cette date ne
- * s'affiche nulle part : elle ne sert qu'aux calculs, l'interface ne montre que des durées.
- * **Zéro partout — ou les deux cases vides — vaut `null`**,
- * c'est-à-dire « le club ne sait pas » : l'ancienneté repart alors de la création du compte, et
- * c'est aussi la façon d'effacer une saisie approximative.
- *
- * **Jamais dans le futur, par construction** : une durée est un recul dans le temps, il n'existe pas
- * de saisie qui donnerait une adhésion à venir. Les bornes (40 ans, 11 mois) ne protègent que de la
- * faute de frappe — au-delà de 11 mois, ce sont des années qu'on saisit.
- */
 export const membreSchema = z
   .object({
     prenom: texteCourt(60).min(1, "Indique le prénom."),
     nom: texteCourt(60).min(1, "Indique le nom."),
     email: emailFacultatifSchema,
     role: z.enum(ROLES),
-    anneesAuClub: dureeAuClub(40, "Un nombre d'années entre 0 et 40."),
-    moisAuClub: dureeAuClub(11, "Un nombre de mois entre 0 et 11 (au-delà, compte une année)."),
+    saisonArrivee,
   })
   // Le formulaire parle en durée, la base en date : la fiche ressort avec exactement les colonnes de
   // `User`, et personne n'a à se souvenir de faire la conversion au moment d'enregistrer.
-  .transform(({ anneesAuClub, moisAuClub, ...fiche }) => ({ ...fiche, auClubDepuis: dateDepuisDuree(anneesAuClub, moisAuClub) }));
+  .transform(({ saisonArrivee, ...fiche }) => ({ ...fiche, auClubDepuis: dateDepuisSaison(saisonArrivee) }));
 
 /**
  * Ligne d'import CSV.

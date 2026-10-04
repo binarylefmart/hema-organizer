@@ -25,6 +25,7 @@ import { SelecteurRole } from "./SelecteurRole";
 import { SelecteurBureau } from "./SelecteurBureau";
 import { LIBELLE_BUREAU } from "./bureau";
 import { CaseMembre, ZoneSelection } from "./SelectionRoles";
+import { ChoixToutLeMonde } from "./ChoixToutLeMonde";
 import { envoyerInvitationsEnMasse, reinitialiserAccesEnMasse, revoquerLienMembre, revoquerLiensEnMasse } from "./actions";
 import { DEJA_ENTRE, JAMAIS_ENTRE, lienVivant, perimetreToutLeMonde, RECOIT_INVITATION } from "./tout-le-monde";
 import {
@@ -380,78 +381,39 @@ export default async function PageMembres({ searchParams }: Props) {
                   renvoi du lien.
                   {periodeLien && <> Les liens sont ceux de « {periodeLien.nom} ».</>}
                 </p>
-                {tousRenvoi > 0 && periodeLien && (
-                  <BoutonAction
-                    action={renvoyerTousLesLiens.bind(null, periodeLien.id, retour)}
-                    variante="secondaire"
-                    taille="petite"
-                    pleineLargeur
-                    enCours="Envoi…"
-                    confirmation={texteConfirmationRenvoiTous(tousRenvoi, periodeLien.nom)}
-                  >
-                    Renvoyer le lien à tout le monde
-                  </BoutonAction>
-                )}
-                {tousRevocation > 0 && periodeLien && (
-                  <BoutonAction
-                    action={revoquerLiensEnMasse.bind(null, { periodId: periodeLien.id, tous: true })}
-                    variante="danger"
-                    taille="petite"
-                    pleineLargeur
-                    enCours="Révocation…"
-                    confirmation={texteConfirmationRevocationTous(tousRevocation, periodeLien.nom)}
-                  >
-                    Révoquer le lien de tout le monde
-                  </BoutonAction>
-                )}
-                {tousInvitation > 0 && periodeLien && (
-                  <BoutonAction
-                    action={envoyerInvitationsEnMasse.bind(null, { periodId: periodeLien.id, tous: true })}
-                    variante="secondaire"
-                    taille="petite"
-                    pleineLargeur
-                    enCours="Envoi…"
-                    confirmation={texteConfirmationInvitationsTous(tousInvitation, tousDejaEntres)}
-                  >
-                    Envoyer l&apos;invitation à tout le monde
-                  </BoutonAction>
-                )}
-                {tousReinit > 0 && (
-                  <BoutonAction
-                    action={reinitialiserAccesEnMasse.bind(null, { tous: true })}
-                    variante="danger"
-                    taille="petite"
-                    pleineLargeur
-                    enCours="Réinitialisation…"
-                    confirmation={texteConfirmationReinitialisationTous(tousReinit, tousReinitEmails, tousJamaisEntres)}
-                  >
-                    Réinitialiser les accès de tout le monde
-                  </BoutonAction>
-                )}
-                {peutGererLesAdmins && aDesactiver > 0 && (
-                  <BoutonAction
-                    action={definirActifTous.bind(null, false, retour)}
-                    variante="danger"
-                    taille="petite"
-                    pleineLargeur
-                    enCours="Désactivation…"
-                    confirmation={`Désactiver ${aDesactiver} compte${aDesactiver > 1 ? "s" : ""}, administrateurs compris ? Le vôtre et le compte de connexion du portail restent actifs. Chacun perdra l'accès immédiatement et son lien personnel cessera de fonctionner.`}
-                  >
-                    Désactiver tous les comptes
-                  </BoutonAction>
-                )}
-                {peutGererLesAdmins && aReactiver > 0 && (
-                  <BoutonAction
-                    action={definirActifTous.bind(null, true, retour)}
-                    variante="succes"
-                    taille="petite"
-                    pleineLargeur
-                    enCours="Réactivation…"
-                    confirmation={`Réactiver ${aReactiver} compte${aReactiver > 1 ? "s" : ""} ? Chacun retrouvera l'accès et son lien personnel fonctionnera de nouveau.`}
-                  >
-                    Réactiver tous les comptes
-                  </BoutonAction>
-                )}
+                {/* **Une question, un geste, un bouton** — le motif de la barre de sélection, avec les
+                    chiffres de tout l'annuaire comptés ci-dessus. Seuls les gestes qui toucheraient
+                    quelqu'un sont proposés, et chacun garde sa confirmation chiffrée. */}
+                <ChoixToutLeMonde
+                  chiffres={{
+                    inviter: tousInvitation,
+                    dejaEntres: tousDejaEntres,
+                    renvoyer: tousRenvoi,
+                    revoquer: tousRevocation,
+                    reinitialiser: tousReinit,
+                    reinitialiserEmails: tousReinitEmails,
+                    jamaisEntres: tousJamaisEntres,
+                    desactiver: peutGererLesAdmins ? aDesactiver : 0,
+                    reactiver: peutGererLesAdmins ? aReactiver : 0,
+                    periode: periodeLien?.nom ?? null,
+                  }}
+                  actions={{
+                    ...(periodeLien && tousRenvoi > 0 ? { renvoyer: renvoyerTousLesLiens.bind(null, periodeLien.id, retour) } : {}),
+                    ...(periodeLien && tousRevocation > 0 ? { revoquer: revoquerLiensEnMasse.bind(null, { periodId: periodeLien.id, tous: true }) } : {}),
+                    ...(periodeLien && tousInvitation > 0 ? { inviter: envoyerInvitationsEnMasse.bind(null, { periodId: periodeLien.id, tous: true }) } : {}),
+                    ...(tousReinit > 0 ? { reinitialiser: reinitialiserAccesEnMasse.bind(null, { tous: true }) } : {}),
+                    ...(peutGererLesAdmins && aDesactiver > 0 ? { desactiver: definirActifTous.bind(null, false, retour) } : {}),
+                    ...(peutGererLesAdmins && aReactiver > 0 ? { reactiver: definirActifTous.bind(null, true, retour) } : {}),
+                  }}
+                  confirmations={{
+                    ...(periodeLien ? { renvoyer: texteConfirmationRenvoiTous(tousRenvoi, periodeLien.nom) } : {}),
+                    ...(periodeLien ? { revoquer: texteConfirmationRevocationTous(tousRevocation, periodeLien.nom) } : {}),
+                    inviter: texteConfirmationInvitationsTous(tousInvitation, tousDejaEntres),
+                    reinitialiser: texteConfirmationReinitialisationTous(tousReinit, tousReinitEmails, tousJamaisEntres),
+                    desactiver: `Désactiver ${aDesactiver} compte${aDesactiver > 1 ? "s" : ""}, administrateurs compris ? Le vôtre et le compte de connexion du portail restent actifs. Chacun perdra l'accès immédiatement et son lien personnel cessera de fonctionner.`,
+                    reactiver: `Réactiver ${aReactiver} compte${aReactiver > 1 ? "s" : ""} ? Chacun retrouvera l'accès et son lien personnel fonctionnera de nouveau.`,
+                  }}
+                />
               </div>
             </Volet>
           </div>
@@ -537,6 +499,11 @@ export default async function PageMembres({ searchParams }: Props) {
                  * - « Réinitialiser les accès » : seulement à qui **est déjà entré**, et pas sur sa
                  *   propre ligne — il déconnecterait celui qui appuie ;
                  * - « Supprimer le compte » : `members.delete`, pas soi-même, pas le portail.
+                 *
+                 * **Une seule couleur d'alerte dans ce volet : celle de « Supprimer le compte ».**
+                 * Révoquer, réinitialiser, retirer l'adresse étaient rouges et « Réactiver » vert : la
+                 * couleur ne distinguait plus rien. Elle est gardée pour le seul geste qui efface sans
+                 * retour — comme dans la barre de sélection. Les confirmations, elles, restent.
                  */
                 const peutRevoquerLien = peutEnvoyerLien && periodeLien !== null && lienEnCours && !estCompteDeService(m) && canEditUser(acteur, m);
                 const peutInviterLigne = peutRecevoirLien && canEditUser(acteur, m) && !dejaEntre(m);
@@ -786,7 +753,7 @@ export default async function PageMembres({ searchParams }: Props) {
                                 {peutRevoquerLien && periodeLien && (
                                   <BoutonAction
                                     action={revoquerLienMembre.bind(null, m.id, periodeLien.id, retour)}
-                                    variante="danger"
+                                    variante="secondaire"
                                     taille="petite"
                                     pleineLargeur
                                     enCours="Révocation…"
@@ -810,7 +777,7 @@ export default async function PageMembres({ searchParams }: Props) {
                                 {peutReinitialiserLigne && (
                                   <BoutonAction
                                     action={reinitialiserAccesMembre.bind(null, m.id, retour)}
-                                    variante="danger"
+                                    variante="secondaire"
                                     taille="petite"
                                     pleineLargeur
                                     enCours="Réinitialisation…"
@@ -831,7 +798,7 @@ export default async function PageMembres({ searchParams }: Props) {
                                       Désactiver
                                     </BoutonAction>
                                   ) : (
-                                    <BoutonAction action={definirActif.bind(null, m.id, true, retour)} variante="succes" taille="petite" pleineLargeur>
+                                    <BoutonAction action={definirActif.bind(null, m.id, true, retour)} variante="secondaire" taille="petite" pleineLargeur>
                                       Réactiver
                                     </BoutonAction>
                                   ))}
@@ -839,7 +806,7 @@ export default async function PageMembres({ searchParams }: Props) {
                                   <FormulaireAction
                                     action={definirEmailMembre.bind(null, m.id, retour)}
                                     bouton="Retirer l'adresse"
-                                    variante="danger"
+                                    variante="secondaire"
                                     enCours="Retrait…"
                                     confirmation={`Retirer l'adresse de ${m.prenom} ${m.nom} ? Plus aucun lien personnel ne pourra lui être envoyé : l'équipe cochera sa présence à sa place.`}
                                   >

@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { SERIE_MINIMALE, type CompteRendu } from "@/lib/accueil";
-import { blasons, formatDuree, HORIZONS, prochainRang, rangs, type Blason } from "@/lib/blasons";
+import { blasons, formatDuree, HORIZONS, libelleNumeroSaison, prochainRang, rangs, seuilEnSaisons, type Blason } from "@/lib/blasons";
 import { Bande, Tuile, type PropsTuile } from "@/components/accueil/Indicateurs";
 import { Bulle, coteEnGrille } from "@/components/ui/Bulle";
 
@@ -155,11 +155,12 @@ function tuileRang(ancienneteMois: number): ReactElement<PropsTuile> {
       libelle="Mon rang"
       detail={suivant ? `encore ${formatDuree(suivant.reste)} pour devenir ${suivant.nom}` : "au sommet de l'échelle"}
       bulle={[
-        `Au club depuis ${formatDuree(ancienneteMois)}`,
+        // Le club se compte en saisons : l'ancienneté part d'une rentrée, chaque année pleine en est une.
+        `${libelleNumeroSaison(Math.floor(ancienneteMois / 12) + 1)} au club`,
         // « Recrue à partir de 0 mois » ne se dit pas : le premier rang n'a pas de seuil à
         // attendre, il est celui de l'arrivée — et c'est tout le propos de l'échelle.
         `L'échelle : ${echelle
-          .map((r) => (r.seuil === 0 ? `${r.nom} dès l'arrivée` : `${r.nom} à partir de ${formatDuree(r.seuil)}`))
+          .map((r) => (r.seuil === 0 ? `${r.nom} dès l'arrivée` : `${r.nom} ${seuilEnSaisons(r.seuil)}`))
           .join(", ")}.`,
       ]}
     />

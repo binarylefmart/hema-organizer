@@ -142,10 +142,9 @@ export async function modifierMembre(userId: string, _prev: FormState, fd: FormD
     nom: champ(fd, "nom"),
     email: champ(fd, "email"),
     role: champ(fd, "role"),
-    // « Au club depuis », saisi en durée (années + mois) et converti en date par le schéma. Les deux
-    // cases vides — ou à zéro — effacent la date : l'ancienneté repart de la création du compte.
-    anneesAuClub: champ(fd, "anneesAuClub"),
-    moisAuClub: champ(fd, "moisAuClub"),
+    // « Au club depuis », choisi en saison d'arrivée et converti en date par le schéma.
+    // « Je ne sais pas » (vide) efface la date : l'ancienneté repart de la création du compte.
+    saisonArrivee: champ(fd, "saisonArrivee"),
   });
   if (!parsed.success) return zodToFormState(parsed.error);
   const changeDeRole = parsed.data.role !== cible.role;

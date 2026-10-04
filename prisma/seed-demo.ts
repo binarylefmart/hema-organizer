@@ -26,7 +26,8 @@ import { chiffrer } from "../src/lib/crypto";
 import { hacherCodeSecours } from "../src/lib/auth/codes-secours";
 import { invitationExpiry } from "../src/lib/invitations";
 import { addDays, isoWeekday, joursAvant, todayIso } from "../src/lib/dates";
-import { dateDepuisDuree } from "../src/lib/blasons";
+import { dateDepuisSaison, anneeDeSaison } from "../src/lib/blasons";
+import { moisAvant } from "../src/lib/dates";
 import { CLUB_DEMO, MEMBRES_CLUB, SEANCES_CLUB } from "./donnees-club";
 import {
   EFFECTIFS_PROFILS,
@@ -239,7 +240,7 @@ async function main() {
       estAdmin: m.estAdmin === true,
       service: false,
       couleur: couleurs[m.email],
-      auClubDepuis: dateDepuisDuree(0, m.auClubMois),
+      auClubDepuis: m.auClubMois > 0 ? dateDepuisSaison(anneeDeSaison(new Date(`${moisAvant(new Date().toISOString().slice(0, 10), m.auClubMois)}T00:00:00.000Z`))) : null,
     };
     // Personne n'a de mot de passe au départ : tout le monde entre par son lien personnel. Mais un
     // administrateur nominatif PEUT s'être réglé un accès (mot de passe + 2FA) depuis « Mon profil ».

@@ -5,7 +5,7 @@ import { requirePermission } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
 import { formatDateHeure } from "@/lib/dates";
-import { dateDAdhesion, dureeDepuisDate, formatDuree, moisDepuis } from "@/lib/blasons";
+import { dateDAdhesion, libelleNumeroSaison, libelleSaison, numeroDeSaison, saisonEnregistree, saisonsProposees } from "@/lib/blasons";
 import { can, canEditUser, estCompteDeService, peutNommerAdmin } from "@/lib/permissions";
 import { revoquerInvitation } from "@/actions/periodes";
 import { lienARenouveler } from "@/lib/invitations";
@@ -13,7 +13,7 @@ import { definirActif, definirNotificationsMembre, envoyerLienMembre, modifierMe
 import { lignesNotificationsMembre } from "@/lib/notifications/membre";
 import { aDejaUnAcces } from "@/lib/membres";
 import { Carte } from "@/components/ui/Carte";
-import { CLASSES_CONTROLE, Case, Champ } from "@/components/ui/Champ";
+import { Case, Champ } from "@/components/ui/Champ";
 import { Select } from "@/components/ui/Select";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { BoutonAction } from "@/components/ui/BoutonAction";
@@ -113,17 +113,18 @@ export default async function PageMembre({ params }: Props) {
   const refusables = notifications?.lignes.filter(envoye) ?? [];
   const coupeesParLeClub = notifications?.lignes.filter((l) => !envoye(l)) ?? [];
   /*
-   * **« Au club depuis »** : le bureau saisit une **durée** (« il est là depuis deux ans »), la base
-   * garde une **date**, et l'ancienneté grandit ensuite toute seule. Les deux conversions vivent
-   * dans src/lib/blasons.ts, à côté du calcul du rang : la fiche ne fait que les appeler.
+   * **« Au club depuis »** : le bureau choisit la **saison d'arrivée** (« 2024-2025 »), la base garde
+   * son 1er septembre, et l'ancienneté grandit ensuite toute seule, d'une saison à chaque rentrée. Les
+   * conversions vivent dans src/lib/blasons.ts, à côté du calcul du rang.
    *
-   * Les deux cases sont **vides** tant que personne n'a rien saisi — et non à zéro : « 0 et 0 »
-   * ressemblerait à une réponse, alors que le club ne sait pas encore.
+   * La liste démarre sur « Je ne sais pas » tant que personne n'a rien choisi : une saison
+   * présélectionnée ressemblerait à une réponse, alors que le club ne sait pas encore.
    */
-  const dureeAuClub = dureeDepuisDate(m.auClubDepuis);
-  // Ce que le rang lit aujourd'hui : la date saisie si elle existe, la création du compte sinon.
-  // Écrit sous les champs pour que la personne qui tape voie tout de suite l'effet de sa saisie.
-  const ancienneteMois = moisDepuis(dateDAdhesion(m));
+  const saisonAuClub = saisonEnregistree(m.auClubDepuis);
+  const saisons = saisonsProposees();
+  // Ce que le rang lit aujourd'hui : la saison choisie si elle existe, celle de la création du
+  // compte sinon. Écrit sous le champ pour voir tout de suite l'effet du choix.
+  const adhesion = dateDAdhesion(m);
   const derniereInvitation = (periodId: string) => m.invitations.find((i) => i.periodId === periodId);
   return (
     /*
@@ -218,61 +219,32 @@ export default async function PageMembre({ params }: Props) {
               <option value="INSTRUCTEUR">Instructeur</option>
             </Select>
             {/* **Au club depuis** — la seule entrée du rang (voir `ECHELLE`, src/lib/blasons.ts).
-                Deux nombres plutôt qu'une date : personne n'a noté le jour d'arrivée de personne,
-                alors que « ça fait deux ans » se remplit de mémoire pour tout le club en une
-                minute. Chaque case garde son propre nom accessible (`aria-label`), sinon un lecteur
-                d'écran annoncerait deux fois « Au club depuis » sans dire laquelle est laquelle. */}
+                Une saison plutôt qu'une date ou une durée : personne n'a noté le jour d'arrivée de
+                personne, alors que « il est arrivé la saison 2023-2024 » se retrouve de mémoire, et
+                se relit exactement comme on l'a choisi. */}
             {!portail && (
-              <div role="group" aria-labelledby="au-club-depuis" aria-describedby="au-club-depuis-aide" className="flex flex-col gap-1.5">
-                <span id="au-club-depuis" className="font-semibold">
-                  Au club depuis
-                </span>
-                <div className="flex items-start gap-2">
-                  <input
-                    key={`annees-${dureeAuClub?.annees ?? ""}`}
-                    type="number"
-                    name="anneesAuClub"
-                    defaultValue={dureeAuClub?.annees ?? ""}
-                    min={0}
-                    max={40}
-                    step={1}
-                    inputMode="numeric"
-                    placeholder="0"
-                    aria-label="Au club depuis : années"
-                    disabled={!modifiable}
-                    className={`${CLASSES_CONTROLE} w-24 shrink-0 border-bordure px-3`}
-                  />
-                  <span className="pt-3.5 text-texte-secondaire">ans</span>
-                  <input
-                    key={`mois-${dureeAuClub?.mois ?? ""}`}
-                    type="number"
-                    name="moisAuClub"
-                    defaultValue={dureeAuClub?.mois ?? ""}
-                    min={0}
-                    max={11}
-                    step={1}
-                    inputMode="numeric"
-                    placeholder="0"
-                    aria-label="Au club depuis : mois"
-                    disabled={!modifiable}
-                    className={`${CLASSES_CONTROLE} w-24 shrink-0 border-bordure px-3`}
-                  />
-                  <span className="pt-3.5 text-texte-secondaire">mois</span>
-                </div>
-                <p id="au-club-depuis-aide" className="text-sm text-texte-secondaire">
-                  Depuis combien de temps cette personne est au club. Sert à calculer son rang. Laisse à zéro si tu ne sais pas : la date de
-                  création du compte fera foi.
-                </p>
-                {/* **La date d'adhésion ne s'affiche jamais** : ce 1er septembre est une donnée de
-                    calcul, pas une information du club — personne n'a adhéré un 1er septembre,
-                    c'est la rentrée de sa saison. Ce qu'on montre est la **durée** qui en découle,
-                    pour confirmer ce qui vient d'être saisi. */}
+              <div className="flex flex-col gap-1.5">
+                <Select
+                  key={`saison-${saisonAuClub ?? ""}`}
+                  label="Arrivé(e) au club la saison"
+                  name="saisonArrivee"
+                  defaultValue={saisonAuClub === null ? "" : String(saisonAuClub)}
+                  disabled={!modifiable}
+                  aide="Sert à calculer son rang. « Je ne sais pas » : la saison de création du compte fera foi."
+                >
+                  <option value="">Je ne sais pas</option>
+                  {saisons.map((an, i) => (
+                    <option key={an} value={an}>
+                      {libelleSaison(an)} — {i === 0 ? "cette saison" : `${libelleNumeroSaison(i + 1)} aujourd'hui`}
+                    </option>
+                  ))}
+                  {/* Une saison plus ancienne que la liste (saisie d'avant) reste affichée telle quelle. */}
+                  {saisonAuClub !== null && !saisons.includes(saisonAuClub) && <option value={saisonAuClub}>{libelleSaison(saisonAuClub)}</option>}
+                </Select>
                 <p className="text-sm text-texte-secondaire">
-                  Aujourd&apos;hui : <strong className="font-semibold text-texte">au club depuis {formatDuree(ancienneteMois)}</strong>{" "}
-                  {m.auClubDepuis ? "— d'après la durée saisie ici." : "— d'après la création du compte, faute de durée saisie."}
-                </p>
-                <p className="text-sm text-texte-secondaire">
-                  L&apos;ancienneté se compte en saisons : tout le club en prend une à la rentrée, le 1er septembre.
+                  Aujourd&apos;hui : <strong className="font-semibold text-texte">{libelleNumeroSaison(numeroDeSaison(adhesion))} au club</strong>{" "}
+                  {m.auClubDepuis ? `— arrivée la saison ${libelleSaison(saisonEnregistree(adhesion)!)}.` : "— d'après la création du compte, faute de saison choisie."}{" "}
+                  Tout le club prend une saison à la rentrée, le 1er septembre.
                 </p>
               </div>
             )}

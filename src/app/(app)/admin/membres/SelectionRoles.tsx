@@ -28,7 +28,18 @@ import {
   type ResultatRolesEnMasse,
 } from "./actions";
 import { resumeRoles, texteConfirmationRoles, texteHorsPage, texteSansCase, type LigneRole } from "./selection-roles";
-import { INVITE_SELECTION, libelleGeste, resumeGeste, texteConfirmationGeste, type GesteMasse, type LigneGeste } from "./selection-gestes";
+import { INVITE_SELECTION, resumeGeste, texteConfirmationGeste, type GesteMasse, type LigneGeste } from "./selection-gestes";
+import {
+  entreesGestes,
+  expliquerGeste,
+  gesteRetenu,
+  gestesApplicables,
+  libelleBouton,
+  QUESTION_GESTE,
+  varianteBouton,
+  type GesteSelection,
+} from "./choix-geste";
+import { ExplicationGeste } from "./ExplicationGeste";
 import {
   resumeInvitations,
   resumeLiens,
@@ -59,6 +70,14 @@ import {
  * écrivent en base et n'envoient rien ; celui-ci expédie un email par personne cochée. Sa confirmation
  * annonce donc **le nombre d'emails** et non le nombre de cases (`selection-liens.ts`), et ses verrous
  * sont ceux du bouton d'une ligne, code 2FA compris (voir `renvoyerLiensEnMasse`, `actions.ts`).
+ *
+ * **Un seul champ, une explication, un seul bouton.** La barre alignait tous ces gestes côte à côte,
+ * quelle que soit la sélection — « Réactiver » en vert devant des comptes actifs, « Envoyer
+ * l'invitation » devant des gens déjà entrés, trois boutons rouges dont un seul effaçait. Elle pose
+ * maintenant une question, « Que veux-tu faire ? », dont la liste ne propose **que les gestes qui
+ * feraient quelque chose** à la sélection, chacun avec le nombre de personnes touchées ; le geste choisi
+ * est **expliqué** (à qui, qui reste de côté, emails, effacement) ; et un seul bouton dit le verbe et le
+ * nombre. Seule la suppression est en rouge. Toute la logique est pure, dans `choix-geste.ts`.
  *
  * **Une seule zone, une seule sélection, une seule barre.** Cocher trente lignes pour choisir ensuite
  * quoi en faire est *un* geste ; deux barres superposées, chacune avec son compteur et sa case
@@ -130,7 +149,7 @@ const SUJETS_GESTES: Record<GesteMasse, string> = {
  * **Les rôles de la liste déroulante**.
  *
  * C'étaient deux boutons côte à côte, « Instructeur » et « Membre ». Une liste déroulante les range et
- * laisse la place aux cinq autres gestes, mais elle change la nature du geste : un bouton, c'était un
+ * laisse la place aux autres gestes, mais elle change la nature du geste : un bouton, c'était un
  * clic ; une liste, c'est **choisir puis valider**. Voir `appliquerRole` — le rôle n'est pas appliqué au
  * choix.
  *
@@ -213,6 +232,11 @@ export function ZoneSelection({
    * rien à remonter, cette valeur ne vient pas du serveur : elle naît du clic et meurt avec le lot.
    */
   const [roleChoisi, setRoleChoisi] = useState("");
+  /**
+   * **Le geste choisi dans « Que veux-tu faire ? »**, tant qu'il n'est pas lancé. Même règle que le
+   * rôle : la liste **choisit**, le bouton **écrit** — un geste effleuré n'agit sur personne.
+   */
+  const [gesteChoisi, setGesteChoisi] = useState<GesteSelection | "">("");
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
   const caseMaitresse = useRef<HTMLInputElement>(null);
@@ -258,21 +282,35 @@ export function ZoneSelection({
   useEffect(() => {
     connues.current = memoriserLignes(connues.current, selectionnables);
   }, [selectionnables]);
-
-  useEffect(() => {
-    if (message?.type !== "ok") return;
-    const t = setTimeout(() => setMessage(null), 6000);
-    return () => clearTimeout(t);
-  }, [message]);
-
-  if (!active) return <>{children}</>;
-
+  /**
+   * La mémoire **telle qu'elle sera après ce rendu** : la page qui vient d'arriver du serveur compte
+   * déjà, sans attendre l'effet ci-dessus. Les gestes proposés se calculent dessus — une ligne
+   * réactivée à l'instant ne doit plus proposer « Réactiver ».
+   */
+  const memoire = memoriserLignes(connues.current, selectionnables);
   /**
    * **Tout ce qui est coché**, et pas seulement la page sous les yeux : une case cochée sur la page
-   * précédente part avec le lot, et la confirmation la compte. L'ordre est celui des pages affichées,
+   * précédente part avec le lot, et l'explication la compte. L'ordre est celui des pages affichées,
    * jamais celui des clics (voir `lignesSelectionnees`).
    */
-  const lotCoche = () => lignesSelectionnees([...connues.current.values()], selection);
+  const lotCoche = () => lignesSelectionnees([...memoire.values()], selection);
+  const lot = lotCoche();
+  const applicables = gestesApplicables(lot, {
+    liens: peutRenvoyerLien && periodeLienId !== null,
+    activer: peutActiver,
+    supprimer: peutSupprimer,
+  });
+  /**
+   * **Un geste qui ne s'applique plus revient à « Choisir une action… »** : une case décochée peut
+   * retirer la dernière personne qu'il touchait. Le rendu le lit tout de suite (`geste`), et l'état
+   * suit, pour qu'il ne réapparaisse pas tout seul si la case est recochée.
+   */
+  const geste = gesteRetenu(gesteChoisi, applicables);
+  useEffect(() => {
+    if (geste !== gesteChoisi) setGesteChoisi("");
+  }, [geste, gesteChoisi]);
+
+  if (!active) return <>{children}</>;
 
   /**
    * **Le retour d'un lot, traité une seule fois pour les quatre gestes.**
@@ -286,7 +324,14 @@ export function ZoneSelection({
       setMessage({ type: "erreur", texte: res.erreur });
       return;
     }
+    /*
+     * **Le message reste, le choix repart à zéro.** Le résultat ne s'efface plus tout seul : c'est la
+     * seule trace du geste une fois la barre repliée, et il a sa place sous elle. Le choix, lui,
+     * revient à « Choisir une action… » — le geste suivant se choisit, il ne se rejoue pas.
+     */
     setMessage({ type: "ok", texte: res.succes ?? "" });
+    setGesteChoisi("");
+    setRoleChoisi("");
     /*
      * **Le focus rentre à la case maîtresse avant que les boutons ne redeviennent actifs.** Ils sont
      * `disabled` le temps de l'écriture : le focus retombait sur `<body>`, si bien que la tabulation
@@ -449,6 +494,41 @@ export function ZoneSelection({
   };
 
   /**
+   * **L'unique bouton de la barre** : il lance le geste choisi, avec **la confirmation qu'il avait
+   * déjà**. L'explication dit tout avant l'appui, mais chacun de ces gestes porte sur plusieurs
+   * personnes à la fois, et la fenêtre de confirmation est le dernier endroit où l'on relit un nombre
+   * avant qu'il parte — on ne la retire pas en simplifiant l'écran.
+   */
+  const lancer = () => {
+    switch (geste) {
+      case "inviter":
+        return appliquerInvitations();
+      case "renvoyer":
+        return appliquerLiens();
+      case "revoquer":
+        return appliquerRevocation();
+      case "reinitialiser":
+        return appliquerReinitialisation();
+      case "desactiver":
+      case "reactiver":
+      case "supprimer":
+        return appliquerGeste(geste);
+      case "role":
+        return appliquerRole();
+    }
+  };
+  /** Le rôle visé, et combien changent vraiment : le bouton du rôle dit ce nombre-là. */
+  const resumeRole = geste === "role" && roleChoisi !== "" ? resumeRoles(lot, roleChoisi) : null;
+  const applicable = applicables.find((g) => g.geste === geste);
+  const libelleDuBouton =
+    geste === "" || !applicable
+      ? "Appliquer"
+      : libelleBouton(geste, applicable.nombre, resumeRole ? { libelle: libelleRole(roleChoisi), changent: resumeRole.changent } : undefined);
+  /** Inerte sans geste, sans rôle choisi, ou quand le rôle choisi ne changerait personne. */
+  const boutonInerte = enCours || geste === "" || (geste === "role" && (resumeRole === null || resumeRole.changent === 0));
+  const explication = geste === "" ? null : expliquerGeste(geste, lot, geste === "role" ? { valeur: roleChoisi, libelle: libelleRole(roleChoisi) } : undefined);
+
+  /**
    * **Ce qui reste dehors, compté et dit.**
    *
    * `texteHorsPage` affirme « ils ne sont pas sélectionnés » **sans regarder la sélection** : c'était
@@ -467,14 +547,6 @@ export function ZoneSelection({
    * recopiée de chaque côté aurait deux endroits où diverger.
    */
   const montrerBarre = barreDeMasseVisible(selection);
-  /** Les boutons ne restent inertes que le temps d'une écriture : sans sélection, la barre n'est plus là. */
-  const bloque = enCours;
-  /** Les trois gestes d'accès, dans l'ordre du moins au plus définitif — et chacun derrière sa permission. */
-  const GESTES: { geste: GesteMasse; variante: "secondaire" | "succes" | "danger"; visible: boolean }[] = [
-    { geste: "desactiver", variante: "secondaire", visible: peutActiver },
-    { geste: "reactiver", variante: "succes", visible: peutActiver },
-    { geste: "supprimer", variante: "danger", visible: peutSupprimer },
-  ];
 
   return (
     <Selection.Provider value={{ selection, basculer: (id) => setSelection((s) => basculer(s, id)) }}>
@@ -509,23 +581,22 @@ export function ZoneSelection({
           pas pour autant : la phrase vit maintenant sous la case maîtresse (`INVITE_SELECTION`), en
           une ligne. La condition est partagée avec les présences (`barreDeMasseVisible`).
 
-          **Collante à partir de 640 px seulement** : sur un écran de 390 px, cette barre fait
-          **~350 px de haut** — compteur, liste de rôle et son bouton, trois gestes d'accès, renvoi
-          de lien, chacun sur sa ligne. Collante, elle **recouvre la moitié haute de la liste**, et
+          **Collante à partir de 640 px seulement** : sur un écran de 390 px, la barre faisait
+          **~350 px de haut** quand elle alignait tous ses boutons, et l'explication du geste choisi
+          lui rend aujourd'hui une hauteur du même ordre. Collante, elle **recouvre la moitié haute de la liste**, et
           comme la bande couverte suit le défilement, une ligne qui passe dessous ne peut plus être
           cochée du tout. Mesure : la case d'un compte, amenée au milieu d'un écran de 844 px (y =
           410), avait un bouton de la barre à son point de clic. C'est la campagne de captures qui
           l'a trouvé — soixante secondes d'essais sur un clic impossible. En dessous de 640 px, elle
           reste donc **dans le flux** : elle se lit au-dessus de la liste, et on y revient en
-          remontant. Au-dessus, la place existe (trois colonnes, ~150 px) et le collant reprend tout
-          son sens.
+          remontant. Au-dessus, la place existe et le collant reprend tout son sens.
 
           **Et elle se cale sous l'en-tête de l'application** : elle se cale sous l'en-tête de
           l'application, à l'opposé de la barre d'onglets du bas du téléphone. Elle n'a donc pas le
           défaut qu'avait celle des présences, qui recouvrait le menu — rien à décaler ici.
 
-          Les boutons ne sont `disabled` que le temps d'une écriture : sans sélection, il n'y a plus
-          de barre du tout. */}
+          Le bouton est `disabled` tant qu'aucun geste n'est choisi et le temps d'une écriture : sans
+          sélection, il n'y a plus de barre du tout. */}
       {montrerBarre && (
         <div
           role="group"
@@ -545,76 +616,57 @@ export function ZoneSelection({
             </Bouton>
           </div>
 
-          {/* **Le rôle : une liste déroulante et un bouton**. C'étaient deux boutons — un clic, un
-              rôle. Une liste demande deux gestes, et c'est précisément pour cela qu'elle ne
-              s'applique **pas** au choix : voir `appliquerRole`. Le composant est celui du dépôt
-              (`ListeDeroulante`) et non un `<select>` nu — il s'ouvre toujours vers le bas, y
-              compris au pied d'une liste de cinquante lignes. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <label id="role-en-masse-libelle" htmlFor="role-en-masse" className="text-base text-texte-secondaire">
-              Changer le rôle en :
+          {/* **Une question, et une seule liste.** Elle ne propose que les gestes qui feraient
+              quelque chose à la sélection, chacun avec son nombre de personnes (`choix-geste.ts`) ;
+              un geste à zéro n'y figure pas. Le composant est celui du dépôt (`ListeDeroulante`),
+              comme le rôle : il s'ouvre toujours vers le bas, y compris au pied d'une longue liste. */}
+          <div className="flex flex-col gap-1">
+            <label id="geste-en-masse-libelle" htmlFor="geste-en-masse" className="text-base font-semibold">
+              {QUESTION_GESTE}
             </label>
             <ListeDeroulante
-              id="role-en-masse"
-              libelleId="role-en-masse-libelle"
-              libelle="Changer le rôle en"
-              valeur={roleChoisi}
-              entrees={ENTREES_ROLES}
-              onChoisir={setRoleChoisi}
-              className="min-h-12 flex-1 basis-40 rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
+              id="geste-en-masse"
+              libelleId="geste-en-masse-libelle"
+              libelle={QUESTION_GESTE}
+              valeur={geste}
+              entrees={entreesGestes(applicables)}
+              onChoisir={(v) => {
+                setGesteChoisi(gesteRetenu(v as GesteSelection | "", applicables));
+                setRoleChoisi("");
+                setMessage(null);
+              }}
+              className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
             />
-            {/* Inerte tant qu'aucun rôle n'est choisi : « Appliquer » sans objet écrirait un rôle que
-                personne n'a désigné, sur tout le lot. */}
-            <Bouton variante="secondaire" taille="petite" disabled={bloque || roleChoisi === ""} className="flex-1 basis-32" onClick={appliquerRole}>
-              Appliquer le rôle
-            </Bouton>
           </div>
 
-          {GESTES.some((g) => g.visible) && (
-            <div className="flex flex-wrap items-center gap-2">
-              {/* « Leur accès » plutôt qu'« Actions » : le mot dit ce que les trois boutons touchent —
-                  et la suppression, qui emporte l'accès avec le reste, est au bout de la même ligne. */}
-              <span className="text-base text-texte-secondaire">Agir sur leur accès :</span>
-              {GESTES.filter((g) => g.visible).map(({ geste, variante }) => (
-                <Bouton key={geste} variante={variante} taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={() => appliquerGeste(geste)}>
-                  {/* « Supprimer » tout seul ne disait pas ce qu'il détruit (`libelleGeste`), et le
-                      libellé s'accorde avec le lot : jamais « l'utilisateur » devant douze cases. */}
-                  {libelleGeste(geste, selection.size)}
-                </Bouton>
-              ))}
+          {/* **Le rôle ne se montre que s'il est demandé.** C'est toujours « choisir, puis valider » :
+              la liste n'écrit rien au choix (voir `appliquerRole`), et elle ouvre sur « Choisir un
+              rôle… » pour que le bouton reste inerte tant que personne n'a désigné de rôle. */}
+          {geste === "role" && (
+            <div className="flex flex-col gap-1">
+              <label id="role-en-masse-libelle" htmlFor="role-en-masse" className="text-base font-semibold">
+                Nouveau rôle
+              </label>
+              <ListeDeroulante
+                id="role-en-masse"
+                libelleId="role-en-masse-libelle"
+                libelle="Nouveau rôle"
+                valeur={roleChoisi}
+                entrees={ENTREES_ROLES}
+                onChoisir={setRoleChoisi}
+                className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
+              />
             </div>
           )}
 
-          {/* **Le seul geste de cette barre qui part vers les gens.** Il est sur sa propre ligne et non
-              dans « leur accès » : renvoyer un lien ne coupe ni ne rend un accès, il expédie un email à
-              chaque personne cochée. Le bouton porte le même mot que celui d'une ligne (« Renvoyer le
-              lien »), parce que c'est le même geste — et ses verrous sont les mêmes, code 2FA compris. */}
-          {/* **Leur clé d'entrée** : renvoyer ou révoquer le lien, et envoyer l'invitation à qui n'est
-              jamais entré — trois gestes de `invitations.manage`, qui ne touchent pas au compte.
-              « Révoquer » est en variante danger, comme sur la fiche d'un membre : il ferme une porte. */}
-          {peutRenvoyerLien && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-base text-texte-secondaire">Leur lien personnel :</span>
-              <Bouton variante="secondaire" taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={appliquerLiens}>
-                Renvoyer le lien
-              </Bouton>
-              <Bouton variante="danger" taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={appliquerRevocation}>
-                Révoquer le lien
-              </Bouton>
-              <Bouton variante="secondaire" taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={appliquerInvitations}>
-                Envoyer l&apos;invitation
-              </Bouton>
-            </div>
-          )}
-          {/* **Réinitialiser les accès** : ce geste-là touche au compte (mot de passe, double
-              authentification, appareils), d'où sa ligne et `members.manage` — la permission de la
-              barre entière, donc toujours là quand la barre l'est. */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-base text-texte-secondaire">Leur accès déjà installé :</span>
-            <Bouton variante="danger" taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={appliquerReinitialisation}>
-              Réinitialiser les accès
-            </Bouton>
-          </div>
+          <ExplicationGeste explication={explication} />
+
+          {/* **Un seul bouton, le verbe et le nombre** (« Envoyer 2 invitations »). Plein pour tous
+              les gestes, rouge pour la seule suppression : la couleur ne dit plus « attention » à
+              quatre endroits, elle le dit là où quelque chose s'efface pour de bon. */}
+          <Bouton variante={varianteBouton(geste)} taille="petite" disabled={boutonInerte} aria-busy={enCours} className="w-full sm:w-auto sm:self-start" onClick={lancer}>
+            {libelleDuBouton}
+          </Bouton>
         </div>
       )}
 

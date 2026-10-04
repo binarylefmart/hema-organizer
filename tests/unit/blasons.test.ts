@@ -5,8 +5,15 @@ import {
   JOURS_DE_COURS_MAX,
   dateDAdhesion,
   debutDeSaison,
-  dateDepuisDuree,
-  dureeDepuisDate,
+  dateDepuisSaison,
+  libelleNumeroSaison,
+  libelleSaison,
+  numeroDeSaison,
+  SAISONS_PROPOSEES,
+  anneeDeSaison,
+  saisonEnregistree,
+  saisonsProposees,
+  seuilEnSaisons,
   formatDuree,
   moisDepuis,
   presencesDuMeilleurMois,
@@ -801,79 +808,40 @@ describe("la rentrée qui ouvre une saison", () => {
   });
 });
 
-/**
- * **La durée saisie par le bureau ↔ la date rangée en base.**
- *
- * Delta ne saisit pas une date mais une durée (« depuis deux ans »), parce que c'est ce que le club
- * sait vraiment. Ce qu'on range reste une date, pour que l'ancienneté grandisse toute seule — d'où
- * ces deux conversions, et surtout l'aller-retour : ce qu'on tape doit se relire tel quel.
- */
-describe("la durée « Au club depuis »", () => {
-  const maintenant = new Date("2026-09-25T12:00:00Z");
-
-  it("recule de la durée saisie, puis se pose sur la rentrée de cette saison-là", () => {
-    // « 2 ans » saisis : deux rentrées en arrière,.
-    expect(dateDepuisDuree(2, 0, maintenant)?.toISOString()).toBe("2024-09-01T00:00:00.000Z");
-    // 30 mois en arrière, c'est mars 2024 : la saison ouverte.
-    expect(dateDepuisDuree(2, 6, maintenant)?.toISOString()).toBe("2023-09-01T00:00:00.000Z");
-    // Un mois en arrière, c'est août : la saison d'avant la rentrée en cours.
-    expect(dateDepuisDuree(0, 1, maintenant)?.toISOString()).toBe("2025-09-01T00:00:00.000Z");
-    expect(dateDepuisDuree(8, 0, maintenant)?.toISOString()).toBe("2018-09-01T00:00:00.000Z");
-    // Saisie faite en cours de saison : un mois, c'est encore la saison 2025.
-    expect(dateDepuisDuree(0, 1, new Date("2026-03-31T12:00:00Z"))?.toISOString()).toBe("2025-09-01T00:00:00.000Z");
+/** **Les saisons sportives** : ce que le bureau choisit, ce que la base range, ce que l'écran relit. */
+describe("les saisons « Au club depuis »", () => {
+  it("nomme une saison par ses deux années et range son 1er septembre", () => {
+    expect(libelleSaison(2024)).toBe("2024-2025");
+    expect(dateDepuisSaison(2024)?.toISOString()).toBe("2024-09-01T00:00:00.000Z");
+    expect(dateDepuisSaison(null)).toBeNull();
   });
 
-  it("rend null pour zéro, pour du vide et pour une saisie absurde : « je ne sais pas »", () => {
-    expect(dateDepuisDuree(0, 0, maintenant)).toBeNull();
-    expect(dateDepuisDuree(-3, -2, maintenant)).toBeNull();
-    expect(dateDepuisDuree(Number.NaN, Number.NaN, maintenant)).toBeNull();
-    expect(dureeDepuisDate(null, maintenant)).toBeNull();
-    expect(dureeDepuisDate(new Date("pas une date"), maintenant)).toBeNull();
+  it("une date appartient à la saison ouverte à la rentrée précédente", () => {
+    expect(anneeDeSaison(new Date("2026-09-01T00:00:00Z"))).toBe(2026);
+    expect(anneeDeSaison(new Date("2026-08-31T23:00:00Z"))).toBe(2025);
+    expect(saisonEnregistree(null)).toBeNull();
+    expect(saisonEnregistree(new Date("pas une date"))).toBeNull();
   });
 
-  it("ne rend jamais une date future : une durée est un recul dans le temps", () => {
-    for (const [annees, mois] of [[0, 1], [1, 0], [40, 11], [-5, 3]] as const) {
-      const date = dateDepuisDuree(annees, mois, maintenant);
-      if (date) expect(date.getTime()).toBeLessThanOrEqual(maintenant.getTime());
-    }
+  it("compte la saison en cours depuis l'arrivée, la première comprise", () => {
+    const octobre = new Date("2026-10-04T12:00:00Z");
+    expect(numeroDeSaison(new Date("2026-09-01T00:00:00Z"), octobre)).toBe(1);
+    expect(numeroDeSaison(new Date("2024-09-01T00:00:00Z"), octobre)).toBe(3);
+    expect(libelleNumeroSaison(1)).toBe("1re saison");
+    expect(libelleNumeroSaison(3)).toBe("3e saison");
   });
 
-  /**
-   * **L'aller-retour rend la saison, pas les deux nombres tapés** — c'est l'arrondi à la rentrée,
-   * et il est voulu. Ce qui doit tenir, et que ce test vérifie : rouvrir la fiche puis enregistrer
-   * sans rien changer **ne déplace pas la saison d'adhésion**. Sans cette garantie, chaque passage
-   * sur une fiche aurait rajeuni ou vieilli quelqu'un d'une rentrée.
-   */
-  it("retrouve la même saison après un aller-retour, même si les deux nombres changent", () => {
-    for (const annees of [0, 1, 2, 7, 40]) {
-      for (const mois of [0, 1, 6, 11]) {
-        const date = dateDepuisDuree(annees, mois, maintenant);
-        if (annees === 0 && mois === 0) {
-          expect(date).toBeNull();
-          continue;
-        }
-        const relu = dureeDepuisDate(date, maintenant);
-        expect(dateDepuisDuree(relu!.annees, relu!.mois, maintenant)).toEqual(date);
-      }
-    }
+  it("propose les saisons de la plus récente à la plus ancienne, jamais une à venir", () => {
+    const liste = saisonsProposees(new Date("2026-10-04T12:00:00Z"));
+    expect(liste[0]).toBe(2026);
+    expect(liste[1]).toBe(2025);
+    expect(liste).toHaveLength(SAISONS_PROPOSEES);
   });
 
-  it("se relit en années pleines tant que la rentrée en cours n'est pas dépassée", () => {
-    // Saisi le 25 septembre, un mois d'ancienneté remonte à août, donc à la saison précédente :
-    // la personne est réputée arrivée à la rentrée d'avant, et se relit « 1 an ».
-    expect(dureeDepuisDate(dateDepuisDuree(0, 1, maintenant), maintenant)).toEqual({ annees: 1, mois: 0 });
-    expect(dureeDepuisDate(dateDepuisDuree(2, 6, maintenant), maintenant)).toEqual({ annees: 3, mois: 0 });
-    // En cours de saison, l'ancienneté d'une rentrée se lit en années **et** en mois écoulés.
-    const fevrier = new Date("2026-02-15T12:00:00Z");
-    expect(dureeDepuisDate(dateDepuisDuree(1, 0, fevrier), fevrier)).toEqual({ annees: 1, mois: 5 });
-  });
-
-  it("garde l'aller-retour un 31 août, la veille d'une rentrée", () => {
-    const veilleDeRentree = new Date("2026-08-31T09:00:00Z");
-    const date = dateDepuisDuree(3, 5, veilleDeRentree);
-    expect(date?.toISOString()).toBe("2022-09-01T00:00:00.000Z");
-    const relu = dureeDepuisDate(date, veilleDeRentree);
-    expect(dateDepuisDuree(relu!.annees, relu!.mois, veilleDeRentree)).toEqual(date);
+  it("dit les seuils de rang en saisons quand ils tombent sur une rentrée", () => {
+    expect(seuilEnSaisons(12)).toBe("dès sa 2e saison");
+    expect(seuilEnSaisons(48)).toBe("dès sa 5e saison");
+    expect(seuilEnSaisons(6)).toBe("à partir de 6 mois");
   });
 });
 

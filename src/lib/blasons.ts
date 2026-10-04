@@ -1,4 +1,6 @@
-import { moisAvant } from "./dates";
+import { libelleSaison } from "./periodes";
+
+export { libelleSaison };
 
 /**
  * **Blasons et rangs** — la part « récompense » de la vue Personnel (fonctions pures, testées).
@@ -613,59 +615,45 @@ function heureDuJour(d: Date): number {
 }
 
 /**
- * **Une durée saisie par le bureau → la date d'adhésion à ranger en base**, ou `null` pour « je ne
- * sais pas ».
+ * **Les saisons sportives, telles que le bureau les nomme** : « 2025-2026 », année de la rentrée en
+ * premier. Une saison se désigne par l'année de sa rentrée (2025 pour 2025-2026).
  *
- * Le bureau ne saisit pas une date mais une **durée** (« il est là depuis deux ans et demi ») :
- * c'est ce qu'il sait vraiment, et c'est ce qu'on peut remplir pour douze personnes en une minute,
- * là où une date d'adhésion exacte n'a jamais été notée nulle part. **Ce qu'on range en base reste
- * une date**, et c'est tout l'intérêt : une durée figée vieillirait mal — « 2 ans » resterait « 2
- * ans » dans trois ans —, une date fait grandir l'ancienneté toute seule.
- *
- * **L'approximation est assumée** : on fige le jour de la saisie moins la durée annoncée, pas une
- * date d'adhésion exacte. À un rang qui se gagne en années, un mois d'écart ne change rien ; à la
- * personne qui remplit la fiche, la question « depuis combien de temps ? » évite un faux souvenir
- * précis.
- *
- * **Zéro vaut « je ne sais pas »** (`null`), comme l'annonce l'aide du champ : l'ancienneté retombe
- * alors sur la création du compte ({@link dateDAdhesion}). Rien n'est perdu — une durée nulle dirait
- * « arrivé ce mois-ci », ce que le repli raconte déjà pour un compte ouvert ce mois-ci — et c'est la
- * seule façon de se dédire d'une saisie approximative.
- *
- * Le recul se fait sur le **jour UTC** de `maintenant`, et la date rendue est à minuit UTC : c'est
- * le fuseau dans lequel {@link moisDepuis} compte ses mois révolus. `moisAvant` (src/lib/dates.ts)
- * porte déjà l'arithmétique des mois, bornage du 31 compris.
- *
- * **L'aller-retour rend la saison, pas les deux nombres tapés**, et ce n'est pas un défaut : la
- * date est arrondie à la rentrée ({@link debutDeSaison}), donc « 1 mois » saisi un 25 septembre se
- * relit « 1 an » — la personne est réputée arrivée à la rentrée précédente. Ce qui est garanti,
- * c'est que **resaisir ce qu'on relit ne déplace plus rien** : la saison, elle, ne bouge pas.
+ * Le bureau saisissait une **durée** (années + mois), que le serveur reculait depuis le jour de la
+ * saisie puis ramenait à la rentrée : « 1 an et 2 mois » tapé en octobre se relisait « 2 ans et
+ * 1 mois », parce que quatorze mois en arrière tombaient en août, donc dans la saison d'avant.
+ * Le club se compte en saisons : on choisit donc directement **la saison d'arrivée**, et ce qu'on
+ * relit est exactement ce qu'on a choisi.
  */
-export function dateDepuisDuree(annees: number, mois: number, maintenant: Date = new Date()): Date | null {
-  const total = compte(annees) * 12 + compte(mois);
-  if (total <= 0) return null;
-  const jourUtc = maintenant.toISOString().slice(0, 10);
-  const recul = new Date(`${moisAvant(jourUtc, total)}T00:00:00.000Z`);
-  // Ce qu'on range en base est **toujours un 1er septembre** : celui de la saison où l'on tombe
-  // après avoir reculé. C'est ce qui fait que tout le club vieillit d'un an à la rentrée, et non
-  // chacun à sa date (voir {@link debutDeSaison}).
-  return debutDeSaison(recul);
+export function anneeDeSaison(date: Date): number {
+  return debutDeSaison(date).getUTCFullYear();
 }
 
-/**
- * **La date rangée en base → la durée à réafficher dans les deux champs du formulaire**, `null`
- * quand aucune date n'est enregistrée (les deux champs restent alors vides : personne ne sait).
- *
- * Le retour de {@link dateDepuisDuree} : les mois révolus de {@link moisDepuis}, redécoupés en
- * années et mois. **Arrondi à la saison compris** — l'ancienneté étant comptée depuis un
- * 1er septembre, la relecture donne des années pleines tant que la rentrée en cours n'est pas
- * dépassée, et non les deux nombres exacts qu'on avait tapés. Ce qui compte, et qui est garanti :
- * rouvrir la fiche puis enregistrer sans rien changer **ne déplace pas la saison d'adhésion**.
- */
-export function dureeDepuisDate(date: Date | null | undefined, maintenant: Date = new Date()): { annees: number; mois: number } | null {
-  if (!(date instanceof Date) || !Number.isFinite(date.getTime())) return null;
-  const mois = moisDepuis(date, maintenant);
-  return { annees: Math.floor(mois / 12), mois: mois % 12 };
+/** « 1re saison », « 2e saison »… : le rang de la saison en cours depuis la saison d'arrivée (incluse). */
+export function libelleNumeroSaison(n: number): string {
+  const k = Math.max(1, Math.floor(n));
+  return `${k}${k === 1 ? "re" : "e"} saison`;
+}
+
+/** La saison en cours est la combientième depuis l'arrivée : 1 la première saison, 2 à la rentrée suivante… */
+export function numeroDeSaison(adhesion: Date, maintenant: Date = new Date()): number {
+  return Math.max(1, anneeDeSaison(maintenant) - anneeDeSaison(adhesion) + 1);
+}
+
+/** **La saison choisie → la date à ranger en base** : son 1er septembre ; `null` pour « je ne sais pas ». */
+export function dateDepuisSaison(annee: number | null): Date | null {
+  return annee === null ? null : new Date(Date.UTC(annee, MOIS_RENTREE, 1));
+}
+
+/** La saison d'arrivée enregistrée, ou `null` si personne ne l'a renseignée (le compte fait foi). */
+export function saisonEnregistree(date: Date | null | undefined): number | null {
+  return date instanceof Date && Number.isFinite(date.getTime()) ? anneeDeSaison(date) : null;
+}
+
+/** Les saisons qu'on peut choisir, de la plus récente à la plus ancienne. */
+export const SAISONS_PROPOSEES = 40;
+export function saisonsProposees(maintenant: Date = new Date()): number[] {
+  const courante = anneeDeSaison(maintenant);
+  return Array.from({ length: SAISONS_PROPOSEES }, (_, i) => courante - i);
 }
 
 /** Un rang de la salle d'armes : on y monte, on n'en redescend jamais. */
@@ -752,6 +740,15 @@ export function prochainRang(ancienneteMois: number): { nom: string; reste: numb
   const mois = compte(ancienneteMois);
   const suivant = ECHELLE.find((rang) => mois < rang.seuil);
   return suivant ? { nom: suivant.nom, reste: suivant.seuil - mois } : null;
+}
+
+/**
+ * **Quand un seuil se dit en saisons** : 12, 24, 48 mois tombent pile sur une rentrée (l'ancienneté
+ * part d'un 1er septembre) — « dès sa 3e saison » se lit mieux que « à partir de 2 ans ». Le seuil
+ * de six mois, lui, tombe en cours de saison et reste une durée.
+ */
+export function seuilEnSaisons(seuilMois: number): string {
+  return seuilMois % 12 === 0 ? `dès sa ${libelleNumeroSaison(seuilMois / 12 + 1)}` : `à partir de ${formatDuree(seuilMois)}`;
 }
 
 /**
