@@ -330,8 +330,8 @@ Dans **Espace admin** :
 
 ### Fabriquer votre propre image
 
-Rien n'y oblige : la stack livrée pointe sur l'image publiée, et une mise à jour ne demande que de
-changer `APP_TAG`. Cette section est pour qui **modifie le code** ou veut ranger l'image dans son
+Rien n'y oblige : la stack livrée pointe sur l'image publique `hematools/hema-organizer`, suivie en
+`latest`. Cette section est pour qui **modifie le code** ou veut ranger l'image dans son
 propre registre.
 
 1. Faites un *fork* du dépôt, puis poussez un tag : GitHub Actions
@@ -391,7 +391,7 @@ npm run dev                     # http://localhost:3000
 
 Sans `SMTP_HOST`, les emails sont écrits dans `previews/emails/` au lieu d'être envoyés.
 
-`npm run db:reparer` relit la base et signale ce qu'une ancienne version a pu y laisser (réponses
+`npm run db:reparer` relit la base et signale les incohérences qu'elle peut contenir (réponses
 sans invitation, ateliers planifiés orphelins, doublons du journal des notifications, liens
 concurrents, cases de planning détachées). **Il n'écrit rien sans `--reparer`**, et prend une
 sauvegarde avant d'écrire. En production, le même outil voyage dans l'image :

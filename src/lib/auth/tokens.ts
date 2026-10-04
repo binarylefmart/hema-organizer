@@ -32,9 +32,7 @@ export function isValidTokenFormat(token: unknown): token is string {
  * de passage, jeton d'élévation. Une signature qui ne couvre **que** les champs rend ces jetons
  * **interchangeables** dès que deux d'entre eux ont la même forme — et certains dorment en clair
  * dans le pied d'un email, pour un an. Un jeton présenté à un lecteur qui n'est pas le sien y
- * passerait alors pour authentique, puisqu'il l'est : c'est le même secret qui l'a frappé. La revue
- * de sécurité a montré que la famille de défaut n'était pas théorique ; le détail de ce qu'elle a
- * trouvé reste dans `docs/ETAT.md`, qui ne quitte pas ce dépôt.
+ * passerait alors pour authentique, puisqu'il l'est : c'est le même secret qui l'a frappé.
  *
  * D'où l'**usage écrit dans la charge signée** : il entre dans le HMAC comme les autres champs, et
  * chaque lecteur exige le sien. Un jeton d'une autre famille n'est plus « périmé » ni « mal formé » :

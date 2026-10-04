@@ -1,7 +1,7 @@
 # Ce que fait HEMA Organizer
 
-> Ce document est **engendré** depuis la partie « Fonctionnalités » de `CLAUDE.md`, qui fait
-> référence : il ne peut donc pas en diverger. Pour installer l'application, voir
+> Ce document décrit ce que fait l'application, écran par écran ; il reprend la partie
+> « Fonctionnalités » de `CLAUDE.md`, qui fait référence. Pour installer l'application, voir
 > `docs/DEPLOIEMENT.md` ; pour le modèle de sécurité, `docs/SECURITE.md` ; pour la prise en
 > main par les membres, les trois guides de `docs/guides/`.
 
@@ -27,7 +27,7 @@
   Trois corollaires : une **donnée saisie n'est jamais masquée** pour faire coïncider une
   colonne avec un total — le fichier porte une colonne « Arrivée » qui explique l'écart, et ses totaux
   s'intitulent « depuis l'arrivée » ; borner le seul numérateur d'une séance recréerait le péché que ce
-  dossier traque (le dénominateur, lui, n'est pas borné) ; et `/admin/presences` doit continuer d'accepter
+  dossier traque (le dénominateur, lui, n'est pas borné) ; et `/admin/presences` accepte
   qu'on coche quelqu'un sur un cours antérieur à son arrivée — le cours d'essai a eu lieu.
 - **Tout compteur de présences filtre sur l'appartenance à la période** (`user: { service: false, periodes:
   { some: { periodId } } }`). `Attendance` pend à `User` et à `Session`, jamais à `PeriodMember` : sans ce
@@ -47,8 +47,7 @@ redirige vers `/gestion/ateliers`. Rien n'y est montré à l'un et caché à l'a
   lignes : un mois dont aucune séance n'est visible passe entier derrière le bouton
 - **Le planning s'ouvre en LECTURE SEULE, même pour l'encadrement.** Lire le programme ne doit pas
   demander de traverser un mur de contrôles de saisie — quatre listes déroulantes et une zone de texte
-  **par partie**, sur chaque séance du trimestre. À 1 440 px : **1 477 px de page et zéro zone de
-  saisie** en lecture, contre **4 205 px** en modification. En lecture, l'annuaire du club et la liste
+  **par partie**, sur chaque séance du trimestre. En lecture, l'annuaire du club et la liste
   des ateliers ne traversent pas vers le navigateur (`optionsDepuis` ne les envoie qu'à qui peut s'en
   servir) : sur un trimestre de vingt-six séances, ce n'est pas rien
   - **Trois boutons** : « Modifier le planning » ouvre la saisie, « Appliquer les modifications » la
@@ -62,11 +61,11 @@ redirige vers `/gestion/ateliers`. Rien n'y est montré à l'un et caché à l'a
     `true`, un reste de copier-coller rendent la lecture seule : un écran de saisie ne s'ouvre pas sur
     un à-peu-près. La règle est dans un module pur (`src/components/planning/mode-edition.ts`) :
     entrer en modification ne fait perdre **aucun filtre**, sans quoi il faudrait tout refiltrer avant
-    de corriger la case qu'on avait sous les yeux.
+    de corriger la case qu'on a sous les yeux.
   - **Et le mode exige le DROIT en plus du paramètre** (`enEdition = peutModifier && modeEdition`).
-    `?modifier=1` s'écrit à la main : sans cette conjonction, un membre voyait la barre « Appliquer les
-    modifications » au-dessus d'un planning qu'il ne peut pas régler. Rien n'était ouvert (les options
-    suivent le droit, l'action exige `planning.edit`), mais l'écran promettait un geste inexistant.
+    `?modifier=1` s'écrit à la main : sans le droit, l'écran reste en lecture seule et ne montre pas
+    la barre « Appliquer les modifications » (les options suivent le droit, l'action exige
+    `planning.edit`).
   - **Les cases attendent, et c'est ce qui rend les boutons honnêtes.** Enregistrées une par une à
     chaque réglage, « Appliquer » n'aurait rien à écrire et « Annuler » rien à jeter. Elles
     s'accumulent dans un brouillon (`ContexteBrouillon`, branché sur le **seul** entonnoir
@@ -83,12 +82,9 @@ redirige vers `/gestion/ateliers`. Rien n'y est montré à l'un et caché à l'a
     part, confirmées. Une promesse à moitié tenue vaut moins qu'une phrase.
   - **La fiche d'une séance garde l'enregistrement immédiat** : on y règle **une** séance, et une case
     sans brouillon s'enregistre toute seule — c'est le `null` du contexte qui le dit.
-  - Corollaire trouvé en écrivant le geste par lots : **une séance annulée verrouille aussi son
-    programme** (`partiePourEcriture` et `seancePourEcriture`). Elles ne regardaient que le statut du
-    trimestre, si bien qu'un appel forgé pouvait remplir le programme d'un cours annulé — programme qui
-    **sort du club** (pages de partage, API publique). Ce n'était pas un oubli isolé mais une
-    divergence : `programmerAtelierDansCase` refusait déjà l'annulation de son côté, et deux portes vers
-    la même écriture ne peuvent pas avoir deux serrures
+  - **Une séance annulée verrouille aussi son programme** (`partiePourEcriture`, `seancePourEcriture`
+    et `programmerAtelierDansCase` refusent tous trois l'écriture) : ce programme **sort du club**
+    (pages de partage, API publique), et deux portes vers la même écriture ont la même serrure
 - **Le planning se règle par parties, une carte par séance** : chaque séance porte ses
   propres parties (`SessionPartie`), qui s'ajoutent, se montent, se descendent et se retirent
   (`planning.edit`, le même droit que remplir une case). Une partie porte **un instructeur qui
@@ -103,11 +99,11 @@ redirige vers `/gestion/ateliers`. Rien n'y est montré à l'un et caché à l'a
   atelier retenu s'en crée une au besoin. Vider une case et
   retirer une partie sont deux gestes distincts ; retirer est refusé tant qu'un atelier occupe la partie ;
   un atelier retenu vise la première option libre, et l'application en crée une en queue s'il n'y en a pas
-- **La nature d'une partie se choisit à l'ajout, et ne change plus après coup.** Deux boutons —
+- **La nature d'une partie se choisit à l'ajout, et ne change pas après coup.** Deux boutons —
   *ajouter un cours*, *ajouter une option* — posent la nature au moment où elle se décide. Pour en
   changer, on **retire la partie et on ajoute l'autre** : aucune ligne ne bouge sous le doigt. Changer
   la nature en place déplacerait la partie d'une série à l'autre, donc de place, et la suivante
-  hériterait de son nom. `changerNaturePartie` reste côté serveur avec ses verrous et ses tests,
+  hériterait de son nom. `changerNaturePartie` existe côté serveur avec ses verrous et ses tests,
   **sans écran qui l'appelle**, et son en-tête le dit
 - **Le nom d'une partie ne se saisit pas : il se calcule.** `libellePartie(rang, estOption)` donne
   « Cours 1 », « Cours 2 »… et « Option 1 », « Option 2 »… — **une seule forme par série**.
@@ -154,17 +150,13 @@ redirige vers `/gestion/ateliers`. Rien n'y est montré à l'un et caché à l'a
   `periods.manage` (ADMIN) **et l'élévation** (`exigerReauth`), exactement comme son geste jumeau
   `supprimerSeancesPeriode` sur l'écran de la période, et le nombre de réponses perdues part dans le
   journal d'audit. **Pourquoi :** la séance emporte en cascade les réponses des membres, qui ne se
-  reconstituent pas. Il demandait `sessions.manage` : un instructeur pouvait donc vider un trimestre
-  entier séance par séance, depuis un bouton qu'on lui affichait, alors que la même destruction en un
-  clic depuis l'écran de la période lui était refusée. **Deux portes vers la même destruction ne
-  peuvent pas avoir deux serrures.** Le bouton n'est rendu qu'à qui peut aboutir (permission *et*
+  reconstituent pas. **Deux portes vers la même destruction ont la même serrure.** Le bouton n'est rendu qu'à qui peut aboutir (permission *et*
   session forte) : un bouton qui ne peut que refuser est pire que pas de bouton
-- **Une période CLOSE verrouille aussi ses séances** : le planning refusait déjà toute
-  écriture sur un trimestre clos (`partiePourEcriture`, `seancePourEcriture`, `periodeOuverte`), mais
-  la séance restait ouverte — on pouvait changer son horaire, réécrire son thème par autosave,
-  l'effacer, et surtout **l'annuler**, ce qui fait partir un email à tous les invités plus une annonce
-  sur Discord et Telegram, à propos d'un cours d'un trimestre terminé. Le lien d'annulation des emails
-  tombe pour la même raison (`porteurJetonAnnulation`). **Le verrou ne se déduit pas de la date** : on
+- **Une période CLOSE verrouille son planning et ses séances** (`partiePourEcriture`,
+  `seancePourEcriture`, `periodeOuverte`) : ni horaire, ni thème, ni suppression, ni surtout
+  **annulation** — qui ferait partir un email à tous les invités et une annonce sur Discord et
+  Telegram à propos d'un cours d'un trimestre terminé. Le lien d'annulation des emails est refusé pour
+  la même raison (`porteurJetonAnnulation`). **Le verrou ne se déduit pas de la date** : on
   clôt un trimestre sans attendre son dernier cours, une période close porte donc des séances à venir
 - Voir la liste nominative des présents / absents / peut-être / sans réponse
 - Ateliers : file des propositions (badge compteur), valider / refuser avec commentaire,
@@ -211,7 +203,7 @@ seul réglage purement technique de l'application, la conservation du journal d'
   renvoyer / révoquer une invitation individuelle, voir qui n'a pas encore activé son lien.
   **« Rouvrir la période »** : le geste inverse de la clôture, sur une période CLOSE. Il ne fait partir
   **aucun email** — il rend les liens que la clôture avait révoqués (`CLOTURE`) **et seulement s'ils sont encore
-  valables**, et marque comme envoyés les liens d'un trimestre déjà commencé qui n'était pas encore parti. Sans ces
+  valables**, et marque comme envoyés les liens d'un trimestre déjà commencé qui ne sont pas encore partis. Sans ces
   deux garde-fous, la réouverture déclencherait un « lien renouvelé » ou un premier lien à tout le club au balayage
   du lendemain.
   **Alerte « période à activer »** : si une période créée arrive à son premier cours **en
@@ -228,7 +220,7 @@ seul réglage purement technique de l'application, la conservation du journal d'
   écran à lui :** le registre d'un soir de cours et le registre des comptes sont deux métiers, et les mêler en tête de
   l'annuaire coûterait deux requêtes de plus à chaque ouverture.
   **Corriger le registre exige l'espace admin OUVERT** :
-  `attendances.autrui` est **sortie** de la liste `SANS_SESSION_FORTE` (`src/lib/permissions.ts`), donc
+  `attendances.autrui` ne figure **pas** dans la liste `SANS_SESSION_FORTE` (`src/lib/permissions.ts`), donc
   les deux écritures du registre — `modifierPresenceMembre` et `modifierPresencesEnMasse` — exigent une
   **session forte**, par les deux écrans qui les montent. **Pourquoi :** sans elle, un appel forgé
   depuis une session ouverte par le **seul lien personnel** d'un administrateur ramène une séance de
@@ -315,7 +307,7 @@ seul réglage purement technique de l'application, la conservation du journal d'
   membre, elle ne l'a jamais cessé —, réinitialiser la 2FA — **sauf celle du compte permanent, que lui
   seul réinitialise** : c'est le seul compte qui puisse rouvrir l'administration, et sa voie de secours
   est sa propre boîte email, puis le redéploiement. **Le rôle ADMIN ne se
-  donne et ne se retire que là** : l'annuaire (`/admin/membres`, fiche comprise) ne propose plus que *membre* et
+  donne et ne se retire que là** : l'annuaire (`/admin/membres`, fiche comprise) ne propose que *membre* et
   *instructeur*. **Un administrateur ne se crée pas de zéro** : cet onglet n'a pas de formulaire de
   création — il doublerait celui de l'annuaire et pourrait ouvrir un second compte à quelqu'un de déjà
   inscrit. On ajoute la personne dans « Membres », puis on la **nomme** ici ; `creerMembre` et
@@ -324,7 +316,7 @@ seul réglage purement technique de l'application, la conservation du journal d'
   message du serveur SMTP en cas d'échec — c'est là qu'on tranche un « il n'a rien reçu »
 
 *(`/gestion/periodes/**` et `/gestion/membres/**` redirigent vers `/admin/periodes/**` et
-`/admin/membres/**` : des emails portent les anciennes adresses.)*
+`/admin/membres/**`, pour que les liens de cette forme déjà envoyés par email restent valables.)*
 
 ## Invitations et accès
 - Jeton : 32 octets aléatoires (crypto.randomBytes), base64url dans l'URL, seul le hash SHA-256 est stocké
@@ -337,8 +329,8 @@ seul réglage purement technique de l'application, la conservation du journal d'
   de 12 h glissantes) ; première utilisation → écran de bienvenue
 - **Membres et instructeurs : un filet, jamais une obligation.** Depuis « Mon profil » → « Sécuriser mon compte »
   (`/profil#securite`), chacun peut se définir un mot de passe, puis — en option — activer une double authentification
-  TOTP. **Pourquoi :** le lien *seul* enfermait dehors quiconque perdait son email ou changeait d'appareil, et la seule
-  issue était de déranger un administrateur. Sans mot de passe, on entre par son lien, comme avant. Les écrans qui
+  TOTP. **Pourquoi :** avec le lien *seul*, quiconque perd son email ou change d'appareil reste dehors jusqu'à ce
+  qu'un administrateur intervienne. Sans mot de passe, on entre par son lien. Les écrans qui
   accueillent l'ouverture d'un lien (page du lien, écran de bienvenue) le mentionnent en une phrase, avec un lien vers
   cette ancre
 - **ADMIN : mot de passe ET double authentification obligatoires**, réglés par le parcours dédié **`/admin/activer`**
@@ -352,16 +344,15 @@ seul réglage purement technique de l'application, la conservation du journal d'
   qui ouvre la session sans rien configurer (et pas reproposée avant un trimestre : `User.deuxFaProposeeLe`) — ce
   « Plus tard » est **refusé à un ADMIN**. Un compte **sans** mot de passe reçoit un message générique
   (aucune énumération de comptes) qui le renvoie à son lien personnel. Le reset de mot de passe suit la même règle
-- **Ce qui ne change pas, et ne doit jamais changer : l'administration technique exige le supplément « du bureau » ET une
+- **L'administration technique exige le supplément « du bureau » ET une
   « session forte »** (mot de passe + code TOTP). La force d'une session **ne se déduit jamais** de « mot de passe + 2FA » :
   elle se déduit du **compte** (`peutOuvrirSessionForte`, `src/lib/auth/acces-admin.ts` — un compte actif portant
   `estAdmin` — c'est ce supplément qu'il lit, pas un rôle), au seul endroit où une session forte se
   crée. Un instructeur équipé d'un mot de passe *et* d'une double authentification n'entre pas dans les réglages — vérifié
   par `tests/unit/admin-activation.test.ts` et `tests/unit/permissions.test.ts`
 - **Se connecter n'ouvre jamais l'espace admin**. La session créée à la connexion est **ordinaire pour tout
-  le monde**, y compris pour un ADMIN qui vient de donner son mot de passe *et* son code : elle naissait « forte », si
-  bien qu'ouvrir l'application déposait dans les réglages sans l'avoir demandé, et que les 12 h de l'élévation partaient
-  toutes seules. **Un seul endroit élève** : `renforcerSessionCourante`, appelé par `/connexion/admin` (les deux preuves
+  le monde**, y compris pour un ADMIN qui vient de donner son mot de passe *et* son code : ouvrir l'application
+  ne dépose pas dans les réglages sans qu'on l'ait demandé. **Un seul endroit élève** : `renforcerSessionCourante`, appelé par `/connexion/admin` (les deux preuves
   redemandées, même fraîchement connecté) et par la fin du parcours `/admin/activer`. Vérifié par
   `tests/unit/elevation-admin.test.ts` (« la connexion n'élève personne »)
 - **La page du lien garde son bouton (POST) : ne jamais le remplacer par une ouverture automatique.**
@@ -394,11 +385,11 @@ seul réglage purement technique de l'application, la conservation du journal d'
 - Ensuite : connexion classique email + mot de passe depuis n'importe quel appareil, **pour qui s'en est donné un**
 - "Mot de passe oublié" par lien email à usage unique (30 min)
 - Sessions : **12 h glissantes**, avec ou sans "Rester connecté" — chaque geste dans
-  l'application repousse l'échéance de 12 h, et "Rester connecté" ne décide plus que de la survie du
+  l'application repousse l'échéance de 12 h, et "Rester connecté" ne décide que de la survie du
   cookie à la fermeture du navigateur. **Le glissement se fait à chaque requête** (`echeanceProlongee`, lue par
   `getCurrentUser`) : porté par les seules server actions, il laisserait quelqu'un connecté le matin et revenu le
   soir être mis dehors **au milieu** de son premier geste, le seul moment où l'échéance aurait bougé. `touchSession`
-  ne garde que ce qu'elle est seule à pouvoir faire : reposer le cookie. Et elle ne le repose **que si la case était
+  ne fait que reposer le cookie, et **seulement si la case a été
   cochée** — `AuthSession.persistant`, gardé en base parce qu'un serveur ne peut pas relire le `maxAge` d'un cookie.
   Le reposer systématiquement rendrait persistante la session ouverte sur l'ordinateur d'un ami dès deux gestes à
   trente-cinq minutes d'intervalle, et viderait de son sens la seule case qu'on peut cocher pour s'en protéger.
@@ -410,11 +401,10 @@ seul réglage purement technique de l'application, la conservation du journal d'
   Le libellé ne dit jamais « **ton** lien » : une seule clé est mémorisée par appareil, et l'écran ne sait pas
   à qui elle est (le serveur seul pourrait le dire, et il n'est pas consulté avant l'appui). Le lien n'est
   jamais affiché en entier.
-  **« Se déconnecter » ne l'efface pas** : il l'effaçait, et chaque déconnexion de son propre
-  téléphone renvoyait chercher son email — or on se déconnecte de son propre appareil cent fois pour une fois
+  **« Se déconnecter » ne l'efface pas** : on se déconnecte de son propre appareil cent fois pour une fois
   qu'on rend celui d'un autre. Le geste du téléphone prêté s'appelle « Oublier », sur l'écran de connexion,
-  là même où la déconnexion dépose. **Ce bloc ne doit jamais repasser derrière un pli** : replié, il
-  laisse l'écran de connexion promettre une clé qu'il ne montre pas.
+  là même où la déconnexion dépose. **Ce bloc n'est jamais replié** : replié, il laisserait l'écran de
+  connexion promettre une clé qu'il ne montre pas.
   Le cookie de passage qui porte le lien après l'ouverture (`src/lib/lien-personnel.ts`, 15 min, `/bienvenue`)
   est **signé et son jeton chiffré**, il nomme son destinataire — comme celui des codes de secours — et la
   déconnexion l'efface : sur une tablette partagée, le compte suivant ne peut pas récupérer la clé du
@@ -500,28 +490,23 @@ seul réglage purement technique de l'application, la conservation du journal d'
   déduplication, pas de `destinataireRetenu`. `envoiPossible` rend **`false`** pour lui par construction, et la
   vraie question porte un autre nom : `expositionPossible(type, portes?)`, qui compose **trois** conditions
   et non deux — publication ouverte (`isPublicApiEnabled`), **interrupteur du canal** coché, et case du type
-  cochée. Les trois écrans qui en parlent la lisent, jamais la matrice en direct : la page du canal l'avait
-  fait, et annonçait « republiée » pendant que la route rendait une liste vide. `portesExposition()` lit les
+  cochée. Les trois écrans qui en parlent la lisent, jamais la matrice en direct : ce qu'ils annoncent
+  est ce que la route rend. `portesExposition()` lit les
   deux réglages **une fois** pour les trois types. Un test relit les neuf modules d'envoi et échoue si l'un
   d'eux le nomme
 - **Trois types ont une case, et trois seulement** : `recap_veille`, `seance_annulee`, `evenement_nouveau`.
   Tous **décochés à l'installation** — une mise à jour ne publie jamais ce que le club n'a pas décidé.
   `effectif_faible` n'en a **jamais** : c'est un appel à décider adressé aux instructeurs, et son email porte
-  un **lien d'annulation signé au nom de son destinataire** — une clé, pas une information. (L'argument écrit
-  d'abord, « annoncer qu'un cours se remplit mal », était faux : le **taux** du cours de demain sort déjà par
-  le récap, et celui des cinq prochains par l'autre route. Une raison fausse dans un commentaire finit par
-  servir d'argument à quelqu'un.) Les messages
+  un **lien d'annulation signé au nom de son destinataire** — une clé, pas une information. Les messages
   personnels (rappel, réponse d'atelier) et les affaires de bureau (période suivante, période non activée) non
   plus. Chaque exclusion porte **sa phrase** (`RAISON_API_EXCLUE`), affichée telle quelle dans l'infobulle de
   la case grisée : une case **ou** une raison, jamais les deux, jamais aucune
 
 - **Une case grisée n'exprime aucune décision**. Les cellules d'un canal non opérationnel sont
-  rendues `disabled`, donc **absentes du formulaire** — et une case absente vaut « décochée ». Enregistrer la
-  matrice effaçait ainsi les cases d'un canal fermé, en silence, alors que l'écran promet le contraire.
-  `figerCanauxIndisponibles` reprend désormais de l'état **d'avant** la valeur de ces couples : le formulaire
-  ne peut ni les allumer ni les vider. C'est déjà ce que la même fonction faisait pour l'adresse de liste et
-  le quota, qui se règlent ailleurs — deux façons opposées de traiter le même cas dans une seule fonction
-  auraient été le vrai défaut. Corollaire : **toute écriture de cet écran exige `exigerReauth`**, la matrice
+  rendues `disabled`, donc **absentes du formulaire** — où une case absente vaudrait « décochée ».
+  `figerCanauxIndisponibles` reprend donc pour ces couples la **valeur enregistrée** : le formulaire ne
+  peut ni les allumer ni les vider, comme pour l'adresse de liste et le quota, qui se règlent ailleurs.
+  Corollaire : **toute écriture de cet écran exige `exigerReauth`**, la matrice
   comprise (elle décide de ce qui part *et* de ce que le club publie sur Internet)
 
 ### Commun
@@ -530,8 +515,8 @@ seul réglage purement technique de l'application, la conservation du journal d'
 - Idempotence : pas de double envoi. **Une clé de déduplication porte ce qui identifie
   l'occurrence annoncée, pas seulement la ligne de base** : type + canal + destinataire + jalon, et
   l'**empreinte du créneau** de la séance (`empreinteCreneau`, `notifications/planification.ts`) —
-  une séance déplacée garde son identifiant, et une clé qui ne portait que lui interdisait à jamais
-  l'annonce de la bonne date après celle de la mauvaise. Même règle ailleurs : la clé d'une décision
+  une séance déplacée garde son identifiant, et une clé qui ne porterait que lui bloquerait l'annonce de
+  la bonne date après celle de la mauvaise. Même règle ailleurs : la clé d'une décision
   d'atelier porte l'horodatage de la décision, sans quoi un second refus après « réexaminer » ne
   partirait pas. L'empreinte ne porte **que** le créneau : corriger un thème ou un lieu ne renvoie rien
 - **La clé se pose AVANT l'envoi** (`journaliser`), jamais après : c'est la contrainte d'unicité qui
@@ -540,7 +525,7 @@ seul réglage purement technique de l'application, la conservation du journal d'
   par module d'envoi**, jamais une fois pour toutes : une clé écrite *après* l'envoi fait partir deux
   fois « Cours annulé » à tout le club dès que deux instructeurs annulent en même temps, et un module
   sans `marquerEchec` perd définitivement une alerte de sécurité que le serveur d'envoi a ratée. Chaque
-  envoi est un chemin de code à part, et un chemin corrigé ne dit rien de son voisin
+  envoi est un chemin de code à part, et un chemin vérifié ne dit rien de son voisin
 - **Une modification ne vaut jamais première annonce.** Une notification « nouveauté » ne part qu'au
   moment où l'objet *devient* public (comparer l'état d'avant à celui d'après), jamais à chaque
   enregistrement. Ne pas s'en remettre à la déduplication pour tenir cette règle : une clé ne protège
@@ -559,17 +544,15 @@ seul réglage purement technique de l'application, la conservation du journal d'
   pas à traiter un 4xx pour afficher une liste vide
 - Aucune donnée nominative, lecture seule, CORS limité à PUBLIC_API_ORIGIN
 - Cache HTTP 5 min, rate limiting (**le même seau** pour les deux routes), désactivable dans les paramètres admin
-- **Les gardes valent pour tous les verbes, `OPTIONS` comprise**. Le préalable CORS ne passait ni
-  l'interrupteur ni le seau : une porte annoncée fermée répondait `204` **en publiant l'origine autorisée du site du
-  club**, et une boucle sur ce seul verbe était gratuite et illimitée — donc le « 60 appels/min/IP » du dossier ne
-  couvrait que la moitié de ce qui est exposé. Un refus ne porte désormais **aucun en-tête CORS** : il n'y a rien à
-  autoriser quand il n'y a rien à lire
+- **Les gardes valent pour tous les verbes, `OPTIONS` comprise** : le préalable CORS passe par
+  l'interrupteur et par le seau comme les autres requêtes, et une porte fermée ne publie pas l'origine
+  autorisée du site du club. Un refus ne porte **aucun en-tête CORS** : il n'y a rien à autoriser quand il
+  n'y a rien à lire
 - **Le plugin WordPress livré applique le refus tout de suite** : son cache de secours (7 jours) ne joue que sur une
-  **panne réseau**. Il ne distinguait pas un refus délibéré d'une coupure, si bien que décocher la case laissait le
-  site du club afficher les cours pendant une semaine — adresses de salle et motifs d'annulation compris. La promesse
-  « refermer coupe tout d'un coup » était vraie du serveur et fausse de la vitrine que ce dépôt livre lui-même
+  **panne réseau**, jamais sur un refus délibéré. Décocher la case retire aussitôt les cours du site du club —
+  adresses de salle et motifs d'annulation compris
 - **`/api/image` n'est pas une porte publique, et ne rapatrie que ce que le serveur connaît déjà** : l'affiche d'un
-  événement enregistré, ou l'illustration qu'un aperçu de lien vient de proposer. Elle ne vérifiait **rien** — un
-  simple membre pouvait faire sonder n'importe quel hôte public depuis l'adresse IP du club, et ses messages d'erreur
-  distinguaient les cas, donc répondaient par écrit à « ce port est-il ouvert ? ». Tout échec rend un **seul** message
+  événement enregistré, ou l'illustration qu'un aperçu de lien vient de proposer. Elle ne sert donc pas à sonder un
+  hôte quelconque depuis l'adresse IP du club, et tout échec rend un **seul** message, qui ne distingue pas les cas
+  (rien ne répond à « ce port est-il ouvert ? »)
 

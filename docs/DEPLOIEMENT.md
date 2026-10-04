@@ -124,8 +124,7 @@ maillon de la chaîne, et **choisit l'adresse que l'application retiendra**. Deu
 seconde est la pire : plus aucun quota par IP ne tient (connexion, liens inconnus, API publique,
 pages de partage), et **l'adresse inscrite au journal d'audit devient une valeur choisie par le
 visiteur** — les alertes envoyées aux administrateurs racontent alors une histoire fausse. Ce port
-n'était de toute façon pas nécessaire : NPM passe par le réseau Docker. Si l'on devait le rouvrir
-pour un dépannage, le lier à **une seule** adresse (`127.0.0.1:3080:3000`, ou la passerelle Docker
+n'est pas nécessaire : NPM passe par le réseau Docker. S'il faut le rouvrir pour un dépannage, le lier à **une seule** adresse (`127.0.0.1:3080:3000`, ou la passerelle Docker
 `172.17.0.1:3080:3000`) et vérifier que **seuls les ports 80 et 443 sont redirigés depuis Internet
 vers le serveur** — sans quoi l'intégrité du journal d'audit repose sur la configuration de la box.
 
@@ -146,10 +145,9 @@ l'utilisateur `node` (uid 1000) fourni par l'image officielle, pas sous `root` :
   n'écrit ailleurs que dans `/data`, `/backups` et le cache de Next (`/app/.next/cache`) ;
 - **le code applicatif ne lui appartient pas.** `server.js`, `.next/`, `node_modules`,
   le client Prisma et l'entrypoint sont en `root:root`, lisibles et exécutables mais **non
-  modifiables** par l'utilisateur qui les exécute. Sans cela, une simple faille d'écriture de fichier
-  aurait permis de réécrire le programme, et `restart: always` l'aurait relancé tel quel —
-  `cap_drop: ALL` n'y change rien, puisqu'il n'y a aucun privilège à gagner quand on peut déjà
-  remplacer le code.
+  modifiables** par l'utilisateur qui les exécute : une faille d'écriture de fichier ne peut pas
+  réécrire le programme que `restart: always` relancerait — ce que `cap_drop: ALL`, seul,
+  n'empêcherait pas.
 
 C'est aussi pourquoi les deux dossiers de l'hôte doivent appartenir à l'uid **1000** : le conteneur
 ne peut pas se donner le droit d'écrire, il faut le lui avoir donné.
@@ -201,7 +199,7 @@ Les exemples ci-dessous sont **inventés**. Ne les recopiez pas tels quels.
 | `IMAGE` | — | L'adresse de l'image, **sans le numéro de version** (celui-ci est `APP_TAG`). **Le fichier de stack en porte un défaut** : à ne renseigner que si vous fabriquez votre propre image ou la rangez ailleurs | Le défaut du fichier de stack est pris. S'il ne désigne aucune image accessible, le téléchargement échoue (`pull access denied`) et la stack ne démarre pas | `docker.io/mon-compte/hema-organizer` |
 | `APP_TAG` | — | La version d'image à faire tourner, **sans le `v`**. À ne saisir que pour **épingler** une version — en particulier pour revenir en arrière (§ 9) | `latest` est pris par défaut, et l'image est retéléchargée à chaque déploiement (`pull_policy: always`). C'est le mode courant : on met à jour en redéployant, sans toucher à une variable | `0.53.0` |
 | `NPM_NETWORK` | — | Le nom réel du réseau Docker de Nginx Proxy Manager | `npm_default` est pris par défaut. Si ce n'est pas le bon nom, la stack refuse de démarrer (`network not found`) | `npm_default` |
-| ~~`APP_PORT`~~ | — | **Sans effet** : la stack ne publie aucun port, les deux lignes `ports:` sont commentées (§ 1.2) | — | — |
+| `APP_PORT` | — | **Sans effet** : elle ne sert qu'aux deux lignes `ports:` du fichier de stack, qui sont commentées — la stack ne publie aucun port (§ 1.2) | — | — |
 | `DATA_DIR` | — | Le dossier du serveur qui porte `data/` et `backups/` | La valeur par défaut inscrite dans le fichier de stack est prise. **Sur une installation existante, ne la changez pas** : pointer ailleurs, c'est repartir d'une base vide en croyant avoir mis à jour | `/srv/organizer` |
 | `TZ` | — | Le fuseau de toutes les tâches planifiées et de toutes les dates affichées | `Europe/Paris` est pris par défaut | `Europe/Paris` |
 | `DOMAIN` | ✅ | Le domaine public, **sans** `https://`. Sert à construire les liens des emails et à la protection CSRF | Les liens envoyés par email pointent sur `localhost` : personne ne peut ouvrir son lien personnel | `organizer.mon-club.fr` |
@@ -238,9 +236,8 @@ Quatre choses dont on croit souvent, à tort, qu'elles demandent une variable :
 
 Et quatre variables à **ne jamais définir en production** : `RATE_LIMIT_DISABLED`, `CRON_DISABLED`,
 `EMAIL_MODE_FICHIER`, `LIEN_MAX_APPAREILS`. Ce sont des béquilles de développement (voir
-`.env.example`). **Toutes les quatre** sont neutralisées quand `NODE_ENV=production` — elles passent
-sans exception par `bequilleDev` (`src/lib/env.ts`), `LIEN_MAX_APPAREILS` comprise —, mais autant ne
-pas les saisir du tout : une variable qu'on croit active est une variable qu'on croira aussi active
+`.env.example`). **Toutes les quatre** sont neutralisées quand `NODE_ENV=production` (elles passent
+par `bequilleDev`, `src/lib/env.ts`), mais autant ne pas les saisir du tout : une variable qu'on croit active est une variable qu'on croira aussi active
 le jour où l'on démarrera sans `NODE_ENV=production`.
 
 ---
@@ -271,18 +268,15 @@ Le workflow enchaîne, dans cet ordre :
 3. l'envoi sur `<registre>/<espace>/hema-organizer:0.53.0` **et** sur `:latest` — les deux
    étiquettes à chaque fois, c'est ce qui fait suivre `latest`.
 
-Sur `ghcr.io`, l'authentification se fait avec le `GITHUB_TOKEN` fourni par Actions : il n'y a aucun secret à
-créer. Sa portée est déclarée **au niveau du workflow**, `contents: read` : c'est le
-plancher de tous les jobs, y compris ceux qu'on ajoutera, et seul le job qui publie l'image y ajoute
-`packages: write`. Sans ce plancher, le job de contrôle héritait des permissions par défaut du dépôt
-— possiblement « read and write all » — alors qu'il exécute `npm ci`, c'est-à-dire les scripts
-d'installation de toutes les dépendances.
+Sur `ghcr.io`, l'authentification se fait avec le `GITHUB_TOKEN` fourni par Actions : aucun secret à
+créer. Permissions : `contents: read` au niveau du workflow, `packages: write` sur le seul job de
+publication.
 
 On peut aussi lancer la publication à la main : onglet **Actions → Release → Run workflow**, en
 saisissant la version (`v0.53.0`).
 
-Avant de passer à la suite, vérifier dans GitHub → **Packages** que la version apparaît bien, et que
-le paquet est toujours **privé**.
+Avant de passer à la suite, vérifier dans le registre (GitHub → **Packages**, ou la page du dépôt sur
+Docker Hub) que la version apparaît, avec la visibilité voulue.
 
 ---
 
@@ -416,18 +410,16 @@ location ~ ^/(invitation|reinitialiser|annuler|desinscription)/ {
 }
 ```
 
-**Les trois dernières lignes vont ensemble, et elles suppriment une corvée.** Écrit avec un nom
-**littéral** — `proxy_pass http://hema-organizer:3000;` —, ce bloc est résolu **une seule fois, au
-chargement de la configuration**, ce qui a deux conséquences : le conteneur recréé à chaque mise à
-jour change d'adresse et la `location` continue de viser l'ancienne (le site marche, **seuls les
-liens personnels répondent 502**) ; et nginx **refuse de charger sa configuration entière** si le
-conteneur est momentanément absent — `[emerg] host not found in upstream` —, ce qui couche tous les
-sites du proxy. La forme ci-dessus résout le nom **à chaque requête** : `resolver 127.0.0.11` est le
-DNS interne de Docker, la **variable** `$hema` est ce qui force la résolution à l'exécution, et
-`$request_uri` est obligatoire — dès qu'un `proxy_pass` contient une variable, nginx cesse de
-transmettre le chemin tout seul, et l'oublier enverrait toutes ces URL sur `/`. Un conteneur absent
-donne alors un 502 le temps qu'il revienne, ce qui est le comportement voulu. C'est la même mécanique
-que le `location /` qu'engendre NPM, qui n'a donc jamais ce problème.
+**Les lignes `resolver`, `set $hema` et `proxy_pass` vont ensemble : elles résolvent le nom du
+conteneur à chaque requête.** Le conteneur change d'adresse à chaque mise à jour ; un nom résolu une
+seule fois, au chargement de la configuration, viserait l'ancienne adresse (502 sur ces seuls
+chemins), et ferait refuser à nginx sa configuration entière si le conteneur est momentanément absent
+(`[emerg] host not found in upstream` : tous les sites du proxy tombent). `resolver 127.0.0.11` est
+le DNS interne de Docker, la **variable** `$hema` force la résolution à l'exécution, et `$request_uri`
+est obligatoire — dès qu'un `proxy_pass` contient une variable, nginx ne transmet plus le chemin tout
+seul, et l'oublier enverrait toutes ces URL sur `/`. Un conteneur absent donne un 502 le temps qu'il
+revienne, ce qui est le comportement voulu. C'est la même mécanique que le `location /` qu'engendre
+NPM.
 
 **Les quatre `proxy_set_header` ne sont pas décoratifs, et ils ne s'empruntent pas.** Le contenu de cet
 onglet entre dans le `server {}` **à côté** de la `location /` qu'engendre NPM : il n'hérite d'aucun de
@@ -440,12 +432,11 @@ versions, et un `include` introuvable est exactement la directive invalide qui c
 
 **Les quatre familles, et pas seulement l'invitation** : `/reinitialiser/<jeton>` est une reprise de
 compte entière, `/annuler/<jeton>` annule un cours et écrit à tout le club,
-`/desinscription/<jeton>` vaut un an. Elles portent toutes un jeton dans leur URL, et seule la première
-était couverte.
+`/desinscription/<jeton>` vaut un an. Elles portent toutes un jeton dans leur URL.
 
-Le **référent**, lui, ne se répare pas ici : `/invitation/<jeton>` étant une vraie page, le navigateur y
-chargeait ses sous-ressources en envoyant `Referer: …/invitation/<jeton>` vers `location /`, qui
-journalise le référent. L'application pose maintenant `Referrer-Policy: no-referrer` sur toute réponse.
+Le **référent**, lui, ne se règle pas ici : l'application envoie `Referrer-Policy: no-referrer` sur
+toute réponse, si bien que les sous-ressources d'une page `/invitation/<jeton>` ne transmettent pas
+le jeton à `location /`, qui journalise le référent.
 
 Le `proxy_pass` est à répéter ici : déclarer une `location` remplace le comportement par défaut de
 NPM pour ce chemin, il faut donc lui redire où envoyer la requête — **et la cible se recopie de
@@ -506,9 +497,8 @@ comparez-le à ce que porte le *Web editor* de Portainer ; s'il diffère, recoll
 redéployez. Tout ce qui doit varier d'une installation à l'autre passe par les variables du § 2, donc
 un recollage n'écrase jamais vos réglages.
 
-**4. Nettoyez les données une fois la version en ligne.** Corriger le code ne réécrit pas le passé :
-une base en service peut porter des lignes qu'une version antérieure a laissées derrière elle. L'outil
-de réparation (§ 12) les relève et les corrige, **et il ne touche à rien tant qu'on ne lui donne pas
+**4. Vérifiez les données une fois la version en ligne.** L'outil de réparation (§ 12) relève les
+incohérences de la base et les corrige, **et il ne touche à rien tant qu'on ne lui donne pas
 `--reparer`** :
 
 ```bash
@@ -538,20 +528,18 @@ prend alors une sauvegarde avant d'écrire.
    l'heure en conséquence.
 4. Dans Portainer : **Stacks → hema-organizer → Editor**.
 5. **Ne toucher à aucune variable.** L'image est suivie en `latest` et retéléchargée à chaque
-   déploiement : c'est le déploiement lui-même qui prend la nouvelle version. (Si vous aviez épinglé
-   `APP_TAG` pour revenir en arrière, c'est ici qu'on le retire pour repartir vers l'avant.)
+   déploiement : c'est le déploiement lui-même qui prend la nouvelle version. (Si `APP_TAG` est
+   épinglé après un retour en arrière, § 9, c'est ici qu'on le retire pour repartir vers l'avant.)
 6. Cocher **Re-pull image**, puis **Update the stack**. Sans cette case, Portainer peut réutiliser
    une image déjà en cache et vous croirez avoir mis à jour sans l'avoir fait.
 7. **Surveiller les journaux** (§ 11) : les migrations s'appliquent au démarrage et se racontent
    ligne à ligne. Attendre `✓ Ready in …` et l'état *healthy*.
-8. **Rien à recharger côté proxy** — à condition que le bloc du § 5 soit bien dans sa forme à
-   `resolver` + `$hema`. Si votre proxy porte encore un `proxy_pass` avec un nom **littéral**, il faut
-   au contraire lancer `docker exec nginx-proxy-manager nginx -s reload` ici, à chaque fois : le
-   conteneur vient de changer d'adresse, et ce bloc-là vise encore l'ancienne. Symptôme si on oublie :
-   le site marche, et **seuls `/invitation/`, `/reinitialiser/`, `/annuler/` et `/desinscription/`
-   répondent 502** — c'est-à-dire exactement les chemins qu'on ne teste pas en ouvrant l'application.
+8. **Rien à recharger côté proxy** : le bloc du § 5 (`resolver` + variable `$hema`) résout le nom du
+   conteneur à chaque requête et suit sa nouvelle adresse. Symptôme d'un bloc qui ne le fait pas : le
+   site marche, et **seuls `/invitation/`, `/reinitialiser/`, `/annuler/` et `/desinscription/`
+   répondent 502** — exactement les chemins qu'on ne teste pas en ouvrant l'application.
 9. Ouvrir l'application et vérifier un écran ou deux — la liste des séances, le planning. **Et ouvrir
-   un lien personnel**, qui est le seul chemin que l'étape 8 protège.
+   un lien personnel**, qui passe par le bloc du § 5.
 
 L'interruption dure quelques secondes. Les données ne sont pas touchées par le remplacement de
 l'image : elles vivent dans les dossiers de l'hôte, que le nouveau conteneur remonte tels quels.
@@ -566,8 +554,8 @@ l'image : elles vivent dans les dossiers de l'hôte, que le nouveau conteneur re
 3. Cocher **Re-pull image**, puis **Update the stack**.
 
 **Ce qu'il faut savoir avant de le faire :** une migration déjà appliquée **n'est pas annulée** par
-le retour à l'image précédente. Si la version qu'on abandonne a modifié le schéma de la base — c'est
-le cas de celle du § 7 —, l'ancienne application se retrouve devant une base qu'elle ne comprend pas
+le retour à l'image précédente. Si la version qu'on abandonne a modifié le schéma de la base,
+l'application précédente se retrouve devant une base qu'elle ne comprend pas
 tout à fait, et le retour en arrière doit s'accompagner d'une **restauration de la sauvegarde prise
 juste avant la mise à jour** (§ 10). Les réponses et les modifications saisies entre-temps sont alors
 perdues.
@@ -629,7 +617,7 @@ scp -r <serveur>:<DATA_DIR>/data/affiches ./affiches
    contrediraient la base qu'on vient d'installer. Le `chown 1000:1000` rend le fichier au
    propriétaire attendu par le conteneur, qui tourne en non-root.
 
-3. Si les affiches avaient été perdues, les remettre maintenant, **avant** de redémarrer, depuis la
+3. Si les affiches sont perdues, les remettre à ce moment-là, **avant** de redémarrer, depuis la
    copie prise plus haut :
 
    ```bash
@@ -684,12 +672,11 @@ revérifier après toute reconstruction du proxy host.
 
 ## 12. Nettoyer les données (outil de réparation)
 
-Plusieurs défauts corrigés dans le code ont laissé derrière eux des lignes fausses : corriger le
-retrait d'un membre d'une période n'efface pas les réponses qu'il aurait fallu effacer, et corriger
-la suppression d'une séance ne rattache pas les ateliers qu'elle a laissés en l'air. Le code neuf ne
-réécrit pas le passé. L'outil `reparer.cjs`, embarqué dans l'image, est là pour ça : il **voyage avec
-l'application** précisément parce que les données à soigner sont celles du club, sur le serveur, et
-qu'on ne sort pas la seule copie vivante d'une base pour la soigner ailleurs.
+L'outil `reparer.cjs`, embarqué dans l'image, relève et corrige les incohérences de données :
+réponses de personnes qui ne sont plus invitées sur la période, ateliers rattachés à une séance
+disparue, doublons, rangs troués… (la liste complète est au tableau ci-dessous). Il **voyage avec
+l'application** parce que les données à soigner sont celles du club, sur le serveur, et qu'on ne
+sort pas la seule copie vivante d'une base pour la soigner ailleurs.
 
 Il ne s'exécute **jamais** tout seul : l'entrypoint ne l'appelle pas, et sans `--reparer` il n'écrit
 rien du tout.
@@ -725,8 +712,8 @@ rien du tout.
    | `liens` | plusieurs liens personnels vivants pour la même personne sur la même période | les plus anciens sont révoqués |
    | `parties` | une case de planning réservée à un atelier qui n'y est plus | la case est détachée et redevient modifiable |
    | `rangs` | un rang troué, ou un nom de partie qui ne dit plus son rang (« deux Cours 2, aucun Cours 1 ») | le rang et le nom sont remis d'accord. C'est ce rang qui décide de l'ordre du programme partout, et ce nom qui part tel quel dans les emails et sur le site du club |
-   | `creneaux` | une clé d'envoi d'avant le changement de format (§ 7) | la clé est **renommée**, jamais supprimée : l'effacer ferait repartir l'envoi qu'elle retenait |
-   | `vides` | une partie **vide en trop** : au-delà des deux cours qu'une séance porte toujours | la partie est supprimée et les suivantes sont rangées derrière elle. Ce sont les parties qu'un modèle de séance a posées d'office et que personne n'a remplies. Les **deux premiers cours sont protégés même vides**, et une partie qui porte quoi que ce soit — un instructeur, un thème, une description, un niveau, un atelier retenu — n'est jamais touchée |
+   | `creneaux` | une clé d'envoi qui ne porte pas l'empreinte du créneau de sa séance | la clé est **renommée**, jamais supprimée : l'effacer ferait repartir l'envoi qu'elle retenait |
+   | `vides` | une partie **vide en trop** : au-delà des deux cours qu'une séance porte toujours | la partie est supprimée et les suivantes sont rangées derrière elle. Les **deux premiers cours sont protégés même vides**, et une partie qui porte quoi que ce soit — un instructeur, un thème, une description, un niveau, un atelier retenu — n'est jamais touchée |
    | (9) parents disparus | les lignes dont la référence pointe dans le vide | **jamais réparé** : simple relevé. Une base saine n'en a aucune ; s'il en sort, gardez la sauvegarde et demandez de l'aide avant de toucher à quoi que ce soit |
 
    Le rapport nomme au plus un prénom, jamais une adresse, et abrège les listes au-delà de quinze
@@ -764,8 +751,8 @@ docker exec hema-organizer node reparer.cjs --seulement=creneaux   # n'examiner 
 docker exec hema-organizer node reparer.cjs --tout                 # ne pas abréger les listes de détail
 ```
 
-`--seulement=` accepte plusieurs noms séparés par des virgules, et se combine avec `--reparer` —
-c'est exactement ce que fait la commande du § 7. Écrire `--verifier` est accepté : c'est le
+`--seulement=` accepte plusieurs noms séparés par des virgules, et se combine avec `--reparer`.
+Écrire `--verifier` est accepté : c'est le
 comportement par défaut, mais l'intention peut s'écrire.
 
 ---

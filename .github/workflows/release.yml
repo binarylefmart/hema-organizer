@@ -1,10 +1,11 @@
-# Publication d'une version : contrôle qualité, construction de l'image et envoi sur GHCR.
+# Publication d'une version : contrôle qualité, construction de l'image et envoi au registre.
 #
 # Déclenchement :
 #   - push d'un tag `vX.Y.Z` (ex. `git tag v0.5.0 && git push origin v0.5.0`)
 #   - manuellement (onglet Actions → Release → Run workflow), en saisissant la version
 #
-# Résultat : ghcr.io/<propriétaire>/hema-organizer:<version> et :latest (paquet privé).
+# Résultat : <registre>/<espace>/hema-organizer:<version> et :latest — Docker Hub si le dépôt porte
+# DOCKERHUB_USERNAME/DOCKERHUB_TOKEN, ghcr.io sinon.
 
 name: Release
 
@@ -78,7 +79,7 @@ jobs:
         run: npm test
 
   # ---------------------------------------------------------------------------
-  # 2. Image Docker → GHCR
+  # 2. Image Docker → registre
   # ---------------------------------------------------------------------------
   image:
     name: Construction et publication de l'image
@@ -95,8 +96,8 @@ jobs:
         id: version
         # La saisie passe par l'environnement, jamais par interpolation directe dans le script :
         # `${{ inputs.version }}` écrit sa valeur **dans** le shell, où une apostrophe bien placée
-        # devient du code. Ici le dépôt est privé et seul un compte ayant le droit d'écriture peut
-        # déclencher ce workflow, mais c'est l'anti-motif que GitHub demande explicitement d'éviter.
+        # devient du code. Seul un compte ayant le droit d'écriture peut déclencher ce workflow,
+        # mais c'est l'anti-motif que GitHub demande explicitement d'éviter.
         env:
           VERSION_SAISIE: ${{ inputs.version }}
           EVENEMENT: ${{ github.event_name }}
@@ -198,12 +199,13 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Récapitulatif
+        env:
+          TAGS: ${{ steps.cible.outputs.tags }}
         run: |
           {
             echo "### Image publiée"
             echo ""
-            echo '- `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}`'
-            echo '- `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`'
+            printf -- '- `%s`\n' ${TAGS}
             echo ""
-            echo "Dans Portainer : mettre \`APP_TAG=${{ steps.version.outputs.version }}\`, puis **Update the stack** avec *Re-pull image*."
+            echo "Dans Portainer : **Update the stack** avec *Re-pull image* (la stack suit \`latest\`)."
           } >> "$GITHUB_STEP_SUMMARY"

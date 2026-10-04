@@ -4,12 +4,10 @@
 # § 4 déroule la première installation. Ce fichier n'est pas déployé automatiquement — la stack
 # est gérée à la main, et c'est lui qui fait foi.
 #
-# **Écarts avec le compose de référence de CLAUDE.md — il n'en reste que deux, tous deux assumés :**
+# **Écarts assumés avec le compose de référence de CLAUDE.md :**
 #   1. les **montages** : deux dossiers de l'hôte au lieu des volumes nommés `hema_data` / `hema_backups`
 #      (sauvegarde, restauration et copie vers le NAS avec un simple `cp` — voir le bloc `volumes:`) ;
-#   2. `PUBLIC_API_ORIGIN` par **défaut vide** au lieu de l'adresse du site des Compagnons : l'outil
-#      s'installe dans n'importe quel club depuis la v0.51, et un club qui n'a pas de site n'ouvre
-#      rien à personne.
+#   2. `PUBLIC_API_ORIGIN` par **défaut vide** : un club qui n'a pas de site n'ouvre rien à personne.
 # Aucune variable ne manque par rapport à la référence, et aucune n'est en trop.
 #
 # AVANT LE PREMIER DÉPLOIEMENT, sur l'hôte. Le conteneur tourne en utilisateur non-root (uid 1000)
@@ -37,10 +35,9 @@ services:
     # l'ancienne. Avec, « Update the stack » suffit — la case « Re-pull image » de Portainer devient
     # une ceinture en plus de la bretelle.
     #
-    # Le prix de `latest`, et il se paie au mauvais moment : **il n'y a plus de version à remettre**
-    # pour revenir en arrière (§ 9). Quand il faut reculer, on saisit `APP_TAG` avec la version
-    # visée — la variable existe toujours, elle n'est simplement plus obligatoire. Et c'est *Espace
-    # admin → À propos* qui dit ce qui tourne vraiment.
+    # Pour revenir en arrière (§ 9), on saisit `APP_TAG` avec la version visée : la variable est
+    # facultative, et ne sert qu'à épingler. C'est *Espace admin → À propos* qui dit ce qui tourne
+    # vraiment.
     pull_policy: always
     container_name: hema-organizer
     restart: always
@@ -83,7 +80,7 @@ services:
     # l'hôte, et ne sert à rien : le proxy host vise `hema-organizer:3000`, le nom du conteneur sur le
     # réseau partagé (docs/DEPLOIEMENT.md § 5).
     #
-    # **Ce que ce port coûtait, et ce n'est pas une question de propreté.** L'adresse du visiteur —
+    # **Ce que ce port coûterait, et ce n'est pas une question de propreté.** L'adresse du visiteur —
     # celle sur laquelle reposent *tous* les quotas (`login_ip`, `invitation_ip`, `public_api_ip`,
     # `partage_ip`, `affiche_ip`…) et *toutes* les lignes du journal d'audit — est lue dans
     # `X-Forwarded-For`. `clientIp()` en prend le **dernier** maillon, celui que le proxy a constaté :
@@ -93,8 +90,8 @@ services:
     # conséquences mesurables : plus un seul seau par IP ne tient, et **l'IP inscrite au journal
     # d'audit devient une valeur choisie par l'attaquant** — si bien que les alertes email aux
     # administrateurs racontent une histoire fausse. Le vol de session ne suit pas (cookies
-    # `secure`) et `login_email` borne encore la devinette : c'était important, pas grave. Mais
-    # c'était **gratuit à refermer**, et une défense qui ne dépend pas d'un réglage de box en vaut
+    # `secure`) et `login_email` borne encore la devinette : c'est important, pas grave. Mais
+    # c'est **gratuit à éviter**, et une défense qui ne dépend pas d'un réglage de box en vaut
     # deux qui en dépendent.
     #
     # **Si ce port devait vraiment revenir** (dépannage, sonde locale), le lier à une seule adresse

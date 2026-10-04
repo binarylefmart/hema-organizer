@@ -1,13 +1,14 @@
 # Sécurité — modèle d'accès et défenses
 
-> **Ce document décrit ce qui protège l'application aujourd'hui.** Il ne raconte pas l'historique des
-> failles corrigées, ni la façon dont elles pouvaient être exploitées : un tel récit serait un mode
-> d'emploi pour toute instance qui n'aurait pas été mise à jour, et il y en a autant que de clubs qui
-> installent l'outil. Le journal de ces corrections existe, il reste dans le dépôt de travail.
+> Ce document décrit comment l'application protège les comptes et les données, et ce que l'exploitant
+> doit régler autour d'elle (proxy, journaux, droits sur l'hôte). Il complète `CLAUDE.md` (exigences et
+> décisions de conception) et `docs/DEPLOIEMENT.md` (installation et exploitation).
 >
-> Il complète `CLAUDE.md` (exigences et décisions de conception) et `docs/DEPLOIEMENT.md` (installation
-> et exploitation). **Mettez à jour** : les correctifs de sécurité voyagent dans les versions, et une
-> instance qui ne suit pas les versions ne bénéficie d'aucun d'entre eux.
+> **Suivez les versions publiées** : les protections décrites ici sont celles de la dernière image
+> (`hematools/hema-organizer` sur Docker Hub).
+>
+> Il ne décrit pas les failles corrigées : ce serait un mode d'emploi contre les instances non
+> mises à jour.
 
 ## Modèle d'accès
 
@@ -79,7 +80,7 @@ d'élévation, liens d'email. Deux règles rendent ces jetons non interchangeabl
 - **Ce qui ne déconnecte personne** : le renouvellement automatique d'échéance et les envois en masse.
 - **Changer l'adresse d'une personne remplace sa clé** : les liens vivants sont révoqués et un lien neuf
   part à la **nouvelle** adresse. Le lien dort dans une boîte mail — celle qu'on quitte, celle qui a
-  fuité : sans cela, l'ancienne garderait une clé valable quatre mois.
+  fuité : sans cela, l'adresse quittée garderait une clé valable quatre mois.
 - **Email « nouvel appareil »** à la personne dès la deuxième ouverture (navigateur, système, adresse,
   date).
 - **Anti-abus** : ouvertures répétées d'un même lien → révocation et lien neuf ; liens inconnus limités
