@@ -55,3 +55,24 @@ describe("toute barre collée en bas tient compte de ce qui occupe déjà le bas
     expect(toutes?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("la fin de page ne passe pas sous la barre d'onglets du téléphone", () => {
+  /** Le décalage en rem d'une classe `…-[calc(env(safe-area-inset-bottom,0px)+Xrem)]`, ou null. */
+  const remApresZone = (classes: string, prefixe: string): number | null => {
+    const m = new RegExp(`(?:^|\\s)${prefixe}-\\[calc\\(env\\(safe-area-inset-bottom,0px\\)\\+([\\d.]+)rem\\)\\]`).exec(classes);
+    return m ? Number(m[1]) : null;
+  };
+  const source = (f: string) => fs.readFileSync(path.join(RACINE, f), "utf8");
+
+  it("le contenu réserve en bas la hauteur de la barre, zone système comprise, plus de l'air", () => {
+    const main = /<main className="([^"]+)"/.exec(source("app/(app)/layout.tsx"))![1];
+    const nav = /className="(fixed inset-x-0 bottom-0[^"]+)"/.exec(source("components/layout/Navigation.tsx"))![1];
+    const reserve = remApresZone(main, "pb");
+    const marge = remApresZone(nav, "pb");
+    expect(reserve, "le `pb` du <main> doit ajouter `env(safe-area-inset-bottom)` à sa réserve").not.toBeNull();
+    expect(marge).not.toBeNull();
+    // Hauteur fixe de la barre : pt-2 (0,5) + onglet min-h-14 (3,5) + sa marge basse, hors zone système.
+    const barre = 0.5 + 3.5 + marge!;
+    expect(reserve!, "la réserve doit dépasser la barre d'au moins 1 rem").toBeGreaterThanOrEqual(barre + 1);
+  });
+});

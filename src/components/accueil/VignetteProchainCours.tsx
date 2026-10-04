@@ -37,7 +37,7 @@ function Silhouette({ etat }: { etat: Etat }) {
  * La pastille prend la couleur **éclaircie** du statut et écrit son nombre en encre, plutôt que
  * l'inverse : posée sur le fond sombre de la vignette, la couleur brute se détachait à peine
  * (2,2:1 en mode clair) et la pastille paraissait sale. Éclaircie, elle se détache à plus de 5:1
- * sur les douze thèmes, et le texte en encre y est lisible d'autant.
+ * sur tous les thèmes, et le texte en encre y est lisible d'autant.
  */
 function GrosCompte({ nombre, mot, ton }: { nombre: number; mot: string; ton: "present" | "peutEtre" }) {
   return (

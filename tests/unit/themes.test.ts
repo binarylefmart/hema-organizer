@@ -256,9 +256,9 @@ describe("accord entre le catalogue et globals.css", () => {
  * Or le vert de « Présent » est fait pour être lu sur du parchemin : posé sur l'encre en mode
  * clair, il ne donne que 2,2:1 — en dessous du 3:1 exigé d'un élément graphique porteur de sens,
  * et les silhouettes de la vignette s'y effaçaient. D'où `--vert-sur-encre` et `--ocre-sur-encre`
- * (globals.css), mélangés à l'encre-texte du thème en cours. Ce test vérifie le résultat **sur les
- * douze thèmes et dans les deux modes** : c'est exactement la promesse qu'on ne peut pas tenir à
- * l'œil, et un treizième thème ajouté sans y penser la casserait en silence.
+ * (globals.css), mélangés à l'encre-texte du thème en cours. Ce test vérifie le résultat **sur tous les
+ * thèmes et dans les deux modes** : c'est exactement la promesse qu'on ne peut pas tenir à
+ * l'œil, et un nouveau thème ajouté sans y penser la casserait en silence.
  */
 describe("la vignette du prochain cours, sur tous les thèmes", () => {
   /** `color-mix(in srgb, var(--a) N%, var(--b))` évalué comme le ferait le navigateur. */
@@ -329,13 +329,13 @@ describe("la vignette du prochain cours, sur tous les thèmes", () => {
 });
 
 /**
- * **Les six repères de partie, sur les douze thèmes**.
+ * **Les six repères de partie, sur tous les thèmes**.
  *
  * L'étiquette d'une partie n'alterne plus deux teintes mais en porte **une par rang** (« cours/option
  * 1 couleur 1, cours/option 2 couleur 2 etc »). Deux d'entre elles sont des couleurs que chaque thème
  * définit déjà ; les deux autres s'en dérivent par `color-mix`, et c'est **exactement ce que ce bloc
  * existe pour surveiller** : une valeur calculée ne se relit pas à l'œil dans la feuille de style, et
- * personne ne va vérifier douze thèmes × deux modes × quatre teintes à la main. C'est aussi lui qui a
+ * personne ne va vérifier quinze thèmes × deux modes × quatre teintes à la main. C'est aussi lui qui a
  * **ramené six teintes à quatre** : il a trouvé deux mélanges indiscernables et un contraste à 3,9:1.
  *
  * Deux propriétés, et aucune n'est cosmétique :

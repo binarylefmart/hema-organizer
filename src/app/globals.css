@@ -41,7 +41,7 @@
      2,2:1 — sous le seuil de 3:1 exigé d'un élément graphique porteur de sens, et les silhouettes
      y disparaissaient. On mélange donc la couleur du statut à l'encre-texte du même thème : la
      teinte est conservée (c'est toujours le vert de « Présent »), mais elle remonte au-dessus de
-     5:1 sur les douze thèmes, en clair comme en sombre (vérifié par tests/unit/themes.test.ts).
+     5:1 sur tous les thèmes, en clair comme en sombre (vérifié par tests/unit/themes.test.ts).
      Une seule déclaration suffit pour tous les thèmes : `--vert` et `--encre-texte` sont résolus
      sur l'élément qui porte `data-theme`, donc avec les valeurs du thème en cours. La première
      ligne de chaque paire est le repli des navigateurs sans `color-mix`. */
@@ -62,7 +62,7 @@
       Deux jeux, un par mode, et le texte posé dessus suit (`--partie-texte`) : en clair des teintes
       **sombres et saturées** qui portent du blanc ; en sombre des **pastels** qui portent de
       l'encre. Le contraste de chaque étiquette — aplat du cours comme contour de l'option — est
-      vérifié sur les douze thèmes et les deux modes par `tests/unit/themes.test.ts`, qui mesure
+      vérifié sur tous les thèmes et les deux modes par `tests/unit/themes.test.ts`, qui mesure
       aussi l'écart deux à deux : une couleur qui se confondrait avec sa voisine ne distinguerait
       plus rien. */
   --partie-texte: #ffffff;
@@ -372,6 +372,87 @@
   --ocre: #72561d;
   --ocre-doux: #efeade;
   --jauge: #bf982b;
+}
+
+/* Catppuccin : les palettes officielles. En clair, les trois thèmes partagent Latte — la seule saveur
+   claire de Catppuccin — et se distinguent par leur accent et par l'en-tête, qui prend « crust » de la
+   saveur sombre (sa « base » est trop claire pour Frappé : le vert des présents y tombait à 4,1:1).
+   Le vert, le rouge, l'ocre et l'accent de Latte sont descendus de quelques points de luminosité,
+   teinte inchangée : tels quels, ils tombaient sous 4,5:1 sur la base. */
+
+/* Catppuccin Mocha — Latte, accent mauve, en-tête Mocha. */
+[data-theme="catppuccin-mocha"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #11111b;
+  --encre-texte: #cdd6f4;
+  --marque: #cba6f7;
+  --primaire: #8534ef;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #ebe2fa;
+  --lien: #0b59f4;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
+}
+
+/* Catppuccin Macchiato — Latte, accent blue, en-tête Macchiato. */
+[data-theme="catppuccin-macchiato"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #181926;
+  --encre-texte: #cad3f5;
+  --marque: #8aadf4;
+  --primaire: #0b59f4;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #dee7fa;
+  --lien: #177181;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
+}
+
+/* Catppuccin Frappé — Latte, accent pink, en-tête Frappé. */
+[data-theme="catppuccin-frappe"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #232634;
+  --encre-texte: #c6d0f5;
+  --marque: #f4b8e4;
+  --primaire: #bc1d91;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #f6e9f5;
+  --lien: #8534ef;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -704,7 +785,85 @@
     --ocre: #e2c16f;
     --ocre-doux: #554525;
     --jauge: #deba5e;
-  }}
+  }
+
+  /* Catppuccin en sombre : Mocha, Macchiato et Frappé, teintes officielles. La page est « mantle » et
+     les cartes une « base » à peine éclaircie vers « surface0 » : posées sur « surface0 » plein, comme
+     le veut l'usage, les étiquettes d'option tombaient sous 4,5:1 sur Frappé, la plus claire des trois.
+     --surface-douce est « surface1 », l'en-tête « crust », --marque « rosewater ». */
+  [data-theme="catppuccin-mocha"] {
+    color-scheme: dark;
+    --fond: #181825;
+    --fond-haut: #1b1b2a;
+    --surface: #242435;
+    --surface-douce: #45475a;
+    --texte: #cdd6f4;
+    --texte-secondaire: #bac2de;
+    --bordure: #585b70;
+    --encre: #11111b;
+    --encre-texte: #cdd6f4;
+    --marque: #f5e0dc;
+    --primaire: #cba6f7;
+    --primaire-texte: #11111b;
+    --primaire-doux: #3f3753;
+    --lien: #89b4fa;
+    --vert-doux: #34413e;
+    --vert: #a6e3a1;
+    --rouge-doux: #442f3f;
+    --rouge: #f38ba8;
+    --ocre-doux: #454041;
+    --ocre: #f9e2af;
+    --jauge: #f9e2af;
+  }
+  [data-theme="catppuccin-macchiato"] {
+    color-scheme: dark;
+    --fond: #1e2030;
+    --fond-haut: #212435;
+    --surface: #292d40;
+    --surface-douce: #494d64;
+    --texte: #cad3f5;
+    --texte-secondaire: #b8c0e0;
+    --bordure: #5b6078;
+    --encre: #181926;
+    --encre-texte: #cad3f5;
+    --marque: #f4dbd6;
+    --primaire: #8aadf4;
+    --primaire-texte: #181926;
+    --primaire-doux: #363f5b;
+    --lien: #7dc4e4;
+    --vert-doux: #394544;
+    --vert: #a6da95;
+    --rouge-doux: #473544;
+    --rouge: #ed8998;
+    --ocre-doux: #484446;
+    --ocre: #eed49f;
+    --jauge: #eed49f;
+  }
+  [data-theme="catppuccin-frappe"] {
+    color-scheme: dark;
+    --fond: #292c3c;
+    --fond-haut: #2c3041;
+    --surface: #35394c;
+    --surface-douce: #51576d;
+    --texte: #c6d0f5;
+    --texte-secondaire: #c7cfe9;
+    --bordure: #626880;
+    --encre: #232634;
+    --encre-texte: #c6d0f5;
+    --marque: #f2d5cf;
+    --primaire: #f4b8e4;
+    --primaire-texte: #232634;
+    --primaire-doux: #564b61;
+    --lien: #ca9ee6;
+    --vert-doux: #424d4b;
+    --vert: #a6d189;
+    --rouge-doux: #4f3d4a;
+    --rouge: #ec9a9b;
+    --ocre-doux: #4f4b4d;
+    --ocre: #e5c890;
+    --jauge: #e5c890;
+  }
+}
 
 @theme inline {
   --color-hema-bleu: var(--marque-bleu);

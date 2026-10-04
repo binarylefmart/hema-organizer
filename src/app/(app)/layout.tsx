@@ -18,7 +18,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           ne rend rien, il prévient le serveur quand la page passe en arrière-plan). */}
       {user.sessionForte && <FermerEnQuittant ouverteLe={user.elevationOuverteLe?.getTime() ?? null} />}
       <Entete user={user} />
-      <main className="mx-auto w-full max-w-3xl px-4 py-6 pb-28 md:pb-8">{children}</main>
+      {/* **La réserve du bas suit la barre d'onglets, zone système comprise.** La barre mesure
+          5,3 rem **plus** `env(safe-area-inset-bottom)` (`NavBas`) ; un `pb-28` fixe ne laissait que
+          27 px de jeu, et la zone système d'un téléphone récent (34 px sur iPhone, autant sur un
+          Android plein écran) le dépasse : la fin de chaque page — dernière carte, barre
+          « Appliquer les modifications » arrivée en bout de course — passait sous les onglets. */}
+      <main className="mx-auto w-full max-w-3xl px-4 py-6 pb-[calc(env(safe-area-inset-bottom,0px)+7rem)] md:pb-8">{children}</main>
     </>
   );
 }

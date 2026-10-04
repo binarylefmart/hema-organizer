@@ -22,14 +22,17 @@ export type ThemeId =
   | "solarise"
   | "agrume"
   | "lavande"
-  | "nordique";
+  | "nordique"
+  | "catppuccin-mocha"
+  | "catppuccin-macchiato"
+  | "catppuccin-frappe";
 
 /**
  * Thème livré avec le code, employé tant que **ni le membre ni le club** n'ont choisi.
  *
  * Le club, lui, choisit le sien dans *Identité* (voir `src/lib/identite.ts`) : c'est ce que voit
  * un membre qui n'a rien réglé. Ce défaut-ci n'est donc que le dernier repli — « parchemin », le
- * plus sobre des douze, celui qui ne présume d'aucune couleur de club.
+ * plus sobre du catalogue, celui qui ne présume d'aucune couleur de club.
  */
 export const THEME_DEFAUT: ThemeId = "parchemin";
 
@@ -131,6 +134,27 @@ export const THEMES: readonly Theme[] = [
     description: "Bleus givrés et gris polaires.",
     apercu: { fond: "#f5f6f7", primaire: "#337384", texte: "#1d222a" },
     apercuSombre: { fond: "#1d2025", primaire: "#9bc8d4", texte: "#eeeff1" },
+  },
+  {
+    id: "catppuccin-mocha",
+    nom: "Catppuccin Mocha",
+    description: "Pastels Catppuccin, accent mauve ; Mocha la nuit, la plus sombre.",
+    apercu: { fond: "#eff1f5", primaire: "#8534ef", texte: "#4c4f69" },
+    apercuSombre: { fond: "#181825", primaire: "#cba6f7", texte: "#cdd6f4" },
+  },
+  {
+    id: "catppuccin-macchiato",
+    nom: "Catppuccin Macchiato",
+    description: "Pastels Catppuccin, accent bleu ; Macchiato la nuit.",
+    apercu: { fond: "#eff1f5", primaire: "#0b59f4", texte: "#4c4f69" },
+    apercuSombre: { fond: "#1e2030", primaire: "#8aadf4", texte: "#cad3f5" },
+  },
+  {
+    id: "catppuccin-frappe",
+    nom: "Catppuccin Frappé",
+    description: "Pastels Catppuccin, accent rose ; Frappé la nuit, la plus douce.",
+    apercu: { fond: "#eff1f5", primaire: "#bc1d91", texte: "#4c4f69" },
+    apercuSombre: { fond: "#292c3c", primaire: "#f4b8e4", texte: "#c6d0f5" },
   },
 ] as const;
 

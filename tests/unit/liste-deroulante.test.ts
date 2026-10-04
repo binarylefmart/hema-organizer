@@ -201,7 +201,7 @@ describe("accessibilité du composant", () => {
 });
 
 describe("thème de l'application", () => {
-  it("n'utilise que les couleurs nommées du projet : les douze thèmes suivent sans retouche", () => {
+  it("n'utilise que les couleurs nommées du projet : tous les thèmes suivent sans retouche", () => {
     expect(composant).toContain("bg-surface");
     expect(composant).toContain("border-bordure");
     // Aucune couleur écrite en dur (la seule couleur libre est celle d'identification d'une personne, reçue en prop)

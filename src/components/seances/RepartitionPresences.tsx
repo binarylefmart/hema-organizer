@@ -12,7 +12,7 @@ import { Icone, type NomIcone } from "@/components/ui/Icone";
  * sur N » **et** toujours doublée du mot du palier (`PALIER_LABELS`).
  *
  * Seules les variables de la charte sont employées, et uniquement dans les deux appariements déjà
- * éprouvés sur les douze thèmes en clair comme en sombre : couleur pleine sur `--surface`
+ * éprouvés sur tous les thèmes en clair comme en sombre : couleur pleine sur `--surface`
  * (le fond d'une carte) et couleur pleine sur sa déclinaison `-doux`. Aucune couleur en dur.
  */
 export const TEXTE_PALIER: Record<Palier, string> = {

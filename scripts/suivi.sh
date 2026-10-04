@@ -24,11 +24,13 @@
 #    mentirait). Un tableau de bord qui embellit est pire que pas de tableau de bord.
 #
 # Usage :
-#   scripts/suivi.sh [--phase=FICHIER] [--logs=DOSSIER] [--intervalle=5]
+#   scripts/suivi.sh [--phase=FICHIER] [--logs=DOSSIER] [--miroir=DOSSIER] [--intervalle=5]
 #
 #   --phase   décrit le travail en cours (voir le format plus bas). Sans lui, le tableau montre les
 #             portes, les captures, le dépôt et la machine — ce qui vaut pour n'importe quel moment
 #             du projet.
+#   --miroir  un second dépôt dont suivre aussi les constructions (défaut : ../hema-organizer s'il
+#             existe ; ignoré s'il désigne ce dépôt-ci).
 #   --logs    où chercher `e2e.log` et `captures.log` (défaut : le dossier de travail de session le
 #             plus récent sous /tmp/claude-*, parce que c'est là que les campagnes écrivent).
 #
@@ -40,11 +42,12 @@ set -o pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 RACINE=$PWD
 
-PHASE=""; LOGS=""; INTERVALLE=5
+PHASE=""; LOGS=""; MIROIR="$RACINE/../hema-organizer"; INTERVALLE=5
 for a in "$@"; do
   case "$a" in
     --phase=*) PHASE=${a#*=} ;;
     --logs=*) LOGS=${a#*=} ;;
+    --miroir=*) MIROIR=${a#*=} ;;
     --intervalle=*) INTERVALLE=${a#*=} ;;
     *) printf 'option inconnue : %s\n' "$a" >&2; exit 2 ;;
   esac
@@ -139,6 +142,68 @@ mesurer_portes() {
   P_QUAND=$(date +%H:%M:%S); P_DERNIERE=$(date +%s)
 }
 
+# ── Les constructions GitHub, lues chez GitHub ─────────────────────────────────────────────────
+# Après un tag, la question est « où en est l'image ? ». La réponse vient de l'API de GitHub (`gh`),
+# étape par étape : la barre compte les étapes **terminées** de chaque tâche, telles que GitHub les
+# rapporte. Une tâche qui attend la précédente n'apparaît chez GitHub qu'à son démarrage ; on ne
+# l'invente pas. La durée de la dernière construction réussie est affichée à côté : c'est un fait
+# mesuré, pas une promesse.
+#
+# Les dépôts suivis se lisent dans leur `origin` : rien n'est écrit en dur ici. Interrogé toutes
+# les 15 s pendant une construction, toutes les minutes sinon — loin du plafond de l'API.
+C_LIGNES=(); C_DERNIERE=0; C_ENCOURS=0
+depots_suivis() {
+  local d url vus=" "
+  for d in "$RACINE" "$MIROIR"; do
+    [ -d "$d/.git" ] || continue
+    url=$(git -C "$d" remote get-url origin 2>/dev/null) || continue
+    url=${url%.git}; url=${url#*github.com[:/]}
+    case "$vus" in *" $url "*) continue ;; esac
+    vus+="$url "; echo "$url"
+  done
+}
+duree() { # $1 secondes
+  local t=${1:-0}; [ "$t" -lt 0 ] && t=0
+  if [ "$t" -ge 60 ]; then printf '%d min %02d s' $((t/60)) $((t%60)); else printf '%d s' "$t"; fi
+}
+secondes() { date -d "$1" +%s 2>/dev/null || echo 0; }
+mesurer_constructions() {
+  C_LIGNES=(); C_ENCOURS=0; C_DERNIERE=$(date +%s)
+  command -v gh >/dev/null || { C_LIGNES+=("   $(pastille gris) ${GRIS}gh absent : rien à lire chez GitHub${Z}"); return; }
+  local r runs id statut concl branche debut fin maj nom jstat jconcl faites total jdeb jfin precedent pas coul
+  local maintenant; maintenant=$(date +%s)
+  while read -r r; do
+    runs=$(gh run list --repo "$r" --limit 10 --json databaseId,status,conclusion,headBranch,createdAt,updatedAt \
+      --jq '.[] | [.databaseId,.status,(.conclusion // "-"),.headBranch,.createdAt,.updatedAt] | @tsv' 2>/dev/null)
+    if [ -z "$runs" ]; then C_LIGNES+=("   $(pastille gris) $(printf '%-22s' "${r#*/}") ${GRIS}injoignable ou aucune construction${Z}"); continue; fi
+    IFS=$'\t' read -r id statut concl branche debut maj <<<"$(head -1 <<<"$runs")"
+    # La dernière construction réussie **avant** celle-ci : sa durée sert de repère.
+    precedent=$(tail -n +2 <<<"$runs" | awk -F'\t' '$3=="success"{print $5"\t"$6; exit}')
+    pas=""
+    [ -n "$precedent" ] && pas=" · la précédente : $(duree $(( $(secondes "${precedent#*$'\t'}") - $(secondes "${precedent%%$'\t'*}") )))"
+    debut=$(secondes "$debut")
+    if [ "$statut" = "completed" ]; then
+      fin=$(secondes "$maj")
+      case "$concl" in success) coul=vert; mot="${V}réussie${Z}" ;; *) coul=rouge; mot="${R}${concl}${Z}" ;; esac
+      C_LIGNES+=("   $(pastille $coul) $(printf '%-22s' "${r#*/}") ${branche}  ${mot} ${GRIS}en $(duree $((fin-debut))) · il y a $(duree $((maintenant-fin)))${Z}")
+      continue
+    fi
+    C_ENCOURS=1
+    C_LIGNES+=("   $(pastille jaune) $(printf '%-22s' "${r#*/}") ${branche}  ${J}en cours${Z} ${GRIS}depuis $(duree $((maintenant-debut)))${pas}${Z}")
+    while IFS=$'\t' read -r nom jstat jconcl faites total jdeb jfin; do
+      [ -n "$nom" ] || continue
+      if [ "$jstat" = "completed" ]; then
+        [ "$jconcl" = "success" ] && sym="${V}✓${Z}" || sym="${R}✗${Z}"
+        t=$(( $(secondes "$jfin") - $(secondes "$jdeb") ))
+      else
+        sym="${J}▸${Z}"; t=$(( maintenant - $(secondes "$jdeb") ))
+      fi
+      C_LIGNES+=("     ${sym} $(printf '%-40.40s' "$nom") $(barre "$faites" "$total" 18 "$([ "$jstat" = completed ] && echo "$V" || echo "$B")")  ${GRIS}$(duree "$t")${Z}")
+    done < <(gh run view "$id" --repo "$r" --json jobs \
+      --jq '.jobs[] | [.name,.status,(.conclusion // "-"),([.steps[]|select(.status=="completed")]|length),(.steps|length),(.startedAt // ""),(.completedAt // "")] | @tsv' 2>/dev/null)
+  done < <(depots_suivis)
+}
+
 # ── L'écran ────────────────────────────────────────────────────────────────────────────────────
 COLS=$(tput cols 2>/dev/null || echo 100)
 trap 'COLS=$(tput cols 2>/dev/null || echo 100)' WINCH
@@ -158,6 +223,14 @@ while :; do
   ecoule=$(( ($(date +%s) - DEBUT) / 60 ))
 
   ligne "${G}${B}  HEMA Organizer${Z}${G}  v${version}${Z}   ${GRIS}branche${Z} ${branche}   ${GRIS}$(date +%H:%M:%S) · ${ecoule} min d'ouverture${Z}"
+  ligne ""
+
+  # ── Constructions GitHub ──
+  titre "  CONSTRUCTIONS"
+  attente=60; [ "$C_ENCOURS" -eq 1 ] && attente=15
+  [ $(( $(date +%s) - C_DERNIERE )) -ge "$attente" ] && mesurer_constructions
+  for l in "${C_LIGNES[@]}"; do ligne "$l"; done
+  ligne "   ${GRIS}lues chez GitHub à $(date -d "@$C_DERNIERE" +%H:%M:%S)${Z}"
   ligne ""
 
   # ── Chantiers (fichier de phase) ──
