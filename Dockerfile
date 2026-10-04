@@ -96,10 +96,18 @@ FROM base AS runner
 # wget : sonde de santé du compose. tzdata : fuseau Europe/Paris pour node-cron.
 RUN apk add --no-cache wget tzdata
 
+# **La version se grave dans l'image, parce que rien d'autre ne la connaît à l'exécution.**
+# `process.env.npm_package_version` n'existe que si le processus a été lancé par `npm run` ; ici
+# c'est `node server.js`, donc elle est vide — et l'écran « À propos », seul endroit qui réponde à
+# « qu'est-ce que je fais tourner ? », affichait un tiret. Ça se voit d'autant plus que la stack
+# suit `latest` : le tag ne dit plus rien, l'écran est tout ce qui reste.
+ARG VERSION=""
+
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     TZ=Europe/Paris \
+    APP_VERSION=${VERSION} \
     DATABASE_URL="file:/data/hema.db" \
     BACKUP_DIR=/backups
 

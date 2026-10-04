@@ -88,7 +88,11 @@ export default async function PageAPropos() {
 
   const lignes: Array<{ cle: string; valeur: React.ReactNode }> = [
     { cle: "Application", valeur: `${club.nomCourt}${club.club ? ` — ${club.club}` : ""}` },
-    { cle: "Version", valeur: <code>{process.env.npm_package_version ?? "—"}</code> },
+    // `APP_VERSION` est gravée dans l'image au moment du build ; `npm_package_version` ne vaut
+    // qu'en développement, où c'est `npm run dev` qui lance le processus. L'ordre compte : en
+    // production, la seconde est vide, et l'écran qui répond à « qu'est-ce que je fais tourner ? »
+    // n'a pas le droit de répondre « — ».
+    { cle: "Version", valeur: <code>{process.env.APP_VERSION || process.env.npm_package_version || "—"}</code> },
     { cle: "Environnement", valeur: <Pastille ton={isProduction() ? "vert" : "ocre"}>{isProduction() ? "production" : "développement"}</Pastille> },
     { cle: "Domaine public", valeur: <code className="break-all">{baseUrl()}</code> },
     { cle: "Fuseau des tâches", valeur: e.TZ },

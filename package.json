@@ -1,6 +1,6 @@
 {
   "name": "hema-organizer",
-  "version": "0.61.3",
+  "version": "0.61.4",
   "description": "Présences, planning et ateliers d'un club d'AMHE (HEMA) — application web auto-hébergée",
   "scripts": {
     "dev": "next dev",
@@ -21,7 +21,8 @@
     "admin:reset-2fa": "tsx --env-file-if-exists=.env scripts/reset-2fa.ts",
     "notif:test": "tsx --env-file-if-exists=.env scripts/test-notifications.ts",
     "icons:generate": "tsx scripts/generer-icones.ts",
-    "db:reparer": "tsx --env-file-if-exists=.env scripts/reparer-donnees.ts"
+    "db:reparer": "tsx --env-file-if-exists=.env scripts/reparer-donnees.ts",
+    "publier": "bash scripts/publier.sh"
   },
   "prisma": {
     "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"

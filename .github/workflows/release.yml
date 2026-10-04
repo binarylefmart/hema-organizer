@@ -183,6 +183,10 @@ jobs:
           platforms: linux/amd64
           provenance: false
           push: true
+          # La version entre dans l'image : c'est elle que l'écran « À propos » affiche, et rien
+          # d'autre ne la connaît une fois le conteneur lancé par `node server.js`.
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
           tags: ${{ steps.cible.outputs.tags }}
           labels: |
             org.opencontainers.image.title=HEMA Organizer
