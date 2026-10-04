@@ -76,7 +76,8 @@ Sommaire :
 ### 1.2 Ce que fait chaque pièce
 
 **L'image applicative et son entrypoint.** L'image est construite par GitHub Actions et publiée sur
-le registre privé du dépôt (`ghcr.io/<propriétaire>/hema-organizer`). Elle contient l'application
+le registre que le dépôt a configuré — **Docker Hub** s'il porte les secrets `DOCKERHUB_USERNAME` et
+`DOCKERHUB_TOKEN`, **`ghcr.io`** sinon (§ 3). Elle contient l'application
 compilée, le client Prisma, les migrations, et deux petits outils en ligne de commande (`seed.cjs`,
 `reparer.cjs`). À chaque démarrage du conteneur, le script `docker/entrypoint.sh` fait trois choses,
 **dans cet ordre, et s'arrête à la première qui échoue** :
@@ -250,9 +251,11 @@ le jour où l'on démarrera sans `NODE_ENV=production`.
 fabrique — et comment en fabriquer une à soi après une modification du code, ou pour la ranger dans
 son propre registre.
 
-L'image est construite par GitHub Actions (`.github/workflows/release.yml`) et publiée sur le
-registre de paquets du dépôt. Sur le poste de développement, une fois la branche fusionnée
-dans `main` :
+L'image est construite par GitHub Actions (`.github/workflows/release.yml`). **Où elle part dépend
+des secrets du dépôt** : s'il porte `DOCKERHUB_USERNAME` et `DOCKERHUB_TOKEN`, elle va sur Docker
+Hub, dans l'espace de ce compte ; sinon elle va sur `ghcr.io`, dans l'espace du propriétaire du
+dépôt, avec le jeton que GitHub fournit tout seul — rien à créer. Sur le poste de développement, une
+fois la branche fusionnée dans `main` :
 
 ```bash
 git checkout main && git pull
@@ -265,9 +268,10 @@ Le workflow enchaîne, dans cet ordre :
 
 1. `npm ci`, `prisma generate`, `npm run lint`, `npm run typecheck`, `npm test` ;
 2. la construction de l'image `linux/amd64` à partir du `Dockerfile` ;
-3. l'envoi sur `ghcr.io/<propriétaire>/hema-organizer:0.53.0` **et** sur `:latest`.
+3. l'envoi sur `<registre>/<espace>/hema-organizer:0.53.0` **et** sur `:latest` — les deux
+   étiquettes à chaque fois, c'est ce qui fait suivre `latest`.
 
-L'authentification se fait avec le `GITHUB_TOKEN` fourni par Actions : il n'y a aucun secret à
+Sur `ghcr.io`, l'authentification se fait avec le `GITHUB_TOKEN` fourni par Actions : il n'y a aucun secret à
 créer. Sa portée est déclarée **au niveau du workflow**, `contents: read` : c'est le
 plancher de tous les jobs, y compris ceux qu'on ajoutera, et seul le job qui publie l'image y ajoute
 `packages: write`. Sans ce plancher, le job de contrôle héritait des permissions par défaut du dépôt
@@ -304,11 +308,14 @@ le paquet est toujours **privé**.
    Discord et jeton Telegram chiffrés. Tout compte local du serveur, tout autre conteneur montant ce
    chemin et toute synchronisation vers le NAS la liraient.
 
-2. **Déclarer le registre `ghcr.io` dans Portainer — seulement si votre image est privée.** Une
-   image **publique** se télécharge sans identifiants : si GitHub → *Packages* affiche la vôtre en
-   *Public*, passez directement à l'étape 3.
-   Sinon, créer d'abord un **jeton d'accès personnel GitHub** (classic) avec la seule portée
-   **`read:packages`** : GitHub → *Settings → Developer settings → Personal access tokens →
+2. **Déclarer le registre dans Portainer — seulement si votre image est privée.** Une image
+   **publique** se télécharge sans identifiants : passez directement à l'étape 3. Pour le savoir,
+   regardez sa visibilité là où elle est publiée (GitHub → *Packages*, ou la page du dépôt sur
+   Docker Hub).
+   **Sur Docker Hub** : Portainer → **Registries → Add registry → DockerHub**, votre compte et un
+   jeton d'accès (*Account settings → Personal access tokens*).
+   **Sur `ghcr.io`** : créer d'abord un **jeton d'accès personnel GitHub** (classic) avec la seule
+   portée **`read:packages`** : GitHub → *Settings → Developer settings → Personal access tokens →
    Tokens (classic) → Generate new token (classic)*. Le noter, il ne sera plus affiché.
    Puis, dans Portainer : **Registries → Add registry → Custom registry**, avec *Name* `ghcr.io`,
    *Registry URL* `ghcr.io`, *Authentication* activé, *Username* votre identifiant GitHub,
@@ -768,7 +775,8 @@ comportement par défaut, mais l'intention peut s'écrire.
 | Symptôme | Piste |
 |---|---|
 | Le conteneur redémarre en boucle | Lire les journaux (§ 11). `SESSION_SECRET` absent ou de moins de 32 caractères, ou `DATABASE_URL` mal formé, arrêtent volontairement le démarrage en le disant |
-| `denied` / `unauthorized` au téléchargement de l'image | Le registre `ghcr.io` est mal déclaré dans Portainer, ou le jeton est expiré ou sans la portée `read:packages` |
+| `denied` / `unauthorized` au téléchargement de l'image | L'image est privée et le registre est mal déclaré dans Portainer, ou son jeton est expiré (sur `ghcr.io`, il lui faut la portée `read:packages`). Une image **publique** ne demande aucun identifiant : vérifiez d'abord sa visibilité |
+| `toomanyrequests` au téléchargement de l'image | Quota de téléchargements anonymes de Docker Hub, par adresse IP et par heure. Attendre, ou déclarer un compte Docker Hub gratuit dans Portainer (**Registries → Add registry → DockerHub**) |
 | `permission denied` sur `/data` au démarrage | Les dossiers de l'hôte n'appartiennent pas à l'uid 1000 : `sudo chown -R 1000:1000 <DATA_DIR>` |
 | Le conteneur reste *unhealthy* | Depuis la console du conteneur, `wget -qO- http://127.0.0.1:3000/api/health`. Une réponse `{"ok":false,"erreur":"base"}` pointe les droits ou le montage du dossier `data/` ; `{"ok":false,"erreur":"configuration"}` dit qu'une **variable de la stack** est refusée — le détail, lui, n'est que dans les journaux du conteneur (`docker logs`), la sonde ne nomme jamais une variable ni une valeur. Les deux suspects habituels : `DOMAIN` (un domaine local est refusé en production) et `SESSION_SECRET` (trop court) |
 | NPM répond 502 | Le conteneur n'est pas sur le réseau de NPM : vérifier `NPM_NETWORK` et que le *Forward Hostname* est bien `hema-organizer` |

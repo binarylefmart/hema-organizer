@@ -470,7 +470,7 @@ déploiement). `organizer.localhost` résout vers la boucle locale et passe cett
 ne résout pas chez vous, mettez l'adresse de la machine : `HEMA_DOMAIN=http://192.168.1.20:3000`.
 
 Publication et mise en production : **[docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md)**
-(tag `vX.Y.Z` → image GHCR, stack Portainer — référence dans
+(tag `vX.Y.Z` → image publiée sur Docker Hub, stack Portainer — référence dans
 [docs/portainer-stack.yml](docs/portainer-stack.yml) —, proxy NPM, mise à jour, rollback,
 sauvegarde et restauration).
 

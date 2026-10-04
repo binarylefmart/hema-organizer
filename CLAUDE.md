@@ -1072,7 +1072,8 @@ networks:
   - permissions des volumes /data et /backups gérées (création des dossiers avec le bon propriétaire dans l'image)
 - Publication : .github/workflows/release.yml
   - déclenché sur push de tag v*.*.* et workflow_dispatch
-  - lint + tests, build linux/amd64, push sur ghcr.io/<owner>/hema-organizer:<version> et :latest
+  - lint + tests, build linux/amd64, push sur <registre>/<espace>/hema-organizer:<version> et :latest —
+    Docker Hub si le dépôt porte DOCKERHUB_USERNAME/DOCKERHUB_TOKEN, ghcr.io sinon
   - authentification avec GITHUB_TOKEN (permissions packages: write), package privé
 - docker-compose.yml à la racine : développement local uniquement (build local, port 3000 publié, volumes locaux)
 

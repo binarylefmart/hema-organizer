@@ -35,7 +35,7 @@ const REFUS = [
   "  et une porte ouverte.",
   "",
   `  Si c'est vraiment ce que vous voulez : SEED_DEMO_FORCE=${AVEU} npm run <la commande>`,
-  "  (faites une sauvegarde avant — voir docs/INSTALLATION.md).",
+  "  (faites une sauvegarde avant — voir docs/DEPLOIEMENT.md § 10).",
 ].join("\n");
 
 /**
