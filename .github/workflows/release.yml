@@ -209,3 +209,34 @@ jobs:
             echo ""
             echo "Dans Portainer : **Update the stack** avec *Re-pull image* (la stack suit \`latest\`)."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # **Les notes de version, en release GitHub.** La section du tag est déjà écrite dans
+  # `CHANGELOG.md` (`npm run version:monter`) ; on la publie telle quelle, une fois l'image en ligne
+  # — une release qui annoncerait une image encore absente enverrait redéployer pour rien. C'est la
+  # page vers laquelle pointe l'encart « Mise à jour disponible » du profil. Seul job en écriture
+  # sur le dépôt, et seulement sur un tag poussé : un lancement à la main ne crée aucune release.
+  notes:
+    name: Notes de version
+    needs: image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+
+      - name: Publication de la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # La section `## X.Y.Z`, jusqu'à la suivante. Absente : on le dit, sans faire échouer
+          # la publication — l'image, elle, est bien en ligne.
+          awk -v v="## ${VERSION}" '$0==v{f=1;next} /^## /{if(f)exit} f' CHANGELOG.md > notes.md || true
+          if [ ! -s notes.md ]; then echo "Aucune section ${VERSION} dans CHANGELOG.md." > notes.md; fi
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" --title "Version ${VERSION}" --notes-file notes.md --verify-tag
+          fi

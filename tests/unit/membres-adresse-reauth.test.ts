@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * rôle, la désactivation, la suppression et la remise à zéro de l'accès le demandaient tous, pas
  * l'adresse. Or `CLAUDE.md` désigne nommément ce couple — « changer l'adresse de quelqu'un *et* lui
  * renvoyer son lien fait arriver ce lien chez soi, donc permet d'entrer sous son identité » —, et sur
- * ces deux chemins le renvoi est **automatique** : remplacer une adresse renseignée révoque les liens
- * de l'ancienne boîte et fait partir une clé neuve de quatre mois vers la nouvelle
- * (`remplacerLienApresChangementEmail`). Un écran d'administration laissé ouvert sur un poste partagé
- * suffisait, en deux champs, à se fabriquer une clé au nom de quelqu'un.
+ * ces deux chemins, remplacer une adresse renseignée révoque les liens de l'ancienne boîte
+ * (`revoquerLiensApresChangementEmail`) et arme le bouton « Envoyer le lien » vers la nouvelle. Un
+ * écran d'administration laissé ouvert sur un poste partagé suffisait, en deux champs et un clic, à
+ * se fabriquer une clé au nom de quelqu'un.
  *
  * Portée bornée — il faut déjà une session admin élevée pour arriver là : c'est de la défense en
  * profondeur, pas une escalade de rôle. Ce fichier tient les deux chemins :
@@ -139,11 +139,11 @@ beforeEach(() => {
 });
 
 describe("l'adresse seule, depuis la liste (`definirEmailMembre`)", () => {
-  it("redemande le code avant d'écrire, puis seulement révoque et renvoie la clé", async () => {
+  it("redemande le code avant d'écrire, puis seulement révoque la clé — sans en envoyer", async () => {
     const res = await definirEmailMembre("m", undefined, {}, champEmail("attaquant@ailleurs.fr"));
     expect(res.succes).toBeTruthy();
-    // L'ordre est la garde : le code d'abord, l'écriture ensuite, la clé neuve en dernier.
-    expect(faux.trace).toEqual(["reauth", "ecriture", "revocation", "envoi"]);
+    // L'ordre est la garde : le code d'abord, l'écriture ensuite, la révocation en dernier — et aucun envoi.
+    expect(faux.trace).toEqual(["reauth", "ecriture", "revocation"]);
     expect(faux.reauths).toEqual(["/admin/membres"]);
   });
 
@@ -180,7 +180,7 @@ describe("la fiche complète (`modifierMembre`), branche adresse", () => {
   it("redemande le code avant d'écrire quand l'adresse change", async () => {
     const res = await modifierMembre("m", {}, fiche("attaquant@ailleurs.fr"));
     expect(res.succes).toBeTruthy();
-    expect(faux.trace).toEqual(["reauth", "ecriture", "revocation", "envoi"]);
+    expect(faux.trace).toEqual(["reauth", "ecriture", "revocation"]);
     expect(faux.reauths).toEqual(["/admin/membres/m"]);
   });
 

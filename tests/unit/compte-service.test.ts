@@ -68,7 +68,7 @@ vi.mock("@/lib/db", () => ({
       }),
     },
     // Corriger une adresse **renseignée** révoque les liens de l'ancienne et en renvoie un neuf
-    // (voir `remplacerLienApresChangementEmail`) : le compte du portail n'a ni lien ni trimestre,
+    // (voir `revoquerLiensApresChangementEmail`) : le compte du portail n'a ni lien ni trimestre,
     // mais le chemin est le même, et la base simulée doit savoir répondre.
     invitation: { updateMany: vi.fn(async () => ({ count: 0 })) },
     periodMember: { findFirst: vi.fn(async () => null) },

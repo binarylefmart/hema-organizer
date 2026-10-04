@@ -24,7 +24,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * le scénario complet, sur une base simulée qui garde vraiment l'état des liens.
  *
  * **Le même trou existait sur le second geste de cette famille** : corriger l'**adresse email** de
- * quelqu'un (`remplacerLienApresChangementEmail`, motif `REMPLACE`). Le scénario y est encore plus
+ * quelqu'un (`revoquerLiensApresChangementEmail`, motif `REMPLACE`). Le scénario y est encore plus
  * direct — la boîte a fuité, le bureau change l'adresse pour cette raison précise, et le lien de
  * novembre restait dans la boîte fuitée, prêt à redevenir une clé à la première réouverture. Les
  * deux gestes sont donc joués ici, avec la même base simulée.
@@ -269,7 +269,7 @@ describe("les révocations de sécurité gardent leur motif", () => {
  * **Le second geste de la même famille : corriger l'adresse email.**
  *
  * Le scénario est le plus direct des deux, parce que c'est *la fuite* qui motive le geste : la boîte
- * de Chloé est compromise, le bureau lui met une nouvelle adresse. `remplacerLienApresChangementEmail`
+ * de Chloé est compromise, le bureau lui met une nouvelle adresse. `revoquerLiensApresChangementEmail`
  * doit alors tuer **toutes** ses clés encore valables — y compris celle que la clôture du trimestre
  * d'automne avait fermée d'un motif `CLOTURE`, car c'est exactement celle que la réouverture de
  * février rend. Sans ce filtre, le geste censé fermer la boîte fuitée y laissait la clé la plus
@@ -334,19 +334,12 @@ describe("la phrase du changement d'adresse suit ce qui a réellement été ferm
     expect(res.succes).not.toContain("a été annulé");
   });
 
-  it("dit aussi si un lien neuf est parti à la nouvelle adresse, ou s'il faudra l'envoyer plus tard", async () => {
-    // Un trimestre est ouvert : le lien neuf part tout seul…
+  it("n'envoie aucun lien neuf, même avec un trimestre ouvert, et dit comment l'envoyer", async () => {
+    // Corriger une adresse et envoyer une clé sont deux gestes : le second part d'un bouton.
     faux.inscription = { periodId: "p-automne" };
-    const parti = await definirEmailMembre("u-chloe", undefined, {}, formulaireEmail("chloe@refuge.fr"));
-    expect(faux.invitationsEnvoyees).toEqual(["u-chloe"]);
-    expect(parti.succes).toContain("un lien neuf vient de partir à la nouvelle");
-
-    // … sinon la personne n'a plus de clé du tout, et c'est dit : c'est le bon état, pas un oubli.
-    faux.liens = [
-      { id: "inv-mars", userId: "u-chloe", periodId: "p-automne", createdAt: new Date("2026-11-02T08:00:00Z"), expiresAt: DANS_DEUX_MOIS, revokedAt: null, motifRevocation: null },
-    ];
-    faux.inscription = null;
-    const aEnvoyer = await definirEmailMembre("u-chloe", undefined, {}, formulaireEmail("chloe@refuge2.fr"));
-    expect(aEnvoyer.succes).toContain("envoie-lui son lien quand un trimestre sera ouvert");
+    const res = await definirEmailMembre("u-chloe", undefined, {}, formulaireEmail("chloe@refuge.fr"));
+    expect(faux.invitationsEnvoyees).toEqual([]);
+    expect(res.succes).toContain("Aucun email n'est parti");
+    expect(res.succes).toContain("« Envoyer le lien »");
   });
 });

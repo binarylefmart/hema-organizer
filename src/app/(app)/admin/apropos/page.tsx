@@ -1,3 +1,4 @@
+import { versionCourante } from "@/lib/mise-a-jour";
 import type { Metadata } from "next";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
@@ -92,7 +93,7 @@ export default async function PageAPropos() {
     // qu'en développement, où c'est `npm run dev` qui lance le processus. L'ordre compte : en
     // production, la seconde est vide, et l'écran qui répond à « qu'est-ce que je fais tourner ? »
     // n'a pas le droit de répondre « — ».
-    { cle: "Version", valeur: <code>{process.env.APP_VERSION || process.env.npm_package_version || "—"}</code> },
+    { cle: "Version", valeur: <code>{versionCourante() ?? "—"}</code> },
     { cle: "Environnement", valeur: <Pastille ton={isProduction() ? "vert" : "ocre"}>{isProduction() ? "production" : "développement"}</Pastille> },
     { cle: "Domaine public", valeur: <code className="break-all">{baseUrl()}</code> },
     { cle: "Fuseau des tâches", valeur: e.TZ },

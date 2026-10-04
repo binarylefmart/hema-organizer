@@ -6,10 +6,11 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { assertPermission, exigerReauth, getCurrentUser } from "@/lib/auth/current-user";
 import { can, canAssignRole, canEditUser, estCompteDeService, peutEtreInvite } from "@/lib/permissions";
-import { conditionLiensARevoquer, ERREUR_COMPTE_SERVICE, envoyerInvitation, revokeInvitation } from "@/lib/invitations";
+import { conditionLiensARevoquer, ERREUR_COMPTE_SERVICE, envoyerInvitation } from "@/lib/invitations";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
 import { analyserCsvMembres } from "@/lib/periodes";
-import { messageSansEmail } from "@/lib/membres";
+import { aDejaUnAcces, CHAMPS_TEMOINS_ACCES, messageSansEmail, temoinsAcces } from "@/lib/membres";
+import { remettreAccesAZero } from "@/lib/reinitialisation-acces";
 import { revokeAllSessions } from "@/lib/auth/session";
 import { prochaineCouleurLibre } from "@/lib/couleurs-attribution";
 import { caseCochee, champ, zodToFormState, type FormState } from "@/lib/form";
@@ -197,10 +198,10 @@ export async function modifierMembre(userId: string, _prev: FormState, fd: FormD
    * C'était le seul geste de l'application qui touche un **compte** sans redemander le code : le
    * rôle, la désactivation, la suppression et la remise à zéro de l'accès le demandaient tous, pas
    * l'adresse — alors que CLAUDE.md désigne nommément ce couple, « changer l'adresse de quelqu'un
-   * *et* lui renvoyer son lien fait arriver ce lien chez soi ». Et ici le renvoi est **automatique** :
-   * remplacer une adresse renseignée fait partir un lien personnel neuf, valable quatre mois, vers la
-   * nouvelle boîte (`remplacerLienApresChangementEmail`). Un écran d'administration laissé ouvert sur
-   * un poste partagé suffisait donc, en deux champs, à se fabriquer une clé au nom de quelqu'un.
+   * *et* lui renvoyer son lien fait arriver ce lien chez soi ». Remplacer une adresse renseignée
+   * révoque les liens de l'ancienne boîte (`revoquerLiensApresChangementEmail`), et arme le bouton
+   * « Envoyer le lien » vers la nouvelle : un écran d'administration laissé ouvert sur un poste
+   * partagé suffisait, en deux champs et un clic, à se fabriquer une clé au nom de quelqu'un.
    *
    * La portée est bornée — il faut déjà une session admin élevée pour arriver jusqu'ici, ce n'est
    * donc pas une élévation de rôle mais de la défense en profondeur, la même que celle des autres
@@ -235,12 +236,10 @@ export async function modifierMembre(userId: string, _prev: FormState, fd: FormD
   if (changeDeRole || changeDAdresse) await exigerReauth(acteur, `/admin/membres/${userId}`);
   await db.user.update({ where: { id: userId }, data: parsed.data });
   // Même règle que sur la liste (`definirEmailMembre`) : remplacer une adresse **renseignée** par
-  // une autre tue la clé restée dans l'ancienne boîte et en envoie une neuve à la nouvelle. Cette
-  // fiche-ci est justement celle que CLAUDE.md prend en exemple — « changer l'adresse de quelqu'un
-  // *et* lui renvoyer son lien fait arriver ce lien chez soi » —, et elle laissait l'ancien lien
-  // vivant quatre mois de plus.
+  // une autre tue la clé restée dans l'ancienne boîte. Rien ne part vers la nouvelle : l'équipe
+  // envoie le lien d'un bouton, quand elle le décide.
   const remplacement = Boolean(cible.email && parsed.data.email && cible.email !== parsed.data.email);
-  const acces = remplacement ? await remplacerLienApresChangementEmail(cible) : { liensRevoques: 0, lienRenvoye: false };
+  const acces = remplacement ? await revoquerLiensApresChangementEmail(cible) : { liensRevoques: 0 };
   // Le journal garde la fiche telle qu'enregistrée, « Au club depuis » compris : c'est un champ qui
   // décide d'un rang, et qui l'a changé fait partie de ce qu'on veut pouvoir relire.
   await audit(acteur, "membre.modifie", userId, { ...parsed.data, ...(remplacement ? { ancienEmail: cible.email, ...acces } : {}) });
@@ -257,74 +256,48 @@ export async function modifierMembre(userId: string, _prev: FormState, fd: FormD
  * **Ce que l'écran annonce après un changement d'adresse — et rien de plus.**
  *
  * « Le lien personnel de l'ancienne adresse a été annulé » s'écrivait **inconditionnellement**, y
- * compris quand `remplacerLienApresChangementEmail` n'avait trouvé aucun lien à fermer. La phrase
+ * compris quand `revoquerLiensApresChangementEmail` n'avait trouvé aucun lien à fermer. La phrase
  * était donc parfois fausse, et fausse dans le sens le plus coûteux : le bureau repartait convaincu
  * que la boîte d'avant ne pouvait plus rien ouvrir. On ne l'écrit plus que lorsqu'un lien a
  * réellement été révoqué, et on dit sobrement le contraire sinon.
  */
-function messageChangementAdresse(prefixe: string, acces: { liensRevoques: number; lienRenvoye: boolean }): string {
+function messageChangementAdresse(prefixe: string, acces: { liensRevoques: number }): string {
   const annulation =
     acces.liensRevoques > 0 ? "Le lien personnel de l'ancienne adresse a été annulé" : "Aucun lien ne restait à annuler dans l'ancienne boîte";
-  return acces.lienRenvoye
-    ? `${prefixe} ${annulation}, un lien neuf vient de partir à la nouvelle.`
-    : `${prefixe} ${annulation} ; envoie-lui son lien quand un trimestre sera ouvert.`;
+  return `${prefixe} ${annulation}. Aucun email n'est parti : envoie-lui son lien avec « Envoyer le lien » quand tu veux.`;
 }
 
 /**
- * **Remplacer l'adresse de quelqu'un remplace sa clé.**
+ * **Remplacer l'adresse de quelqu'un révoque sa clé — sans en envoyer une autre.**
  *
  * Le lien personnel *est* le mot de passe du projet : quatre mois de validité, connexion directe,
  * et il vit dans une boîte mail. Tant que l'ancienne adresse gardait un lien vivant, corriger une
  * adresse laissait une porte ouverte dans la boîte d'avant — celle qu'on quitte parce qu'elle a
- * fuité, celle d'un conjoint, celle d'un homonyme à qui l'adresse appartenait vraiment. C'est
- * exactement le couple que CLAUDE.md décrit comme valant un mot de passe (« changer l'adresse de
- * quelqu'un *et* lui renvoyer son lien fait arriver ce lien chez soi »), pris par l'autre bout.
+ * fuité, celle d'un conjoint, celle d'un homonyme à qui l'adresse appartenait vraiment.
  *
- * Deux gestes, donc, et dans cet ordre :
- * 1. **toutes** les invitations encore valables de la personne sont révoquées, trimestres confondus
- *    et **qu'elles soient déjà fermées ou non** (motif `REMPLACE` : c'est une révocation de
- *    sécurité, la page du lien le dira) — même s'il n'y a aucun trimestre ouvert où envoyer quoi
- *    que ce soit ;
- * 2. un lien neuf part **à la nouvelle adresse**, s'il y a un trimestre en cours et si le compte
- *    est actif. Sinon la personne n'a plus de clé du tout, ce qui est le bon état : l'équipe lui en
- *    renvoie une d'un bouton depuis sa fiche.
+ * **Toutes** les invitations encore valables de la personne sont donc révoquées, trimestres confondus
+ * et qu'elles soient déjà fermées ou non (motif `REMPLACE` : c'est une révocation de sécurité, la page
+ * du lien le dira) — même s'il n'y a aucun trimestre ouvert.
  *
- * **Les sessions ouvertes ne sont pas fermées** (pas de `deconnecterAppareils`) : le danger corrigé
- * ici dort dans une boîte mail, pas sur le téléphone du membre. Mettre dehors quelqu'un dont on
- * vient de corriger une faute de frappe dans l'adresse serait une panne, pas une protection.
+ * **Rien ne part vers la nouvelle adresse.** Corriger une adresse est un geste de fichier, envoyer
+ * une clé en est un autre : le bureau corrige souvent plusieurs adresses avant de prévenir qui que ce
+ * soit, et un email « Ton lien pour les cours » arrivant à chaque faute de frappe corrigée surprenait.
+ * Le lien part d'un bouton (« Envoyer le lien », à l'unité ou pour une sélection), avec ses propres
+ * verrous.
  *
- * Le motif d'email reste `invitation` (« Ton lien pour les cours ») : les motifs de sécurité
- * existants racontent un lien ouvert trop souvent ou trop d'appareils, ce qui ne s'est pas produit.
+ * **Les sessions ouvertes ne sont pas fermées** : le danger corrigé ici dort dans une boîte mail, pas
+ * sur le téléphone du membre. Mettre dehors quelqu'un dont on vient de corriger une faute de frappe
+ * dans l'adresse serait une panne, pas une protection.
  *
  * Retourne ce que le journal d'audit doit garder.
  */
-async function remplacerLienApresChangementEmail(cible: { id: string; actif: boolean }): Promise<{ liensRevoques: number; lienRenvoye: boolean }> {
+async function revoquerLiensApresChangementEmail(cible: { id: string }): Promise<{ liensRevoques: number }> {
   const maintenant = new Date();
   const { count } = await db.invitation.updateMany({
-    // Tous trimestres confondus : le lien qui dort dans l'ancienne boîte n'est pas forcément celui
-    // du trimestre en cours (un lien vaut 4 mois, il traverse une clôture).
-    //
-    // Et **toutes** les invitations encore valables, révoquées ou non (`conditionLiensARevoquer`,
-    // src/lib/invitations.ts), pas seulement celles à `revokedAt: null`. Le filtre d'avant sautait
-    // exactement le lien le plus dangereux : celui qu'une clôture avait fermé (motif `CLOTURE`)
-    // sans le périmer — il restait valable jusqu'à son échéance, et
-    // `remettreEnServiceLiensDeCloture` le **rend** dès que le bureau rouvre la période pour
-    // corriger une présence. Corriger l'adresse d'une personne dont la boîte a fuité laissait donc
-    // ce lien-là intact, dans la boîte fuitée, prêt à redevenir une clé. Les révocations de
-    // sécurité déjà posées (`SUSPECT`, `APPAREILS`, `REMPLACE`) sont laissées telles quelles :
-    // elles ferment plus fort, et aucune réouverture ne les ressuscite.
     where: { userId: cible.id, ...conditionLiensARevoquer(maintenant) },
     data: { revokedAt: maintenant, motifRevocation: "REMPLACE" },
   });
-  if (!cible.actif) return { liensRevoques: count, lienRenvoye: false };
-  const inscription = await db.periodMember.findFirst({
-    where: { userId: cible.id, period: { statut: "ACTIVE" } },
-    orderBy: { period: { dateDebut: "desc" } },
-    select: { periodId: true },
-  });
-  if (!inscription) return { liensRevoques: count, lienRenvoye: false };
-  const lienRenvoye = await envoyerInvitation(cible.id, inscription.periodId, "invitation", { remplaceTousLesLiens: true });
-  return { liensRevoques: count, lienRenvoye };
+  return { liensRevoques: count };
 }
 
 /**
@@ -335,9 +308,10 @@ async function remplacerLienApresChangementEmail(cible: { id: string; actif: boo
  *
  * - **ajouter** une adresse à quelqu'un qui n'en avait pas : rien à révoquer, il n'avait aucun
  *   lien. L'équipe lui en envoie un d'un bouton, depuis sa fiche ou la liste ;
- * - **remplacer** une adresse renseignée par une autre : les liens vivants sont révoqués et un
- *   lien neuf part à la nouvelle adresse (`remplacerLienApresChangementEmail` ci-dessus) — sans
- *   quoi l'ancienne boîte gardait une porte ouverte pendant quatre mois ;
+ * - **remplacer** une adresse renseignée par une autre : les liens vivants sont révoqués
+ *   (`revoquerLiensApresChangementEmail` ci-dessus) — sans quoi l'ancienne boîte gardait une porte
+ *   ouverte pendant quatre mois — et **rien ne part** vers la nouvelle : l'équipe envoie le lien
+ *   d'un bouton ;
  * - **effacer** l'adresse **ne révoque rien** : les liens déjà envoyés restent valables et les
  *   sessions ouvertes ne sont pas fermées. La personne qui est déjà entrée reste chez elle, elle ne
  *   recevra simplement plus aucun message (et l'équipe ne pourra plus lui envoyer de lien). C'est
@@ -382,9 +356,10 @@ export async function definirEmailMembre(userId: string, retour: string | undefi
   await exigerReauth(acteur, retour ?? "/admin/membres");
   await db.user.update({ where: { id: userId }, data: { email } });
   // Adresse renseignée remplacée par une autre : la clé de l'ancienne boîte meurt ici (voir
-  // `remplacerLienApresChangementEmail`). Un ajout ou un effacement ne déclenche rien.
+  // `revoquerLiensApresChangementEmail`), et rien ne part vers la nouvelle. Un ajout ou un
+  // effacement ne déclenche rien.
   const remplacement = Boolean(ancienne && email);
-  const acces = remplacement ? await remplacerLienApresChangementEmail(cible) : { liensRevoques: 0, lienRenvoye: false };
+  const acces = remplacement ? await revoquerLiensApresChangementEmail(cible) : { liensRevoques: 0 };
   const action = !ancienne ? "membre.email_ajoute" : !email ? "membre.email_retire" : "membre.email_modifie";
   await audit(acteur, action, userId, { ancienne, nouvelle: email, ...(remplacement ? acces : {}) });
   rafraichir();
@@ -562,13 +537,14 @@ export async function nommerAdministrateur(_prev: FormState, fd: FormData): Prom
   return { succes: `${cible.prenom} ${cible.nom} est administrateur. Mot de passe et double authentification lui seront demandés avant que l'administration s'ouvre.` };
 }
 
-export async function supprimerMembre(userId: string): Promise<void> {
+export async function supprimerMembre(userId: string, retour?: string): Promise<void> {
   // Suppression définitive (compte + historique) : réservée au bureau, comme la désactivation
   const acteur = await assertPermission("members.delete");
   const cible = await db.user.findUniqueOrThrow({ where: { id: userId } });
   if (!canEditUser(acteur, cible) || acteur.id === userId) throw new Error("Action non autorisée.");
   if (estCompteDeService(cible)) throw new Error(ERREUR_PORTAIL_COMPTE);
-  await exigerReauth(acteur, `/admin/membres/${userId}`);
+  // La suite vient de l'écran du clic (la fiche, ou la ligne de l'annuaire) : voir `envoyerLienMembre`.
+  await exigerReauth(acteur, retour ?? `/admin/membres/${userId}`);
   await db.user.delete({ where: { id: userId } });
   await audit(acteur, "membre.supprime", userId, { email: cible.email });
   rafraichir();
@@ -879,6 +855,43 @@ export async function importerMembres(_prev: ResultatImport, fd: FormData): Prom
 }
 
 /**
+ * **Envoyer l'invitation à quelqu'un qui n'est jamais entré** — la première clé, avec le parcours
+ * d'entrée complet, comme à la création du compte.
+ *
+ * C'est le pendant de « Réinitialiser les accès » (`reinitialiserAccesMembre`, juste en dessous), et
+ * la frontière entre les deux est une seule fonction (`aDejaUnAcces`, src/lib/membres.ts) : jamais
+ * entré → l'invitation, qui **n'efface rien** ; déjà entré → la réinitialisation, qui efface. Le
+ * refus d'un compte déjà entré est une **garde serveur**, pas seulement un bouton masqué : une
+ * « bienvenue » envoyée à quelqu'un d'installé lui ferait rejouer l'installation pour rien.
+ *
+ * **Verrous de « Envoyer le lien »** (`envoyerLienMembre`), puisqu'une clé de quatre mois part :
+ * `invitations.manage`, le compte du portail exclu, compte actif, adresse, période ouverte, et le
+ * **code récent après les refus**. Plus `canEditUser`, comme les gestes de masse de l'annuaire.
+ * Pas de déconnexion : il n'y a, par définition, aucune session à fermer.
+ */
+export async function envoyerInvitationMembre(userId: string, periodId: string, retour?: string): Promise<void> {
+  const acteur = await assertPermission("invitations.manage");
+  const cible = await db.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true, ...CHAMPS_TEMOINS_ACCES },
+  });
+  if (!peutEtreInvite(cible)) throw new Error(ERREUR_COMPTE_SERVICE);
+  if (!canEditUser(acteur, cible)) throw new Error("Accès refusé");
+  if (aDejaUnAcces(temoinsAcces(cible))) {
+    throw new Error(`${cible.prenom} ${cible.nom} est déjà entré : l'invitation n'a plus de sens. Renvoie-lui son lien, ou réinitialise ses accès.`);
+  }
+  if (!cible.actif) throw new Error(ERREUR_COMPTE_INACTIF);
+  if (!cible.email) throw new Error(messageSansEmail(cible));
+  const periode = await db.period.findUniqueOrThrow({ where: { id: periodId }, select: { statut: true } });
+  if (periode.statut === "CLOSE") throw new Error("Période close : les liens ne sont plus valables.");
+  await exigerReauth(acteur, retour ?? "/admin/membres");
+  // `parcours: "force"` : le parcours d'entrée complet, même si un lien jamais utilisé l'avait déjà marqué vu.
+  const parti = await envoyerInvitation(userId, periodId, "invitation", { parcours: "force" });
+  await audit(acteur, "invitation.envoyee", periodId, { userId, parti });
+  rafraichir();
+}
+
+/**
  * **Repartir de zéro sur le compte de quelqu'un** : mot de passe effacé, double authentification
  * retirée, codes de secours jetés, liens en cours révoqués, appareils déconnectés.
  *
@@ -897,70 +910,29 @@ export async function importerMembres(_prev: ResultatImport, fd: FormData): Prom
  * désactivation. Et `canEditUser`, pour qu'on ne puisse pas remettre à zéro un administrateur sans
  * en être un soi-même.
  */
-export async function reinitialiserAccesMembre(userId: string): Promise<void> {
+export async function reinitialiserAccesMembre(userId: string, retour?: string): Promise<void> {
   const acteur = await assertPermission("members.manage");
   const cible = await db.user.findUniqueOrThrow({
     where: { id: userId },
     // `estAdmin` compris : c'est lui qui dit « compte du bureau » à `canEditUser` (voir plus bas).
-    select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true, passwordHash: true, totpSecret: true, totpActiveAt: true },
+    select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true, totpSecret: true, ...CHAMPS_TEMOINS_ACCES },
   });
   if (!canEditUser(acteur, cible)) throw new Error("Accès refusé");
   // Le compte du portail est la porte de secours du club : la vider le fermerait dehors lui aussi.
   if (estCompteDeService(cible)) throw new Error(ERREUR_PORTAIL_ACCES);
-  await exigerReauth(acteur, `/admin/membres/${userId}`);
+  // **Réservé à qui est déjà entré** (`aDejaUnAcces`) : à quelqu'un qui ne l'est jamais, il n'y a rien
+  // à effacer, et c'est « Envoyer l'invitation » qui lui donne sa première clé. La garde est ici et
+  // pas seulement dans l'écran : le bouton absent ne ferme pas la route.
+  if (!aDejaUnAcces(temoinsAcces(cible))) throw new Error(`${cible.prenom} ${cible.nom} n'est jamais entré : il n'y a rien à réinitialiser. Envoie-lui plutôt l'invitation.`);
+  // La suite vient de l'écran du clic (la fiche, ou la ligne de l'annuaire) : voir `envoyerLienMembre`.
+  await exigerReauth(acteur, retour ?? `/admin/membres/${userId}`);
 
-  // Ce qui est effacé : les deux facteurs, et de quoi les contourner.
-  await db.user.update({
-    where: { id: userId },
-    data: { passwordHash: null, doitChangerMotDePasse: false, totpSecret: null, totpActiveAt: null, codesSecours: null, deuxFaProposeeLe: null },
-  });
-  // Les liens en cours partent avec : « réinitialiser » doit vouloir dire qu'aucune porte ne reste
-  // ouverte. Le motif `MANUEL` dit au journal que c'est une décision, pas une révocation de sécurité.
-  //
-  // **Toutes** les invitations encore valables, pas seulement celles à `revokedAt: null`
-  // (`conditionLiensARevoquer`, src/lib/invitations.ts). Scénario corrigé : boîte mail compromise
-  // en janvier, accès remis à zéro — mais le trimestre de novembre était clos, donc son lien
-  // portait déjà le motif `CLOTURE` et la remise à zéro le **sautait** en lui laissant ce motif. En
-  // février, le bureau rouvre le trimestre pour corriger une présence, et la réouverture rend
-  // précisément les liens `CLOTURE` : le lien de novembre redevenait valable, dans la boîte qu'on
-  // avait justement voulu fermer.
-  const liens = await db.invitation.findMany({ where: { userId, ...conditionLiensARevoquer() }, select: { id: true } });
-  for (const lien of liens) await revokeInvitation(lien.id);
-  // …et les appareils déjà connectés, sans épargner personne : une session ouverte survivrait à tout
-  // le reste et rendrait la remise à zéro décorative.
-  const sessions = await revokeAllSessions(userId, false);
-
-  /*
-   * **Et on lui rend une porte.** Remettre l'accès à zéro sans rien renvoyer laissait la personne
-   * dehors sans qu'elle le sache : ses liens étaient morts, ses appareils déconnectés, et aucun
-   * email ne partait.
-   *
-   * **Et tout recommence pour de bon** : le lien neuf rejoue le **parcours d'entrée complet**
-   * (`parcours: "force"`) — installer l'application, se donner un mot de passe, activer la double
-   * authentification —, ce qui est exactement la situation où se trouve la personne, ses deux
-   * facteurs venant d'être effacés. L'email le dit dans ces termes (motif `reinitialisation`), là
-   * où « régénérer et envoyer » se contente de renvoyer un lien sans rien rejouer.
-   *
-   * Sinon (pas d'adresse, pas de trimestre en cours) on ne peut rien envoyer : le journal le dit,
-   * et l'équipe reprend la main depuis la fiche.
-   */
-  const inscription = cible.email && cible.actif && !estCompteDeService(cible)
-    ? await db.periodMember.findFirst({
-        where: { userId, period: { statut: "ACTIVE" } },
-        orderBy: { period: { dateDebut: "desc" } },
-        select: { periodId: true },
-      })
-    : null;
-  const lienRenvoye = inscription
-    ? await envoyerInvitation(userId, inscription.periodId, "reinitialisation", { deconnecterAppareils: "tous", parcours: "force" })
-    : false;
+  const issue = await remettreAccesAZero(cible);
 
   await audit(acteur, "membre.acces_reinitialise", userId, {
     avaitMotDePasse: !!cible.passwordHash,
     avaitDeuxFa: !!cible.totpSecret && !!cible.totpActiveAt,
-    liensRevoques: liens.length,
-    sessionsFermees: sessions,
-    lienRenvoye,
+    ...issue,
   });
   rafraichir();
 }

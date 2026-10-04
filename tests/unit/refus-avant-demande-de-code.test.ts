@@ -307,7 +307,7 @@ describe("la fiche complète (`modifierMembre`)", () => {
   it("exige le code une seule fois, avant l'écriture, quand rôle et adresse changent ensemble", async () => {
     const res = await modifierMembre("m", {}, fiche({ email: "chloe.dubois@exemple.fr", role: "INSTRUCTEUR" }));
     expect(res.succes).toBeTruthy();
-    expect(faux.trace).toEqual(["reauth", "ecriture", "revocation", "envoi"]);
+    expect(faux.trace).toEqual(["reauth", "ecriture", "revocation"]);
     expect(faux.reauths).toEqual(["/admin/membres/m"]);
   });
 

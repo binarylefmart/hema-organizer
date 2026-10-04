@@ -463,15 +463,15 @@ describe("changer une adresse remplace la clé", () => {
     faux.invitations.push({ id: "inv-ancienne", userId: "u-chloe", periodId: "p-active", revokedAt: null, motifRevocation: null });
   });
 
-  it("tue le lien resté dans l'ancienne boîte et en envoie un neuf à la nouvelle", async () => {
+  it("tue le lien resté dans l'ancienne boîte, et n'envoie rien à la nouvelle", async () => {
     await definirEmailMembre("u-chloe", undefined, {}, formulaire({ email: "chloe@nouvelle.fr" }));
     const ancienne = faux.invitations.find((i) => i.id === "inv-ancienne");
     expect(ancienne?.revokedAt, "le lien de l'ancienne boîte doit être révoqué").not.toBeNull();
     // `REMPLACE` est une révocation de sécurité : la page du lien le dira, même à qui est déjà connecté
     expect(ancienne?.motifRevocation).toBe("REMPLACE");
-    // Et la personne n'est pas laissée dehors : un lien neuf part, à la NOUVELLE adresse seulement
-    expect(faux.emails.map((e) => e.to)).toEqual(["chloe@nouvelle.fr"]);
-    expect(faux.invitations.filter((i) => i.revokedAt == null)).toHaveLength(1);
+    // Corriger une adresse n'envoie rien : le lien part d'un bouton, quand l'équipe le décide
+    expect(faux.emails).toEqual([]);
+    expect(faux.invitations.filter((i) => i.revokedAt == null)).toHaveLength(0);
   });
 
   it("révoque même quand aucun trimestre n'est ouvert : rien à envoyer n'est pas une raison de laisser la porte", async () => {
@@ -487,7 +487,7 @@ describe("changer une adresse remplace la clé", () => {
     expect(faux.audits).toContainEqual({
       action: "membre.email_modifie",
       cible: "u-chloe",
-      details: { ancienne: "chloe@ancienne.fr", nouvelle: "chloe@nouvelle.fr", liensRevoques: 1, lienRenvoye: true },
+      details: { ancienne: "chloe@ancienne.fr", nouvelle: "chloe@nouvelle.fr", liensRevoques: 1 },
     });
   });
 
@@ -522,7 +522,7 @@ describe("ajout, correction et retrait de l'adresse depuis la liste", () => {
     expect(faux.audits).toContainEqual({
       action: "membre.email_modifie",
       cible: "u-chloe",
-      details: { ancienne: "chloe@club.test", nouvelle: "c.dupont@club.test", liensRevoques: 0, lienRenvoye: false },
+      details: { ancienne: "chloe@club.test", nouvelle: "c.dupont@club.test", liensRevoques: 0 },
     });
   });
 

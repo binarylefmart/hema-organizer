@@ -550,8 +550,13 @@ export async function renvoyerInvitation(periodId: string, userId: string): Prom
 /**
  * Renvoie le lien personnel à tout le monde sur la période (après correction des adresses email, par exemple).
  * Chaque lien est régénéré : les anciens cessent de fonctionner.
+ *
+ * **Deux écrans l'appellent** — la page de la période et la liste des membres (« Renvoyer le lien à
+ * tout le monde ») —, et `retour` dit où ramener après le code redonné : sans lui, le détour par
+ * `/connexion/verifier` déposait sur la période quelqu'un parti de l'annuaire, sans dire si les
+ * liens étaient partis (l'action n'est pas rejouée). Même règle que `envoyerLienMembre`.
  */
-export async function renvoyerTousLesLiens(periodId: string): Promise<void> {
+export async function renvoyerTousLesLiens(periodId: string, retour?: string): Promise<void> {
   const acteur = await assertPermission("invitations.manage");
   /*
    * **Le code récent, et il compte davantage ici** : ce geste régénère la clé de quatre mois de **tout
@@ -559,7 +564,7 @@ export async function renvoyerTousLesLiens(periodId: string): Promise<void> {
    * (`envoyerLienMembre`), celui-ci non — un geste de masse plus permissif que son unitaire, ce que le
    * dossier interdit nommément (« les verrous sont **exactement** ceux du geste unitaire »).
    */
-  await exigerReauth(acteur, `/admin/periodes/${periodId}`);
+  await exigerReauth(acteur, retour ?? `/admin/periodes/${periodId}`);
   const period = await db.period.findUniqueOrThrow({ where: { id: periodId }, include: { membres: { include: { user: { select: { id: true, actif: true, service: true } } } } } });
   if (period.statut === "CLOSE") throw new Error("Période close : les liens ne sont plus valables.");
   const actifs = period.membres.filter((m) => m.user.actif && !estCompteDeService(m.user));
@@ -569,12 +574,25 @@ export async function renvoyerTousLesLiens(periodId: string): Promise<void> {
   for (const m of actifs) if (await envoyerInvitation(m.userId, periodId)) envoyes++;
   await audit(acteur, "invitations.renvoyees_toutes", periodId, { nombre: envoyes, sansEmail: actifs.length - envoyes });
   rafraichir(periodId);
+  // L'annuaire affiche l'état du lien de chacun : il doit se relire, d'où qu'on ait appuyé.
+  revalidatePath("/admin/membres");
 }
 
-export async function revoquerInvitation(invitationId: string): Promise<void> {
+/**
+ * Révoque un lien personnel, depuis la page d'une période ou la fiche d'un membre.
+ *
+ * **Le code récent, comme ses deux jumeaux de l'annuaire** (`revoquerLienMembre` et
+ * `revoquerLiensEnMasse`, `src/app/(app)/admin/membres/actions.ts`) : couper la clé de quelqu'un est
+ * l'autre moitié du geste qui la lui envoie, et les gestes voisins qui ferment un accès le demandent
+ * tous. Trois portes vers la même révocation ne peuvent pas avoir deux serrures. `retour` ramène à
+ * l'écran du clic après le code redonné ; le repli est la page de la période.
+ */
+export async function revoquerInvitation(invitationId: string, retour?: string): Promise<void> {
   const user = await assertPermission("invitations.manage");
   const inv = await db.invitation.findUniqueOrThrow({ where: { id: invitationId } });
+  await exigerReauth(user, retour ?? `/admin/periodes/${inv.periodId}`);
   await revokeInvitation(invitationId);
   await audit(user, "invitation.revoquee", inv.periodId, { userId: inv.userId });
   rafraichir(inv.periodId);
+  revalidatePath("/admin/membres");
 }

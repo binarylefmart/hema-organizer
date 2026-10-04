@@ -7,10 +7,13 @@ import { audit } from "@/lib/audit";
 import { assertPermission, exigerReauth } from "@/lib/auth/current-user";
 import { ROLES_DE_BASE } from "@/lib/constants";
 import { canEditUser, estCompteDeService, peutEtreInvite } from "@/lib/permissions";
-import { envoyerInvitation } from "@/lib/invitations";
+import { envoyerInvitation, revokeInvitation } from "@/lib/invitations";
 import { revokeAllSessions } from "@/lib/auth/session";
 import { identifiantSchema, SELECTION_MAX } from "@/lib/validation/presences";
 import { GESTES_MASSE, type GesteMasse } from "./selection-gestes";
+import { lienVivant, perimetreToutLeMonde } from "./tout-le-monde";
+import { aDejaUnAcces, CHAMPS_TEMOINS_ACCES, temoinsAcces } from "@/lib/membres";
+import { remettreAccesAZero } from "@/lib/reinitialisation-acces";
 
 /**
  * **Changer le rôle de plusieurs personnes d'un coup**, depuis l'annuaire.
@@ -575,5 +578,343 @@ export async function renvoyerLiensEnMasse(entree: unknown): Promise<ResultatLie
   // Un envoi que la file refuse (adresse effacée entre-temps) est dit lui aussi : « il n'a rien reçu »
   // se tranche sur l'écran des derniers emails, pas sur un silence.
   if (echecs.length > 0) phrases.push(`${echecs.length} envoi${echecs.length > 1 ? "s" : ""} n'${echecs.length > 1 ? "ont" : "a"} pas pu partir : ${echecs.join(", ")}.`);
+  return { succes: phrases.join(" ") };
+}
+
+/* ------------------------------------------------------------------ */
+/* Révoquer le lien personnel                                          */
+/* ------------------------------------------------------------------ */
+
+export type ResultatRevocation = { succes?: string; erreur?: string };
+
+/**
+ * **Révoquer le lien personnel d'une personne, depuis sa ligne de l'annuaire.**
+ *
+ * Le geste existait déjà, mais sur deux écrans où l'on ne cherche pas quelqu'un : la fiche d'un membre
+ * et la page d'une période (`revoquerInvitation`, `src/actions/periodes.ts`). L'annuaire, lui, portait
+ * « Renvoyer le lien » et pas son contraire — or c'est là qu'on vient quand un lien a été transféré
+ * par erreur ou qu'une boîte mail a changé de main.
+ *
+ * **Ses verrous sont ceux de `revoquerInvitation`, et le code récent en plus des deux côtés** :
+ * - `invitations.manage` — « le lien personnel **de quelqu'un d'autre** appartient au bureau » ;
+ * - **`exigerReauth`**, que `revoquerInvitation` ne demandait pas et demande désormais : couper la clé
+ *   de quelqu'un est l'autre moitié du geste qui la lui envoie, et ses voisins qui ferment un accès
+ *   (remettre l'accès à zéro, déconnecter des appareils) le demandent tous. Deux portes vers la même
+ *   révocation ne peuvent pas avoir deux serrures ;
+ * - le **compte de connexion du portail** n'a pas de lien personnel, et `canEditUser` tient la même
+ *   frontière que les gestes de masse : le bouton n'est rendu qu'aux lignes qu'elle laisse passer.
+ *
+ * **Refus d'abord, code ensuite** (voir `envoyerLienMembre`) : une personne qui n'a plus de lien en
+ * cours — révoqué depuis un autre onglet, échu entre l'affichage et l'appui — n'a rien à révoquer, et
+ * redonner six chiffres pour l'apprendre est le défaut déjà corrigé ailleurs.
+ *
+ * **Les appareils déjà connectés le restent**, comme avec `revoquerInvitation` : révoquer ferme la
+ * porte du lien, pas les sessions qu'il a ouvertes. Pour mettre tout le monde dehors, la fiche a
+ * « Réinitialiser l'accès » ; la confirmation le dit pour qu'on ne croie pas l'avoir fait.
+ */
+export async function revoquerLienMembre(userId: string, periodId: string, retour?: string): Promise<ResultatRevocation> {
+  const acteur = await assertPermission("invitations.manage");
+  const lu = z.object({ userId: identifiantSchema, periodId: identifiantSchema }).safeParse({ userId, periodId });
+  if (!lu.success) return { erreur: "Demande invalide : recharge l'écran." };
+  const cible = await db.user.findUnique({
+    where: { id: userId },
+    // `estAdmin` est lu avec le reste : voir `definirRolesEnMasse`, un `select` sans lui ferait taire `canEditUser`.
+    select: { id: true, prenom: true, nom: true, role: true, estAdmin: true, actif: true, service: true },
+  });
+  if (!cible) return { erreur: "Compte introuvable : il a quitté l'annuaire depuis l'affichage de la liste. Recharge l'écran." };
+  if (!peutEtreInvite(cible)) return { erreur: "Le compte de connexion du portail n'a pas de lien personnel." };
+  if (!canEditUser(acteur, cible)) return { erreur: "Tu ne peux pas modifier ce compte." };
+  const liens = await db.invitation.findMany({ where: { userId, ...lienVivant(periodId) }, select: { id: true } });
+  if (liens.length === 0) return { erreur: `${cible.prenom} ${cible.nom} n'a plus de lien en cours : il n'y a rien à révoquer.` };
+
+  // Le code redonné ramène à l'écran du clic, filtre et étendue compris (même règle que `envoyerLienMembre`).
+  await exigerReauth(acteur, retour ?? "/admin/membres");
+
+  // Motif `MANUEL` (celui par défaut) : une décision du bureau, qu'un nouvel envoi remplace.
+  for (const lien of liens) await revokeInvitation(lien.id);
+  // Même action et même cible que `revoquerInvitation` : un seul filtre du journal pour « qui a coupé son lien ? ».
+  await audit(acteur, "invitation.revoquee", periodId, { userId, liens: liens.length });
+
+  revalidatePath("/admin/membres");
+  revalidatePath(`/admin/membres/${userId}`);
+  revalidatePath(`/admin/periodes/${periodId}`);
+  return { succes: `Lien de ${cible.prenom} ${cible.nom} révoqué : il ne s'ouvre plus.` };
+}
+
+/**
+ * **Une sélection, ou tout le monde.** Les gestes de masse de l'annuaire reçoivent soit les cases
+ * cochées, soit `tous: true` — le bouton du volet « Pour tout le monde ». Dans le second cas, la
+ * population est recomposée **ici**, avec le filtre que l'écran a utilisé pour la compter
+ * (`perimetreToutLeMonde`) : un navigateur n'envoie pas quatre-vingts identifiants, et un appel forgé
+ * ne choisit pas qui « tout le monde » désigne.
+ */
+const schemaToutLeMonde = z.object({ tous: z.literal(true) });
+
+/** Les noms d'un lot, dans l'ordre de l'annuaire. */
+const nomDe = (c: { prenom: string; nom: string }) => `${c.prenom} ${c.nom}`;
+
+/**
+ * **Ce qui trahit un écran en retard sur la base refuse le lot entier**, nom par nom — commun aux
+ * gestes de masse qui touchent l'accès de quelqu'un (voir `renvoyerLiensEnMasse`). `soiMeme` dit si
+ * son propre compte est refusé : il l'est partout sauf au renvoi du lien, où le geste unitaire le
+ * permet.
+ */
+function refusDuLot(
+  acteur: Parameters<typeof canEditUser>[0],
+  cibles: { id: string; prenom: string; nom: string; role: string; estAdmin: boolean; service: boolean }[],
+  demandes: number,
+  aucun: string,
+): string | null {
+  const refuses: string[] = [];
+  for (const cible of cibles) {
+    if (!peutEtreInvite(cible)) refuses.push(`${nomDe(cible)} (compte de connexion du portail : son accès ne se règle pas ici)`);
+    else if (cible.id === acteur.id) refuses.push(`${nomDe(cible)} (ton propre compte : on n'agit pas sur le sien en masse)`);
+    else if (!canEditUser(acteur, cible)) refuses.push(`${nomDe(cible)} (tu ne peux pas modifier ce compte)`);
+  }
+  const introuvables = demandes - cibles.length;
+  if (refuses.length === 0 && introuvables === 0) return null;
+  const phrases = [`${aucun} : le lot entier est refusé.`];
+  if (refuses.length > 0) phrases.push(`${refuses.length === 1 ? "Ce compte est" : "Ces comptes sont"} hors de portée — ${refuses.join(" ; ")}.`);
+  if (introuvables > 0) {
+    phrases.push(
+      introuvables === 1
+        ? "1 compte de la sélection est introuvable : il a quitté l'annuaire depuis l'affichage de la liste. Recharge l'écran."
+        : `${introuvables} comptes de la sélection sont introuvables : ils ont quitté l'annuaire depuis l'affichage de la liste. Recharge l'écran.`,
+    );
+  }
+  return phrases.join(" ");
+}
+
+const CHAMPS_CIBLE = { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true } as const;
+
+/**
+ * **Révoquer le lien de chaque personne cochée — ou de tout le monde.**
+ *
+ * Le pendant de `renvoyerLiensEnMasse`, avec **les verrous du geste unitaire**
+ * (`revoquerLienMembre`) : `invitations.manage`, `canEditUser` sur chaque personne, le compte du
+ * portail intouchable, et le code récent avant la première révocation. Plus strict sur un point,
+ * comme les autres gestes de masse : **son propre compte n'y entre pas** — la ligne garde son bouton.
+ *
+ * **Les deux populations de `renvoyerLiensEnMasse`, pour les mêmes raisons** :
+ * - ce qui trahit un écran en retard sur la base (portail, soi-même, compte non modifiable,
+ *   identifiant introuvable, période inconnue) **refuse le lot entier**, nom par nom ;
+ * - une personne **sans lien en cours** est un état ordinaire de l'annuaire — elle n'a pas de bouton
+ *   « Révoquer » sur sa ligne non plus — : elle est **écartée et nommée**, et les autres sont révoqués.
+ *   Si personne n'a de lien, rien ne se passe et aucun code n'est demandé.
+ *
+ * **Aucun email** : révoquer ne prévient personne, à l'unité comme en masse. **Une entrée d'audit par
+ * personne**, sous la même action que le geste unitaire (`invitation.revoquee`), comme
+ * `renvoyerLiensEnMasse` : « quand le lien de Chloé a-t-il été coupé ? » se lit d'un seul filtre.
+ * `tous` dit en plus au journal que le geste venait du volet « Pour tout le monde ».
+ */
+export async function revoquerLiensEnMasse(entree: unknown): Promise<ResultatRevocation> {
+  const acteur = await assertPermission("invitations.manage");
+  const lu = z.union([schemaLiens, schemaToutLeMonde.extend({ periodId: identifiantSchema })]).safeParse(entree);
+  // Message unique et sans détail : une sélection invalide vient d'un appel forgé, pas de l'écran.
+  if (!lu.success) return { erreur: "Sélection invalide : coche des personnes, puis révoque leur lien." };
+  const { periodId } = lu.data;
+  const tous = "tous" in lu.data;
+  const periode = await db.period.findUnique({ where: { id: periodId }, select: { id: true } });
+  if (!periode) return { erreur: "Période introuvable : recharge l'écran." };
+
+  // L'ordre de l'annuaire, jamais celui des clics : voir `renvoyerLiensEnMasse`.
+  const orderBy = [{ prenom: "asc" as const }, { nom: "asc" as const }];
+  let cibles;
+  if ("userIds" in lu.data) {
+    const identifiants = [...new Set(lu.data.userIds)];
+    cibles = await db.user.findMany({ where: { id: { in: identifiants } }, orderBy, select: CHAMPS_CIBLE });
+    const refus = refusDuLot(acteur, cibles, identifiants.length, "Aucun lien n'a été révoqué");
+    if (refus) return { erreur: refus };
+  } else {
+    // Tout le monde : seuls ceux qui ont un lien vivant — c'est le chiffre que l'écran a annoncé.
+    cibles = await db.user.findMany({ where: { ...perimetreToutLeMonde(acteur), invitations: { some: lienVivant(periodId) } }, orderBy, select: CHAMPS_CIBLE });
+  }
+
+  const liens = await db.invitation.findMany({ where: { userId: { in: cibles.map((c) => c.id) }, ...lienVivant(periodId) }, select: { id: true, userId: true } });
+  const parPersonne = new Map<string, string[]>();
+  for (const lien of liens) parPersonne.set(lien.userId, [...(parPersonne.get(lien.userId) ?? []), lien.id]);
+  const concernes = cibles.filter((c) => parPersonne.has(c.id));
+  const sansLien = cibles.filter((c) => !parPersonne.has(c.id)).map(nomDe);
+  // Rien à révoquer : inutile de réclamer un code pour une écriture à blanc (même règle qu'`appliquerGesteEnMasse`).
+  if (concernes.length === 0) {
+    return { erreur: sansLien.length > 0 ? `Aucun lien n'a été révoqué : personne dans la sélection n'a de lien en cours (${sansLien.join(", ")}).` : "Aucun lien n'a été révoqué : personne n'a de lien en cours." };
+  }
+
+  await exigerReauth(acteur, "/admin/membres");
+
+  for (const cible of concernes) {
+    const ids = parPersonne.get(cible.id) ?? [];
+    for (const id of ids) await revokeInvitation(id);
+    await audit(acteur, "invitation.revoquee", periodId, { userId: cible.id, liens: ids.length, enMasse: true, ...(tous ? { tous: true } : {}) });
+  }
+
+  revalidatePath("/admin/membres");
+  revalidatePath(`/admin/periodes/${periodId}`);
+
+  const n = concernes.length;
+  const phrases = [n === 1 ? "1 lien révoqué : il ne s'ouvre plus." : `${n} liens révoqués : ils ne s'ouvrent plus.`];
+  if (sansLien.length > 0) {
+    phrases.push(`${sansLien.length === 1 ? "1 personne n'avait" : `${sansLien.length} personnes n'avaient`} pas de lien en cours : ${sansLien.join(", ")}.`);
+  }
+  return { succes: phrases.join(" ") };
+}
+
+/* ------------------------------------------------------------------ */
+/* Envoyer l'invitation / Réinitialiser les accès, à plusieurs         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * « 3 personnes ignorées (déjà entrées) : … » — ce que le geste a sauté, compté et nommé. Pour « tout
+ * le monde », compté seulement : soixante noms ne se lisent pas, et ce n'est pas une liste qu'on a
+ * composée soi-même.
+ */
+function phraseSautes(liste: string[], motif: string, nommer: boolean): string {
+  return `${liste.length === 1 ? "1 personne ignorée" : `${liste.length} personnes ignorées`} (${motif})${nommer ? ` : ${liste.join(", ")}` : ""}.`;
+}
+
+/**
+ * **« Envoyer l'invitation » à chaque personne cochée — ou à tout le monde — qui n'est jamais entrée.**
+ *
+ * Le geste de masse d'`envoyerInvitationMembre` (src/actions/membres.ts), avec **ses verrous** :
+ * `invitations.manage`, `canEditUser`, portail exclu, période ouverte, code récent avant le premier
+ * envoi ; plus, comme les autres gestes de masse, pas son propre compte.
+ *
+ * **Qui est sauté, compté et nommé, et les autres partent** — des états ordinaires de l'annuaire :
+ * - **déjà entré** (`aDejaUnAcces`, la fonction de l'écran et de la garde unitaire) : pour eux, c'est
+ *   « Réinitialiser les accès » ; leur envoyer une bienvenue leur ferait rejouer l'installation ;
+ * - compte désactivé, adresse manquante : comme au renvoi du lien.
+ *
+ * Ce qui trahit un écran périmé refuse le lot entier (`refusDuLot`). **Une entrée d'audit par
+ * personne**, sous la même action que l'unitaire (`invitation.envoyee`).
+ */
+export async function envoyerInvitationsEnMasse(entree: unknown): Promise<ResultatRevocation> {
+  const acteur = await assertPermission("invitations.manage");
+  const lu = z.union([schemaLiens, schemaToutLeMonde.extend({ periodId: identifiantSchema })]).safeParse(entree);
+  if (!lu.success) return { erreur: "Sélection invalide : coche des personnes, puis envoie l'invitation." };
+  const { periodId } = lu.data;
+  const tous = "tous" in lu.data;
+  const champs = { ...CHAMPS_CIBLE, ...CHAMPS_TEMOINS_ACCES } as const;
+  const orderBy = [{ prenom: "asc" as const }, { nom: "asc" as const }];
+  let cibles;
+  if ("userIds" in lu.data) {
+    const identifiants = [...new Set(lu.data.userIds)];
+    cibles = await db.user.findMany({ where: { id: { in: identifiants } }, orderBy, select: champs });
+    const refus = refusDuLot(acteur, cibles, identifiants.length, "Aucune invitation n'est partie");
+    if (refus) return { erreur: refus };
+  } else {
+    cibles = await db.user.findMany({ where: perimetreToutLeMonde(acteur), orderBy, select: champs });
+  }
+  // Refus d'abord, code ensuite : un trimestre clos n'émet plus de lien valable.
+  const periode = await db.period.findUnique({ where: { id: periodId }, select: { statut: true } });
+  if (!periode) return { erreur: "Période introuvable : recharge l'écran." };
+  if (periode.statut === "CLOSE") return { erreur: "Période close : les liens ne sont plus valables." };
+
+  const dejaEntres = cibles.filter((c) => aDejaUnAcces(temoinsAcces(c))).map(nomDe);
+  const restants = cibles.filter((c) => !aDejaUnAcces(temoinsAcces(c)));
+  const inactifs = restants.filter((c) => !c.actif).map(nomDe);
+  const sansEmail = restants.filter((c) => c.actif && !c.email).map(nomDe);
+  const partants = restants.filter((c) => c.actif && c.email);
+  const sautes = [
+    ...(dejaEntres.length > 0 ? [phraseSautes(dejaEntres, "déjà entrées : pour elles, c'est « Réinitialiser les accès »", !tous)] : []),
+    ...(inactifs.length > 0 ? [phraseSautes(inactifs, "compte désactivé", !tous)] : []),
+    ...(sansEmail.length > 0 ? [phraseSautes(sansEmail, "sans adresse email", !tous)] : []),
+  ];
+  // Rien à envoyer : aucun code réclamé pour un envoi à blanc.
+  if (partants.length === 0) return { erreur: ["Aucune invitation n'est partie.", ...sautes].join(" ") };
+
+  await exigerReauth(acteur, "/admin/membres");
+
+  let envoyees = 0;
+  const echecs: string[] = [];
+  for (const cible of partants) {
+    const parti = await envoyerInvitation(cible.id, periodId, "invitation", { parcours: "force" });
+    if (parti) envoyees++;
+    else echecs.push(nomDe(cible));
+    await audit(acteur, "invitation.envoyee", periodId, { userId: cible.id, parti, enMasse: true, ...(tous ? { tous: true } : {}) });
+  }
+
+  revalidatePath("/admin/membres");
+  revalidatePath(`/admin/periodes/${periodId}`);
+  const phrases = [envoyees === 1 ? "1 invitation envoyée." : `${envoyees} invitations envoyées.`, ...sautes];
+  if (echecs.length > 0) phrases.push(`${echecs.length} envoi${echecs.length > 1 ? "s" : ""} n'${echecs.length > 1 ? "ont" : "a"} pas pu partir : ${echecs.join(", ")}.`);
+  return { succes: phrases.join(" ") };
+}
+
+/**
+ * **« Réinitialiser les accès » de chaque personne cochée — ou de tout le monde — déjà entrée.**
+ *
+ * Mot de passe et double authentification effacés, tous les liens révoqués, tous les appareils
+ * déconnectés, et une invitation neuve qui rejoue le parcours d'entrée complet — **pour chaque
+ * personne du lot**. C'est le geste le plus lourd de la barre après la suppression : il met des
+ * gens dehors, et il écrit à ceux qui peuvent recevoir.
+ *
+ * **Les verrous du geste unitaire** (`reinitialiserAccesMembre`) : `members.manage` (et non
+ * `invitations.manage`), `canEditUser` sur chaque personne, le compte du portail intouchable (c'est
+ * la porte de secours du club), et le code récent **une fois**, avant la première remise à zéro. Plus,
+ * comme les autres gestes de masse : **pas son propre compte** — le remettre à zéro en lot
+ * déconnecterait celui qui appuie au milieu de son geste.
+ *
+ * **Tout ou rien sur les refus** (portail, soi-même, compte non modifiable, introuvable) : on ne
+ * remet pas à zéro la moitié d'une liste périmée. **Qui n'est jamais entré est sauté, compté et
+ * nommé** (la garde unitaire le refuse : rien à effacer, c'est « Envoyer l'invitation »). Un compte
+ * déjà entré mais sans adresse, désactivé ou sans période active **est** réinitialisé — comme à
+ * l'unité — sans rien recevoir, et le message le dit.
+ *
+ * **Une entrée d'audit par personne**, sous la même action que l'unitaire
+ * (`membre.acces_reinitialise`), avec ce qu'elle avait et ce qui lui a été envoyé.
+ */
+export async function reinitialiserAccesEnMasse(entree: unknown): Promise<ResultatRevocation> {
+  const acteur = await assertPermission("members.manage");
+  const lu = z.union([z.object({ userIds: z.array(identifiantSchema).min(1).max(SELECTION_MAX) }), schemaToutLeMonde]).safeParse(entree);
+  if (!lu.success) return { erreur: "Sélection invalide : coche des personnes, puis réinitialise leurs accès." };
+  const tous = "tous" in lu.data;
+  const champs = { ...CHAMPS_CIBLE, totpSecret: true, ...CHAMPS_TEMOINS_ACCES } as const;
+  const orderBy = [{ prenom: "asc" as const }, { nom: "asc" as const }];
+  let cibles;
+  if ("userIds" in lu.data) {
+    const identifiants = [...new Set(lu.data.userIds)];
+    cibles = await db.user.findMany({ where: { id: { in: identifiants } }, orderBy, select: champs });
+    const refus = refusDuLot(acteur, cibles, identifiants.length, "Aucun accès n'a été réinitialisé");
+    if (refus) return { erreur: refus };
+  } else {
+    cibles = await db.user.findMany({ where: perimetreToutLeMonde(acteur), orderBy, select: champs });
+  }
+  const jamaisEntres = cibles.filter((c) => !aDejaUnAcces(temoinsAcces(c))).map(nomDe);
+  const concernes = cibles.filter((c) => aDejaUnAcces(temoinsAcces(c)));
+  const sautes = jamaisEntres.length > 0 ? [phraseSautes(jamaisEntres, "jamais entrées : pour elles, c'est « Envoyer l'invitation »", !tous)] : [];
+  // Personne à réinitialiser : aucun code réclamé pour une écriture à blanc.
+  if (concernes.length === 0) return { erreur: ["Aucun accès n'a été réinitialisé.", ...sautes].join(" ") };
+
+  // Le code récent avant la première remise à zéro : après, des gens sont déjà dehors.
+  await exigerReauth(acteur, "/admin/membres");
+
+  const sansInvitation: string[] = [];
+  let invitations = 0;
+  for (const cible of concernes) {
+    const issue = await remettreAccesAZero(cible);
+    if (issue.lienRenvoye) invitations++;
+    else sansInvitation.push(nomDe(cible));
+    await audit(acteur, "membre.acces_reinitialise", cible.id, {
+      avaitMotDePasse: !!cible.passwordHash,
+      avaitDeuxFa: !!cible.totpSecret && !!cible.totpActiveAt,
+      ...issue,
+      enMasse: true,
+      ...(tous ? { tous: true } : {}),
+    });
+  }
+
+  revalidatePath("/admin/membres");
+  revalidatePath("/admin/periodes");
+
+  const n = concernes.length;
+  const phrases = [
+    n === 1 ? "1 accès réinitialisé : ses appareils sont déconnectés." : `${n} accès réinitialisés : leurs appareils sont déconnectés.`,
+    invitations === 1 ? "1 invitation neuve est partie." : `${invitations} invitations neuves sont parties.`,
+  ];
+  // Sans adresse, désactivé ou sans période active : remis à zéro, mais rien n'est parti — à dire.
+  if (sansInvitation.length > 0) {
+    phrases.push(`Rien n'a pu être envoyé à ${sansInvitation.length === 1 ? "1 personne" : `${sansInvitation.length} personnes`} (sans adresse, compte désactivé ou pas inscrite à une période active) : ${sansInvitation.join(", ")}.`);
+  }
+  phrases.push(...sautes);
   return { succes: phrases.join(" ") };
 }

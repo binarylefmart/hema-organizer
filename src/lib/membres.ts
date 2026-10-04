@@ -50,3 +50,53 @@ export function periodeDuLien(periodes: readonly { id: string; nom: string; stat
   const active = periodes.find((p) => p.statut === "ACTIVE");
   return active ? { id: active.id, nom: active.nom } : null;
 }
+
+/**
+ * **Ce qui dit qu'une personne est déjà entrée**, lu sur son compte : un lien personnel déjà ouvert
+ * (`usedAt` posé, quelle que soit la période), un mot de passe, une double authentification active,
+ * ou une session ouverte.
+ */
+export type TemoinsAcces = { aOuvertUnLien: boolean; aUnMotDePasse: boolean; aLaDeuxFa: boolean; aUneSession: boolean };
+
+/**
+ * **A-t-elle déjà un accès ?** C'est la frontière entre deux gestes qu'on confondait :
+ *
+ * - **« Envoyer l'invitation »** n'a de sens que pour quelqu'un qui n'est **jamais entré** : il
+ *   n'efface rien, il envoie la première clé, avec le parcours d'entrée complet ;
+ * - **« Réinitialiser les accès »** n'a de sens que pour quelqu'un qui **est déjà entré** : il efface
+ *   mot de passe et double authentification, révoque les liens, ferme les sessions, puis renvoie une
+ *   invitation.
+ *
+ * Proposer le premier à quelqu'un d'installé lui enverrait une « bienvenue » absurde ; proposer le
+ * second à quelqu'un qui n'est jamais entré annoncerait l'effacement de ce qui n'existe pas. Une seule
+ * fonction, lue par l'écran (quel bouton montrer, combien de gens comptent) **et** par les gardes
+ * serveur (refuser l'unitaire, sauter en masse) : si les deux posaient la question chacun à sa façon,
+ * un bouton finirait par promettre un geste que le serveur refuse.
+ */
+export function aDejaUnAcces(t: TemoinsAcces): boolean {
+  return t.aOuvertUnLien || t.aUnMotDePasse || t.aLaDeuxFa || t.aUneSession;
+}
+
+/**
+ * **Les colonnes à lire pour répondre**, en `select` Prisma : de quoi construire les témoins sans
+ * rapatrier ni secret ni historique — `passwordHash` n'est lu que pour savoir s'il est nul.
+ */
+export const CHAMPS_TEMOINS_ACCES = {
+  passwordHash: true,
+  totpActiveAt: true,
+  _count: { select: { authSessions: true, invitations: { where: { usedAt: { not: null } } } } },
+} as const;
+
+/** Les témoins d'un compte lu avec {@link CHAMPS_TEMOINS_ACCES}. */
+export function temoinsAcces(u: {
+  passwordHash?: string | null;
+  totpActiveAt?: Date | null;
+  _count?: { authSessions?: number; invitations?: number };
+}): TemoinsAcces {
+  return {
+    aOuvertUnLien: (u._count?.invitations ?? 0) > 0,
+    aUnMotDePasse: Boolean(u.passwordHash),
+    aLaDeuxFa: Boolean(u.totpActiveAt),
+    aUneSession: (u._count?.authSessions ?? 0) > 0,
+  };
+}

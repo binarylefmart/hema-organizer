@@ -19,14 +19,33 @@ import {
 import {
   appliquerGesteEnMasse,
   definirRolesEnMasse,
+  envoyerInvitationsEnMasse,
+  reinitialiserAccesEnMasse,
   renvoyerLiensEnMasse,
+  revoquerLiensEnMasse,
   type ResultatGesteEnMasse,
   type ResultatLiensEnMasse,
   type ResultatRolesEnMasse,
 } from "./actions";
 import { resumeRoles, texteConfirmationRoles, texteHorsPage, texteSansCase, type LigneRole } from "./selection-roles";
 import { INVITE_SELECTION, libelleGeste, resumeGeste, texteConfirmationGeste, type GesteMasse, type LigneGeste } from "./selection-gestes";
-import { resumeLiens, texteConfirmationLiens, texteRienAEnvoyer, type LigneLien } from "./selection-liens";
+import {
+  resumeInvitations,
+  resumeLiens,
+  resumeReinitialisation,
+  resumeRevocation,
+  texteConfirmationInvitations,
+  texteConfirmationLiens,
+  texteConfirmationReinitialisation,
+  texteConfirmationRevocation,
+  texteRienAEnvoyer,
+  texteRienAInviter,
+  texteRienAReinitialiser,
+  texteRienARevoquer,
+  type LigneAcces,
+  type LigneLien,
+  type LigneRevocation,
+} from "./selection-liens";
 
 /**
  * **Cocher plusieurs comptes, puis agir une seule fois**.
@@ -141,7 +160,7 @@ const libelleRole = (valeur: string) => ENTREES_ROLES.find((e) => e.valeur === v
  * elle-même** : un booléen suffit à l'écran, et quatre-vingts adresses n'ont rien à faire dans le
  * paquet du navigateur.
  */
-export type LigneMembre = LigneRole & LigneGeste & LigneLien;
+export type LigneMembre = LigneRole & LigneGeste & LigneLien & LigneRevocation & LigneAcces;
 
 export function ZoneSelection({
   selectionnables,
@@ -348,6 +367,71 @@ export function ZoneSelection({
     });
   };
 
+  /**
+   * **Révoquer leur lien** : le contraire du renvoi, sur la même ligne de la barre. Même précaution
+   * que le renvoi — le chiffre annoncé est celui des liens qui meurent, pas celui des cases, et
+   * quand personne n'a de lien en cours on ne demande rien (ni à la personne, ni un code au serveur).
+   */
+  const appliquerRevocation = () => {
+    const lignes = lotCoche();
+    if (lignes.length === 0 || !periodeLienId) return;
+    const resume = resumeRevocation(lignes);
+    if (resume.liens === 0) {
+      setMessage({ type: "erreur", texte: texteRienARevoquer(resume) });
+      return;
+    }
+    if (!window.confirm(texteConfirmationRevocation(resume))) return;
+    demarrer(async () => {
+      try {
+        terminer(await revoquerLiensEnMasse({ periodId: periodeLienId, userIds: lignes.map((l) => l.id) }));
+      } catch (e) {
+        panne(e, "La révocation des liens");
+      }
+    });
+  };
+
+  /**
+   * **Envoyer l'invitation** aux cochés qui ne sont jamais entrés, et **réinitialiser les accès** de
+   * ceux qui le sont : deux gestes qui se partagent la sélection selon `aDejaUnAcces`. Chacun saute
+   * l'autre moitié et la compte ; quand il ne reste personne, on ne demande rien (ni confirmation, ni
+   * code au serveur).
+   */
+  const appliquerInvitations = () => {
+    const lignes = lotCoche();
+    if (lignes.length === 0 || !periodeLienId) return;
+    const resume = resumeInvitations(lignes);
+    if (resume.emails === 0) {
+      setMessage({ type: "erreur", texte: texteRienAInviter(resume) });
+      return;
+    }
+    if (!window.confirm(texteConfirmationInvitations(resume))) return;
+    demarrer(async () => {
+      try {
+        terminer(await envoyerInvitationsEnMasse({ periodId: periodeLienId, userIds: lignes.map((l) => l.id) }));
+      } catch (e) {
+        panne(e, "L'envoi des invitations");
+      }
+    });
+  };
+
+  const appliquerReinitialisation = () => {
+    const lignes = lotCoche();
+    if (lignes.length === 0) return;
+    const resume = resumeReinitialisation(lignes);
+    if (resume.total === 0) {
+      setMessage({ type: "erreur", texte: texteRienAReinitialiser(resume) });
+      return;
+    }
+    if (!window.confirm(texteConfirmationReinitialisation(resume))) return;
+    demarrer(async () => {
+      try {
+        terminer(await reinitialiserAccesEnMasse({ userIds: lignes.map((l) => l.id) }));
+      } catch (e) {
+        panne(e, "La réinitialisation des accès");
+      }
+    });
+  };
+
   const appliquerGeste = (geste: GesteMasse) => {
     const lignes = lotCoche();
     if (lignes.length === 0) return;
@@ -505,14 +589,32 @@ export function ZoneSelection({
               dans « leur accès » : renvoyer un lien ne coupe ni ne rend un accès, il expédie un email à
               chaque personne cochée. Le bouton porte le même mot que celui d'une ligne (« Renvoyer le
               lien »), parce que c'est le même geste — et ses verrous sont les mêmes, code 2FA compris. */}
+          {/* **Leur clé d'entrée** : renvoyer ou révoquer le lien, et envoyer l'invitation à qui n'est
+              jamais entré — trois gestes de `invitations.manage`, qui ne touchent pas au compte.
+              « Révoquer » est en variante danger, comme sur la fiche d'un membre : il ferme une porte. */}
           {peutRenvoyerLien && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-base text-texte-secondaire">Leur lien personnel :</span>
               <Bouton variante="secondaire" taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={appliquerLiens}>
                 Renvoyer le lien
               </Bouton>
+              <Bouton variante="danger" taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={appliquerRevocation}>
+                Révoquer le lien
+              </Bouton>
+              <Bouton variante="secondaire" taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={appliquerInvitations}>
+                Envoyer l&apos;invitation
+              </Bouton>
             </div>
           )}
+          {/* **Réinitialiser les accès** : ce geste-là touche au compte (mot de passe, double
+              authentification, appareils), d'où sa ligne et `members.manage` — la permission de la
+              barre entière, donc toujours là quand la barre l'est. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-base text-texte-secondaire">Leur accès déjà installé :</span>
+            <Bouton variante="danger" taille="petite" disabled={bloque} className="flex-1 basis-32" onClick={appliquerReinitialisation}>
+              Réinitialiser les accès
+            </Bouton>
+          </div>
         </div>
       )}
 

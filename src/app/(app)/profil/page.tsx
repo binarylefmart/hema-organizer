@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fragment } from "react";
+import { Fragment, Suspense } from "react";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { requireUser } from "@/lib/auth/current-user";
@@ -24,6 +24,7 @@ import { TYPES_ESSENTIELS, lignesNotificationsMembre } from "@/lib/notifications
 import { FormulaireDeuxFa } from "./FormulaireDeuxFa";
 import { BoutonDeconnexion } from "./BoutonDeconnexion";
 import { SelecteurTheme } from "./SelecteurTheme";
+import { EncartMiseAJour } from "./EncartMiseAJour";
 import { choixOuDefaut } from "@/lib/themes";
 import { formatDateHeure } from "@/lib/dates";
 import { NB_CODES_SECOURS, nombreCodesRestants } from "@/lib/auth/codes-secours";
@@ -168,6 +169,13 @@ export default async function PageProfil({ searchParams }: Props) {
             administrateurs techniques, pas seulement les nominatifs : la réserver aux comptes
             nommés enfermerait dehors le compte du portail — celui-là même qui détient le mot de
             passe et la double authentification. */}
+        {/* Une image plus récente attend le redéploiement : dit aux administrateurs seulement, et
+            juste au-dessus de leur porte d'entrée, là où ils passent avant toute opération. */}
+        {admin && (
+          <Suspense fallback={null}>
+            <EncartMiseAJour />
+          </Suspense>
+        )}
         {admin && (
           <Carte id="acces-admin" titre="Accès administrateur">
             {/* Trois états, trois phrases : il reste à régler / on peut s'élever / on y est déjà.

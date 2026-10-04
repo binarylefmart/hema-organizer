@@ -11,6 +11,7 @@ import { revoquerInvitation } from "@/actions/periodes";
 import { lienARenouveler } from "@/lib/invitations";
 import { definirActif, definirNotificationsMembre, envoyerLienMembre, modifierMembre, reinitialiserAccesMembre, supprimerMembre } from "@/actions/membres";
 import { lignesNotificationsMembre } from "@/lib/notifications/membre";
+import { aDejaUnAcces } from "@/lib/membres";
 import { Carte } from "@/components/ui/Carte";
 import { CLASSES_CONTROLE, Case, Champ } from "@/components/ui/Champ";
 import { Select } from "@/components/ui/Select";
@@ -33,7 +34,7 @@ export default async function PageMembre({ params }: Props) {
     include: {
       periodes: { include: { period: true }, orderBy: { period: { dateDebut: "desc" } } },
       invitations: { where: { revokedAt: null }, orderBy: { createdAt: "desc" } },
-      _count: { select: { attendances: true, ateliers: true, invitations: { where: { usedAt: { not: null } } } } },
+      _count: { select: { attendances: true, ateliers: true, authSessions: true, invitations: { where: { usedAt: { not: null } } } } },
     },
   });
   if (!m) notFound();
@@ -79,9 +80,14 @@ export default async function PageMembre({ params }: Props) {
   // Effacer la personne et tout son historique est irréversible : bouton caché aux instructeurs
   const peutSupprimer = can(acteur, "members.delete");
   // Remettre l'accès à zéro (mot de passe, 2FA, liens, appareils) : même droit que le reste de la
-  // fiche. Le bouton n'a de sens que s'il y a quelque chose à effacer — proposer « réinitialiser »
-  // à quelqu'un qui n'a ni mot de passe ni 2FA ni lien ne ferait qu'inquiéter pour rien.
-  const aQuelqueChoseAEffacer = Boolean(m.passwordHash) || Boolean(m.totpActiveAt) || m.invitations.length > 0;
+  // fiche. Le bouton n'a de sens que pour qui est **déjà entré** — c'est la garde même de l'action
+  // (`aDejaUnAcces`, src/lib/membres.ts) : à quelqu'un qui ne l'est jamais, on envoie l'invitation.
+  const aQuelqueChoseAEffacer = aDejaUnAcces({
+    aOuvertUnLien: m._count.invitations > 0,
+    aUnMotDePasse: Boolean(m.passwordHash),
+    aLaDeuxFa: Boolean(m.totpActiveAt),
+    aUneSession: m._count.authSessions > 0,
+  });
   const peutReinitialiser = modifiable && !portail && aQuelqueChoseAEffacer;
   /*
    * **Nommer ou retirer un administrateur depuis la fiche**. Les verrous ne bougent pas d'un cran :
@@ -382,7 +388,7 @@ export default async function PageMembre({ params }: Props) {
                             </BoutonAction>
                           )}
                           {inv && (
-                            <BoutonAction action={revoquerInvitation.bind(null, inv.id)} variante="danger" confirmation={`Révoquer le lien de ${m.prenom} pour « ${p.nom} » ? Il ne pourra plus s'en servir tant qu'un nouveau ne lui est pas envoyé.`}>
+                            <BoutonAction action={revoquerInvitation.bind(null, inv.id, `/admin/membres/${m.id}`)} variante="danger" confirmation={`Révoquer le lien de ${m.prenom} pour « ${p.nom} » ? Il ne pourra plus s'en servir tant qu'un nouveau ne lui est pas envoyé.`}>
                               Révoquer
                             </BoutonAction>
                           )}

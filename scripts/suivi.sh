@@ -149,9 +149,13 @@ mesurer_portes() {
 # l'invente pas. La durée de la dernière construction réussie est affichée à côté : c'est un fait
 # mesuré, pas une promesse.
 #
+# Les champs voyagent séparés par `|`, chaque vide remplacé par `-` : une conclusion vide (construction
+# en cours) entre deux tabulations disparaissait au `read` — la tabulation est un blanc pour bash, et
+# deux blancs de suite n'en font qu'un —, décalant toutes les colonnes (barre à 0, date en guise de tag).
+#
 # Les dépôts suivis se lisent dans leur `origin` : rien n'est écrit en dur ici. Interrogé toutes
 # les 15 s pendant une construction, toutes les minutes sinon — loin du plafond de l'API.
-C_LIGNES=(); C_DERNIERE=0; C_ENCOURS=0
+C_DERNIERE=0; C_ENCOURS=0
 depots_suivis() {
   local d url vus=" "
   for d in "$RACINE" "$MIROIR"; do
@@ -167,41 +171,85 @@ duree() { # $1 secondes
   if [ "$t" -ge 60 ]; then printf '%d min %02d s' $((t/60)) $((t%60)); else printf '%d s' "$t"; fi
 }
 secondes() { date -d "$1" +%s 2>/dev/null || echo 0; }
+# Ce que GitHub a dit, en enregistrements bruts : les temps se recalculent à chaque image (toutes les
+# `INTERVALLE` s), pas seulement à chaque interrogation. Un compteur figé 15 s se lit comme une panne.
+C_ENREG=(); declare -A C_PREC_JOBS=()
 mesurer_constructions() {
-  C_LIGNES=(); C_ENCOURS=0; C_DERNIERE=$(date +%s)
-  command -v gh >/dev/null || { C_LIGNES+=("   $(pastille gris) ${GRIS}gh absent : rien à lire chez GitHub${Z}"); return; }
-  local r runs id statut concl branche debut fin maj nom jstat jconcl faites total jdeb jfin precedent pas coul
-  local maintenant; maintenant=$(date +%s)
+  C_ENREG=(); C_ENCOURS=0; C_DERNIERE=$(date +%s)
+  command -v gh >/dev/null || { C_ENREG+=("absent"); return; }
+  local r runs id statut concl branche debut maj precedent prec_id prec_d
   while read -r r; do
     runs=$(gh run list --repo "$r" --limit 10 --json databaseId,status,conclusion,headBranch,createdAt,updatedAt \
-      --jq '.[] | [.databaseId,.status,(.conclusion // "-"),.headBranch,.createdAt,.updatedAt] | @tsv' 2>/dev/null)
-    if [ -z "$runs" ]; then C_LIGNES+=("   $(pastille gris) $(printf '%-22s' "${r#*/}") ${GRIS}injoignable ou aucune construction${Z}"); continue; fi
-    IFS=$'\t' read -r id statut concl branche debut maj <<<"$(head -1 <<<"$runs")"
-    # La dernière construction réussie **avant** celle-ci : sa durée sert de repère.
-    precedent=$(tail -n +2 <<<"$runs" | awk -F'\t' '$3=="success"{print $5"\t"$6; exit}')
-    pas=""
-    [ -n "$precedent" ] && pas=" · la précédente : $(duree $(( $(secondes "${precedent#*$'\t'}") - $(secondes "${precedent%%$'\t'*}") )))"
-    debut=$(secondes "$debut")
-    if [ "$statut" = "completed" ]; then
-      fin=$(secondes "$maj")
-      case "$concl" in success) coul=vert; mot="${V}réussie${Z}" ;; *) coul=rouge; mot="${R}${concl}${Z}" ;; esac
-      C_LIGNES+=("   $(pastille $coul) $(printf '%-22s' "${r#*/}") ${branche}  ${mot} ${GRIS}en $(duree $((fin-debut))) · il y a $(duree $((maintenant-fin)))${Z}")
-      continue
-    fi
-    C_ENCOURS=1
-    C_LIGNES+=("   $(pastille jaune) $(printf '%-22s' "${r#*/}") ${branche}  ${J}en cours${Z} ${GRIS}depuis $(duree $((maintenant-debut)))${pas}${Z}")
-    while IFS=$'\t' read -r nom jstat jconcl faites total jdeb jfin; do
-      [ -n "$nom" ] || continue
-      if [ "$jstat" = "completed" ]; then
-        [ "$jconcl" = "success" ] && sym="${V}✓${Z}" || sym="${R}✗${Z}"
-        t=$(( $(secondes "$jfin") - $(secondes "$jdeb") ))
-      else
-        sym="${J}▸${Z}"; t=$(( maintenant - $(secondes "$jdeb") ))
+      --jq '.[] | [.databaseId,.status,.conclusion,.headBranch,.createdAt,.updatedAt] | map(if . == null or . == "" then "-" else tostring end) | join("|")' 2>/dev/null)
+    if [ -z "$runs" ]; then C_ENREG+=("muet|${r#*/}"); continue; fi
+    IFS='|' read -r id statut concl branche debut maj <<<"$(head -1 <<<"$runs")"
+    # La dernière construction réussie **avant** celle-ci : sa durée, et celle de chacune de ses
+    # tâches, servent de repère. C'est une mesure passée, affichée comme telle.
+    precedent=$(tail -n +2 <<<"$runs" | awk -F'|' '$3=="success"{print $1"|"$5"|"$6; exit}')
+    prec_id=${precedent%%|*}; prec_d=0
+    if [ -n "$precedent" ]; then
+      IFS='|' read -r _ pd pf <<<"$precedent"
+      prec_d=$(( $(secondes "$pf") - $(secondes "$pd") ))
+      if [ "$statut" != "completed" ] && [ -z "${C_PREC_JOBS[$prec_id]:-}" ]; then
+        C_PREC_JOBS[$prec_id]=1
+        while IFS='|' read -r jn jd jf; do
+          [ -n "$jn" ] && C_PREC_JOBS["$prec_id|$jn"]=$(( $(secondes "$jf") - $(secondes "$jd") ))
+        done < <(gh run view "$prec_id" --repo "$r" --json jobs --jq '.jobs[] | [.name,.startedAt,.completedAt] | join("|")' 2>/dev/null)
       fi
-      C_LIGNES+=("     ${sym} $(printf '%-40.40s' "$nom") $(barre "$faites" "$total" 18 "$([ "$jstat" = completed ] && echo "$V" || echo "$B")")  ${GRIS}$(duree "$t")${Z}")
+    fi
+    C_ENREG+=("run|${r#*/}|$statut|$concl|$branche|$(secondes "$debut")|$(secondes "$maj")|$prec_d")
+    [ "$statut" = "completed" ] && continue
+    C_ENCOURS=1
+    while IFS='|' read -r nom jstat jconcl faites total jdeb jfin etape; do
+      [ -n "$nom" ] || continue
+      jdeb=$([ "$jdeb" = "-" ] && echo 0 || secondes "$jdeb"); jfin=$([ "$jfin" = "-" ] && echo 0 || secondes "$jfin")
+      C_ENREG+=("job|$nom|$jstat|$jconcl|$faites|$total|$jdeb|$jfin|$etape|${C_PREC_JOBS["$prec_id|$nom"]:-0}")
     done < <(gh run view "$id" --repo "$r" --json jobs \
-      --jq '.jobs[] | [.name,.status,(.conclusion // "-"),([.steps[]|select(.status=="completed")]|length),(.steps|length),(.startedAt // ""),(.completedAt // "")] | @tsv' 2>/dev/null)
+      --jq '.jobs[] | [.name,.status,.conclusion,([.steps[]|select(.status=="completed")]|length),(.steps|length),.startedAt,.completedAt,([.steps[]|select(.status=="in_progress")|.name][0])] | map(if . == null or . == "" then "-" else tostring end) | join("|")' 2>/dev/null)
   done < <(depots_suivis)
+}
+
+afficher_constructions() {
+  local e maintenant; maintenant=$(date +%s)
+  # Largeurs tirées de la fenêtre : sur un terminal étroit, une ligne qui passe à la ligne casse la
+  # lecture en colonne bien plus qu'un nom tronqué.
+  local large_nom=$(( COLS - 46 )) large_barre=18
+  [ "$COLS" -lt 90 ] && large_barre=12 && large_nom=$(( COLS - 40 ))
+  [ "$large_nom" -gt 40 ] && large_nom=40; [ "$large_nom" -lt 14 ] && large_nom=14
+  for e in "${C_ENREG[@]}"; do
+    IFS='|' read -r genre a b c d f g h i j <<<"$e"
+    case "$genre" in
+      absent) ligne "   $(pastille gris) ${GRIS}gh absent : rien à lire chez GitHub${Z}" ;;
+      muet) ligne "   $(pastille gris) $(printf '%-16s' "$a") ${GRIS}injoignable ou aucune construction${Z}" ;;
+      run) # a=dépôt b=statut c=conclusion d=tag f=début g=maj h=durée précédente
+        local repere=""; [ "${h:-0}" -gt 0 ] && repere=" · précédente $(duree "$h")"
+        if [ "$b" = "completed" ]; then
+          if [ "$c" = "success" ]; then ligne "   $(pastille vert) $(printf '%-16s' "$a") ${d}  ${V}réussie${Z} ${GRIS}en $(duree $((g-f))) · il y a $(duree $((maintenant-g)))${Z}"
+          else ligne "   $(pastille rouge) $(printf '%-16s' "$a") ${d}  ${R}${c}${Z} ${GRIS}il y a $(duree $((maintenant-g)))${Z}"; fi
+        else
+          ligne "   $(pastille jaune) $(printf '%-16s' "$a") ${d}  ${J}en cours${Z} ${GRIS}$(duree $((maintenant-f)))${repere}${Z}"
+        fi ;;
+      job) # a=nom b=statut c=conclusion d=étapes faites f=total g=début h=fin i=étape en cours j=durée précédente
+        local sym t coul
+        if [ "$b" = "completed" ]; then
+          [ "$c" = "success" ] && sym="${V}✓${Z}" || sym="${R}✗${Z}"; t=$(( h - g )); coul=$V
+        elif [ "${g:-0}" -gt 0 ]; then sym="${J}▸${Z}"; t=$(( maintenant - g )); coul=$B
+        else sym="${GRIS}·${Z}"; t=0; coul=$GRIS; fi
+        ligne "     ${sym} $(printf "%-${large_nom}.${large_nom}s" "$a") $(barre "$d" "$f" "$large_barre" "$coul")  ${GRIS}$(duree "$t")${Z}"
+        if [ "$b" != "completed" ] && [ "${g:-0}" -gt 0 ]; then
+          # La seconde barre compare au temps qu'a pris la même tâche la fois précédente : une
+          # étape longue (construire l'image) ne fait pas bouger la première pendant des minutes.
+          local suite="${GRIS}étape : ${i/-/…}${Z}"
+          if [ "${j:-0}" -gt 0 ]; then
+            local fait=$t; [ "$fait" -ge "$j" ] && fait=$(( j - 1 ))
+            ligne "       ${suite}"
+            ligne "       $(barre "$fait" "$j" "$large_barre" "$GRIS" | sed -E 's/ +[0-9]+%.*//')  ${GRIS}$(duree "$t") sur $(duree "$j") la fois précédente${Z}"
+          else
+            ligne "       ${suite}"
+          fi
+        fi ;;
+    esac
+  done
 }
 
 # ── L'écran ────────────────────────────────────────────────────────────────────────────────────
@@ -229,7 +277,7 @@ while :; do
   titre "  CONSTRUCTIONS"
   attente=60; [ "$C_ENCOURS" -eq 1 ] && attente=15
   [ $(( $(date +%s) - C_DERNIERE )) -ge "$attente" ] && mesurer_constructions
-  for l in "${C_LIGNES[@]}"; do ligne "$l"; done
+  afficher_constructions
   ligne "   ${GRIS}lues chez GitHub à $(date -d "@$C_DERNIERE" +%H:%M:%S)${Z}"
   ligne ""
 

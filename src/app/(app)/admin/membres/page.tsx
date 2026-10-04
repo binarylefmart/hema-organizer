@@ -5,8 +5,8 @@ import { requirePermission } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
 import { can, canEditUser, estCompteDeService, peutNommerAdmin } from "@/lib/permissions";
-import { creerMembre, definirActif, definirActifTous, definirEmailMembre, envoyerLienMembre } from "@/actions/membres";
-import { periodeDuLien } from "@/lib/membres";
+import { creerMembre, definirActif, definirActifTous, definirEmailMembre, envoyerInvitationMembre, envoyerLienMembre, reinitialiserAccesMembre, supprimerMembre } from "@/actions/membres";
+import { aDejaUnAcces, periodeDuLien } from "@/lib/membres";
 import { Carte } from "@/components/ui/Carte";
 import { Pastille, PastillePersonne } from "@/components/ui/Pastille";
 import { Champ } from "@/components/ui/Champ";
@@ -25,6 +25,16 @@ import { SelecteurRole } from "./SelecteurRole";
 import { SelecteurBureau } from "./SelecteurBureau";
 import { LIBELLE_BUREAU } from "./bureau";
 import { CaseMembre, ZoneSelection } from "./SelectionRoles";
+import { envoyerInvitationsEnMasse, reinitialiserAccesEnMasse, revoquerLienMembre, revoquerLiensEnMasse } from "./actions";
+import { DEJA_ENTRE, JAMAIS_ENTRE, lienVivant, perimetreToutLeMonde, RECOIT_INVITATION } from "./tout-le-monde";
+import {
+  texteConfirmationInvitationsTous,
+  texteConfirmationInvitationUnitaire,
+  texteConfirmationReinitialisationTous,
+  texteConfirmationReinitialisationUnitaire,
+  texteConfirmationRenvoiTous,
+  texteConfirmationRevocationTous,
+} from "./selection-liens";
 
 export const metadata: Metadata = { title: "Membres" };
 
@@ -181,7 +191,7 @@ export default async function PageMembres({ searchParams }: Props) {
    */
   const idsAffiches = membres.map((m) => m.id);
   const maintenant = new Date();
-  const [dejaOuverts, liensEnCours, liensDeLaPeriode] = await Promise.all([
+  const [dejaOuverts, liensEnCours, liensDeLaPeriode, avecSession] = await Promise.all([
     db.invitation.groupBy({ by: ["userId"], where: { userId: { in: idsAffiches }, usedAt: { not: null } } }),
     periodeLien
       ? db.invitation.groupBy({
@@ -192,10 +202,37 @@ export default async function PageMembres({ searchParams }: Props) {
     periodeLien
       ? db.invitation.groupBy({ by: ["userId"], where: { userId: { in: idsAffiches }, periodId: periodeLien.id } })
       : Promise.resolve([] as Array<{ userId: string }>),
+    // Une session ouverte est l'un des quatre témoins de « déjà entré » (`aDejaUnAcces`) : un agrégat
+    // de plus sur les seules lignes affichées, comme les liens.
+    db.authSession.groupBy({ by: ["userId"], where: { userId: { in: idsAffiches } } }),
   ]);
+  const aUneSession = new Set(avecSession.map((g) => g.userId));
   const aDejaOuvertUnLien = new Set(dejaOuverts.map((g) => g.userId));
   const aUnLienEnCours = new Set(liensEnCours.map((g) => g.userId));
   const aRecuUnLien = new Set(liensDeLaPeriode.map((g) => g.userId));
+  /*
+   * **Les chiffres du volet « Pour tout le monde »**, comptés avec les filtres mêmes que le serveur
+   * appliquera (`tout-le-monde.ts`) : la confirmation annonce le geste, pas une estimation. Quatre
+   * comptes, pas une lecture des comptes eux-mêmes.
+   */
+  const peutReinitialiser = can(acteur, "members.manage");
+  const peutLiensTous = can(acteur, "invitations.manage") && periodeLien !== null;
+  const perimetreTous = perimetreToutLeMonde(acteur);
+  const compter = (where: object, si: boolean) => (si ? db.user.count({ where: { ...perimetreTous, ...where } }) : Promise.resolve(0));
+  const [tousInvitation, tousDejaEntres, tousReinit, tousReinitEmails, tousJamaisEntres, tousRenvoi, tousRevocation] = await Promise.all([
+    // « Envoyer l'invitation » part aux jamais entrés, actifs, avec une adresse ; les déjà entrés sont comptés à part.
+    compter({ ...JAMAIS_ENTRE, actif: true, email: { not: null } }, peutLiensTous),
+    compter(DEJA_ENTRE, peutLiensTous),
+    // « Réinitialiser les accès » : les déjà entrés, dont ceux qui recevront l'invitation renvoyée.
+    compter(DEJA_ENTRE, peutReinitialiser),
+    compter({ ...DEJA_ENTRE, ...RECOIT_INVITATION }, peutReinitialiser),
+    compter(JAMAIS_ENTRE, peutReinitialiser),
+    // Exactement la population de `renvoyerTousLesLiens` : les inscrits actifs de la période, avec une adresse.
+    peutLiensTous && periodeLien
+      ? db.periodMember.count({ where: { periodId: periodeLien.id, user: { actif: true, service: false, email: { not: null } } } })
+      : Promise.resolve(0),
+    compter(periodeLien ? { invitations: { some: lienVivant(periodeLien.id, maintenant) } } : {}, peutLiensTous),
+  ]);
   // Les trois tests qui suivent sont ceux du rappel en tête de fonction : toujours vrais ici, gardés
   // pour le jour où `members.view` se rouvrira à l'encadrement.
   // Couper l'accès de quelqu'un est une décision du bureau : les instructeurs ne verraient pas ces boutons
@@ -254,6 +291,11 @@ export default async function PageMembres({ searchParams }: Props) {
    * geste que le serveur refuse.
    */
   const roleReglable = (m: (typeof membres)[number]) => canEditUser(acteur, m) && !estCompteDeService(m);
+  // Qui recevra un email d'« Envoyer l'invitation » : même règle que `RECOIT_INVITATION`, lue sur la ligne.
+  const recoitInvitation = (m: (typeof membres)[number]) => m.actif && Boolean(m.email) && m.periodes.some((p) => p.period.statut === "ACTIVE");
+  // « Déjà entré » : la fonction des gardes serveur, nourrie par ce que la ligne a déjà lu.
+  const dejaEntre = (m: (typeof membres)[number]) =>
+    aDejaUnAcces({ aOuvertUnLien: aDejaOuvertUnLien.has(m.id), aUnMotDePasse: Boolean(m.passwordHash), aLaDeuxFa: Boolean(m.totpActiveAt), aUneSession: aUneSession.has(m.id) });
   // `actif` et le nombre de réponses partent avec la ligne : ce sont les deux chiffres dont la
   // confirmation a besoin — ce qui change vraiment, et ce qu'une suppression détruit. `aUnEmail` dit
   // qui peut recevoir son lien, et `estAdmin` de qui le lot coupe les droits du club : **des booléens,
@@ -267,6 +309,9 @@ export default async function PageMembres({ searchParams }: Props) {
     reponses: m._count.attendances,
     aUnEmail: Boolean(m.email),
     estAdmin: m.estAdmin,
+    lienEnCours: aUnLienEnCours.has(m.id),
+    recoitInvitation: recoitInvitation(m),
+    dejaEntre: dejaEntre(m),
   }));
   /**
    * **Les lignes affichées sans case, par nature** — parce qu'une case absente sans explication se lit
@@ -311,6 +356,106 @@ export default async function PageMembres({ searchParams }: Props) {
             {inactifs ? "Masquer les inactifs" : "Afficher les inactifs"}
           </Link>
         </form>
+
+        {/*
+          **Les gestes qui portent sur tout le club, dans un volet fermé sous la recherche.** Ils
+          vivaient dans une carte en pied d'écran, qu'on ne trouvait pas : on cherchait « renvoyer le
+          lien à tout le monde » là où sont les gestes d'une personne et d'une sélection. Ce qui avait
+          fait descendre « Désactiver tous les comptes » tient toujours — un geste de fin de saison ne
+          se pose pas, en rouge, sur le chemin du champ de recherche —, et le volet y répond : il vient
+          **après** la recherche, fermé, ne présente qu'un bouton « Pour tout le monde », et chaque geste
+          garde sa confirmation chiffrée. Hors du `<form>` de recherche : un bouton dedans le soumettrait.
+
+          Les mêmes gestes, dans le même ordre, que la ligne et la barre de sélection : le lien, sa
+          révocation, l'invitation (jamais entrés), la réinitialisation (déjà entrés), puis
+          l'activation du compte. **Pas de « Supprimer tout le monde »** : la
+          suppression efface les comptes et leur historique, et ne se fait qu'en les désignant.
+        */}
+        {(tousRenvoi > 0 || tousRevocation > 0 || tousInvitation > 0 || tousReinit > 0 || (peutGererLesAdmins && (aDesactiver > 0 || aReactiver > 0))) && (
+          <div className="mt-3 flex justify-end">
+            <Volet libelle="Pour tout le monde" libelleOuvert="Fermer" titre="Pour tout le monde" largeur="sm:w-96" groupe="membre">
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-texte-secondaire">
+                  Tout l&apos;annuaire, pas seulement la liste affichée. Le compte du portail n&apos;est jamais touché, et le tien seulement par le
+                  renvoi du lien.
+                  {periodeLien && <> Les liens sont ceux de « {periodeLien.nom} ».</>}
+                </p>
+                {tousRenvoi > 0 && periodeLien && (
+                  <BoutonAction
+                    action={renvoyerTousLesLiens.bind(null, periodeLien.id, retour)}
+                    variante="secondaire"
+                    taille="petite"
+                    pleineLargeur
+                    enCours="Envoi…"
+                    confirmation={texteConfirmationRenvoiTous(tousRenvoi, periodeLien.nom)}
+                  >
+                    Renvoyer le lien à tout le monde
+                  </BoutonAction>
+                )}
+                {tousRevocation > 0 && periodeLien && (
+                  <BoutonAction
+                    action={revoquerLiensEnMasse.bind(null, { periodId: periodeLien.id, tous: true })}
+                    variante="danger"
+                    taille="petite"
+                    pleineLargeur
+                    enCours="Révocation…"
+                    confirmation={texteConfirmationRevocationTous(tousRevocation, periodeLien.nom)}
+                  >
+                    Révoquer le lien de tout le monde
+                  </BoutonAction>
+                )}
+                {tousInvitation > 0 && periodeLien && (
+                  <BoutonAction
+                    action={envoyerInvitationsEnMasse.bind(null, { periodId: periodeLien.id, tous: true })}
+                    variante="secondaire"
+                    taille="petite"
+                    pleineLargeur
+                    enCours="Envoi…"
+                    confirmation={texteConfirmationInvitationsTous(tousInvitation, tousDejaEntres)}
+                  >
+                    Envoyer l&apos;invitation à tout le monde
+                  </BoutonAction>
+                )}
+                {tousReinit > 0 && (
+                  <BoutonAction
+                    action={reinitialiserAccesEnMasse.bind(null, { tous: true })}
+                    variante="danger"
+                    taille="petite"
+                    pleineLargeur
+                    enCours="Réinitialisation…"
+                    confirmation={texteConfirmationReinitialisationTous(tousReinit, tousReinitEmails, tousJamaisEntres)}
+                  >
+                    Réinitialiser les accès de tout le monde
+                  </BoutonAction>
+                )}
+                {peutGererLesAdmins && aDesactiver > 0 && (
+                  <BoutonAction
+                    action={definirActifTous.bind(null, false, retour)}
+                    variante="danger"
+                    taille="petite"
+                    pleineLargeur
+                    enCours="Désactivation…"
+                    confirmation={`Désactiver ${aDesactiver} compte${aDesactiver > 1 ? "s" : ""}, administrateurs compris ? Le vôtre et le compte de connexion du portail restent actifs. Chacun perdra l'accès immédiatement et son lien personnel cessera de fonctionner.`}
+                  >
+                    Désactiver tous les comptes
+                  </BoutonAction>
+                )}
+                {peutGererLesAdmins && aReactiver > 0 && (
+                  <BoutonAction
+                    action={definirActifTous.bind(null, true, retour)}
+                    variante="succes"
+                    taille="petite"
+                    pleineLargeur
+                    enCours="Réactivation…"
+                    confirmation={`Réactiver ${aReactiver} compte${aReactiver > 1 ? "s" : ""} ? Chacun retrouvera l'accès et son lien personnel fonctionnera de nouveau.`}
+                  >
+                    Réactiver tous les comptes
+                  </BoutonAction>
+                )}
+              </div>
+            </Volet>
+          </div>
+        )}
 
         <ZoneSelection
           selectionnables={selectionnables}
@@ -382,7 +527,31 @@ export default async function PageMembres({ searchParams }: Props) {
                  * est redemandé par l'action, comme partout ailleurs.
                  */
                 const peutDonnerLeBureau = peutNommerAdmin(acteur) && canEditUser(acteur, m) && acteur.id !== m.id && !estCompteDeService(m);
-                const aDesGestes = peutRecevoirLien || peutChangerActivation || peutModifierEmail || peutChangerRole || peutDonnerLeBureau;
+                /*
+                 * **Les gestes qui manquaient à la ligne** : on les trouvait sur la fiche, ou en
+                 * cochant une seule case. Mêmes verrous que leurs actions, et pas un bouton de plus
+                 * que ce qui peut aboutir.
+                 * - « Révoquer le lien » : seulement quand la colonne dit qu'un lien vit encore ;
+                 * - « Envoyer l'invitation » : seulement à qui n'est **jamais entré** (`dejaEntre`),
+                 *   avec une adresse et un compte actif — il n'efface rien ;
+                 * - « Réinitialiser les accès » : seulement à qui **est déjà entré**, et pas sur sa
+                 *   propre ligne — il déconnecterait celui qui appuie ;
+                 * - « Supprimer le compte » : `members.delete`, pas soi-même, pas le portail.
+                 */
+                const peutRevoquerLien = peutEnvoyerLien && periodeLien !== null && lienEnCours && !estCompteDeService(m) && canEditUser(acteur, m);
+                const peutInviterLigne = peutRecevoirLien && canEditUser(acteur, m) && !dejaEntre(m);
+                const peutReinitialiserLigne = peutReinitialiser && reglable(m) && dejaEntre(m);
+                const peutSupprimerLigne = peutSupprimer && reglable(m);
+                const aDesGestes =
+                  peutRecevoirLien ||
+                  peutRevoquerLien ||
+                  peutInviterLigne ||
+                  peutReinitialiserLigne ||
+                  peutChangerActivation ||
+                  peutModifierEmail ||
+                  peutChangerRole ||
+                  peutDonnerLeBureau ||
+                  peutSupprimerLigne;
                 const periodesEnCours = m.periodes.filter((p) => p.period.statut !== "CLOSE");
                 /**
                  * **L'état du lien personnel, qui devient une colonne**. Les cinq booléens sont
@@ -614,6 +783,42 @@ export default async function PageMembres({ searchParams }: Props) {
                                     {lienEnCours ? "Renvoyer le lien" : "Envoyer le lien"}
                                   </BoutonAction>
                                 )}
+                                {peutRevoquerLien && periodeLien && (
+                                  <BoutonAction
+                                    action={revoquerLienMembre.bind(null, m.id, periodeLien.id, retour)}
+                                    variante="danger"
+                                    taille="petite"
+                                    pleineLargeur
+                                    enCours="Révocation…"
+                                    confirmation={`Révoquer le lien de ${m.prenom} ${m.nom} ? Il ne pourra plus entrer par ce lien tant qu'un nouveau ne lui est pas envoyé. Aucun email ne part, et ses appareils déjà connectés le restent.`}
+                                  >
+                                    Révoquer le lien
+                                  </BoutonAction>
+                                )}
+                                {peutInviterLigne && periodeLien && (
+                                  <BoutonAction
+                                    action={envoyerInvitationMembre.bind(null, m.id, periodeLien.id, retour)}
+                                    variante="secondaire"
+                                    taille="petite"
+                                    pleineLargeur
+                                    enCours="Envoi…"
+                                    confirmation={texteConfirmationInvitationUnitaire(`${m.prenom} ${m.nom}`)}
+                                  >
+                                    Envoyer l&apos;invitation
+                                  </BoutonAction>
+                                )}
+                                {peutReinitialiserLigne && (
+                                  <BoutonAction
+                                    action={reinitialiserAccesMembre.bind(null, m.id, retour)}
+                                    variante="danger"
+                                    taille="petite"
+                                    pleineLargeur
+                                    enCours="Réinitialisation…"
+                                    confirmation={texteConfirmationReinitialisationUnitaire(`${m.prenom} ${m.nom}`, recoitInvitation(m))}
+                                  >
+                                    Réinitialiser les accès
+                                  </BoutonAction>
+                                )}
                                 {peutChangerActivation &&
                                   (m.actif ? (
                                     <BoutonAction
@@ -640,6 +845,22 @@ export default async function PageMembres({ searchParams }: Props) {
                                   >
                                     <input type="hidden" name="email" value="" />
                                   </FormulaireAction>
+                                )}
+                                {peutSupprimerLigne && (
+                                  <BoutonAction
+                                    action={supprimerMembre.bind(null, m.id, retour)}
+                                    variante="danger"
+                                    taille="petite"
+                                    pleineLargeur
+                                    enCours="Suppression…"
+                                    confirmation={`Supprimer définitivement ${m.prenom} ${m.nom} et tout son historique ?${
+                                      m._count.attendances > 0
+                                        ? ` ${m._count.attendances} réponse${m._count.attendances > 1 ? "s" : ""} de présence ser${m._count.attendances > 1 ? "ont perdues" : "a perdue"}.`
+                                        : ""
+                                    }`}
+                                  >
+                                    Supprimer le compte
+                                  </BoutonAction>
                                 )}
                                 <LienBouton href={`/admin/membres/${m.id}`} variante="discret" taille="petite" pleineLargeur enCours>
                                   Ouvrir la fiche
@@ -734,61 +955,6 @@ export default async function PageMembres({ searchParams }: Props) {
         </div>
       )}
 
-      {/*
-        **Les gestes qui portent sur tout le club, en pied d'écran.** « Désactiver tous les comptes »
-        trônait en rouge au-dessus de la liste, juste au-dessus du champ de recherche : un geste de
-        fin de saison posé sur le chemin du geste quotidien, à un doigt d'écart. Il garde sa
-        confirmation chiffrée ; il ne garde pas sa place.
-      */}
-      {(peutEnvoyerLien || peutGererLesAdmins) && (aDesactiver > 0 || aReactiver > 0 || periodesOuvertes.some((p) => p.statut === "ACTIVE")) && (
-        <Carte titre="Gestes sur tout le club">
-          <div className="flex flex-wrap items-center gap-2">
-            {peutEnvoyerLien &&
-              periodesOuvertes
-                .filter((p) => p.statut === "ACTIVE")
-                .map((p) => (
-                  <BoutonAction
-                    key={p.id}
-                    action={renvoyerTousLesLiens.bind(null, p.id)}
-                    variante="secondaire"
-                    taille="petite"
-                    enCours="Envoi…"
-                    confirmation={`Renvoyer son lien à chaque membre de « ${p.nom} » ? Chaque lien est régénéré : les anciens cesseront de fonctionner.`}
-                  >
-                    Renvoyer les liens ({p.nom})
-                  </BoutonAction>
-                ))}
-            {peutGererLesAdmins && aDesactiver > 0 && (
-              <BoutonAction
-                action={definirActifTous.bind(null, false, retour)}
-                variante="danger"
-                taille="petite"
-                enCours="Désactivation…"
-                confirmation={`Désactiver ${aDesactiver} compte${aDesactiver > 1 ? "s" : ""}, administrateurs compris ? Le vôtre et le compte de connexion du portail restent actifs. Chacun perdra l'accès immédiatement et son lien personnel cessera de fonctionner.`}
-              >
-                Désactiver tous les comptes
-              </BoutonAction>
-            )}
-            {peutGererLesAdmins && aReactiver > 0 && (
-              <BoutonAction
-                action={definirActifTous.bind(null, true, retour)}
-                variante="succes"
-                taille="petite"
-                enCours="Réactivation…"
-                confirmation={`Réactiver ${aReactiver} compte${aReactiver > 1 ? "s" : ""} ? Chacun retrouvera l'accès et son lien personnel fonctionnera de nouveau.`}
-              >
-                Réactiver tous les comptes
-              </BoutonAction>
-            )}
-          </div>
-          {peutGererLesAdmins && (aDesactiver > 0 || aReactiver > 0) && (
-            <p className="mt-2 max-w-prose text-sm text-texte-secondaire">
-              Fin de saison ou incident : coupe l&apos;accès de tout le monde d&apos;un coup, puis le rend quand c&apos;est réglé. Ton compte et
-              celui du portail restent actifs.
-            </p>
-          )}
-        </Carte>
-      )}
     </div>
   );
 }

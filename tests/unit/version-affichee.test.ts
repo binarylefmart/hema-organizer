@@ -30,15 +30,25 @@ describe("la version se grave dans l'image et s'affiche", () => {
     expect(workflow, "VERSION n'est pas passée au build").toMatch(/VERSION=\$\{\{ steps\.version\.outputs\.version \}\}/);
   });
 
-  it("l'écran À propos lit APP_VERSION avant npm_package_version", () => {
+  it("l'écran À propos lit APP_VERSION avant npm_package_version", async () => {
     const ecran = lire("src/app/(app)/admin/apropos/page.tsx");
     const ligne = ecran.split("\n").find((l) => l.includes('cle: "Version"'));
     expect(ligne, "la ligne « Version » a disparu de l'écran").toBeDefined();
-    expect(ligne).toContain("process.env.APP_VERSION");
+    expect(ligne, "l'écran passe par `versionCourante`, partagée avec l'encart de mise à jour").toContain("versionCourante()");
     // L'ordre, pas seulement la présence : lue en second, la variable gravée ne servirait à rien.
-    const i = ligne!.indexOf("APP_VERSION");
-    const j = ligne!.indexOf("npm_package_version");
-    expect(i, "APP_VERSION doit être lue en premier").toBeGreaterThan(-1);
-    if (j > -1) expect(i).toBeLessThan(j);
+    const { versionCourante } = await import("@/lib/mise-a-jour");
+    const avant = { app: process.env.APP_VERSION, npm: process.env.npm_package_version };
+    try {
+      process.env.APP_VERSION = "9.9.9";
+      process.env.npm_package_version = "1.0.0";
+      expect(versionCourante()).toBe("9.9.9");
+      delete process.env.APP_VERSION;
+      expect(versionCourante()).toBe("1.0.0");
+    } finally {
+      if (avant.app === undefined) delete process.env.APP_VERSION;
+      else process.env.APP_VERSION = avant.app;
+      if (avant.npm === undefined) delete process.env.npm_package_version;
+      else process.env.npm_package_version = avant.npm;
+    }
   });
 });
