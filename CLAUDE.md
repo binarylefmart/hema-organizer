@@ -32,7 +32,7 @@ Les logos sont fournis : public/logo.png (le logo complet) et public/logo-ecu.pn
 # Rôles
 
 **Un rôle de base pour tout le monde, et « administrateur » en supplément.** Des rôles exclusifs
-interdiraient le cas le plus courant d'une petite association : un membre du bureau qui enseigne.
+interdiraient le cas le plus courant d'une association : un membre du bureau qui enseigne.
 Nommer quelqu'un au bureau ne lui retire donc aucun droit. La règle :
 - `User.role` est le **rôle de base** : `MEMBRE` ou `INSTRUCTEUR` (`ROLES_DE_BASE`). **Il ne vaut jamais
   `"ADMIN"`** ;

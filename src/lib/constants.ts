@@ -17,7 +17,7 @@ export type Role = (typeof ROLES)[number];
  *
  * Avant, les trois rôles étaient **exclusifs** : nommer quelqu'un au bureau lui retirait son rôle
  * d'instructeur, et le club ne pouvait plus dire qu'un membre du bureau enseigne — alors que c'est le
- * cas le plus courant dans une petite association. « Administrateur » est devenu un **supplément**
+ * cas le plus courant dans une association. « Administrateur » est devenu un **supplément**
  * (`User.estAdmin`), et cette liste est ce qu'un écran propose dans une liste déroulante de rôle.
  *
  * Conséquence à retenir : **`role` ne vaut plus jamais `"ADMIN"`** (la migration

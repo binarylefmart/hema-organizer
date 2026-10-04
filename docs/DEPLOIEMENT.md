@@ -157,15 +157,14 @@ lui qu'on recopie dans Portainer, et lui qui fait foi.
 
 ### 1.3 Pourquoi SQLite, et pourquoi un seul conteneur
 
-Parce que l'échelle du besoin est celle d'un club : quelques dizaines de personnes, quelques dizaines
-de séances par trimestre, une pointe d'activité le soir où l'on répond « présent » — et **aucune
-croissance à prévoir**. Un club ne double pas d'effectif ; il gagne trois membres et en perd deux.
+Parce que la charge d'un club reste modeste pour une base de données, même pour un gros club : des
+réponses de présence, des réglages de planning, quelques envois par jour. Chaque écriture est minuscule
+et dure quelques millisecondes ; une soirée où des centaines de membres répondent en même temps reste
+très loin de ce que SQLite absorbe.
 
-Dans ces conditions, SQLite n'est pas un compromis, c'est le bon outil : la base est un fichier, donc
-la sauvegarde est une copie de fichier et la restauration aussi ; il n'y a pas de second conteneur à
-tenir à jour, pas de mot de passe de base de données à gérer, pas de réseau interne à surveiller. Un
-serveur PostgreSQL à côté, ce serait une deuxième pièce à administrer pour un gain de performance que
-personne ne verrait jamais.
+SQLite est donc le bon outil : la base est un fichier, la sauvegarde est une copie de fichier et la
+restauration aussi ; il n'y a pas de second conteneur à tenir à jour, pas de mot de passe de base de
+données à gérer, pas de réseau interne à surveiller.
 
 Même raisonnement pour le conteneur unique : les tâches planifiées (sauvegarde, envois du soir,
 entretien) vivent **dans** le processus de l'application, ce qui évite un ordonnanceur séparé.

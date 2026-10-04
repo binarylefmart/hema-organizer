@@ -146,7 +146,7 @@ export default async function PageMembre({ params }: Props) {
           {m.prenom} {m.nom}{" "}
           {/* **Deux pastilles, parce qu'il y a deux choses à dire** : le rôle de base que tout le
               monde porte, et le bureau **en supplément**. Une personne peut être instructeur ET du
-              bureau — c'est le cas le plus courant dans une petite association, et toute la raison
+              bureau — c'est le cas le plus courant dans une association, et toute la raison
               de ce changement de modèle. Le rôle de base s'affiche toujours, « Membre » compris :
               sur la fiche de quelqu'un, c'est une information qu'on vient chercher, là où la
               **liste** la tait pour ne pas répéter quatre-vingts fois le cas ordinaire. */}
