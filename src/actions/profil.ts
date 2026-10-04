@@ -24,7 +24,7 @@ import {
   type CanalPersonnel,
   type TypeNotification,
 } from "@/lib/notifications/preferences";
-import { estThemeConnu } from "@/lib/themes";
+import { estChoixThemeConnu } from "@/lib/themes";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
 import { enqueueEmail } from "@/lib/email/mailer";
 import { emailEssai } from "@/lib/email/templates/essai";
@@ -214,7 +214,7 @@ export async function choisirTheme(theme: string): Promise<FormState> {
   const user = await getCurrentUser();
   if (!user) return { erreur: "Ta session a expiré. Reconnecte-toi." };
   // Jamais de valeur non validée en base : la colonne alimente directement l'attribut data-theme.
-  if (!estThemeConnu(theme)) return { erreur: "Ce thème n'existe pas." };
+  if (!estChoixThemeConnu(theme)) return { erreur: "Ce thème n'existe pas." };
   await db.user.update({ where: { id: user.id }, data: { theme } });
   revalidatePath("/", "layout");
   return { succes: "Thème appliqué." };

@@ -1,5 +1,30 @@
 @import "tailwindcss";
 
+/* **Le mode sombre : celui de l'appareil, sauf choix contraire du membre.** Un thème choisi dans
+   « Mon profil » est clair ou sombre et s'impose jour et nuit (`data-mode` sur <html>) ; sans choix,
+   c'est l'appareil qui décide. `dark:` suit la même règle, sinon le logo et la page se
+   contrediraient sous un mode forcé. */
+@custom-variant sombre {
+  @media (prefers-color-scheme: dark) {
+    &:not([data-mode="clair"]) {
+      @slot;
+    }
+  }
+  &[data-mode="sombre"] {
+    @slot;
+  }
+}
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-mode="clair"]) *) {
+      @slot;
+    }
+  }
+  &:where([data-mode="sombre"] *) {
+    @slot;
+  }
+}
+
 /* ---- Charte « parchemin », alignée sur l'écu livré avec l'application ----
    Fond parchemin #F4F0EE / #E8E1D8, tan #CAB8A2, encre #282828, gris chaud #928781,
    accent rouille #AF4B2F. Or de l'écu réservé à la jauge et au focus.
@@ -374,13 +399,15 @@
   --jauge: #bf982b;
 }
 
-/* Catppuccin : les palettes officielles. En clair, les trois thèmes partagent Latte — la seule saveur
+/* Catppuccin : les palettes officielles. En clair, tous partagent Latte — la seule saveur
    claire de Catppuccin — et se distinguent par leur accent et par l'en-tête, qui prend « crust » de la
    saveur sombre (sa « base » est trop claire pour Frappé : le vert des présents y tombait à 4,1:1).
    Le vert, le rouge, l'ocre et l'accent de Latte sont descendus de quelques points de luminosité,
-   teinte inchangée : tels quels, ils tombaient sous 4,5:1 sur la base. */
+   teinte inchangée : tels quels, ils tombaient sous 4,5:1 sur la base. Green et Flamingo descendent
+   plus bas que les autres (6,5:1) : à 4,5:1, le premier devenait exactement le vert « Présent » et le
+   second se confondait avec le rouge « Absent ». */
 
-/* Catppuccin Mocha — Latte, accent mauve, en-tête Mocha. */
+/* Catppuccin Mocha · Mauve — Latte, accent mauve, en-tête Mocha. */
 [data-theme="catppuccin-mocha"] {
   --fond: #eff1f5;
   --fond-haut: #e6e9ef;
@@ -405,7 +432,57 @@
   --jauge: #df8e1d;
 }
 
-/* Catppuccin Macchiato — Latte, accent blue, en-tête Macchiato. */
+/* Catppuccin Mocha · Green — Latte, accent green, en-tête Mocha. */
+[data-theme="catppuccin-green"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #11111b;
+  --encre-texte: #cdd6f4;
+  --marque: #a6e3a1;
+  --primaire: #255c19;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #e2eee2;
+  --lien: #177181;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
+}
+
+/* Catppuccin Mocha · Lavender — Latte, accent lavender, en-tête Mocha. */
+[data-theme="catppuccin-lavender"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #11111b;
+  --encre-texte: #cdd6f4;
+  --marque: #b4befe;
+  --primaire: #3352fc;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #e8ebfb;
+  --lien: #8534ef;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
+}
+
+/* Catppuccin Macchiato · Blue — Latte, accent blue, en-tête Macchiato. */
 [data-theme="catppuccin-macchiato"] {
   --fond: #eff1f5;
   --fond-haut: #e6e9ef;
@@ -430,7 +507,57 @@
   --jauge: #df8e1d;
 }
 
-/* Catppuccin Frappé — Latte, accent pink, en-tête Frappé. */
+/* Catppuccin Macchiato · Teal — Latte, accent teal, en-tête Macchiato. */
+[data-theme="catppuccin-teal"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #181926;
+  --encre-texte: #cad3f5;
+  --marque: #8bd5ca;
+  --primaire: #127278;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #ddedef;
+  --lien: #0b59f4;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
+}
+
+/* Catppuccin Macchiato · Peach — Latte, accent peach, en-tête Macchiato. */
+[data-theme="catppuccin-peach"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #181926;
+  --encre-texte: #cad3f5;
+  --marque: #f5a97f;
+  --primaire: #b44201;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #f9e7de;
+  --lien: #0b59f4;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
+}
+
+/* Catppuccin Frappé · Pink — Latte, accent pink, en-tête Frappé. */
 [data-theme="catppuccin-frappe"] {
   --fond: #eff1f5;
   --fond-haut: #e6e9ef;
@@ -455,8 +582,62 @@
   --jauge: #df8e1d;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+/* Catppuccin Frappé · Sapphire — Latte, accent sapphire, en-tête Frappé. */
+[data-theme="catppuccin-sapphire"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #232634;
+  --encre-texte: #c6d0f5;
+  --marque: #85c1dc;
+  --primaire: #177181;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #deeef3;
+  --lien: #8534ef;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
+}
+
+/* Catppuccin Frappé · Flamingo — Latte, accent flamingo, en-tête Frappé. */
+[data-theme="catppuccin-flamingo"] {
+  --fond: #eff1f5;
+  --fond-haut: #e6e9ef;
+  --surface: #f8f9fb;
+  --surface-douce: #e6e9ef;
+  --texte: #4c4f69;
+  --texte-secondaire: #5c5f77;
+  --bordure: #bcc0cc;
+  --encre: #232634;
+  --encre-texte: #c6d0f5;
+  --marque: #eebebe;
+  --primaire: #982626;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #f5eaeb;
+  --lien: #8534ef;
+  --vert-doux: #deedde;
+  --vert: #2f7620;
+  --rouge-doux: #f3d8e0;
+  --rouge: #c10e34;
+  --ocre-doux: #f4eadc;
+  --ocre: #905c13;
+  --jauge: #df8e1d;
+}
+
+/* ---- Mode sombre ----
+   Chaque palette sombre s'écrit une seule fois, sous `@variant sombre` (défini en tête de fichier) :
+   Tailwind en tire deux règles — l'une pour un appareil en sombre (sauf si le membre a choisi un
+   thème clair), l'autre pour un thème sombre choisi quel que soit l'appareil. */
+:root {
+  @variant sombre {
     color-scheme: dark;
     /* **Les six repères de partie en mode sombre** : les mêmes teintes, en pastel, et le texte passe
        à l'encre. Posés ici une seule fois — ils ne viennent pas du thème (voir leur bloc en clair). */
@@ -496,13 +677,15 @@
     --ombre-nav: 0 -6px 20px -10px rgba(0, 0, 0, 0.7);
     --ombre-champ: inset 0 1px 2px rgba(0, 0, 0, 0.3);
   }
+}
 
+/* Dracula en sombre : les teintes officielles, à deux ajustements près.
+   « Current line » (#44475a) reste --surface-douce ; --surface prend une valeur intermédiaire entre
+   le fond et elle, sinon les cartes de séance avaient exactement la couleur de la page (rapport 1,00).
+   Le rouge est monté de #ff5555 à #ff7b7b pour rester à 4,7:1 sur cette nouvelle surface. */
 
-  /* Dracula en sombre : les teintes officielles, à deux ajustements près.
-     « Current line » (#44475a) reste --surface-douce ; --surface prend une valeur intermédiaire entre
-     le fond et elle, sinon les cartes de séance avaient exactement la couleur de la page (rapport 1,00).
-     Le rouge est monté de #ff5555 à #ff7b7b pour rester à 4,7:1 sur cette nouvelle surface. */
-  [data-theme="dracula"] {
+[data-theme="dracula"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #282a36;
     --fond-haut: #21222c;
@@ -526,9 +709,12 @@
     --ocre-doux: #45432a;
     --jauge: #f1fa8c;
   }
+}
 
-  /* Encre de nuit, version sombre : le bleu descend vers le bleu de minuit. */
-  [data-theme="encre"] {
+/* Encre de nuit, version sombre : le bleu descend vers le bleu de minuit. */
+
+[data-theme="encre"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #1c1f26;
     --fond-haut: #232831;
@@ -552,9 +738,12 @@
     --ocre-doux: #574a23;
     --jauge: #e4c858;
   }
+}
 
-  /* Forêt, version sombre : le vert profond de la futaie. */
-  [data-theme="foret"] {
+/* Forêt, version sombre : le vert profond de la futaie. */
+
+[data-theme="foret"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #1f251d;
     --fond-haut: #282f25;
@@ -578,9 +767,12 @@
     --ocre-doux: #584d22;
     --jauge: #e7d156;
   }
+}
 
-  /* Océan, version sombre : le grand fond bleu. */
-  [data-theme="ocean"] {
+/* Océan, version sombre : le grand fond bleu. */
+
+[data-theme="ocean"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #1c2327;
     --fond-haut: #232d32;
@@ -604,9 +796,12 @@
     --ocre-doux: #574624;
     --jauge: #e2bc5a;
   }
+}
 
-  /* Bourgogne, version sombre : la cave, lie-de-vin. */
-  [data-theme="bourgogne"] {
+/* Bourgogne, version sombre : la cave, lie-de-vin. */
+
+[data-theme="bourgogne"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #251d1e;
     --fond-haut: #302426;
@@ -630,9 +825,12 @@
     --ocre-doux: #553f25;
     --jauge: #dea95e;
   }
+}
 
-  /* Ardoise, version sombre : gris anthracite. */
-  [data-theme="ardoise"] {
+/* Ardoise, version sombre : gris anthracite. */
+
+[data-theme="ardoise"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #1f2123;
     --fond-haut: #272a2d;
@@ -656,9 +854,12 @@
     --ocre-doux: #524529;
     --jauge: #d6ba67;
   }
+}
 
-  /* Sakura, version sombre : prune et rose lumineux. */
-  [data-theme="sakura"] {
+/* Sakura, version sombre : prune et rose lumineux. */
+
+[data-theme="sakura"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #291a1f;
     --fond-haut: #342027;
@@ -682,9 +883,12 @@
     --ocre-doux: #564225;
     --jauge: #e0b25c;
   }
+}
 
-  /* Solarisé, version sombre : le fond sarcelle très foncé de Solarized dark. */
-  [data-theme="solarise"] {
+/* Solarisé, version sombre : le fond sarcelle très foncé de Solarized dark. */
+
+[data-theme="solarise"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #18272a;
     --fond-haut: #1d3237;
@@ -708,9 +912,12 @@
     --ocre-doux: #5d4d1d;
     --jauge: #e7ca55;
   }
+}
 
-  /* Agrume, version sombre : zeste sur fond brun-orangé. */
-  [data-theme="agrume"] {
+/* Agrume, version sombre : zeste sur fond brun-orangé. */
+
+[data-theme="agrume"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #2b2117;
     --fond-haut: #37291d;
@@ -734,9 +941,12 @@
     --ocre-doux: #5b4520;
     --jauge: #e7b955;
   }
+}
 
-  /* Lavande, version sombre : violet atténué, reposant. */
-  [data-theme="lavande"] {
+/* Lavande, version sombre : violet atténué, reposant. */
+
+[data-theme="lavande"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #201a28;
     --fond-haut: #292134;
@@ -760,9 +970,12 @@
     --ocre-doux: #544626;
     --jauge: #dcbd60;
   }
+}
 
-  /* Nordique, version sombre : le bleu-gris nuit de Nord. */
-  [data-theme="nordique"] {
+/* Nordique, version sombre : le bleu-gris nuit de Nord. */
+
+[data-theme="nordique"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #1d2025;
     --fond-haut: #242830;
@@ -786,12 +999,15 @@
     --ocre-doux: #554525;
     --jauge: #deba5e;
   }
+}
 
-  /* Catppuccin en sombre : Mocha, Macchiato et Frappé, teintes officielles. La page est « mantle » et
-     les cartes une « base » à peine éclaircie vers « surface0 » : posées sur « surface0 » plein, comme
-     le veut l'usage, les étiquettes d'option tombaient sous 4,5:1 sur Frappé, la plus claire des trois.
-     --surface-douce est « surface1 », l'en-tête « crust », --marque « rosewater ». */
-  [data-theme="catppuccin-mocha"] {
+/* Catppuccin en sombre : Mocha, Macchiato et Frappé, trois accents chacune, teintes officielles. La page est « mantle » et
+   les cartes une « base » à peine éclaircie vers « surface0 » : posées sur « surface0 » plein, comme
+   le veut l'usage, les étiquettes d'option tombaient sous 4,5:1 sur Frappé, la plus claire des trois.
+   --surface-douce est « surface1 », l'en-tête « crust », --marque « rosewater ». */
+
+[data-theme="catppuccin-mocha"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #181825;
     --fond-haut: #1b1b2a;
@@ -815,7 +1031,64 @@
     --ocre: #f9e2af;
     --jauge: #f9e2af;
   }
-  [data-theme="catppuccin-macchiato"] {
+}
+
+[data-theme="catppuccin-green"] {
+  @variant sombre {
+    color-scheme: dark;
+    --fond: #181825;
+    --fond-haut: #1b1b2a;
+    --surface: #242435;
+    --surface-douce: #45475a;
+    --texte: #cdd6f4;
+    --texte-secondaire: #bac2de;
+    --bordure: #585b70;
+    --encre: #11111b;
+    --encre-texte: #cdd6f4;
+    --marque: #f5e0dc;
+    --primaire: #a6e3a1;
+    --primaire-texte: #11111b;
+    --primaire-doux: #374540;
+    --lien: #74c7ec;
+    --vert-doux: #34413e;
+    --vert: #a6e3a1;
+    --rouge-doux: #442f3f;
+    --rouge: #f38ba8;
+    --ocre-doux: #454041;
+    --ocre: #f9e2af;
+    --jauge: #f9e2af;
+  }
+}
+
+[data-theme="catppuccin-lavender"] {
+  @variant sombre {
+    color-scheme: dark;
+    --fond: #181825;
+    --fond-haut: #1b1b2a;
+    --surface: #242435;
+    --surface-douce: #45475a;
+    --texte: #cdd6f4;
+    --texte-secondaire: #bac2de;
+    --bordure: #585b70;
+    --encre: #11111b;
+    --encre-texte: #cdd6f4;
+    --marque: #f5e0dc;
+    --primaire: #b4befe;
+    --primaire-texte: #11111b;
+    --primaire-doux: #3a3d55;
+    --lien: #cba6f7;
+    --vert-doux: #34413e;
+    --vert: #a6e3a1;
+    --rouge-doux: #442f3f;
+    --rouge: #f38ba8;
+    --ocre-doux: #454041;
+    --ocre: #f9e2af;
+    --jauge: #f9e2af;
+  }
+}
+
+[data-theme="catppuccin-macchiato"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #1e2030;
     --fond-haut: #212435;
@@ -839,7 +1112,64 @@
     --ocre: #eed49f;
     --jauge: #eed49f;
   }
-  [data-theme="catppuccin-frappe"] {
+}
+
+[data-theme="catppuccin-teal"] {
+  @variant sombre {
+    color-scheme: dark;
+    --fond: #1e2030;
+    --fond-haut: #212435;
+    --surface: #292d40;
+    --surface-douce: #494d64;
+    --texte: #cad3f5;
+    --texte-secondaire: #b8c0e0;
+    --bordure: #5b6078;
+    --encre: #181926;
+    --encre-texte: #cad3f5;
+    --marque: #f4dbd6;
+    --primaire: #8bd5ca;
+    --primaire-texte: #181926;
+    --primaire-doux: #364852;
+    --lien: #8aadf4;
+    --vert-doux: #394544;
+    --vert: #a6da95;
+    --rouge-doux: #473544;
+    --rouge: #ed8998;
+    --ocre-doux: #484446;
+    --ocre: #eed49f;
+    --jauge: #eed49f;
+  }
+}
+
+[data-theme="catppuccin-peach"] {
+  @variant sombre {
+    color-scheme: dark;
+    --fond: #1e2030;
+    --fond-haut: #212435;
+    --surface: #292d40;
+    --surface-douce: #494d64;
+    --texte: #cad3f5;
+    --texte-secondaire: #b8c0e0;
+    --bordure: #5b6078;
+    --encre: #181926;
+    --encre-texte: #cad3f5;
+    --marque: #f4dbd6;
+    --primaire: #f5a97f;
+    --primaire-texte: #181926;
+    --primaire-doux: #4d3e41;
+    --lien: #8aadf4;
+    --vert-doux: #394544;
+    --vert: #a6da95;
+    --rouge-doux: #473544;
+    --rouge: #ed8998;
+    --ocre-doux: #484446;
+    --ocre: #eed49f;
+    --jauge: #eed49f;
+  }
+}
+
+[data-theme="catppuccin-frappe"] {
+  @variant sombre {
     color-scheme: dark;
     --fond: #292c3c;
     --fond-haut: #2c3041;
@@ -864,6 +1194,61 @@
     --jauge: #e5c890;
   }
 }
+
+[data-theme="catppuccin-sapphire"] {
+  @variant sombre {
+    color-scheme: dark;
+    --fond: #292c3c;
+    --fond-haut: #2c3041;
+    --surface: #35394c;
+    --surface-douce: #51576d;
+    --texte: #c6d0f5;
+    --texte-secondaire: #c7cfe9;
+    --bordure: #626880;
+    --encre: #232634;
+    --encre-texte: #c6d0f5;
+    --marque: #f2d5cf;
+    --primaire: #85c1dc;
+    --primaire-texte: #232634;
+    --primaire-doux: #3d4d5f;
+    --lien: #ca9ee6;
+    --vert-doux: #424d4b;
+    --vert: #a6d189;
+    --rouge-doux: #4f3d4a;
+    --rouge: #ec9a9b;
+    --ocre-doux: #4f4b4d;
+    --ocre: #e5c890;
+    --jauge: #e5c890;
+  }
+}
+
+[data-theme="catppuccin-flamingo"] {
+  @variant sombre {
+    color-scheme: dark;
+    --fond: #292c3c;
+    --fond-haut: #2c3041;
+    --surface: #35394c;
+    --surface-douce: #51576d;
+    --texte: #c6d0f5;
+    --texte-secondaire: #c7cfe9;
+    --bordure: #626880;
+    --encre: #232634;
+    --encre-texte: #c6d0f5;
+    --marque: #f2d5cf;
+    --primaire: #eebebe;
+    --primaire-texte: #232634;
+    --primaire-doux: #544c59;
+    --lien: #ca9ee6;
+    --vert-doux: #424d4b;
+    --vert: #a6d189;
+    --rouge-doux: #4f3d4a;
+    --rouge: #ec9a9b;
+    --ocre-doux: #4f4b4d;
+    --ocre: #e5c890;
+    --jauge: #e5c890;
+  }
+}
+
 
 @theme inline {
   --color-hema-bleu: var(--marque-bleu);

@@ -1,7 +1,18 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { estThemeConnu, THEME_DEFAUT, THEMES, themeOuDefaut, type ThemeId } from "@/lib/themes";
+import {
+  choixOuDefaut,
+  estChoixThemeConnu,
+  estThemeConnu,
+  GROUPES_THEMES,
+  lireChoixTheme,
+  nomDuChoix,
+  THEME_DEFAUT,
+  THEMES,
+  themeOuDefaut,
+  type ThemeId,
+} from "@/lib/themes";
 
 /**
  * Le catalogue des thèmes et la feuille de style doivent rester d'accord : un thème proposé dans la
@@ -53,7 +64,11 @@ function blocs(selecteur: RegExp, sombre: boolean): string[] {
     const ouverture = CSS.indexOf("{", m.index);
     const fermeture = CSS.indexOf("}", m.index);
     if (ouverture === -1 || (fermeture !== -1 && fermeture < ouverture)) continue;
-    if (dansLeSombre(m.index) === sombre) trouves.push(corpsDuBloc(CSS, m.index));
+    // Un bloc sombre s'écrit `sélecteur { @variant sombre { … } }` (voir l'en-tête de globals.css) ;
+    // l'ancienne forme, sous `@media (prefers-color-scheme: dark)`, reste reconnue.
+    const corps = corpsDuBloc(CSS, m.index);
+    const variante = /^\s*@variant\s+sombre\s*\{/.test(corps);
+    if ((variante || dansLeSombre(m.index)) === sombre) trouves.push(variante ? corpsDuBloc(corps, 0) : corps);
   }
   return trouves;
 }
@@ -426,4 +441,54 @@ describe("les six repères de partie, sur tous les thèmes", () => {
       }
     });
   }
+});
+
+describe("choix d'un thème clair ou sombre", () => {
+  it("lit un thème seul (suit l'appareil) et un thème avec son mode", () => {
+    expect(lireChoixTheme("dracula")).toEqual({ id: "dracula", mode: null });
+    expect(lireChoixTheme("dracula:sombre")).toEqual({ id: "dracula", mode: "sombre" });
+    expect(lireChoixTheme("catppuccin-mocha:clair")).toEqual({ id: "catppuccin-mocha", mode: "clair" });
+  });
+
+  it("refuse ce qui ne désigne rien — la valeur finit dans un attribut de <html>", () => {
+    for (const v of ["dracula:nuit", "inconnu:sombre", "dracula:sombre:x", "", ":sombre", null, 12, { id: "dracula" }]) {
+      expect(lireChoixTheme(v), String(v)).toBeNull();
+      expect(estChoixThemeConnu(v)).toBe(false);
+    }
+  });
+
+  it("retombe sur le thème du club, qui suit l'appareil, quand le membre n'a rien de valable", () => {
+    expect(choixOuDefaut(null, "foret")).toEqual({ id: "foret", mode: null });
+    expect(choixOuDefaut("n'importe quoi", "foret")).toEqual({ id: "foret", mode: null });
+    expect(choixOuDefaut("ocean:clair", "foret")).toEqual({ id: "ocean", mode: "clair" });
+  });
+
+  it("range chaque thème une fois dans chaque groupe, clairs puis sombres, triés par nom", () => {
+    expect(GROUPES_THEMES.map((g) => g.mode)).toEqual(["clair", "sombre"]);
+    for (const g of GROUPES_THEMES) {
+      expect(g.choix.map((c) => c.theme.id).sort()).toEqual([...IDS].sort());
+      const noms = g.choix.map((c) => c.nom);
+      expect(noms).toEqual([...noms].sort((a, b) => a.localeCompare(b, "fr")));
+      expect(new Set(noms).size, `${g.mode} : deux lignes portent le même nom`).toBe(noms.length);
+      for (const c of g.choix) expect(lireChoixTheme(c.valeur)).toEqual({ id: c.theme.id, mode: g.mode });
+    }
+  });
+
+  it("nomme Catppuccin par sa saveur : Latte le jour, la saveur sombre la nuit", () => {
+    const mocha = THEMES.find((t) => t.id === "catppuccin-mocha")!;
+    expect(nomDuChoix(mocha, "clair")).toBe("Catppuccin Latte · Mauve");
+    expect(nomDuChoix(mocha, "sombre")).toBe("Catppuccin Mocha · Mauve");
+    expect(nomDuChoix(THEMES.find((t) => t.id === "foret")!, "sombre")).toBe("Forêt sombre");
+  });
+});
+
+describe("le mode choisi s'impose dans la feuille de style", () => {
+  it("une seule définition sert l'appareil en sombre et le thème sombre choisi", () => {
+    const variante = corpsDuBloc(CSS, CSS.indexOf("@custom-variant sombre"));
+    expect(variante).toMatch(/prefers-color-scheme:\s*dark[\s\S]*:not\(\[data-mode="clair"\]\)/);
+    expect(variante).toMatch(/&\[data-mode="sombre"\]/);
+    // Plus aucune palette sous l'ancienne forme, qui ignorait le choix du membre.
+    // Les deux seules media queries « sombre » du fichier sont celles des variantes `sombre` et `dark`.
+    expect(CSS.match(/@media[^{]*prefers-color-scheme/g)).toHaveLength(2);
+  });
 });

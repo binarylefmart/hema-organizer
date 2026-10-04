@@ -24,7 +24,7 @@ import { TYPES_ESSENTIELS, lignesNotificationsMembre } from "@/lib/notifications
 import { FormulaireDeuxFa } from "./FormulaireDeuxFa";
 import { BoutonDeconnexion } from "./BoutonDeconnexion";
 import { SelecteurTheme } from "./SelecteurTheme";
-import { themeOuDefaut } from "@/lib/themes";
+import { choixOuDefaut } from "@/lib/themes";
 import { formatDateHeure } from "@/lib/dates";
 import { NB_CODES_SECOURS, nombreCodesRestants } from "@/lib/auth/codes-secours";
 import { etatLienPersonnel } from "@/lib/invitations";
@@ -262,7 +262,7 @@ export default async function PageProfil({ searchParams }: Props) {
             <>
               {/* Réglage personnel, au même titre que les notifications : il ne touche que ce compte. */}
               <Carte id="apparence" titre="Apparence">
-                <SelecteurTheme valeur={themeOuDefaut(user.theme)} />
+                <SelecteurTheme valeur={choixOuDefaut(user.theme, (await identite()).theme)} />
               </Carte>
               {lien.etat !== "compte-de-service" && <CarteLien lien={lien} />}
               <CarteSecurite

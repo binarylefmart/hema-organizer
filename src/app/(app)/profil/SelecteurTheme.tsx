@@ -2,13 +2,16 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { choisirTheme } from "@/actions/profil";
-import { THEMES, themeOuDefaut, type ThemeId } from "@/lib/themes";
+import { GROUPES_THEMES, lireChoixTheme, THEMES, valeurDuChoix, type ChoixTheme } from "@/lib/themes";
 import { Icone } from "@/components/ui/Icone";
 import { Select } from "@/components/ui/Select";
 
-/** Pose le thème sur la page entière : les couleurs viennent de variables CSS, l'attribut suffit. */
-function peindre(id: ThemeId) {
-  document.documentElement.dataset.theme = id;
+/** Pose le thème et son mode sur la page entière : les couleurs viennent de variables CSS, les attributs suffisent. */
+function peindre({ id, mode }: ChoixTheme) {
+  const html = document.documentElement;
+  html.dataset.theme = id;
+  if (mode) html.dataset.mode = mode;
+  else delete html.dataset.mode;
 }
 
 /**
@@ -49,26 +52,26 @@ function Pastilles({ fond, primaire, texte }: { fond: string; primaire: string; 
  * même la réponse du serveur ; l'enregistrement suit. Si le serveur refuse, l'ancien thème est
  * remis sur-le-champ et l'erreur s'affiche — jamais d'écran qui ment sur ce qui est enregistré.
  */
-export function SelecteurTheme({ valeur }: { valeur: ThemeId }) {
-  const [choix, setChoix] = useState<ThemeId>(valeur);
+export function SelecteurTheme({ valeur }: { valeur: ChoixTheme }) {
+  const [choix, setChoix] = useState<ChoixTheme>(valeur);
   const [message, setMessage] = useState<{ ton: "succes" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
   const sombre = useModeSombre();
-  const theme = THEMES.find((t) => t.id === choix) ?? THEMES[0];
+  const theme = THEMES.find((t) => t.id === choix.id) ?? THEMES[0];
   // Les pastilles montrent la palette du mode réellement affiché, sinon elles annoncent d'autres couleurs.
-  const pastilles = sombre ? theme.apercuSombre : theme.apercu;
+  const pastilles = (choix.mode ? choix.mode === "sombre" : sombre) ? theme.apercuSombre : theme.apercu;
 
   function changer(brut: string) {
-    const id = themeOuDefaut(brut);
+    const nouveau = lireChoixTheme(brut);
     const precedent = choix;
-    if (id === precedent) return;
+    if (!nouveau || valeurDuChoix(nouveau) === valeurDuChoix(precedent)) return;
     // 1. l'écran d'abord : la personne voit sa palette avant que le serveur ait répondu
-    setChoix(id);
-    peindre(id);
+    setChoix(nouveau);
+    peindre(nouveau);
     setMessage(null);
     // 2. puis l'enregistrement — et un retour en arrière complet s'il est refusé
     demarrer(async () => {
-      const res = await choisirTheme(id);
+      const res = await choisirTheme(valeurDuChoix(nouveau));
       if (res.erreur) {
         setChoix(precedent);
         peindre(precedent);
@@ -102,15 +105,23 @@ export function SelecteurTheme({ valeur }: { valeur: ThemeId }) {
           <Select
             label="Thème de couleurs"
             name="theme"
-            value={choix}
+            value={valeurDuChoix(choix)}
             disabled={enCours}
             onChange={(e) => changer(e.target.value)}
             className="min-h-11 w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-jauge disabled:opacity-60"
           >
-            {THEMES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.nom}
-              </option>
+            {/* Un thème qui suit encore l'appareil (celui du club, ou un choix d'avant la séparation)
+                garde sa ligne tant qu'il est le choix en cours : sans elle, la liste afficherait un
+                autre thème que celui de l'écran. */}
+            {!choix.mode && <option value={choix.id}>{theme.nom} (suit l&apos;appareil)</option>}
+            {GROUPES_THEMES.map((g) => (
+              <optgroup key={g.mode} label={g.libelle}>
+                {g.choix.map((c) => (
+                  <option key={c.valeur} value={c.valeur}>
+                    {c.nom}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </Select>
 
@@ -134,7 +145,7 @@ export function SelecteurTheme({ valeur }: { valeur: ThemeId }) {
       </div>
 
       <p className="text-sm text-texte-secondaire">
-        Le thème ne change que les couleurs : l&apos;application reste en clair ou en sombre selon le réglage de ton téléphone ou de ton ordinateur. Ce choix
+        Un thème clair reste clair et un thème sombre reste sombre, quel que soit le réglage de ton téléphone ou de ton ordinateur. Ce choix
         n&apos;est que pour toi, il ne change rien pour les autres membres.
       </p>
     </div>

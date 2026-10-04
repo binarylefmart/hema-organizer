@@ -4,6 +4,7 @@ import { addDays, formatDateCourte, isoWeekday, nomMois, seanceCommencee, todayI
 import { compterPresences, type Compteurs } from "./presences";
 import { can, isStaff, type UserLike } from "./permissions";
 import { nettoyerLieux, type Lieu } from "./lieux";
+import { LIEUX_DU_CLUB } from "./lieux-club";
 import { CLES, getSetting, setSetting } from "./settings";
 // Module purement calculatoire (ni React, ni base) : la numérotation des parties y vit déjà, avec le
 // repère de couleur qu'elle nourrit. L'importer d'ici évite d'en écrire une seconde version — et
@@ -150,10 +151,14 @@ export async function setThemes(themes: string[]): Promise<void> {
  * lecture de base depuis le navigateur entraînerait `settings.ts`, donc `crypto.ts`, donc
  * `node:crypto` — et le build échoue (constaté, et c'est tant mieux).
  *
- * Vide par défaut : un club qui vient d'installer l'outil saisit le lieu séance par séance.
+ * **Réglage jamais enregistré → les salles du club** (`LIEUX_DU_CLUB`, `src/lib/lieux-club.ts` —
+ * vide dans le dépôt public, où un club qui vient d'installer l'outil saisit le lieu séance par
+ * séance). Dès qu'une liste a été enregistrée, **même vide**, c'est elle qui fait foi : le défaut ne
+ * revient jamais par-dessus une décision du bureau.
  */
 export async function getLieux(): Promise<Lieu[]> {
   const brut = await getSetting(CLES.lieux);
+  if (brut === null) return nettoyerLieux(LIEUX_DU_CLUB.map((l) => `${l.lieu} | ${l.adresse}`).join("\n"));
   if (!brut) return [];
   try {
     const liste = JSON.parse(brut);

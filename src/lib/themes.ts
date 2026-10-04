@@ -24,8 +24,14 @@ export type ThemeId =
   | "lavande"
   | "nordique"
   | "catppuccin-mocha"
+  | "catppuccin-green"
+  | "catppuccin-lavender"
   | "catppuccin-macchiato"
-  | "catppuccin-frappe";
+  | "catppuccin-teal"
+  | "catppuccin-peach"
+  | "catppuccin-frappe"
+  | "catppuccin-sapphire"
+  | "catppuccin-flamingo";
 
 /**
  * Thème livré avec le code, employé tant que **ni le membre ni le club** n'ont choisi.
@@ -44,7 +50,10 @@ export const THEME_DEFAUT: ThemeId = "parchemin";
  */
 export type Theme = {
   id: ThemeId;
+  /** Nom du thème, et celui de sa version sombre quand le membre la choisit. */
   nom: string;
+  /** Nom de sa version claire, quand elle en porte un autre (Catppuccin : Latte le jour). */
+  nomClair?: string;
   description: string;
   apercu: { fond: string; primaire: string; texte: string };
   apercuSombre: { fond: string; primaire: string; texte: string };
@@ -137,24 +146,75 @@ export const THEMES: readonly Theme[] = [
   },
   {
     id: "catppuccin-mocha",
-    nom: "Catppuccin Mocha",
+    nom: "Catppuccin Mocha · Mauve",
+    nomClair: "Catppuccin Latte · Mauve",
     description: "Pastels Catppuccin, accent mauve ; Mocha la nuit, la plus sombre.",
     apercu: { fond: "#eff1f5", primaire: "#8534ef", texte: "#4c4f69" },
     apercuSombre: { fond: "#181825", primaire: "#cba6f7", texte: "#cdd6f4" },
   },
   {
+    id: "catppuccin-green",
+    nom: "Catppuccin Mocha · Green",
+    nomClair: "Catppuccin Latte · Green",
+    description: "Pastels Catppuccin, accent vert sauge ; Mocha la nuit.",
+    apercu: { fond: "#eff1f5", primaire: "#255c19", texte: "#4c4f69" },
+    apercuSombre: { fond: "#181825", primaire: "#a6e3a1", texte: "#cdd6f4" },
+  },
+  {
+    id: "catppuccin-lavender",
+    nom: "Catppuccin Mocha · Lavender",
+    nomClair: "Catppuccin Latte · Lavender",
+    description: "Pastels Catppuccin, accent lavande ; Mocha la nuit.",
+    apercu: { fond: "#eff1f5", primaire: "#3352fc", texte: "#4c4f69" },
+    apercuSombre: { fond: "#181825", primaire: "#b4befe", texte: "#cdd6f4" },
+  },
+  {
     id: "catppuccin-macchiato",
-    nom: "Catppuccin Macchiato",
+    nom: "Catppuccin Macchiato · Blue",
+    nomClair: "Catppuccin Latte · Blue",
     description: "Pastels Catppuccin, accent bleu ; Macchiato la nuit.",
     apercu: { fond: "#eff1f5", primaire: "#0b59f4", texte: "#4c4f69" },
     apercuSombre: { fond: "#1e2030", primaire: "#8aadf4", texte: "#cad3f5" },
   },
   {
+    id: "catppuccin-teal",
+    nom: "Catppuccin Macchiato · Teal",
+    nomClair: "Catppuccin Latte · Teal",
+    description: "Pastels Catppuccin, accent vert d'eau ; Macchiato la nuit.",
+    apercu: { fond: "#eff1f5", primaire: "#127278", texte: "#4c4f69" },
+    apercuSombre: { fond: "#1e2030", primaire: "#8bd5ca", texte: "#cad3f5" },
+  },
+  {
+    id: "catppuccin-peach",
+    nom: "Catppuccin Macchiato · Peach",
+    nomClair: "Catppuccin Latte · Peach",
+    description: "Pastels Catppuccin, accent pêche ; Macchiato la nuit.",
+    apercu: { fond: "#eff1f5", primaire: "#b44201", texte: "#4c4f69" },
+    apercuSombre: { fond: "#1e2030", primaire: "#f5a97f", texte: "#cad3f5" },
+  },
+  {
     id: "catppuccin-frappe",
-    nom: "Catppuccin Frappé",
+    nom: "Catppuccin Frappé · Pink",
+    nomClair: "Catppuccin Latte · Pink",
     description: "Pastels Catppuccin, accent rose ; Frappé la nuit, la plus douce.",
     apercu: { fond: "#eff1f5", primaire: "#bc1d91", texte: "#4c4f69" },
     apercuSombre: { fond: "#292c3c", primaire: "#f4b8e4", texte: "#c6d0f5" },
+  },
+  {
+    id: "catppuccin-sapphire",
+    nom: "Catppuccin Frappé · Sapphire",
+    nomClair: "Catppuccin Latte · Sapphire",
+    description: "Pastels Catppuccin, accent saphir ; Frappé la nuit.",
+    apercu: { fond: "#eff1f5", primaire: "#177181", texte: "#4c4f69" },
+    apercuSombre: { fond: "#292c3c", primaire: "#85c1dc", texte: "#c6d0f5" },
+  },
+  {
+    id: "catppuccin-flamingo",
+    nom: "Catppuccin Frappé · Flamingo",
+    nomClair: "Catppuccin Latte · Flamingo",
+    description: "Pastels Catppuccin, accent flamant ; Frappé la nuit.",
+    apercu: { fond: "#eff1f5", primaire: "#982626", texte: "#4c4f69" },
+    apercuSombre: { fond: "#292c3c", primaire: "#eebebe", texte: "#c6d0f5" },
   },
 ] as const;
 
@@ -177,3 +237,60 @@ export function themeOuDefaut(valeur: string | null | undefined, defaut?: string
   if (estThemeConnu(valeur)) return valeur;
   return estThemeConnu(defaut) ? defaut : THEME_DEFAUT;
 }
+
+/**
+ * **Un thème choisi par le membre est clair ou sombre**, et s'impose jour et nuit : c'est ce que dit
+ * l'attribut `data-mode` posé sur <html> (voir l'en-tête de `globals.css`). Sans choix — c'est-à-dire
+ * le thème du club, ou un choix fait avant que la liste ne sépare les deux —, le mode reste celui de
+ * l'appareil.
+ *
+ * En base, un choix s'écrit `<thème>:<mode>` (« dracula:sombre ») ; un identifiant seul est un thème
+ * qui suit l'appareil.
+ */
+export type ModeTheme = "clair" | "sombre";
+export type ChoixTheme = { id: ThemeId; mode: ModeTheme | null };
+
+const MODES: readonly ModeTheme[] = ["clair", "sombre"];
+
+/** Le choix lu tel qu'il est écrit, ou null s'il ne désigne rien du catalogue. */
+export function lireChoixTheme(valeur: unknown): ChoixTheme | null {
+  if (typeof valeur !== "string") return null;
+  const [id, mode, ...reste] = valeur.split(":");
+  if (reste.length || !estThemeConnu(id)) return null;
+  if (mode === undefined) return { id, mode: null };
+  return (MODES as readonly string[]).includes(mode) ? { id, mode: mode as ModeTheme } : null;
+}
+
+/** Vrai si la valeur est un choix enregistrable : un thème du catalogue, avec ou sans mode. */
+export function estChoixThemeConnu(valeur: unknown): valeur is string {
+  return lireChoixTheme(valeur) !== null;
+}
+
+export function valeurDuChoix(choix: ChoixTheme): string {
+  return choix.mode ? `${choix.id}:${choix.mode}` : choix.id;
+}
+
+/** Choix du membre s'il est valable, sinon le thème du club (qui suit l'appareil), sinon le thème livré. */
+export function choixOuDefaut(valeur: string | null | undefined, defaut?: string | null): ChoixTheme {
+  return lireChoixTheme(valeur) ?? { id: themeOuDefaut(null, defaut), mode: null };
+}
+
+/** Le nom d'un thème dans un mode : « Catppuccin Latte · Mauve », « Forêt clair », « Dracula sombre »… */
+export function nomDuChoix(theme: Theme, mode: ModeTheme): string {
+  if (theme.nomClair) return mode === "clair" ? theme.nomClair : theme.nom;
+  return `${theme.nom} ${mode}`;
+}
+
+/**
+ * **La liste du profil : les thèmes clairs, puis les sombres**, chacun trié par nom. Chaque palette
+ * y figure deux fois, une par groupe.
+ */
+export const GROUPES_THEMES: readonly { mode: ModeTheme; libelle: string; choix: readonly { valeur: string; nom: string; theme: Theme }[] }[] = MODES.map(
+  (mode) => ({
+    mode,
+    libelle: mode === "clair" ? "Thèmes clairs" : "Thèmes sombres",
+    choix: THEMES.map((theme) => ({ valeur: valeurDuChoix({ id: theme.id, mode }), nom: nomDuChoix(theme, mode), theme })).sort((a, b) =>
+      a.nom.localeCompare(b.nom, "fr"),
+    ),
+  }),
+);

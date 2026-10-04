@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { IM_Fell_Great_Primer_SC } from "next/font/google";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { identite } from "@/lib/identite";
-import { themeOuDefaut } from "@/lib/themes";
+import { choixOuDefaut } from "@/lib/themes";
 import "./globals.css";
 
 // Police des titres : une romaine à empattements anciens, dans l'esprit des traités d'escrime
@@ -62,7 +62,8 @@ export const viewport: Viewport = {
  * qui décide des couleurs pour la quasi-totalité des écrans, et c'est ce qui permet à un club de
  * déployer l'outil à ses couleurs sans demander quoi que ce soit à ses membres.
  *
- * Le thème ne choisit que la **palette** : le mode clair/sombre reste celui du système.
+ * **Le mode suit le choix** : un thème pris dans « Mon profil » est clair ou sombre et s'impose
+ * (`data-mode`) ; le thème du club, lui, laisse l'appareil décider.
  *
  * **Contrepartie assumée** : lire la session ici rend le rendu dynamique pour *toutes* les pages, y
  * compris les pages publiques `/partage/*`. C'est acceptable pour un outil de club (base SQLite
@@ -73,12 +74,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // `getCurrentUser` et `identite` sont mis en cache pour la durée de la requête : la session est de
   // toute façon lue une fois par page, et l'identité l'est déjà par les métadonnées.
   const [user, club] = await Promise.all([getCurrentUser(), identite()]);
-  const theme = themeOuDefaut(user?.theme, club.theme);
+  const theme = choixOuDefaut(user?.theme, club.theme);
   return (
     <html
       lang="fr"
       className={fell.variable}
-      data-theme={theme}
+      data-theme={theme.id}
+      data-mode={theme.mode ?? undefined}
       /* **La couleur de marque du club, quand elle est réglée.** Une seule variable posée en ligne,
          par-dessus celle du thème : c'est le nom du club dans l'en-tête et les liserés qui la
          portent. Réglée à vide, rien n'est écrit et le thème garde la main — on ne veut pas d'une
