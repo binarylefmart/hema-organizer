@@ -1,0 +1,86 @@
+# HEMA Organizer — compose de DÉVELOPPEMENT LOCAL uniquement.
+#
+# Il sert à vérifier l'image dans les conditions de la production (utilisateur non-root,
+# cap_drop, no-new-privileges, /tmp en tmpfs, volumes /data et /backups) avant de publier.
+# La stack de production est gérée à la main dans Portainer : voir docs/portainer-stack.yml
+# et docs/DEPLOIEMENT.md. Ce fichier n'y est jamais utilisé.
+#
+#   docker compose up --build        (http://localhost:3000)
+#   docker compose down -v           (arrêt + suppression des volumes de test)
+#
+# Attention : le serveur de développement (`npm run dev`) occupe déjà le port 3000.
+# Pour cohabiter :  HEMA_PORT=3100 docker compose up --build
+# Dans ce cas, donner aussi HEMA_DOMAIN=http://organizer.localhost:3100 (voir `DOMAIN` plus bas) :
+# les liens des emails portent le port, et les deux valeurs par défaut sont accordées sur 3000.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hema-organizer:dev
+    container_name: hema-organizer-dev
+    restart: always
+    ports:
+      - "${HEMA_PORT:-3000}:3000"
+    environment:
+      # Cette ligne ne décide de rien : le Dockerfile pose déjà `NODE_ENV=production`, et la sortie
+      # standalone de Next la réécrit elle-même à la première ligne de son `server.js`. L'image est
+      # en production, toujours — et c'est exactement ce qu'on veut vérifier ici. Elle est gardée
+      # parce qu'elle dit la vérité, et c'est elle qui commande la valeur de `DOMAIN` ci-dessous.
+      NODE_ENV: production
+      TZ: ${TZ:-Europe/Paris}
+      DATABASE_URL: file:/data/hema.db
+      BACKUP_DIR: /backups
+      # **`DOMAIN` est le domaine public, pas l'adresse d'écoute** — et `env()` refuse une valeur
+      # locale dès que `NODE_ENV` vaut « production » (`src/lib/env.ts` : « DOMAIN doit être le
+      # domaine public de l'application en production »). Cette pile portait `localhost:3000` : la
+      # configuration était donc **rejetée** à chaque requête qui a besoin du domaine — c'est-à-dire
+      # dès la pose du cookie de session (`baseUrl()`), donc personne ne pouvait se connecter —,
+      # pendant que `/api/health`, qui ne regardait que la base, restait vert. Une pile déclarée
+      # saine et bonne à rien. La sonde vérifie donc aussi la configuration (`src/app/api/health`).
+      #
+      # Deux pièges, refermés par cette seule ligne :
+      #   • **le nom.** `docker compose` lit tout seul le `.env` de la racine, qui porte
+      #     `DOMAIN=localhost:3000` pour `npm run dev` — où c'est juste. Un `${DOMAIN:-…}` reprenait
+      #     donc cette valeur quel que soit le défaut écrit ici : la variable de la pile s'appelle
+      #     `HEMA_DOMAIN`, comme `HEMA_PORT`, et le `.env` du poste ne peut plus la remplir par accident ;
+      #   • **la valeur.** `organizer.localhost` n'est pas « localhost » pour la garde, résout vers la
+      #     boucle locale (navigateurs et systemd-resolved), et le schéma `http://` explicite garde
+      #     les cookies **non** `secure` (`baseUrl()`), sans quoi aucune session ne tiendrait sans TLS.
+      # Pour des liens qui s'ouvrent depuis un autre appareil du réseau : HEMA_DOMAIN=http://<ip>:3000.
+      DOMAIN: ${HEMA_DOMAIN:-http://organizer.localhost:3000}
+      SESSION_SECRET: ${SESSION_SECRET:?définir SESSION_SECRET dans .env (openssl rand -base64 48)}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      # `no-reply@localhost` n'était pas une adresse pour `normaliserExpediteur` (pas de domaine de
+      # tête) : l'expéditeur retombait sur un repli construit sur `DOMAIN`, schéma compris. Le défaut
+      # accompagne donc `DOMAIN` — rien ne part d'ici de toute façon, SMTP_HOST étant vide.
+      SMTP_FROM: ${SMTP_FROM:-HEMA Organizer <no-reply@organizer.localhost>}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      PUBLIC_API_ORIGIN: ${PUBLIC_API_ORIGIN:-https://club.test}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    volumes:
+      # Volumes nommés (locaux) : la base du conteneur reste distincte de ./data,
+      # utilisée par le serveur de développement.
+      - hema_data_dev:/data
+      - hema_backups_dev:/backups
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  hema_data_dev:
+  hema_backups_dev:

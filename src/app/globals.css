@@ -1,0 +1,817 @@
+@import "tailwindcss";
+
+/* ---- Charte « parchemin », alignée sur l'écu livré avec l'application ----
+   Fond parchemin #F4F0EE / #E8E1D8, tan #CAB8A2, encre #282828, gris chaud #928781,
+   accent rouille #AF4B2F. Or de l'écu réservé à la jauge et au focus.
+   Vert = uniquement « Présent » ; rouille = « Absent », annulations, erreurs ; ocre = « Peut-être ». */
+:root {
+  --marque-bleu: #2b2622;
+  --marque-rouge: #a5472c;
+  --marque-or: #d7b461;
+  --marque-noir: #000000;
+  --marque-gris: #808080;
+  --marque-vert: #1e7a3c;
+
+  --fond: #f4f0ee;
+  --fond-haut: #ece6de;
+  --surface: #fffdfa;
+  --surface-douce: #e8e1d8;
+  --texte: #282828;
+  --texte-secondaire: #6b6059;
+  --bordure: #d6cbbd;
+  --encre: #2b2622; /* en-tête */
+  --encre-texte: #f1e8d8;
+  --marque: #e6c977; /* nom de l'asso dans l'en-tête (or parchemin) */
+  --primaire: #a5472c;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #f3e2db;
+  --lien: #9a3f26;
+  /* Vert et ocre descendus de 2 points de luminosité : à leur valeur précédente ils tombaient
+     à 4,43:1 et 4,44:1 sur le haut du dégradé de page (--fond-haut), sous le seuil AA. */
+  --vert: #29703e;
+  --vert-doux: #e2efe3;
+  --rouge: #a5472c;
+  --rouge-doux: #f5e1da;
+  --ocre: #7b5d16;
+  --ocre-doux: #f3ead3;
+  --jauge: #c99a2e;
+
+  /* **Le vert et l'ocre, éclaircis pour tenir sur le fond encre** (vignette du prochain cours).
+     En mode clair, le vert « Présent » (#29703e) posé sur l'encre de l'en-tête ne donne que
+     2,2:1 — sous le seuil de 3:1 exigé d'un élément graphique porteur de sens, et les silhouettes
+     y disparaissaient. On mélange donc la couleur du statut à l'encre-texte du même thème : la
+     teinte est conservée (c'est toujours le vert de « Présent »), mais elle remonte au-dessus de
+     5:1 sur les douze thèmes, en clair comme en sombre (vérifié par tests/unit/themes.test.ts).
+     Une seule déclaration suffit pour tous les thèmes : `--vert` et `--encre-texte` sont résolus
+     sur l'élément qui porte `data-theme`, donc avec les valeurs du thème en cours. La première
+     ligne de chaque paire est le repli des navigateurs sans `color-mix`. */
+  --vert-sur-encre: var(--vert);
+  --vert-sur-encre: color-mix(in srgb, var(--vert) 55%, var(--encre-texte));
+  --ocre-sur-encre: var(--ocre);
+  --ocre-sur-encre: color-mix(in srgb, var(--ocre) 55%, var(--encre-texte));
+
+  /* **Une couleur par rang de partie, et de vraies couleurs**.
+
+      **Elles ne viennent plus du thème, et c'est le point.** Un thème ne garantit que deux couleurs
+      lisibles comme *texte* (l'ocre et le vert), et tout mélange entre ses couleurs retombe dans
+      l'olive : quatre nuances de deux familles, c'est tout ce qu'on pouvait en tirer. Ces six-ci
+      sont donc **fixes**, comme la palette d'un graphique l'est : elles ne disent pas la marque du
+      club, elles **distinguent** des lignes voisines — et c'est précisément pour cela qu'elles
+      doivent rester les mêmes d'un thème à l'autre.
+
+      Deux jeux, un par mode, et le texte posé dessus suit (`--partie-texte`) : en clair des teintes
+      **sombres et saturées** qui portent du blanc ; en sombre des **pastels** qui portent de
+      l'encre. Le contraste de chaque étiquette — aplat du cours comme contour de l'option — est
+      vérifié sur les douze thèmes et les deux modes par `tests/unit/themes.test.ts`, qui mesure
+      aussi l'écart deux à deux : une couleur qui se confondrait avec sa voisine ne distinguerait
+      plus rien. */
+  --partie-texte: #ffffff;
+  --partie-1: #8a5a00; /* ambre */
+  --partie-2: #2f6b3a; /* vert */
+  --partie-3: #1a5a96; /* bleu */
+  --partie-4: #b03a2e; /* rouge */
+  --partie-5: #6a3fa0; /* violet */
+  --partie-6: #0f6b6b; /* sarcelle */
+  /* Le fond du contour : un voile de la teinte sur la surface du thème — il suit donc le thème, là où
+     la teinte, elle, ne doit pas bouger. */
+  --partie-1-doux: color-mix(in srgb, var(--partie-1) 12%, var(--surface));
+  --partie-2-doux: color-mix(in srgb, var(--partie-2) 12%, var(--surface));
+  --partie-3-doux: color-mix(in srgb, var(--partie-3) 12%, var(--surface));
+  --partie-4-doux: color-mix(in srgb, var(--partie-4) 12%, var(--surface));
+  --partie-5-doux: color-mix(in srgb, var(--partie-5) 12%, var(--surface));
+  --partie-6-doux: color-mix(in srgb, var(--partie-6) 12%, var(--surface));
+
+  --ombre-carte: 0 1px 2px rgba(43, 38, 34, 0.06), 0 10px 28px -14px rgba(43, 38, 34, 0.35);
+  --ombre-carte-survol: 0 2px 4px rgba(43, 38, 34, 0.07), 0 16px 36px -14px rgba(43, 38, 34, 0.4);
+  --ombre-bouton: 0 2px 6px -1px rgba(43, 38, 34, 0.35);
+  --ombre-entete: 0 4px 16px -6px rgba(0, 0, 0, 0.5);
+  --ombre-nav: 0 -6px 20px -10px rgba(43, 38, 34, 0.3);
+  --ombre-champ: inset 0 1px 2px rgba(43, 38, 34, 0.08);
+}
+
+/* ---- Thèmes de couleurs ----
+   Le thème choisi par le membre est posé en attribut « data-theme » sur <html>.
+   « parchemin » est la charte du club : c'est ce qui est écrit ci-dessus sur :root, il n'a donc pas
+   de bloc à lui. Chaque autre thème redéfinit toute la palette, en clair ici et en sombre plus bas.
+   Le mode clair/sombre continue de suivre le système : le thème ne change que les couleurs.
+   Règles communes à tous les thèmes : le vert reste « Présent », le rouge « Absent » (et les
+   annulations et erreurs), l'ocre « Peut-être » — seules leurs nuances s'accordent au thème.
+   Toutes les paires texte/fond ont été contrôlées au ratio WCAG AA (4,5:1) ; certaines teintes ont
+   été montées ou descendues de quelques points de luminosité pour y arriver. */
+
+/* Dracula, la palette de l'éditeur de code : violet, rose et cyan sur gris-bleu. */
+[data-theme="dracula"] {
+  --fond: #f7f4fd;
+  --fond-haut: #efe9fb;
+  --surface: #fffdff;
+  --surface-douce: #e6dcf7;
+  --texte: #221f2e;
+  --texte-secondaire: #544b6b;
+  --bordure: #d2c5ea;
+  --encre: #282a36;
+  --encre-texte: #f8f8f2;
+  --marque: #ff92d0;
+  --primaire: #5b3aa6;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #eee3fd;
+  --lien: #8a2f96;
+  --vert: #1d6b3a;
+  --vert-doux: #ddf3e2;
+  --rouge: #b52a35;
+  --rouge-doux: #fbe0e2;
+  --ocre: #6f5c12;
+  --ocre-doux: #f3eecd;
+  --jauge: #b08b1c;
+}
+
+/* Encre de nuit : bleu d'encrier et reflets de laiton. */
+[data-theme="encre"] {
+  --fond: #f5f6f7;
+  --fond-haut: #ebecf0;
+  --surface: #fdfdfd;
+  --surface-douce: #e4e6ea;
+  --texte: #1c212c;
+  --texte-secondaire: #4a5773;
+  --bordure: #c9cdd4;
+  --encre: #151e33;
+  --encre-texte: #e9ecf1;
+  --marque: #e2c783;
+  --primaire: #234d95;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #e5eaf2;
+  --lien: #1e488f;
+  --vert: #256f56;
+  --vert-doux: #e4f1ed;
+  --rouge: #972b30;
+  --rouge-doux: #f3e7e8;
+  --ocre: #775f18;
+  --ocre-doux: #f0ecdd;
+  --jauge: #c7a924;
+}
+
+/* Forêt : verts de sous-bois et lumière filtrée. */
+[data-theme="foret"] {
+  --fond: #f6f7f5;
+  --fond-haut: #ecefeb;
+  --surface: #fdfdfd;
+  --surface-douce: #e6e9e4;
+  --texte: #21291e;
+  --texte-secondaire: #576d4f;
+  --bordure: #ccd3ca;
+  --encre: #182f22;
+  --encre-texte: #e9f1ec;
+  --marque: #c1d78e;
+  --primaire: #35825c;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #e7f0ec;
+  --lien: #2f7954;
+  --vert: #23703b;
+  --vert-doux: #e4f1e8;
+  --rouge: #9b3a27;
+  --rouge-doux: #f4e9e7;
+  --ocre: #786517;
+  --ocre-doux: #f1eddd;
+  --jauge: #c9b322;
+}
+
+/* Océan : bleus profonds et écume claire. */
+[data-theme="ocean"] {
+  --fond: #f5f7f7;
+  --fond-haut: #ebeef0;
+  --surface: #fdfdfd;
+  --surface-douce: #e3e8ea;
+  --texte: #1b272c;
+  --texte-secondaire: #4a6773;
+  --bordure: #c8d1d5;
+  --encre: #132735;
+  --encre-texte: #e9eef1;
+  --marque: #8bdad8;
+  --primaire: #237695;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #e5eff2;
+  --lien: #1e718f;
+  --vert: #23705e;
+  --vert-doux: #e4f1ee;
+  --rouge: #992934;
+  --rouge-doux: #f3e7e8;
+  --ocre: #75571a;
+  --ocre-doux: #f0eadd;
+  --jauge: #c49a26;
+}
+
+/* Bourgogne : rouge de vin vieilli et vieux rose. */
+[data-theme="bourgogne"] {
+  --fond: #f7f5f5;
+  --fond-haut: #efebec;
+  --surface: #fdfdfd;
+  --surface-douce: #e9e4e5;
+  --texte: #2a1d1f;
+  --texte-secondaire: #6f4d53;
+  --bordure: #d3cacb;
+  --encre: #30181e;
+  --encre-texte: #f1e9eb;
+  --marque: #dda788;
+  --primaire: #883046;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #f1e7e9;
+  --lien: #822b41;
+  --vert: #2b6943;
+  --vert-doux: #e5f0e9;
+  --rouge: #9d2535;
+  --rouge-doux: #f4e7e8;
+  --ocre: #724a1d;
+  --ocre-doux: #efe7de;
+  --jauge: #bf842b;
+}
+
+/* Ardoise : gris froids, comme l'acier poli d'une lame. */
+[data-theme="ardoise"] {
+  --fond: #f6f6f7;
+  --fond-haut: #ecedee;
+  --surface: #fdfdfd;
+  --surface-douce: #e5e7e8;
+  --texte: #202327;
+  --texte-secondaire: #555d68;
+  --bordure: #ccced1;
+  --encre: #1e2329;
+  --encre-texte: #e9edf1;
+  --marque: #9cb6c9;
+  --primaire: #445c74;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #e9ecef;
+  --lien: #3f576e;
+  --vert: #2e664c;
+  --vert-doux: #e6efeb;
+  --rouge: #8f3532;
+  --rouge-doux: #f2e8e8;
+  --ocre: #6d5622;
+  --ocre-doux: #eeeadf;
+  --jauge: #b59735;
+}
+
+/* Sakura : rose des cerisiers en fleur. */
+[data-theme="sakura"] {
+  --fond: #f8f5f6;
+  --fond-haut: #f1eaec;
+  --surface: #fdfdfd;
+  --surface-douce: #ebe2e5;
+  --texte: #2d1a21;
+  --texte-secondaire: #734a57;
+  --bordure: #d7c6cc;
+  --encre: #2e1924;
+  --encre-texte: #f1e9ed;
+  --marque: #df8698;
+  --primaire: #8c2c55;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #f1e6eb;
+  --lien: #862750;
+  --vert: #296a4a;
+  --vert-doux: #e5f0eb;
+  --rouge: #9b273a;
+  --rouge-doux: #f4e7e9;
+  --ocre: #74501b;
+  --ocre-doux: #f0e9de;
+  --jauge: #c28f29;
+}
+
+/* Solarisé : d'après la palette Solarized, beige chaud le jour, sarcelle la nuit. */
+[data-theme="solarise"] {
+  --fond: #f8f7f4;
+  --fond-haut: #f2efe9;
+  --surface: #fdfdfd;
+  --surface-douce: #edeae1;
+  --texte: #2d281a;
+  --texte-secondaire: #73684a;
+  --bordure: #dad4c3;
+  --encre: #0b333d;
+  --encre-texte: #e9f0f1;
+  --marque: #85e0d9;
+  --primaire: #1f6698;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #e5edf3;
+  --lien: #1b6193;
+  --vert: #2e781c;
+  --vert-doux: #e6f2e3;
+  --rouge: #a12321;
+  --rouge-doux: #f4e6e6;
+  --ocre: #81640e;
+  --ocre-doux: #f2eddb;
+  --jauge: #d8b413;
+}
+
+/* Agrume : orange sanguine et mandarine. */
+[data-theme="agrume"] {
+  --fond: #f8f6f4;
+  --fond-haut: #f2ede9;
+  --surface: #fdfdfd;
+  --surface-douce: #ede6e1;
+  --texte: #2d231a;
+  --texte-secondaire: #735d4a;
+  --bordure: #dacec3;
+  --encre: #341d13;
+  --encre-texte: #f1ece9;
+  --marque: #eec277;
+  --primaire: #a04518;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #f4e9e4;
+  --lien: #9a4013;
+  --vert: #256f35;
+  --vert-doux: #e4f1e7;
+  --rouge: #a13b21;
+  --rouge-doux: #f4e9e6;
+  --ocre: #7c5513;
+  --ocre-doux: #f2eadc;
+  --jauge: #d09a1a;
+}
+
+/* Lavande : mauve doux et gris parme. */
+[data-theme="lavande"] {
+  --fond: #f6f5f8;
+  --fond-haut: #edeaf0;
+  --surface: #fdfdfd;
+  --surface-douce: #e6e2eb;
+  --texte: #221a2d;
+  --texte-secondaire: #5c4a73;
+  --bordure: #cdc7d7;
+  --encre: #23182f;
+  --encre-texte: #ede9f1;
+  --marque: #c98ed7;
+  --primaire: #5c3286;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #ece7f1;
+  --lien: #572d81;
+  --vert: #2c6850;
+  --vert-doux: #e6efec;
+  --rouge: #952d3b;
+  --rouge-doux: #f3e7e9;
+  --ocre: #71581e;
+  --ocre-doux: #efeade;
+  --jauge: #bd9b2e;
+}
+
+/* Nordique : d'après la palette Nord, bleus givrés et gris polaires. */
+[data-theme="nordique"] {
+  --fond: #f5f6f7;
+  --fond-haut: #ebedef;
+  --surface: #fdfdfd;
+  --surface-douce: #e4e6e9;
+  --texte: #1d222a;
+  --texte-secondaire: #4d596f;
+  --bordure: #cacdd3;
+  --encre: #1d222a;
+  --encre-texte: #e9ecf1;
+  --marque: #9fc6c6;
+  --primaire: #337384;
+  --primaire-texte: #ffffff;
+  --primaire-doux: #e7eef1;
+  --lien: #2f6d7f;
+  --vert: #326a29;
+  --vert-doux: #e7f0e5;
+  --rouge: #932f39;
+  --rouge-doux: #f3e8e9;
+  --ocre: #72561d;
+  --ocre-doux: #efeade;
+  --jauge: #bf982b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    /* **Les six repères de partie en mode sombre** : les mêmes teintes, en pastel, et le texte passe
+       à l'encre. Posés ici une seule fois — ils ne viennent pas du thème (voir leur bloc en clair). */
+    --partie-texte: #1a1613;
+    --partie-1: #e8c07a;
+    --partie-2: #9bd3a6;
+    --partie-3: #8fc4f0;
+    --partie-4: #f0a79b;
+    --partie-5: #c9adf0;
+    --partie-6: #86d0cc;
+    /* Mode sombre « parchemin éteint » : brun chaud, volontairement pas noir */
+    --fond: #2c2622;
+    --fond-haut: #332c27;
+    --surface: #3a322c;
+    --surface-douce: #483e36;
+    --texte: #f4ede3;
+    --texte-secondaire: #c4b8a9;
+    --bordure: #5a4e43;
+    --encre: #1f1a16;
+    --encre-texte: #f1e8d8;
+    --marque: #e6c977;
+    --primaire: #e29b86;
+    --primaire-texte: #1b1714;
+    --primaire-doux: #55392e;
+    --lien: #e8977e;
+    --vert: #72c289;
+    --vert-doux: #2c4a34;
+    --rouge: #ec977f;
+    --rouge-doux: #55362c;
+    --ocre: #d9b357;
+    --ocre-doux: #4d4022;
+    --jauge: #d9b357;
+    --ombre-carte: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 30px -14px rgba(0, 0, 0, 0.7);
+    --ombre-carte-survol: 0 2px 4px rgba(0, 0, 0, 0.4), 0 18px 40px -14px rgba(0, 0, 0, 0.8);
+    --ombre-bouton: 0 2px 8px -1px rgba(0, 0, 0, 0.5);
+    --ombre-entete: 0 4px 18px -6px rgba(0, 0, 0, 0.8);
+    --ombre-nav: 0 -6px 20px -10px rgba(0, 0, 0, 0.7);
+    --ombre-champ: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+
+
+  /* Dracula en sombre : les teintes officielles, à deux ajustements près.
+     « Current line » (#44475a) reste --surface-douce ; --surface prend une valeur intermédiaire entre
+     le fond et elle, sinon les cartes de séance avaient exactement la couleur de la page (rapport 1,00).
+     Le rouge est monté de #ff5555 à #ff7b7b pour rester à 4,7:1 sur cette nouvelle surface. */
+  [data-theme="dracula"] {
+    color-scheme: dark;
+    --fond: #282a36;
+    --fond-haut: #21222c;
+    --surface: #33364a;
+    --surface-douce: #44475a;
+    --texte: #f8f8f2;
+    --texte-secondaire: #a9b6d9;
+    --bordure: #4d5066;
+    --encre: #191a21;
+    --encre-texte: #f8f8f2;
+    --marque: #ff79c6;
+    --primaire: #bd93f9;
+    --primaire-texte: #21222c;
+    --primaire-doux: #463a66;
+    --lien: #8be9fd;
+    --vert: #50fa7b;
+    --vert-doux: #24422f;
+    --rouge: #ff7b7b;
+    --rouge-doux: #4a2830;
+    --ocre: #f1fa8c;
+    --ocre-doux: #45432a;
+    --jauge: #f1fa8c;
+  }
+
+  /* Encre de nuit, version sombre : le bleu descend vers le bleu de minuit. */
+  [data-theme="encre"] {
+    color-scheme: dark;
+    --fond: #1c1f26;
+    --fond-haut: #232831;
+    --surface: #282d36;
+    --surface-douce: #343a46;
+    --texte: #eeeff2;
+    --texte-secondaire: #aeb8cb;
+    --bordure: #4a515e;
+    --encre: #0f141f;
+    --encre-texte: #eaecf1;
+    --marque: #dfc990;
+    --primaire: #90addf;
+    --primaire-texte: #141a24;
+    --primaire-doux: #303f5a;
+    --lien: #96b2e4;
+    --vert: #79d8b8;
+    --vert-doux: #285344;
+    --rouge: #e67f84;
+    --rouge-doux: #502325;
+    --ocre: #e7ce69;
+    --ocre-doux: #574a23;
+    --jauge: #e4c858;
+  }
+
+  /* Forêt, version sombre : le vert profond de la futaie. */
+  [data-theme="foret"] {
+    color-scheme: dark;
+    --fond: #1f251d;
+    --fond-haut: #282f25;
+    --surface: #2d342a;
+    --surface-douce: #3a4437;
+    --texte: #eff1ee;
+    --texte-secondaire: #b7c7b2;
+    --bordure: #505c4d;
+    --encre: #111d16;
+    --encre-texte: #eaf1ed;
+    --marque: #c4d699;
+    --primaire: #9dd3b8;
+    --primaire-texte: #14241c;
+    --primaire-doux: #365345;
+    --lien: #a2d7bd;
+    --vert: #77da94;
+    --vert-doux: #275334;
+    --rouge: #ea8e7b;
+    --rouge-doux: #562c23;
+    --ocre: #e9d667;
+    --ocre-doux: #584d22;
+    --jauge: #e7d156;
+  }
+
+  /* Océan, version sombre : le grand fond bleu. */
+  [data-theme="ocean"] {
+    color-scheme: dark;
+    --fond: #1c2327;
+    --fond-haut: #232d32;
+    --surface: #273237;
+    --surface-douce: #344147;
+    --texte: #eef1f2;
+    --texte-secondaire: #aec3cb;
+    --bordure: #49595f;
+    --encre: #0e1920;
+    --encre-texte: #eaeef1;
+    --marque: #96d9d7;
+    --primaire: #90cadf;
+    --primaire-texte: #142024;
+    --primaire-doux: #304f5a;
+    --lien: #96cfe4;
+    --vert: #77dac3;
+    --vert-doux: #275349;
+    --rouge: #e87d88;
+    --rouge-doux: #512227;
+    --ocre: #e5c36b;
+    --ocre-doux: #574624;
+    --jauge: #e2bc5a;
+  }
+
+  /* Bourgogne, version sombre : la cave, lie-de-vin. */
+  [data-theme="bourgogne"] {
+    color-scheme: dark;
+    --fond: #251d1e;
+    --fond-haut: #302426;
+    --surface: #35292b;
+    --surface-douce: #443638;
+    --texte: #f1eeef;
+    --texte-secondaire: #c9b1b5;
+    --bordure: #5c4c4f;
+    --encre: #1d1114;
+    --encre-texte: #f1eaeb;
+    --marque: #dcae94;
+    --primaire: #d699a8;
+    --primaire-texte: #241418;
+    --primaire-doux: #55343d;
+    --lien: #db9eae;
+    --vert: #80d09f;
+    --vert-doux: #2b4f39;
+    --rouge: #eb7a89;
+    --rouge-doux: #512026;
+    --ocre: #e2b26f;
+    --ocre-doux: #553f25;
+    --jauge: #dea95e;
+  }
+
+  /* Ardoise, version sombre : gris anthracite. */
+  [data-theme="ardoise"] {
+    color-scheme: dark;
+    --fond: #1f2123;
+    --fond-haut: #272a2d;
+    --surface: #2c2f32;
+    --surface-douce: #393d41;
+    --texte: #eff0f1;
+    --texte-secondaire: #b6bcc3;
+    --bordure: #505459;
+    --encre: #14171a;
+    --encre-texte: #eaedf1;
+    --marque: #a4bbcb;
+    --primaire: #a7b8c8;
+    --primaire-texte: #141c24;
+    --primaire-doux: #3c454e;
+    --lien: #acbdcd;
+    --vert: #84cdab;
+    --vert-doux: #2d4d3e;
+    --rouge: #df8986;
+    --rouge-doux: #4f2927;
+    --ocre: #dac177;
+    --ocre-doux: #524529;
+    --jauge: #d6ba67;
+  }
+
+  /* Sakura, version sombre : prune et rose lumineux. */
+  [data-theme="sakura"] {
+    color-scheme: dark;
+    --fond: #291a1f;
+    --fond-haut: #342027;
+    --surface: #3a252c;
+    --surface-douce: #4a3039;
+    --texte: #f2eeef;
+    --texte-secondaire: #cbaeb8;
+    --bordure: #63454f;
+    --encre: #1c1117;
+    --encre-texte: #f1eaed;
+    --marque: #dd92a1;
+    --primaire: #d996b3;
+    --primaire-texte: #24141b;
+    --primaire-doux: #573342;
+    --lien: #dd9cb8;
+    --vert: #7ed2a8;
+    --vert-doux: #2a503d;
+    --rouge: #ea7b8e;
+    --rouge-doux: #512129;
+    --ocre: #e3ba6d;
+    --ocre-doux: #564225;
+    --jauge: #e0b25c;
+  }
+
+  /* Solarisé, version sombre : le fond sarcelle très foncé de Solarized dark. */
+  [data-theme="solarise"] {
+    color-scheme: dark;
+    --fond: #18272a;
+    --fond-haut: #1d3237;
+    --surface: #22373c;
+    --surface-douce: #2d474d;
+    --texte: #eef1f2;
+    --texte-secondaire: #aec5cb;
+    --bordure: #425f67;
+    --encre: #0a1f24;
+    --encre-texte: #eaeff1;
+    --marque: #91ded8;
+    --primaire: #8dbfe2;
+    --primaire-texte: #141d24;
+    --primaire-doux: #2e495c;
+    --lien: #93c4e6;
+    --vert: #85e36d;
+    --vert-doux: #2d5823;
+    --rouge: #ef7876;
+    --rouge-doux: #521f1f;
+    --ocre: #e9cf67;
+    --ocre-doux: #5d4d1d;
+    --jauge: #e7ca55;
+  }
+
+  /* Agrume, version sombre : zeste sur fond brun-orangé. */
+  [data-theme="agrume"] {
+    color-scheme: dark;
+    --fond: #2b2117;
+    --fond-haut: #37291d;
+    --surface: #3d2e21;
+    --surface-douce: #4e3c2c;
+    --texte: #f2f0ee;
+    --texte-secondaire: #cbbcae;
+    --bordure: #685341;
+    --encre: #1f140f;
+    --encre-texte: #f1ecea;
+    --marque: #eac585;
+    --primaire: #e7a888;
+    --primaire-texte: #241914;
+    --primaire-doux: #5e3c2b;
+    --lien: #ebad8e;
+    --vert: #79d88d;
+    --vert-doux: #285331;
+    --rouge: #ef8e76;
+    --rouge-doux: #5a2d21;
+    --ocre: #e9c067;
+    --ocre-doux: #5b4520;
+    --jauge: #e7b955;
+  }
+
+  /* Lavande, version sombre : violet atténué, reposant. */
+  [data-theme="lavande"] {
+    color-scheme: dark;
+    --fond: #201a28;
+    --fond-haut: #292134;
+    --surface: #2e2539;
+    --surface-douce: #3c3149;
+    --texte: #efeef2;
+    --texte-secondaire: #bbaecb;
+    --bordure: #524662;
+    --encre: #17111d;
+    --encre-texte: #edeaf1;
+    --marque: #ca99d6;
+    --primaire: #b89ad5;
+    --primaire-texte: #1c1424;
+    --primaire-doux: #453555;
+    --lien: #bda0da;
+    --vert: #82ceb0;
+    --vert-doux: #2c4e41;
+    --rouge: #e4818e;
+    --rouge-doux: #50242a;
+    --ocre: #e0c471;
+    --ocre-doux: #544626;
+    --jauge: #dcbd60;
+  }
+
+  /* Nordique, version sombre : le bleu-gris nuit de Nord. */
+  [data-theme="nordique"] {
+    color-scheme: dark;
+    --fond: #1d2025;
+    --fond-haut: #242830;
+    --surface: #292d35;
+    --surface-douce: #363b44;
+    --texte: #eeeff1;
+    --texte-secondaire: #b1b9c9;
+    --bordure: #4c525c;
+    --encre: #14161a;
+    --encre-texte: #eaecf1;
+    --marque: #a7c8c8;
+    --primaire: #9bc8d4;
+    --primaire-texte: #142124;
+    --primaire-doux: #364d54;
+    --lien: #a1ccd8;
+    --vert: #8ad27e;
+    --vert-doux: #2f502a;
+    --rouge: #e2838c;
+    --rouge-doux: #4f2529;
+    --ocre: #e2c16f;
+    --ocre-doux: #554525;
+    --jauge: #deba5e;
+  }}
+
+@theme inline {
+  --color-hema-bleu: var(--marque-bleu);
+  --color-hema-rouge: var(--marque-rouge);
+  --color-hema-or: var(--marque-or);
+  --color-hema-noir: var(--marque-noir);
+  --color-hema-gris: var(--marque-gris);
+  --color-hema-vert: var(--marque-vert);
+  --color-fond: var(--fond);
+  --color-surface: var(--surface);
+  --color-surface-douce: var(--surface-douce);
+  --color-texte: var(--texte);
+  --color-texte-secondaire: var(--texte-secondaire);
+  --color-bordure: var(--bordure);
+  --color-encre: var(--encre);
+  --color-encre-texte: var(--encre-texte);
+  --color-marque: var(--marque);
+  --color-primaire: var(--primaire);
+  --color-primaire-texte: var(--primaire-texte);
+  --color-primaire-doux: var(--primaire-doux);
+  --color-lien: var(--lien);
+  --color-vert: var(--vert);
+  --color-vert-doux: var(--vert-doux);
+  --color-rouge: var(--rouge);
+  --color-rouge-doux: var(--rouge-doux);
+  --color-ocre: var(--ocre);
+  /* Les six repères de partie (voir `:root`) : `bg-partie-3`, `border-partie-3`, `text-partie-3`… */
+  --color-partie-texte: var(--partie-texte);
+  --color-partie-1: var(--partie-1);
+  --color-partie-1-doux: var(--partie-1-doux);
+  --color-partie-2: var(--partie-2);
+  --color-partie-2-doux: var(--partie-2-doux);
+  --color-partie-3: var(--partie-3);
+  --color-partie-3-doux: var(--partie-3-doux);
+  --color-partie-4: var(--partie-4);
+  --color-partie-4-doux: var(--partie-4-doux);
+  --color-partie-5: var(--partie-5);
+  --color-partie-5-doux: var(--partie-5-doux);
+  --color-partie-6: var(--partie-6);
+  --color-partie-6-doux: var(--partie-6-doux);
+  --color-ocre-doux: var(--ocre-doux);
+  --color-jauge: var(--jauge);
+  --color-vert-sur-encre: var(--vert-sur-encre);
+  --color-ocre-sur-encre: var(--ocre-sur-encre);
+  --shadow-carte: var(--ombre-carte);
+  --shadow-carte-survol: var(--ombre-carte-survol);
+  --shadow-bouton: var(--ombre-bouton);
+  --shadow-entete: var(--ombre-entete);
+  --shadow-nav: var(--ombre-nav);
+  --shadow-champ: var(--ombre-champ);
+  --font-titre: var(--font-fell), "IM Fell Great Primer SC", Georgia, "Times New Roman", serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  /* Menus déroulants natifs : Chromium peint la liste ouverte avec le thème du système sur certaines
+     plateformes (Linux), d'où des options illisibles en mode sombre. On impose leurs couleurs. */
+  select option,
+  select optgroup {
+    background-color: var(--surface);
+    color: var(--texte);
+  }
+
+  html {
+    /* Déclaré explicitement (et basculé plus bas en sombre) : c'est ce qui décide de l'apparence des
+       éléments natifs — listes déroulantes ouvertes, sélecteurs de date, barres de défilement.
+       Avec « light dark », le menu d'un <select> restait peint en blanc sur fond sombre. */
+    color-scheme: light;
+    font-size: 100%; /* ≥ 16 px */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--fond);
+    /* Léger dégradé parchemin, plus soutenu en haut de page */
+    background-image: linear-gradient(to bottom, var(--fond-haut), var(--fond) 320px);
+    background-repeat: no-repeat;
+    color: var(--texte);
+    font-family: var(--font-sans);
+    font-size: 1.0625rem; /* 17 px : confortable pour tous les âges */
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Police du site (IM Fell, petites capitales) pour le nom de l'asso et les titres de page */
+  h1 {
+    font-family: var(--font-titre);
+    font-weight: 400;
+    letter-spacing: 0;
+    text-wrap: balance;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--jauge);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  a {
+    color: var(--lien);
+    text-underline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+    }
+  }
+}

@@ -1,0 +1,205 @@
+# Publication d'une version : contrôle qualité, construction de l'image et envoi sur GHCR.
+#
+# Déclenchement :
+#   - push d'un tag `vX.Y.Z` (ex. `git tag v0.5.0 && git push origin v0.5.0`)
+#   - manuellement (onglet Actions → Release → Run workflow), en saisissant la version
+#
+# Résultat : ghcr.io/<propriétaire>/hema-organizer:<version> et :latest (paquet privé).
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version à publier (ex. v0.5.0)"
+        required: true
+        type: string
+
+# **Portée du GITHUB_TOKEN, fixée ici pour tout le fichier.**
+#
+# Un job sans bloc `permissions:` hérite des permissions **par défaut du dépôt** — possiblement
+# « read and write all » sur un dépôt créé avant que GitHub ne change ce réglage. Or `controles`
+# lance `npm ci`, c'est-à-dire les scripts d'installation de toutes les dépendances et de leurs
+# dépendances : un paquet compromis y trouverait un jeton capable d'écrire dans le dépôt.
+#
+# `contents: read` au niveau du workflow devient le plancher de **tous** les jobs, présents et à
+# venir ; celui qui a besoin de plus le dit chez lui (`image` ajoute `packages: write`), et un job
+# ajouté demain sans bloc `permissions:` est en lecture seule par défaut au lieu d'être en écriture.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/hema-organizer
+  # Le nom de l'image, sans espace de noms : il est le même partout, seul le registre change.
+  IMAGE_COURT: hema-organizer
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Contrôles : lint, types, tests unitaires
+  # ---------------------------------------------------------------------------
+  controles:
+    name: Lint, types et tests unitaires
+    runs-on: ubuntu-latest
+    # Rien d'autre que lire le dépôt : ce job n'écrit ni paquet, ni commentaire, ni release.
+    permissions:
+      contents: read
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+
+      - name: Installation de Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Génération du client Prisma
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Vérification des types
+        run: npm run typecheck
+
+      - name: Tests unitaires
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  # 2. Image Docker → GHCR
+  # ---------------------------------------------------------------------------
+  image:
+    name: Construction et publication de l'image
+    needs: controles
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+
+      - name: Détermination de la version
+        id: version
+        # La saisie passe par l'environnement, jamais par interpolation directe dans le script :
+        # `${{ inputs.version }}` écrit sa valeur **dans** le shell, où une apostrophe bien placée
+        # devient du code. Ici le dépôt est privé et seul un compte ayant le droit d'écriture peut
+        # déclencher ce workflow, mais c'est l'anti-motif que GitHub demande explicitement d'éviter.
+        env:
+          VERSION_SAISIE: ${{ inputs.version }}
+          EVENEMENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENEMENT" = "workflow_dispatch" ]; then
+            VERSION="$VERSION_SAISIE"
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          # On retire le « v » de tête : l'étiquette de l'image est 0.5.0, pas v0.5.0.
+          VERSION="${VERSION#v}"
+          case "$VERSION" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "Version invalide : '$VERSION' (attendu vX.Y.Z)" >&2; exit 1 ;;
+          esac
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version publiée : ${VERSION}"
+
+      - name: Préparation de Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ---------------------------------------------------------------------
+      # Où part l'image
+      #
+      # **Un seul fichier pour deux dépôts, et c'est le secret qui décide.** Un dépôt qui porte
+      # `DOCKERHUB_TOKEN` publie sur Docker Hub, dans l'espace de son compte ; un dépôt qui ne l'a
+      # pas publie sur `ghcr.io`, dans l'espace du propriétaire du dépôt, avec le jeton que GitHub
+      # fournit tout seul. Aucun des deux ne connaît l'autre, et ajouter le secret suffit à basculer.
+      #
+      # **Le secret est lu dans un `run`, pas dans un `if`** : le contexte `secrets` n'est pas garanti
+      # dans la condition d'une étape, alors qu'il l'est dans l'environnement d'une commande. On en
+      # tire un booléen, et les étapes suivantes s'y accrochent.
+      #
+      # **L'espace de noms ne s'écrit nulle part** : c'est le compte Docker Hub lui-même
+      # (`DOCKERHUB_USERNAME`), de sorte qu'un fork qui pose ses propres identifiants publie chez lui
+      # sans toucher à ce fichier.
+      - name: Destination de l'image
+        id: cible
+        env:
+          DOCKERHUB_PRESENT: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${DOCKERHUB_PRESENT}" = "true" ]; then
+            if [ -z "${DOCKERHUB_USERNAME}" ]; then
+              echo "DOCKERHUB_TOKEN est défini mais pas DOCKERHUB_USERNAME : l'espace de noms manque." >&2
+              exit 1
+            fi
+            DEPOT="docker.io/${DOCKERHUB_USERNAME}/${IMAGE_COURT}"
+            echo "dockerhub=true" >> "$GITHUB_OUTPUT"
+          else
+            DEPOT="${REGISTRY}/${IMAGE_NAME}"
+            echo "dockerhub=false" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo "tags<<FIN"
+            echo "${DEPOT}:${VERSION}"
+            echo "${DEPOT}:latest"
+            echo "FIN"
+          } >> "$GITHUB_OUTPUT"
+          echo "Image publiée sous : ${DEPOT}"
+
+      - name: Connexion à Docker Hub
+        if: steps.cible.outputs.dockerhub == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Connexion à ghcr.io
+        if: steps.cible.outputs.dockerhub != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Construction et envoi (linux/amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          push: true
+          tags: ${{ steps.cible.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=HEMA Organizer
+            org.opencontainers.image.description=Gestion des présences — Mon club d'AMHE
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Récapitulatif
+        run: |
+          {
+            echo "### Image publiée"
+            echo ""
+            echo '- `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}`'
+            echo '- `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`'
+            echo ""
+            echo "Dans Portainer : mettre \`APP_TAG=${{ steps.version.outputs.version }}\`, puis **Update the stack** avec *Re-pull image*."
+          } >> "$GITHUB_STEP_SUMMARY"

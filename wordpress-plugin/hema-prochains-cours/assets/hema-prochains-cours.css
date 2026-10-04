@@ -1,0 +1,136 @@
+/* Charte « parchemin » du club, reprise de HEMA Organizer (src/app/globals.css).
+   Toutes les règles sont préfixées .hema- et portées par .hema-cours : le plugin ne touche à rien
+   d'autre sur la page, et un thème WordPress qui change de couleurs ne le décoiffe pas.
+   Les valeurs sont posées en variables sur .hema-cours pour qu'un site puisse les surcharger
+   d'une seule règle (.hema-cours { --marque-primaire: … }) sans réécrire la feuille. */
+.hema-cours {
+  --marque-fond: #fffdfa;
+  --marque-surface: #f4f0ee;
+  --marque-texte: #282828;
+  --marque-texte-secondaire: #6b6059;
+  --marque-bordure: #d6cbbd;
+  --marque-primaire: #a5472c;
+  --marque-vert: #29703e;
+
+  color: var(--marque-texte);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.hema-cours-titre {
+  font-size: 1.5rem;
+  margin: 0 0 1rem;
+}
+
+.hema-cours-liste {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hema-carte {
+  background: var(--marque-fond);
+  border: 1px solid var(--marque-bordure);
+  border-left: 4px solid var(--marque-vert);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(43, 38, 34, 0.06), 0 10px 28px -14px rgba(43, 38, 34, 0.35);
+  padding: 1rem 1.125rem;
+}
+
+.hema-carte--annulee {
+  border-left-color: var(--marque-primaire);
+  background: var(--marque-surface);
+}
+
+.hema-carte p {
+  margin: 0 0 0.35rem;
+}
+
+.hema-carte p:last-child {
+  margin-bottom: 0;
+}
+
+.hema-date {
+  font-weight: 700;
+}
+
+.hema-horaire {
+  color: var(--marque-texte-secondaire);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.hema-horaire::before {
+  content: " · ";
+}
+
+.hema-theme {
+  color: var(--marque-texte);
+}
+
+.hema-lieu,
+.hema-taux {
+  color: var(--marque-texte-secondaire);
+  font-size: 0.9375rem;
+}
+
+.hema-annule {
+  color: var(--marque-primaire);
+  font-weight: 600;
+}
+
+.hema-motif {
+  display: block;
+  font-weight: 400;
+}
+
+.hema-cours-vide {
+  color: var(--marque-texte-secondaire);
+}
+
+.hema-cours-action {
+  margin: 1.25rem 0 0;
+}
+
+.hema-bouton {
+  background: var(--marque-primaire);
+  border-radius: 0.5rem;
+  color: #fff;
+  display: inline-block;
+  font-weight: 600;
+  /* Cible tactile confortable : même règle que dans l'application (≥ 48 px de haut) */
+  padding: 0.75rem 1.25rem;
+  text-decoration: none;
+}
+
+.hema-bouton:hover,
+.hema-bouton:focus {
+  background: #8f3c25;
+  color: #fff;
+}
+
+/* Le site du club suit le mode sombre de l'appareil : les cartes le suivent aussi. */
+@media (prefers-color-scheme: dark) {
+  .hema-cours {
+    --marque-fond: #2a2421;
+    --marque-surface: #211c1a;
+    --marque-texte: #f0e7db;
+    --marque-texte-secondaire: #c3b4a6;
+    --marque-bordure: #473d36;
+    --marque-primaire: #e08a6c;
+    --marque-vert: #7cc48f;
+  }
+
+  .hema-bouton {
+    color: #241c18;
+  }
+
+  .hema-bouton:hover,
+  .hema-bouton:focus {
+    background: #f0a084;
+    color: #241c18;
+  }
+}

@@ -1,0 +1,13 @@
+-- Un code TOTP ne sert qu'une fois.
+--
+-- Rien ne marquait un code à six chiffres comme consommé : il restait valable toute sa fenêtre de
+-- 30 s, plus la tolérance d'un pas de chaque côté — soit 30 à 90 s pendant lesquelles un code lu
+-- par-dessus l'épaule, resté sur une capture d'écran ou dans le journal d'un proxy ouvrait une
+-- seconde porte (connexion, élévation, ré-authentification). La borne est le **pas de temps** :
+-- tout pas inférieur ou égal au dernier consommé est refusé (`consommerCodeTotp`).
+--
+-- Colonne **nullable, sans valeur par défaut** : `null` veut dire « aucun code encore consommé ».
+-- C'est l'état de tous les comptes existants, et il accepte n'importe quel pas — la migration
+-- n'enferme donc personne dehors. Une valeur par défaut (0, ou le pas courant) aurait été, selon
+-- le cas, sans effet ou un refus du premier code de tout le monde.
+ALTER TABLE "User" ADD COLUMN "totpDernierPas" INTEGER;

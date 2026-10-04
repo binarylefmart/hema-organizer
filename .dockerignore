@@ -1,0 +1,48 @@
+# Contexte de build minimal : tout ce qui n'entre pas dans l'image.
+# (Le build Docker refait `npm ci` et `next build` à partir des sources.)
+
+# Dépendances et artefacts de build
+node_modules
+.next
+out
+build
+*.tsbuildinfo
+
+# Données locales (jamais dans l'image : /data et /backups sont des volumes)
+data
+backups
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Sorties de développement
+previews
+test-results
+playwright-report
+coverage
+
+# Secrets et environnement local
+.env
+.env.*
+!.env.example
+
+# Git et outils
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+*.log
+
+# Docker (l'entrypoint est copié explicitement, le reste ne sert pas au build)
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Documentation et plugin WordPress (hors image)
+docs
+wordpress-plugin
+CLAUDE.md
+README.md

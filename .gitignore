@@ -1,0 +1,38 @@
+# Dépendances et build
+node_modules/
+.next/
+# Toute sortie de build parallèle : `NEXT_DIST_DIR=.next-<quelque chose> npm run build` est le seul
+# moyen de vérifier qu'un build passe **sans** écraser le `.next` du serveur de développement en
+# cours (sinon il répond 500 sur des routes au hasard). Le motif vaut mieux que la liste : on en a
+# inventé quatre en une semaine, et une sortie oubliée finit commitée.
+.next-*/
+previews-grand-club/
+out/
+
+# Variables d'environnement (sauf l'exemple documenté)
+.env*
+!.env.example
+
+# Bases SQLite
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+/data/
+/backups/
+
+# Captures d'aperçu (générées par npm run preview:screenshots)
+/previews/
+
+# Tests / outils
+/test-results/
+/playwright-report/
+/coverage/
+
+# Divers
+.DS_Store
+*.log
+
+# Généré par Next.js / TypeScript
+next-env.d.ts
+*.tsbuildinfo

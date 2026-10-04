@@ -1,0 +1,549 @@
+/*
+ * Feuille de style commune aux trois guides imprimés (membre, instructeur, administrateur).
+ *
+ * Elle sert à deux usages : la lecture à l'écran (ouvrir le .html dans un navigateur) et
+ * l'impression en PDF (`scripts/guides-pdf.ts`, Chromium en A4). Les règles d'impression sont
+ * donc écrites dans le corps de la feuille, pas dans un `@media print` : ce qu'on voit à l'écran
+ * est ce qui sort du PDF.
+ *
+ * Palette : celle du site WordPress du club (parchemin, encre, rouille, vert, ocre, or) — voir
+ * `src/app/globals.css`, dont les valeurs sont reprises ici à l'identique.
+ */
+
+@font-face {
+  font-family: "IM Fell Great Primer SC";
+  src: url("fonts/im-fell-great-primer-sc.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  --parchemin: #f4f0ee;
+  --parchemin-fonce: #e8e1d8;
+  --encre: #282828;
+  --encre-douce: #5a5148;
+  --rouille: #af4b2f;
+  --vert: #2e7d45;
+  --ocre: #8c6a1a;
+  --or: #c99a2e;
+  --entete: #2b2622;
+  --or-clair: #e6c977;
+  --bordure: #d9d0c4;
+}
+
+/* ---------------------------------------------------------------- page ---- */
+
+@page {
+  size: A4;
+  margin: 17mm 15mm 16mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 10.5pt;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: var(--encre);
+  font-family: "Liberation Serif", Georgia, "Times New Roman", serif;
+  line-height: 1.5;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* À l'écran seulement : on simule la feuille A4 pour juger la mise en page. */
+@media screen {
+  body {
+    background: #cfc8bf;
+    padding: 24px 0;
+  }
+  .page-ecran {
+    width: 210mm;
+    /* Lu sur un téléphone (guide publié en ligne), la feuille A4 déborderait de l'écran : elle se
+       rétrécit au lieu de faire défiler la page de côté. L'impression, elle, n'en sait rien —
+       tout ce bloc est `@media screen`. */
+    max-width: 100%;
+    margin: 0 auto;
+    background: #fff;
+    padding: 17mm 15mm 16mm;
+    box-shadow: 0 2px 18px rgba(0, 0, 0, 0.25);
+  }
+  @media (max-width: 800px) {
+    body {
+      padding: 0;
+    }
+    .page-ecran {
+      padding: 20px 16px 24px;
+      box-shadow: none;
+    }
+    /* Une capture de téléphone flottante mange la moitié d'une colonne étroite : elle reprend sa
+       place dans le fil. */
+    figure.tel {
+      width: 100%;
+      max-width: 220px;
+      float: none;
+      margin: 4mm auto;
+    }
+  }
+}
+
+/* ------------------------------------------------------------ titrage ---- */
+
+h1,
+h2,
+h3,
+.marque,
+.couverture-titre {
+  font-family: "IM Fell Great Primer SC", "Liberation Serif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+h1 {
+  font-size: 22pt;
+  line-height: 1.15;
+  margin: 0 0 4mm;
+  color: var(--encre);
+}
+
+/*
+ * **Les parties s'enchaînent, elles ne commencent plus chacune en haut d'une page**.
+ *
+ * Le saut forcé donnait un guide qu'on feuillette — et trois pages à moitié vides sur quatre, parce
+ * que les parties sont courtes. Un guide « plus synthétique » commence par là : le texte remplit la
+ * page, et c'est le **sommaire cliquable** qui remplace le repère visuel qu'on perd.
+ *
+ * `scroll-margin-top` : lu à l'écran, un titre visé par le sommaire ne doit pas se coller au bord.
+ */
+h2 {
+  font-size: 15.5pt;
+  line-height: 1.2;
+  margin: 9mm 0 3mm;
+  padding: 0 0 2mm;
+  border-bottom: 1.2pt solid var(--or);
+  break-after: avoid;
+  scroll-margin-top: 12mm;
+}
+
+h2:first-of-type,
+h2.suite {
+  margin-top: 0;
+}
+
+h3 {
+  font-size: 12.5pt;
+  margin: 6mm 0 2mm;
+  color: var(--rouille);
+  break-after: avoid;
+}
+
+h4 {
+  font-family: inherit;
+  font-size: 10.5pt;
+  font-weight: 700;
+  margin: 4mm 0 1mm;
+  break-after: avoid;
+}
+
+p {
+  margin: 0 0 2.5mm;
+  orphans: 2;
+  widows: 2;
+}
+
+a {
+  color: var(--rouille);
+  text-decoration: none;
+  word-break: break-word;
+}
+
+strong {
+  font-weight: 700;
+}
+
+code,
+kbd {
+  font-family: "Liberation Mono", "DejaVu Sans Mono", monospace;
+  font-size: 0.88em;
+  background: var(--parchemin-fonce);
+  border: 0.4pt solid var(--bordure);
+  border-radius: 2pt;
+  padding: 0.3mm 1mm;
+  word-break: break-word;
+}
+
+/* -------------------------------------------------------- couverture ---- */
+
+.couverture {
+  break-after: page;
+  text-align: center;
+  padding: 18mm 0 0;
+}
+
+.couverture-blason {
+  width: 42mm;
+  height: auto;
+  margin: 0 auto 8mm;
+  display: block;
+}
+
+.couverture .marque {
+  font-size: 13pt;
+  letter-spacing: 0.12em;
+  color: var(--encre-douce);
+  margin: 0 0 2mm;
+}
+
+.couverture-titre {
+  font-size: 30pt;
+  line-height: 1.1;
+  margin: 0 0 3mm;
+}
+
+.couverture-role {
+  display: inline-block;
+  font-size: 12pt;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--rouille);
+  border-radius: 2mm;
+  padding: 2mm 6mm;
+  margin: 0 0 8mm;
+}
+
+.couverture-resume {
+  max-width: 130mm;
+  margin: 0 auto 10mm;
+  font-size: 11.5pt;
+  color: var(--encre-douce);
+}
+
+.couverture-pied {
+  font-size: 9pt;
+  color: var(--encre-douce);
+  border-top: 0.6pt solid var(--bordure);
+  padding-top: 3mm;
+  max-width: 120mm;
+  margin: 0 auto;
+}
+
+/* ------------------------------------------------------------ sommaire ---- */
+
+/*
+ * Le sommaire ne prend plus une page à lui seul : dix entrées sur une feuille A4, c'est deux tiers
+ * de blanc. La première partie enchaîne dessous, et le guide commence là où on l'ouvre.
+ */
+.sommaire {
+  margin-bottom: 9mm;
+}
+
+.sommaire ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: som;
+}
+
+.sommaire li {
+  counter-increment: som;
+  border-bottom: 0.4pt dotted var(--bordure);
+  padding: 1.6mm 0 1.6mm 9mm;
+  position: relative;
+}
+
+.sommaire li::before {
+  content: counter(som);
+  position: absolute;
+  left: 0;
+  top: 1.4mm;
+  width: 6mm;
+  height: 6mm;
+  line-height: 6mm;
+  text-align: center;
+  font-size: 8.5pt;
+  color: #fff;
+  background: var(--entete);
+  border-radius: 50%;
+}
+
+.sommaire .som-quoi {
+  display: block;
+  font-size: 9pt;
+  color: var(--encre-douce);
+}
+
+/*
+ * **Le sommaire est cliquable** — à l'écran comme dans le PDF, où Chromium conserve les ancres
+ * internes. Les entrées gardent la couleur de l'encre : un sommaire tout en rouille se lit comme
+ * une liste d'alertes. C'est leur place et leur numérotation qui disent qu'on peut appuyer.
+ */
+.sommaire a {
+  color: var(--encre);
+  text-decoration: none;
+  display: block;
+}
+
+.sommaire a:hover {
+  color: var(--rouille);
+}
+
+/* ------------------------------------------------------------- figures ---- */
+
+figure {
+  margin: 4mm 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 0.6pt solid var(--bordure);
+  border-radius: 1.5mm;
+  background: var(--parchemin);
+}
+
+figcaption {
+  font-size: 8.5pt;
+  color: var(--encre-douce);
+  margin-top: 1.5mm;
+  line-height: 1.35;
+}
+
+figcaption b {
+  color: var(--encre);
+}
+
+/*
+ * **Les captures pleine page sont beaucoup plus hautes qu'une page A4**, et c'est le piège de cette
+ * feuille : une capture d'écran de 1280 × 3000 px posée sur 180 mm de large ferait 420 mm de haut,
+ * soit une page et demie. Bornée avec `object-fit: contain`, elle ne débordait plus mais **rétrécissait
+ * jusqu'à l'illisible** (64 mm de large pour tenir dans la hauteur permise) : exactement ce qu'un guide
+ * ne peut pas se permettre.
+ *
+ * D'où `cover` + `object-position: top` partout : l'écran garde **sa taille de lecture**, et c'est son
+ * bas qui est coupé. On voit le haut de l'écran tel qu'il s'affiche, ce que le lecteur cherche ; ce qui
+ * manque est décrit dans le texte, jamais deviné dans une image trop petite pour être lue.
+ */
+
+/* Capture d'un téléphone : étroite, donc posée à côté du texte. */
+figure.tel {
+  width: 52mm;
+  float: right;
+  margin: 0 0 4mm 6mm;
+}
+
+figure.tel img {
+  border-radius: 3mm;
+  max-height: 96mm;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* Deux captures côte à côte (avant / après, clair / sombre). */
+.duo {
+  display: flex;
+  gap: 5mm;
+  margin: 4mm 0;
+  break-inside: avoid;
+}
+
+.duo figure {
+  flex: 1;
+  margin: 0;
+  min-width: 0;
+}
+
+.duo figure img {
+  max-height: 108mm;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* Capture d'ordinateur : pleine largeur. */
+figure.pc img {
+  max-height: 108mm;
+  object-fit: cover;
+  object-position: top;
+}
+
+/* Capture haute (page entière) : bornée pour ne pas manger une page à elle seule. */
+figure.haute img {
+  max-height: 120mm;
+  object-fit: cover;
+  object-position: top;
+}
+
+.clear {
+  clear: both;
+}
+
+/* ------------------------------------------------------------- encarts ---- */
+
+.encart {
+  border-left: 1.6mm solid var(--or);
+  background: var(--parchemin);
+  border-radius: 0 1.5mm 1.5mm 0;
+  padding: 3mm 4mm;
+  margin: 4mm 0;
+  break-inside: avoid;
+}
+
+.encart > :last-child {
+  margin-bottom: 0;
+}
+
+.encart-titre {
+  font-weight: 700;
+  display: block;
+  margin-bottom: 1mm;
+}
+
+.encart.astuce {
+  border-left-color: var(--vert);
+}
+
+.encart.astuce .encart-titre {
+  color: var(--vert);
+}
+
+.encart.attention {
+  border-left-color: var(--rouille);
+}
+
+.encart.attention .encart-titre {
+  color: var(--rouille);
+}
+
+.encart.info {
+  border-left-color: var(--ocre);
+}
+
+.encart.info .encart-titre {
+  color: var(--ocre);
+}
+
+/* --------------------------------------------------------------- étapes ---- */
+
+ol.etapes {
+  list-style: none;
+  counter-reset: etape;
+  margin: 3mm 0;
+  padding: 0;
+}
+
+ol.etapes > li {
+  counter-increment: etape;
+  position: relative;
+  padding: 0 0 3mm 10mm;
+  break-inside: avoid;
+}
+
+ol.etapes > li::before {
+  content: counter(etape);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7mm;
+  height: 7mm;
+  line-height: 7mm;
+  text-align: center;
+  font-family: "IM Fell Great Primer SC", serif;
+  font-size: 10pt;
+  color: #fff;
+  background: var(--rouille);
+  border-radius: 50%;
+}
+
+ul {
+  margin: 0 0 2.5mm;
+  padding-left: 5mm;
+}
+
+ul li {
+  margin-bottom: 1mm;
+}
+
+/* -------------------------------------------------------------- tableaux ---- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 3mm 0;
+  font-size: 9.5pt;
+  break-inside: avoid;
+}
+
+thead th {
+  background: var(--entete);
+  color: var(--or-clair);
+  font-family: "IM Fell Great Primer SC", serif;
+  font-weight: 400;
+  text-align: left;
+  padding: 2mm 2.5mm;
+}
+
+tbody td {
+  border-bottom: 0.4pt solid var(--bordure);
+  padding: 1.8mm 2.5mm;
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) td {
+  background: var(--parchemin);
+}
+
+/* ------------------------------------------------------------- pastilles ---- */
+
+.pastille {
+  display: inline-block;
+  font-size: 8.5pt;
+  font-weight: 700;
+  border-radius: 1mm;
+  padding: 0.4mm 1.6mm;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.pastille.present {
+  background: var(--vert);
+}
+
+.pastille.absent {
+  background: var(--rouille);
+}
+
+.pastille.peutetre {
+  background: var(--ocre);
+}
+
+/* --------------------------------------------------------------- divers ---- */
+
+.chapo {
+  font-size: 11.5pt;
+  color: var(--encre-douce);
+  border-left: 1.6mm solid var(--or);
+  padding-left: 4mm;
+  margin: 0 0 5mm;
+}
+
+.eviter-coupure {
+  break-inside: avoid;
+}
+
+.fin {
+  margin-top: 8mm;
+  border-top: 0.6pt solid var(--bordure);
+  padding-top: 3mm;
+  font-size: 9pt;
+  color: var(--encre-douce);
+}

@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>HEMA Organizer — Guide de l’administrateur</title>
+  <link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<div class="page-ecran">
+
+  <section class="couverture">
+    <img class="couverture-blason" src="../../public/logo-ecu.png" alt="">
+    <p class="marque">Mon club d'AMHE</p>
+    <h1 class="couverture-titre">HEMA Organizer</h1>
+    <p class="couverture-role">Guide de l’administrateur</p>
+    <p class="couverture-resume">La troisième marche : les gestes du bureau. Ouvrir l’espace admin, monter
+      une période, corriger les présences — une par une ou par lots —, tenir l’annuaire et les liens personnels,
+      changer les rôles, nommer les administrateurs, régler la part d’effectif et ce que le
+      club envoie, réparer les pannes d’accès.</p>
+    <p class="couverture-pied">Version 0.61.3 — 4 octobre 2026 · organizer.mon-club.fr</p>
+  </section>
+
+  <section class="sommaire">
+    <h2 class="suite">Ce que vous trouverez ici</h2>
+    <ol>
+      <li><a href="#p1">Ouvrir l’espace d’administration <span class="som-quoi">le premier réglage, les codes de secours, les délais</span></a></li>
+      <li><a href="#p2">Monter une période <span class="som-quoi">trimestre ou bimestre, ses séances, l’activer, la clore</span></a></li>
+      <li><a href="#p3">Corriger les présences d’un cours <span class="som-quoi">choisir la séance, changer une réponse, corriger tout un lot</span></a></li>
+      <li><a href="#p4">Tenir l’annuaire du club <span class="som-quoi">ajouter, importer, corriger, changer les rôles par lots, désactiver</span></a></li>
+      <li><a href="#p5">Envoyer et renvoyer les liens personnels <span class="som-quoi">les durées, les seuils, les deux boutons</span></a></li>
+      <li><a href="#p6">Nommer et dépanner les administrateurs <span class="som-quoi">donner les droits, les retirer, le téléphone perdu</span></a></li>
+      <li><a href="#p7">Déconnecter un appareil, ouvrir le journal <span class="som-quoi">Sessions, Journal d’audit, export</span></a></li>
+      <li><a href="#p8">Régler Discord, Telegram et les emails <span class="som-quoi">webhook, bot Telegram, liste de distribution, API publique, matrice</span></a></li>
+      <li><a href="#p9">Tenir la liste des thèmes et des lieux <span class="som-quoi">ajouter, retirer, enregistrer</span></a></li>
+      <li><a href="#p10">Régler la part d’effectif <span class="som-quoi">le pourcentage, ce qu’il donne en personnes</span></a></li>
+      <li><a href="#p11">Connaître les rendez-vous quotidiens <span class="som-quoi">03:30, 07:00, l’heure du rappel, et quoi vérifier</span></a></li>
+      <li><a href="#p12">Si ça coince <span class="som-quoi">les pannes que vous seul pouvez réparer</span></a></li>
+    </ol>
+  </section>
+
+  <p class="chapo">Ce guide <strong>complète celui du membre et celui de l’instructeur</strong> : lisez-les
+    d’abord, ou gardez-les à portée de main. On ne trouve ici que les gestes du bureau — le trimestre,
+    l’annuaire, les accès, les comptes et les réglages du club. Ils vivent dans
+    l’<strong>espace admin</strong>.</p>
+
+  <!-- ================================================================= 1 -->
+  <h2 id="p1">1. Ouvrir l’espace d’administration</h2>
+
+  <p>Connectez-vous comme tout le monde, puis ouvrez <strong>Mon profil</strong> → <strong>Accès
+    administrateur</strong>. La première fois, appuyez sur <strong>Activer mon accès admin</strong> ;
+    ensuite, sur <strong>Se connecter en tant qu’administrateur</strong>, qui demande votre mot de passe
+    puis vos six chiffres — ou un code de secours.</p>
+
+  <figure class="haute">
+    <img src="../../previews/profil-admin-non-eleve/pc-clair.jpg" alt="Mon profil : la section Accès administrateur">
+    <figcaption>Tout part de <b>Mon profil</b> → <b>Accès administrateur</b>.</figcaption>
+  </figure>
+
+  <h3>Régler son accès la première fois</h3>
+
+  <ol class="etapes">
+    <li><strong>Choisissez votre mot de passe.</strong> Dix caractères au moins, et pas un mot de passe
+      que vous utilisez ailleurs.</li>
+    <li><strong>Installez une application de codes</strong> sur votre téléphone : Aegis, FreeOTP ou Google
+      Authenticator. Appuyez sur <strong>Afficher mon QR code</strong>, photographiez-le, puis recopiez les
+      six chiffres. Sans appareil photo, prenez <strong>Saisir la clé à la main</strong> et tapez la suite
+      de lettres.</li>
+    <li><strong>Notez vos huit codes de secours</strong>, de la forme <code>XXXX-XXXX</code> : un seul
+      usage chacun, à la place des six chiffres.</li>
+  </ol>
+
+  <p>Pour en redemander huit nouveaux : <strong>Mon profil</strong> → <strong>Sécuriser mon
+    compte</strong>.</p>
+
+  <div class="encart attention">
+    <span class="encart-titre">Les codes de secours ne s’affichent qu’une fois</span>
+    <p>Rangez-les dans votre gestionnaire de mots de passe, ou sur papier dans les dossiers du club — pas
+      dans le téléphone qui porte l’application de codes. En demander huit nouveaux annule les anciens.</p>
+  </div>
+
+  <h3>Refermer l’espace admin</h3>
+
+  <ul>
+    <li><strong>Quitter l’espace admin</strong> : le bouton, immédiat.</li>
+    <li><strong>10 min</strong> sans rien y faire.</li>
+    <li><strong>2 min</strong> après avoir quitté l’application.</li>
+    <li><strong>12 h</strong> après l’avoir ouvert.</li>
+  </ul>
+
+  <!-- ================================================================= 2 -->
+  <h2 id="p2">2. Monter une période</h2>
+
+  <h3>Créer la période</h3>
+
+  <ol class="etapes">
+    <li>Espace admin → <strong>Périodes</strong> → <strong>Nouvelle période</strong>.</li>
+    <li>Onglet <strong>Trimestre</strong> : choisissez l’année de départ de la saison (2026 pour
+      2026-2027), puis le trimestre. Pour un stage, prenez l’onglet <strong>Période
+      personnalisée</strong>.</li>
+    <li>Corrigez le nom et les dates proposés. Relisez les dates.</li>
+    <li>Enregistrez.</li>
+  </ol>
+
+  <h3>Travailler par cycles de deux mois</h3>
+
+  <ol class="etapes">
+    <li>Onglet <strong>Bimestre</strong> : la saison se découpe en six cycles au lieu de quatre
+      trimestres.</li>
+    <li>Choisissez le calage : <strong>Pair (sept.-oct.)</strong> — septembre à octobre, novembre à
+      décembre, janvier à février… — ou <strong>Impair (oct.-nov.)</strong>, pour un club dont la saison
+      démarre en octobre.</li>
+    <li>Choisissez le cycle dans la liste, relisez le nom et les dates, et enregistrez.</li>
+  </ol>
+
+  <figure class="haute">
+    <img src="../../previews/gestion-periode-bimestre/pc-clair.jpg" alt="Nouvelle période, onglet Bimestre : les six cycles et le choix du calage">
+    <figcaption>Le calage décale les six cycles ensemble.</figcaption>
+  </figure>
+
+  <h3>Remplir la période</h3>
+
+  <ol class="etapes">
+    <li><strong>Informations</strong> — le nom et les dates, puis <strong>Enregistrer</strong>.</li>
+    <li><strong>Instructeurs habituels</strong> — ceux à mettre par défaut sur les séances.</li>
+    <li><strong>Créneaux hebdomadaires</strong> — ajoutez-les un par un avec <strong>Ajouter le
+      créneau</strong>.</li>
+    <li><strong>Séances</strong>, encart <strong>Reste à créer</strong> — décochez les vacances, les jours
+      fériés et les jours où la salle est prise, puis appuyez sur <strong>Créer N séances</strong>.</li>
+    <li><strong>Membres invités</strong> — inscrivez tout le monde, y compris ceux qui n’ont pas
+      d’adresse.</li>
+    <li><strong>Activer la période</strong> — l’encadrement peut alors remplir le planning et tenir les
+      séances.</li>
+  </ol>
+
+  <figure class="haute">
+    <img src="../../previews/gestion-periode/pc-clair.jpg" alt="Une période : créneaux, séances, membres invités et liens">
+    <figcaption>C’est ici qu’on vérifie l’état du lien de chacun quand quelqu’un dit n’avoir rien reçu.</figcaption>
+  </figure>
+
+  <div class="encart attention">
+    <span class="encart-titre">Activer déclenche le départ des liens</span>
+    <p>Les liens personnels partent <strong>trois jours avant le premier cours</strong>, à 7 h du matin. Si
+      cette date est passée, appuyez sur <strong>Renvoyer tous les liens</strong>. Enlever un créneau ne
+      supprime pas les séances déjà engendrées.</p>
+  </div>
+
+  <h3>Retirer une séance déjà créée</h3>
+
+  <ol class="etapes">
+    <li>Dans la carte <strong>Séances</strong>, encart <strong>Séances déjà créées</strong>, décochez
+      celles à retirer.</li>
+    <li>Appuyez sur <strong>Retirer N séances</strong>, puis confirmez.</li>
+  </ol>
+
+  <div class="encart attention">
+    <span class="encart-titre">Retirer une séance efface les réponses</span>
+    <p>Les réponses des membres pour ces dates partent avec elle, et ne reviennent pas.</p>
+  </div>
+
+  <h3>Clore une période, et la rouvrir</h3>
+
+  <ol class="etapes">
+    <li><strong>Clore la période</strong> arrête ses liens personnels et garde les séances et les
+      réponses. Clôturez avant de supprimer.</li>
+    <li>Pour revenir en arrière : ouvrez la période, puis <strong>Rouvrir la période</strong>. Les liens
+      encore valables refonctionnent ; pour les autres, appuyez sur <strong>Renvoyer les liens</strong>.</li>
+  </ol>
+
+  <div class="encart attention">
+    <span class="encart-titre">Supprimer une période est sans retour</span>
+    <p>Ses séances et toutes les réponses sont effacées pour toujours.</p>
+  </div>
+
+  <!-- ================================================================= 3 -->
+  <h2 id="p3">3. Corriger les présences d’un cours</h2>
+
+  <p>Espace admin → <strong>Présences</strong>. Corriger une réponse ici demande votre mot de passe et vos
+    six chiffres, comme les autres gestes du bureau, et les redemande après dix minutes sans rien faire
+    dans l’espace admin ; le registre de la fiche d’une séance, lui, ne les demande pas — c’est là qu’on
+    coche pendant le cours.</p>
+
+  <h3>Corriger une réponse</h3>
+
+  <ol class="etapes">
+    <li>Choisissez la séance dans la liste déroulante <strong>Séance</strong>.</li>
+    <li>Au-delà de vingt invités, tapez un nom dans <strong>« Chercher un nom »</strong>.</li>
+    <li>Changez la réponse de la personne dans sa liste déroulante.</li>
+    <li>Appuyez sur <strong>« Afficher les 20 suivantes »</strong>, autant de fois qu’il faut : le
+      compteur à côté dit où vous en êtes — « 20 sur 80 ».</li>
+  </ol>
+
+  <figure class="haute">
+    <img src="../../previews/admin-presences/pc-clair.jpg" alt="Espace admin → Présences : la séance choisie et la réponse de chaque invité">
+    <figcaption>Une réponse se corrige ici même après le cours, sans ouvrir la fiche de la séance.</figcaption>
+  </figure>
+
+  <div class="encart attention">
+    <span class="encart-titre">Clore le trimestre ferme ses présences</span>
+    <p>Une fois la période close, aucune de ses réponses ne se corrige plus, ni une par une ni par lots.
+      Rouvrez-la d’abord (voir § 2).</p>
+  </div>
+
+  <h3>Corriger tout un lot d’un coup</h3>
+
+  <ol class="etapes">
+    <li>Cochez la case de chaque personne, ou la <strong>case du haut</strong> : son libellé dit ce
+      qu’elle emporte — « Sélectionner les 12 résultats », « les 20 lignes affichées ».</li>
+    <li>Si des lignes restent repliées, appuyez sur <strong>« Afficher et sélectionner les N
+      personnes »</strong> pour les prendre aussi.</li>
+    <li>Cherchez autre chose et cochez encore : le lot se compose sur plusieurs recherches.</li>
+    <li>Dans la barre du bas, sous <strong>« Mettre leur réponse à : »</strong>, appuyez sur
+      <strong>Présent</strong>, <strong>Absent</strong>, <strong>Peut-être</strong> ou
+      <strong>Sans réponse</strong>.</li>
+    <li>Lisez la confirmation, puis validez. <strong>« Annuler la sélection »</strong> décoche tout.</li>
+  </ol>
+
+  <figure class="haute">
+    <img src="../../previews/admin-presences-lot/pc-clair.jpg" alt="Espace admin → Présences : trois personnes cochées, et la barre qui corrige leur réponse d’un coup">
+    <figcaption>La barre du bas n’apparaît qu’une fois des lignes cochées.</figcaption>
+  </figure>
+
+  <div class="encart attention">
+    <span class="encart-titre">Avant de valider un lot</span>
+    <p>La confirmation compte les personnes qui avaient <strong>répondu elles-mêmes</strong> et dit
+      quoi — « 2 Absent, 1 Peut-être ». Ces réponses-là sont remplacées par la vôtre.</p>
+  </div>
+
+  <ul>
+    <li><strong>Aucun email, aucune notification</strong> ne part.</li>
+    <li>Le <strong>journal d’audit</strong> garde une ligne par personne, même pour un lot de cinquante.</li>
+    <li>Si une personne du lot n’est plus invitée, <strong>rien n’est écrit</strong> (voir § 12).</li>
+  </ul>
+
+  <!-- ================================================================= 4 -->
+  <h2 id="p4">4. Tenir l’annuaire du club</h2>
+
+  <p>Espace admin → <strong>Membres</strong>.</p>
+
+  <figure class="haute">
+    <img src="../../previews/gestion-membres/pc-clair.jpg" alt="L’annuaire du club : liste des comptes, rôles et liens">
+    <figcaption>La colonne <b>État du lien</b> signale qui ne peut pas entrer aujourd’hui :
+      <b>Aucun lien envoyé</b> s’envoie, <b>Jamais ouvert</b> s’appelle.</figcaption>
+  </figure>
+
+  <h3>Ajouter une personne</h3>
+
+  <ol class="etapes">
+    <li>Dans la carte <strong>Ajouter une personne</strong>, remplissez le <strong>Prénom</strong>, le
+      <strong>Nom</strong> et l’<strong>Email (facultatif)</strong>. Laissez l’adresse vide pour un enfant
+      ou pour qui ne veut pas d’email.</li>
+    <li>Choisissez le <strong>Rôle</strong> : <em>Membre</em> ou <em>Instructeur</em>.</li>
+    <li>Cochez les périodes sous <strong>Inscrire aux périodes</strong>.</li>
+    <li>Appuyez sur <strong>Ajouter la personne</strong>.</li>
+  </ol>
+
+  <h3>Importer une liste</h3>
+
+  <ol class="etapes">
+    <li>Dans votre tableur, faites une colonne par champ, dans l’ordre
+      <code>prénom;nom;email;rôle</code> — les deux dernières facultatives, comme
+      <code>Lucie;Bertrand;</code>.</li>
+    <li>Enregistrez au format CSV, séparateur point-virgule.</li>
+    <li>Dans la carte <strong>Importer un fichier CSV</strong>, choisissez le <strong>Fichier CSV</strong>
+      — ou collez les lignes dans <strong>« …ou colle les lignes ici »</strong>.</li>
+    <li>Cochez les périodes, puis appuyez sur <strong>Importer</strong>.</li>
+  </ol>
+
+  <h3>Corriger une fiche</h3>
+
+  <ol class="etapes">
+    <li>Cliquez le nom de la personne.</li>
+    <li>Changez son identité, son rôle, son adresse, son ancienneté, puis <strong>Enregistrer</strong>.</li>
+    <li>Pour lui retirer son adresse : videz le champ <strong>Email</strong>, puis
+      <strong>Enregistrer</strong>.</li>
+    <li>Réglez à sa demande ses messages, puis <strong>Enregistrer les notifications</strong>.</li>
+  </ol>
+
+  <div class="encart attention">
+    <span class="encart-titre">Remplacer une adresse annule le lien de l’ancienne</span>
+    <p>Un lien neuf part aussitôt à la nouvelle adresse quand une période est active ; sinon, envoyez-le
+      vous-même depuis sa fiche. Ajouter une adresse à qui n’en avait pas, ou en retirer une, ne touche à
+      aucun lien.</p>
+  </div>
+
+  <h3>Changer le rôle de plusieurs personnes d’un coup</h3>
+
+  <ol class="etapes">
+    <li>Tapez un nom, un prénom ou une adresse dans <strong>Rechercher</strong>, puis appuyez sur
+      <strong>Filtrer</strong>.</li>
+    <li>Cochez la case de chaque compte, ou la <strong>case du haut</strong> : son libellé dit ce
+      qu’elle emporte — « Sélectionner les 12 résultats », « les 20 lignes affichées ».</li>
+    <li>Pour prendre des comptes qui ne sont pas affichés, appuyez d’abord sur <strong>« Afficher les N
+      autres comptes »</strong>.</li>
+    <li>Dans la barre, ouvrez <strong>« Changer le rôle en : »</strong>, choisissez
+      <strong>Instructeur</strong> ou <strong>Membre</strong>, puis appuyez sur <strong>Appliquer le
+      rôle</strong>.</li>
+    <li>Lisez la confirmation, puis validez. <strong>« Annuler la sélection »</strong> décoche tout.</li>
+  </ol>
+
+  <figure class="haute">
+    <img src="../../previews/gestion-membres-roles/pc-clair.jpg" alt="Espace admin → Annuaire : des comptes cochés, et la barre qui change leur rôle en une fois">
+    <figcaption>Seuls <b>Membre</b> et <b>Instructeur</b> sont proposés.</figcaption>
+  </figure>
+
+  <ul>
+    <li>Un lot n’écrit que <em>Membre</em> ou <em>Instructeur</em> : les droits d’administrateur se
+      donnent et se retirent dans <strong>Comptes admin</strong>. Seul <strong>votre propre
+      compte</strong> n’a pas de case.</li>
+    <li>La confirmation dit combien de comptes <strong>changent</strong> et combien portent
+      <strong>déjà</strong> le rôle visé.</li>
+    <li><strong>Aucun email</strong> ne part, et le <strong>journal d’audit</strong> garde une ligne par
+      personne.</li>
+  </ul>
+
+  <h3>Désactiver, réactiver, supprimer</h3>
+
+  <ul>
+    <li><strong>Afficher les inactifs</strong> montre les comptes désactivés.</li>
+    <li><strong>Désactiver</strong> arrête le lien personnel et les emails, et déconnecte tous les
+      appareils de la personne. <strong>Réactiver</strong> revient en arrière.</li>
+    <li><strong>Désactiver tous les comptes</strong> et <strong>Réactiver tous les comptes</strong>
+      servent aux fins de saison, <strong>administrateurs compris</strong> ; le vôtre reste actif.</li>
+  </ul>
+
+  <div class="encart attention">
+    <span class="encart-titre">Supprimer définitivement est sans retour</span>
+    <p>La personne et tout son passé — présences, ateliers, réponses — sont effacés. Préférez
+      <strong>Désactiver le compte</strong>.</p>
+  </div>
+
+  <h3>Effacer une proposition d’atelier sans y répondre</h3>
+
+  <ol class="etapes">
+    <li>Dans la file des ateliers, appuyez sur <strong>Effacer sans répondre</strong>.</li>
+    <li>Pour dire non à une vraie proposition, appuyez plutôt sur <strong>Refuser</strong> et laissez un
+      mot.</li>
+  </ol>
+
+  <!-- ================================================================= 5 -->
+  <h2 id="p5">5. Envoyer et renvoyer les liens personnels</h2>
+
+  <p>Sur la fiche d’une personne : <strong>Envoyer le lien</strong> si elle n’en a pas,
+    <strong>Régénérer et renvoyer</strong> si elle en a un. Sur la période :
+    <strong>Renvoyer tous les liens</strong>.</p>
+
+  <div class="encart attention">
+    <span class="encart-titre">Régénérer déconnecte tous ses appareils</span>
+    <p>Elle devra rouvrir le lien neuf. <strong>Renvoyer tous les liens</strong> et le renouvellement
+      automatique, eux, ne déconnectent personne.</p>
+  </div>
+
+  <h3>Les chiffres à connaître</h3>
+
+  <ul>
+    <li><strong>4 mois</strong> : la durée d’un lien.</li>
+    <li><strong>7 jours avant la fin</strong> : renouvellement et renvoi automatiques, chaque matin à 7 h.</li>
+    <li><strong>3 appareils</strong> au plus par lien. Au quatrième, un lien neuf part par email.</li>
+    <li><strong>1 lien vivant</strong> par personne : un lien neuf annule le précédent.</li>
+    <li><strong>12 ouvertures en une heure</strong> : le lien est annulé, un neuf part, et un email
+      prévient les administrateurs.</li>
+  </ul>
+
+  <p>Pour couper ces alertes : Espace admin → <strong>Notifications</strong>, carte <strong>Partage et
+    alertes</strong>. Pour suivre ce qui est arrivé à l’accès de quelqu’un : le raccourci <em>liens</em>
+    du journal.</p>
+
+  <h3>Annuler un lien sans en renvoyer</h3>
+
+  <p>Sur la fiche, appuyez sur <strong>Révoquer</strong>. Pour faire sortir la personne tout de suite,
+    allez ensuite dans <strong>Sessions</strong> → <strong>Tout révoquer</strong>.</p>
+
+  <!-- ================================================================= 6 -->
+  <h2 id="p6">6. Nommer et dépanner les administrateurs</h2>
+
+  <p>Espace admin → <strong>Comptes admin</strong>.</p>
+
+  <figure class="haute">
+    <img src="../../previews/admin-comptes/pc-clair.jpg" alt="Comptes administrateurs : état du code à six chiffres, droits">
+    <figcaption>C’est ici qu’on relance un administrateur qui n’a pas encore réglé son code.</figcaption>
+  </figure>
+
+  <h3>Nommer un administrateur</h3>
+
+  <ol class="etapes">
+    <li><strong>Déjà dans l’annuaire</strong> : choisissez la personne dans la liste, puis appuyez sur
+      <strong>Donner les droits admin</strong>.</li>
+    <li><strong>Pas encore</strong> : ajoutez-la d’abord dans <strong>Membres</strong>, puis revenez la
+      choisir dans la liste.</li>
+    <li>Prévenez-la de vive voix, et dites-lui d’ouvrir <strong>Mon profil</strong> →
+      <strong>Accès administrateur</strong>.</li>
+  </ol>
+
+  <h3>Retirer les droits</h3>
+
+  <p>Appuyez sur <strong>Retirer les droits d’administrateur</strong> : la personne redevient membre, avec
+    son compte et son passé. Si elle doit rester instructeur, redonnez-lui ce rôle depuis sa fiche. Le
+    compte du bureau et le vôtre n’ont pas ce bouton.</p>
+
+  <h3>Dépanner un téléphone perdu</h3>
+
+  <ol class="etapes">
+    <li><strong>Un de ses codes de secours</strong> : elle entre avec, puis va dans <strong>Mon
+      profil</strong> → <strong>Sécuriser mon compte</strong> et règle son code sur le nouveau
+      téléphone.</li>
+    <li><strong>Réinitialiser</strong>, depuis Comptes admin : un nouveau QR code lui est proposé à sa
+      prochaine connexion, et ses appareils sont déconnectés.</li>
+    <li><strong>Réinitialiser l’accès</strong>, carte <strong>Remettre l’accès à zéro</strong> de sa fiche
+      dans l’annuaire : mot de passe, code, codes de secours et liens effacés, appareils déconnectés,
+      lien neuf envoyé, compte et passé gardés.</li>
+    <li><strong>En dernier recours</strong>, quand plus aucun administrateur n’entre : sur le serveur,
+      <code>npm run admin:reset-2fa -- adresse@du.compte</code>, décrit dans
+      <code>docs/DEPLOIEMENT.md</code>.</li>
+  </ol>
+
+  <!-- ================================================================= 7 -->
+  <h2 id="p7">7. Déconnecter un appareil, ouvrir le journal</h2>
+
+  <h3>Déconnecter un appareil</h3>
+
+  <p>Espace admin → <strong>Sessions</strong>. <strong>Révoquer</strong> déconnecte un appareil,
+    <strong>Tout révoquer</strong> tous ceux de la personne. Son compte et son lien ne sont pas
+    touchés.</p>
+
+  <h3>Retrouver ce qui s’est passé</h3>
+
+  <p>Espace admin → <strong>Journal d’audit</strong>. Cherchez par nom, par dates ou par
+    <strong>Raccourci</strong> — prenez <em>liens</em> pour un problème d’accès. <strong>Exporter en
+    CSV</strong> enregistre les lignes affichées. La durée gardée se règle dans Espace admin →
+    <strong>À propos</strong> → <strong>Conservation du journal (jours)</strong>.</p>
+
+  <figure class="pc">
+    <img src="../../previews/admin-audit/pc-clair.jpg" alt="Journal : filtres, dates, export, raccourcis">
+    <figcaption>C’est ici qu’on cherche, avec le raccourci <b>liens</b>, ce qui est arrivé à un accès.</figcaption>
+  </figure>
+
+  <!-- ================================================================= 8 -->
+  <h2 id="p8">8. Régler Discord, Telegram et les emails</h2>
+
+  <h3>Brancher le salon Discord</h3>
+
+  <ol class="etapes">
+    <li>Dans Discord : paramètres du salon, puis <strong>Intégrations</strong>, puis
+      <strong>Webhooks</strong>, puis <strong>Copier l’URL</strong>.</li>
+    <li>Espace admin → <strong>Notifications</strong> → <strong>Canal Discord</strong> : collez-la dans
+      <strong>URL du webhook Discord</strong> et enregistrez.</li>
+    <li>Appuyez sur <strong>Envoyer un message de test</strong>.</li>
+  </ol>
+
+  <p>Pour changer de salon, appuyez sur <strong>Débrancher ce salon</strong>, puis recollez une URL. Un
+    salon différent par message se règle sur le même écran, carte <strong>Un salon par notification
+    (facultatif)</strong>.</p>
+
+  <h3>Brancher le groupe Telegram</h3>
+
+  <ol class="etapes">
+    <li>Dans Telegram, écrivez à <strong>@BotFather</strong>, envoyez <code>/newbot</code>, choisissez un
+      nom : il répond avec le <strong>jeton</strong>.</li>
+    <li>Ajoutez le bot au groupe du club, comme un membre ordinaire, et écrivez n’importe quel message dans
+      ce groupe.</li>
+    <li>Espace admin → <strong>Notifications</strong> → <strong>Telegram</strong>, carte <strong>Trouver
+      l’identifiant du salon</strong> : collez le jeton, puis appuyez sur <strong>Chercher mes
+      salons</strong>.</li>
+    <li>Dans la carte <strong>Le salon du club</strong>, collez le jeton et l’identifiant, puis appuyez sur
+      <strong>Brancher ce salon</strong>.</li>
+    <li>Appuyez sur <strong>Envoyer un message de test</strong>.</li>
+  </ol>
+
+  <p>Telegram porte les mêmes messages collectifs que Discord, jamais les messages personnels. Si la liste
+    des salons revient vide : Telegram ne garde ces messages que <strong>24 h</strong> — réécrivez un
+    message dans le groupe, puis recommencez.</p>
+
+  <h3>Envoyer les emails d’information sur une liste de distribution</h3>
+
+  <ol class="etapes">
+    <li>Espace admin → <strong>Notifications</strong> → <strong>Canal email</strong>, carte <strong>Liste de
+      distribution</strong>.</li>
+    <li>Écrivez l’<strong>Adresse de la liste</strong> — une seule adresse, tenue par votre serveur mail
+      (Google Groups, Sympa, un alias de l’hébergeur).</li>
+    <li>Écrivez le <strong>Quota d’envois par jour du serveur</strong>, si vous le connaissez :
+      l’écran prévient quand le volume prévu le dépasse.</li>
+    <li>Enregistrez.</li>
+    <li>Espace admin → <strong>Notifications</strong> : sous les messages qui le proposent, choisissez
+      <strong>Chacun le sien</strong> ou <strong>La liste</strong>.</li>
+  </ol>
+
+  <p>La carte <strong>Combien d’emails partent</strong> compte les envois par semaine, message par
+    message.</p>
+
+  <div class="encart attention">
+    <span class="encart-titre">Ce que la liste change</span>
+    <p>Les <strong>refus individuels ne s’appliquent plus</strong> : retirez de la liste qui ne veut plus
+      de ces messages. Le message perd le prénom, les boutons de réponse et le lien de désinscription.
+      Un message portant un <strong>lien personnel</strong> ne passe jamais par la liste, et les
+      notifications sur le téléphone restent toujours personnelles.</p>
+  </div>
+
+  <h3>Publier les prochains cours sur le site du club</h3>
+
+  <ol class="etapes">
+    <li>Espace admin → <strong>Notifications</strong>, carte <strong>Publication des cours sur le site
+      du club</strong>.</li>
+    <li><strong>Lisez ce que la carte annonce</strong> : elle nomme les annonces déjà cochées dans la
+      colonne <strong>« Site du club »</strong>, qui repartiront toutes ensemble. Pour n’en republier
+      aucune, décochez-les dans la matrice avant de continuer.</li>
+    <li>Cochez <strong>« Publier les prochains cours »</strong>.</li>
+    <li>Appuyez sur <strong>Enregistrer</strong>.</li>
+    <li>Reportez l’adresse indiquée dans <strong>À propos</strong> dans le plugin du site.</li>
+  </ol>
+
+  <div class="encart attention">
+    <span class="encart-titre">Avant de cocher</span>
+    <p>Tant que la case n’est pas cochée, <strong>rien n’est publié</strong>. Une fois cochée,
+      n’importe qui sur Internet lit, pour les prochains cours : la <strong>date</strong> et
+      l’<strong>horaire</strong>, le <strong>lieu et son adresse postale</strong>, le
+      <strong>thème</strong>, le <strong>programme partie par partie</strong> avec son niveau et sa
+      <strong>description</strong>, le <strong>taux</strong> de participation, et l’annulation avec son
+      motif. <strong>Aucun nom</strong> n’en sort — ni membre, ni instructeur — ni l’effectif en clair.</p>
+  </div>
+
+  <h3>Republier les annonces du club sur le site</h3>
+
+  <p>Le récap de la veille, une séance annulée, un nouvel événement : le site du club peut les
+    reprendre, <strong>ceux que vous choisissez</strong>.</p>
+
+  <ol class="etapes">
+    <li>Cochez d’abord <strong>« Publier les prochains cours »</strong> (ci-dessus). Sans elle, rien
+      ne sort.</li>
+    <li>Dans la matrice des notifications, colonne <strong>« Site du club »</strong>, cochez les
+      annonces à republier.</li>
+    <li>Appuyez sur <strong>Enregistrer</strong>.</li>
+    <li>Reportez l’adresse qui finit par <code>/api/public/annonces</code> dans le site.</li>
+  </ol>
+
+  <div class="encart attention">
+    <span class="encart-titre">Ce qui sort, et ce qui ne sort jamais</span>
+    <p>Sortent : la date, l’horaire, le lieu et son adresse, le thème, le programme et sa
+      description, le taux de participation, et le motif d’une annulation.</p>
+    <p><strong>Ne sortent jamais</strong> : aucun nom — ni membre, ni instructeur, ni animateur —,
+      aucun effectif en clair, aucune annonce en brouillon.</p>
+    <p><strong>Décocher « Publier les prochains cours » coupe tout d’un coup</strong>, sans toucher à
+      vos cases : elles restent cochées, et recocher republie d’un coup tout ce qu’elles portent.</p>
+  </div>
+
+  <p>Trois annonces seulement ont une case. <strong>« Peu de monde annoncé » n’en a pas</strong> :
+    c’est une alerte à l’encadrement, et son email porte le lien qui annule le cours — une clé, qui n’a
+    rien à faire sur une page web.</p>
+
+  <h3>Couper ou rétablir les alertes de sécurité</h3>
+
+  <ol class="etapes">
+    <li>Espace admin → <strong>Notifications</strong>, carte <strong>Alertes de sécurité</strong>.</li>
+    <li>Cochez ou décochez <strong>« Prévenir les administrateurs, par email et sur le téléphone »</strong>.</li>
+    <li>Appuyez sur <strong>Enregistrer</strong>.</li>
+  </ol>
+
+  <div class="encart attention">
+    <span class="encart-titre">Ce que vous perdez</span>
+    <p>Décochée, plus personne n’est prévenu qu’un lien personnel a été ouvert un nombre anormal de
+      fois, saturé d’appareils, ou qu’une vague de liens inconnus est essayée.</p>
+  </div>
+
+  <h3>Vérifier les emails</h3>
+
+  <p>Espace admin → <strong>Notifications</strong> → <strong>Canal email</strong>. Appuyez sur
+    <strong>M’envoyer un email de test</strong>. Puis ouvrez la carte <strong>Derniers emails
+    envoyés</strong> : les douze derniers envois, avec leur résultat et, en cas d’échec, la phrase du
+    service de messagerie.</p>
+
+  <ul>
+    <li><code>501 5.1.7</code> : l’adresse d’expéditeur est mal écrite.</li>
+    <li><code>535</code> : l’identifiant du service de messagerie est faux.</li>
+    <li><code>550</code> : l’adresse du destinataire n’existe pas.</li>
+  </ul>
+
+  <p>Les identifiants du service de messagerie se changent dans Portainer, sur le serveur, pas ici. Pour un
+    <code>501 5.1.7</code> ou un « Corrigé à la volée… », voir <strong>§ 12</strong>.</p>
+
+  <h3>Régler ce que le club envoie</h3>
+
+  <p>Espace admin → <strong>Notifications</strong>. Réglez d’abord l’<strong>heure du rappel de la
+    veille</strong> — 18:00 par défaut, heure de Paris. Cochez ensuite, message par message, ce qui part
+    par email, sur le téléphone, dans Discord, sur Telegram ou par WhatsApp.</p>
+
+  <table>
+    <thead><tr><th>Message</th><th>Qui le reçoit, et quand</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Récap de la veille</strong></td><td>La veille du cours, à l’heure réglée, aux inscrits Présent ou Peut-être, et sur le salon</td></tr>
+      <tr><td><strong>Rappel aux personnes sans réponse</strong></td><td>Une semaine, puis deux jours avant le cours</td></tr>
+      <tr><td><strong>Séance annulée</strong></td><td>Dès l’annulation, à tous les invités et sur le salon</td></tr>
+      <tr><td><strong>Alerte « peu de monde »</strong></td><td>Le matin, aux instructeurs, dans les 3 jours avant le cours, sous la part d’effectif réglée</td></tr>
+      <tr><td><strong>Réponse à une proposition d’atelier</strong></td><td>À son auteur, dès qu’on place ou refuse</td></tr>
+      <tr><td><strong>Nouvel événement</strong></td><td>À la publication, aux membres, une fois</td></tr>
+      <tr><td><strong>Période suivante à créer</strong></td><td>Avant la fin d’un trimestre, aux administrateurs</td></tr>
+      <tr><td><strong>Période à activer</strong></td><td>Trois jours puis un jour avant le premier cours d’une période restée en brouillon, aux administrateurs</td></tr>
+    </tbody>
+  </table>
+
+  <ul>
+    <li><strong>« sans objet »</strong> : ce message ne passe pas par ce canal. Posez le doigt dessus,
+      ou la souris : la phrase affichée dit pourquoi.</li>
+    <li><strong>Une case qu’on ne peut pas cocher</strong> : le canal n’est pas encore réglé. La phrase
+      affichée sur la case le dit, et le lien <strong>Configurer</strong> juste dessous mène à l’écran
+      où le brancher. Ce qui y était coché est conservé et reprend effet dès qu’il est réglé.</li>
+    <li><strong>« (prévu) »</strong> : à régler d’avance, l’envoi n’existe pas encore — c’est le cas de
+      WhatsApp.</li>
+    <li><strong>Messages personnels et sécurité</strong> : ne se règle pas.</li>
+  </ul>
+
+  <!-- ================================================================= 9 -->
+  <h2 id="p9">9. Tenir la liste des thèmes et des lieux</h2>
+
+  <p>Espace admin → <strong>Thèmes et lieux</strong>.</p>
+
+  <ol class="etapes">
+    <li>Carte <strong>Thèmes du planning</strong> : un thème par ligne, 60 caractères au plus, puis
+      <strong>Enregistrer les thèmes</strong>.</li>
+    <li>Carte <strong>Lieux des cours</strong> : une salle par ligne, au format
+      <code>Nom | Adresse</code>, puis <strong>Enregistrer les lieux</strong>.</li>
+  </ol>
+
+  <p>L’ordre des lignes est celui que l’encadrement verra. Enlever une ligne la retire des choix des cours
+    à venir ; ce qui a déjà été choisi ne bouge pas.</p>
+
+  <!-- ================================================================= 10 -->
+  <h2 id="p10">10. Régler la part d’effectif</h2>
+
+  <p>Espace admin → <strong>Club</strong>, carte <strong>Effectif</strong>.</p>
+
+  <figure class="pc">
+    <img src="../../previews/admin-club-effectif/pc-clair.jpg" alt="Administration → Club : la carte Effectif — la part minimale, et ce qu’elle vaut en personnes">
+    <figcaption>La phrase sous le champ donne le seuil <b>en personnes</b>.</figcaption>
+  </figure>
+
+  <ol class="etapes">
+    <li>Écrivez le pourcentage dans <strong>« Part minimale de l’effectif (%) »</strong> : de
+      <strong>5</strong> à <strong>50</strong>.</li>
+    <li>Relisez la phrase qui suit le champ — « <strong>20 % de 80 invités, soit 16 personnes</strong> —
+      jamais moins de 4 ».</li>
+    <li>Appuyez sur <strong>Enregistrer</strong>.</li>
+  </ol>
+
+  <p>Ce chiffre est le seuil de l’alerte <strong>« peu de monde »</strong>, le trait des jauges, et le mot
+    écrit sur chaque carte de cours : <strong>Peu de monde</strong>, <strong>Effectif juste</strong>,
+    <strong>Bien rempli</strong>. Il ne descend jamais sous <strong>4 personnes</strong>, et se recalcule
+    sur l’effectif invité de chaque trimestre.</p>
+
+  <!-- ================================================================= 11 -->
+  <h2 id="p11">11. Connaître les rendez-vous quotidiens</h2>
+
+  <table>
+    <thead><tr><th>Heure</th><th>Ce qui se passe</th></tr></thead>
+    <tbody>
+      <tr><td><strong>03:30</strong></td><td>Sauvegarde de toutes les données, 30 jours gardés</td></tr>
+      <tr><td><strong>07:00</strong></td><td>Envoi des liens des trimestres qui commencent dans trois jours, renouvellement des liens qui arrivent au bout, alertes aux administrateurs et aux instructeurs, ménage du journal et des annonces terminées</td></tr>
+      <tr><td><strong>l’heure réglée</strong> (18:00 par défaut)</td><td>Récap de la veille, puis rappels aux personnes sans réponse</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Ce qu’il faut vérifier, et quand</h3>
+
+  <ul>
+    <li><strong>Trois jours avant un trimestre</strong> : <strong>Liens activés</strong> sur l’écran
+      Périodes, puis la colonne <strong>État du lien</strong> de l’annuaire. Envoyez son lien à qui n’en
+      a jamais reçu, renvoyez-le à qui n’en a plus de valable, et appelez ceux qui n’ont jamais ouvert
+      le leur.</li>
+    <li><strong>Après un changement du côté des emails</strong> : <strong>Derniers emails
+      envoyés</strong>.</li>
+    <li><strong>Une fois par trimestre</strong> : <strong>Comptes admin</strong>, et relancez qui n’a pas
+      réglé son code.</li>
+    <li><strong>Une fois par trimestre</strong> : ouvrez le disque partagé du club et vérifiez que la
+      dernière sauvegarde y est bien arrivée.</li>
+  </ul>
+
+  <!-- ================================================================ 12 -->
+  <h2 id="p12">12. Si ça coince</h2>
+
+  <p class="chapo">Seules les pannes que vous seul pouvez réparer. Un lien périmé, un email dans les
+    indésirables, un changement de téléphone : renvoyez la personne au guide du membre.</p>
+
+  <table>
+    <thead><tr><th>Ce qu’on vous dit</th><th>Quoi faire</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>« Je me suis connecté et je ne suis plus administrateur »</strong></td>
+        <td><strong>Mon profil</strong>, puis <strong>Se connecter en tant qu’administrateur</strong>.</td>
+      </tr>
+      <tr>
+        <td><strong>« L’espace admin se referme trop vite »</strong></td>
+        <td>Dix minutes sans activité, deux minutes hors de l’application, douze heures au plus. Ces délais
+          ne se règlent pas.</td>
+      </tr>
+      <tr>
+        <td><strong>« Je n’ai plus mon téléphone »</strong></td>
+        <td>Un code de secours, puis <strong>Sécuriser mon compte</strong>. Sinon,
+          <strong>Réinitialiser</strong> depuis Comptes admin.</td>
+      </tr>
+      <tr>
+        <td><strong>« Il n’a rien reçu »</strong></td>
+        <td><strong>Notifications</strong> → <strong>Canal email</strong> → <strong>Derniers emails
+          envoyés</strong>. Ligne <em>envoyé</em> : faites-lui regarder dans ses indésirables, ou corrigez
+          son adresse sur sa fiche — un lien neuf part alors tout seul. Sinon, suivez la phrase affichée,
+          puis appuyez sur <strong>Régénérer et renvoyer</strong>.</td>
+      </tr>
+      <tr>
+        <td><strong>« Les emails ne partent plus »</strong></td>
+        <td>Un <code>501 5.1.7</code>, ou « Corrigé à la volée » : enlevez les guillemets autour de
+          <code>SMTP_FROM</code> dans Portainer.</td>
+      </tr>
+      <tr>
+        <td><strong>« Rien n’arrive sur Discord »</strong></td>
+        <td><strong>Notifications</strong> → <strong>Canal Discord</strong> → <strong>Envoyer un message de
+          test</strong>. Si rien n’arrive, créez une nouvelle adresse de webhook dans Discord et
+          recollez-la.</td>
+      </tr>
+      <tr>
+        <td><strong>« Personne n’a reçu son lien de rentrée »</strong></td>
+        <td>Vérifiez la date de début et l’état de la période, puis appuyez sur <strong>Renvoyer tous les
+          liens</strong>.</td>
+      </tr>
+      <tr>
+        <td><strong>« Son compte est bloqué, il n’entre plus du tout »</strong></td>
+        <td><strong>Afficher les inactifs</strong> : réactivez-le s’il y est. Sinon,
+          <strong>Réinitialiser l’accès</strong> sur sa fiche.</td>
+      </tr>
+      <tr>
+        <td><strong>« J’ai révoqué son lien mais il est toujours dedans »</strong></td>
+        <td><strong>Sessions</strong>, puis <strong>Tout révoquer</strong>.</td>
+      </tr>
+      <tr>
+        <td><strong>« Une partie de la sélection n’est pas invitée sur cette période »</strong></td>
+        <td>Rechargez l’écran, puis refaites la sélection : aucune réponse du lot n’a été écrite.</td>
+      </tr>
+      <tr>
+        <td><strong>« Un instructeur demande un thème, un lieu, un compte, un lien »</strong></td>
+        <td>Le thème et le lieu dans <strong>Thèmes et lieux</strong>, le compte dans
+          <strong>Membres</strong> ou <strong>Comptes admin</strong>, le lien sur la fiche de la
+          personne.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>Mettre le serveur à jour : <code>docs/DEPLOIEMENT.md</code>. Ce qui protège les accès :
+    <code>docs/SECURITE.md</code>.</p>
+
+  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.61.3 — 4 octobre 2026 ·
+    Mon club d'AMHE · organizer.mon-club.fr — à lire après les guides du
+    membre et de l’instructeur.</p>
+</div>
+</body>
+</html>

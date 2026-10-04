@@ -1,0 +1,121 @@
+# Stack de PRODUCTION — référence à recopier telle quelle dans Portainer
+# (Stacks → Add stack → Web editor), puis à renseigner dans « Environment variables ».
+# Voir docs/DEPLOIEMENT.md : § 1 présente la stack pièce par pièce, § 2 liste les variables,
+# § 4 déroule la première installation. Ce fichier n'est pas déployé automatiquement — la stack
+# est gérée à la main, et c'est lui qui fait foi.
+#
+# **Écarts avec le compose de référence de CLAUDE.md — il n'en reste que deux, tous deux assumés :**
+#   1. les **montages** : deux dossiers de l'hôte au lieu des volumes nommés `hema_data` / `hema_backups`
+#      (sauvegarde, restauration et copie vers le NAS avec un simple `cp` — voir le bloc `volumes:`) ;
+#   2. `PUBLIC_API_ORIGIN` par **défaut vide** au lieu de l'adresse du site des Compagnons : l'outil
+#      s'installe dans n'importe quel club depuis la v0.51, et un club qui n'a pas de site n'ouvre
+#      rien à personne.
+# Aucune variable ne manque par rapport à la référence, et aucune n'est en trop.
+#
+# AVANT LE PREMIER DÉPLOIEMENT, sur l'hôte. Le conteneur tourne en utilisateur non-root (uid 1000)
+# et ne peut pas se donner le droit d'écrire : il faut le lui donner. `DATA_DIR` est le dossier qui
+# portera la base et les sauvegardes ; la valeur par défaut est celle de l'installation existante,
+# **ne la changez pas sur une installation en service** (pointer ailleurs, c'est repartir d'une base
+# vide en croyant avoir mis à jour).
+#
+#   sudo mkdir -p <DATA_DIR>/data <DATA_DIR>/backups
+#   sudo chown -R 1000:1000 <DATA_DIR>
+#   sudo chmod -R 750 <DATA_DIR>
+#
+# **Le `chmod` n'est pas une coquetterie.** Ces deux dossiers sont montés en *bind mount* : le
+# `chmod 0750` du Dockerfile est alors sans effet, c'est le mode du dossier de l'hôte qui gagne — et
+# l'umask usuel donne 0755. Or `backups/` contient une copie complète de la base, chaque nuit :
+# noms, adresses, empreintes argon2, secret TOTP chiffré, jetons hachés, webhook Discord et jeton
+# Telegram chiffrés. Sans ce `chmod`, tout compte local du serveur, tout autre conteneur montant ce
+# chemin et toute synchronisation vers le NAS peuvent la lire (docs/SECURITE.md, « Risques connus »).
+
+services:
+  app:
+    image: ${IMAGE:-hematools/hema-organizer}:${APP_TAG:-latest}
+    container_name: hema-organizer
+    restart: always
+    environment:
+      NODE_ENV: production
+      TZ: ${TZ:-Europe/Paris}
+      DATABASE_URL: file:/data/hema.db
+      BACKUP_DIR: /backups
+      DOMAIN: ${DOMAIN}
+      SESSION_SECRET: ${SESSION_SECRET}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
+      # Seule origine autorisée par CORS sur /api/public/* : l'adresse du site du club.
+      # **Vide par défaut, et c'est voulu** : aucun navigateur tiers n'est autorisé tant que
+      # personne ne l'a décidé. Le plugin WordPress, lui, appelle depuis son serveur et n'a pas
+      # besoin de cette variable. Rappel : l'API publique elle-même est **fermée** tant que la case
+      # n'est pas cochée dans Espace admin → Notifications.
+      PUBLIC_API_ORIGIN: ${PUBLIC_API_ORIGIN:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    volumes:
+      # **Écart assumé avec le compose de référence de CLAUDE.md**, qui décrit deux volumes nommés
+      # (`hema_data`, `hema_backups`). Ici, stockage sur le disque de l'hôte : sauvegarde, restauration
+      # et copie vers le NAS se font avec un simple `cp`, sans passer par Docker (docs/DEPLOIEMENT.md
+      # § 1.1 et § 10 décrivent cette installation, et c'est celle qui tourne). **Ne pas « aligner »
+      # ce bloc sur la référence en repassant aux volumes nommés : ce serait repartir d'une base vide
+      # en croyant avoir mis à jour.** La contrepartie est ci-dessus : les droits des dossiers sont à
+      # la charge de l'hôte, `chown` **et** `chmod`.
+      - ${DATA_DIR:-/srv/organizer}/data:/data
+      - ${DATA_DIR:-/srv/organizer}/backups:/backups
+    # ┌────────────────────────────────────────────────────────────────────────────────────────┐
+    # │ **AUCUN PORT PUBLIÉ. Ne pas décommenter sans lire ce qui suit.**                        │
+    # └────────────────────────────────────────────────────────────────────────────────────────┘
+    #
+    # Publier `"${APP_PORT:-3080}:3000"` exposerait l'application sur **toutes** les interfaces de
+    # l'hôte, et ne sert à rien : le proxy host vise `hema-organizer:3000`, le nom du conteneur sur le
+    # réseau partagé (docs/DEPLOIEMENT.md § 5).
+    #
+    # **Ce que ce port coûtait, et ce n'est pas une question de propreté.** L'adresse du visiteur —
+    # celle sur laquelle reposent *tous* les quotas (`login_ip`, `invitation_ip`, `public_api_ip`,
+    # `partage_ip`, `affiche_ip`…) et *toutes* les lignes du journal d'audit — est lue dans
+    # `X-Forwarded-For`. `clientIp()` en prend le **dernier** maillon, celui que le proxy a constaté :
+    # à travers le proxy, un visiteur ne peut donc pas la choisir. Mais qui atteint le port publié
+    # **sans passer par le proxy** devient ce dernier maillon et **choisit l'adresse que
+    # l'application retiendra** (`src/lib/request-info.ts` documente exactement ce trou). Deux
+    # conséquences mesurables : plus un seul seau par IP ne tient, et **l'IP inscrite au journal
+    # d'audit devient une valeur choisie par l'attaquant** — si bien que les alertes email aux
+    # administrateurs racontent une histoire fausse. Le vol de session ne suit pas (cookies
+    # `secure`) et `login_email` borne encore la devinette : c'était important, pas grave. Mais
+    # c'était **gratuit à refermer**, et une défense qui ne dépend pas d'un réglage de box en vaut
+    # deux qui en dépendent.
+    #
+    # **Si ce port devait vraiment revenir** (dépannage, sonde locale), le lier à une seule adresse
+    # plutôt qu'à toutes — `"127.0.0.1:${APP_PORT:-3080}:3000"` pour la boucle locale de l'hôte, ou
+    # `"172.17.0.1:${APP_PORT:-3080}:3000"` pour la passerelle Docker — et vérifier que **seuls 80 et
+    # 443 sont redirigés depuis Internet vers le serveur**. Le laisser sur `0.0.0.0` revient à faire
+    # reposer l'intégrité du journal d'audit sur la configuration du pare-feu.
+    #
+    # ports:
+    #   - "${APP_PORT:-3080}:3000"
+    tmpfs:
+      - /tmp
+    networks:
+      - npm
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  npm:
+    external: true
+    name: ${NPM_NETWORK:-npm_default}

@@ -1,0 +1,558 @@
+// Schéma de données — HEMA Organizer
+// SQLite ne gère ni les enums ni les tableaux : les statuts sont des String
+// verrouillés côté application (src/lib/constants.ts + schémas Zod) et les
+// listes sont modélisées par des tables de liaison.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Compte utilisateur. role : ADMIN | INSTRUCTEUR | MEMBRE
+model User {
+  id                       String    @id @default(cuid())
+  prenom                   String
+  nom                      String
+  email                    String?   @unique
+  /// **Rôle de base : MEMBRE ou INSTRUCTEUR, pour tout le monde**. La valeur `"ADMIN"` n'est plus
+  /// écrite ici — elle a vécu dans cette colonne jusqu'à la migration
+  /// `role_de_base_et_admin_en_supplement`, qui l'a déplacée dans `estAdmin`.
+  role                     String    @default("MEMBRE")
+  /// **Administrateur, en supplément du rôle de base.** Avant, les trois rôles étaient exclusifs :
+  /// nommer quelqu'un au bureau lui **retirait** son rôle d'instructeur, et le club ne pouvait plus
+  /// dire qu'un membre du bureau enseigne — alors que c'est le cas le plus courant dans une petite
+  /// association. Les droits, eux, ne changent pas : un administrateur a tous ceux de la matrice
+  /// (`can`, `src/lib/permissions.ts`), quel que soit son rôle de base.
+  estAdmin                 Boolean   @default(false)
+  passwordHash             String?
+  /// Double authentification (TOTP) des administrateurs : secret chiffré (AES-GCM), null = pas encore configurée
+  totpSecret               String?
+  totpActiveAt             DateTime?
+  /// **Dernier pas de temps TOTP consommé** (secondes Unix / 30) : un code à six chiffres ne sert
+  /// qu'une fois. Sans cette borne, le même code restait valable toute sa fenêtre plus la tolérance
+  /// de dérive — 30 à 90 s pendant lesquelles un code lu par-dessus l'épaule, resté dans une capture
+  /// ou dans le journal d'un proxy ouvrait une seconde porte. Tout pas **inférieur ou égal** est
+  /// désormais refusé (`consommerCodeTotp`, src/lib/auth/deux-fa.ts).
+  /// `null` = aucun code encore consommé : c'est la valeur des comptes qui existaient avant cette
+  /// colonne, et elle n'enferme personne dehors (tout pas est alors accepté).
+  totpDernierPas           Int?
+  /// Codes de secours 2FA : tableau JSON des SHA-256 des codes restants (usage unique)
+  codesSecours             String?
+  /// Mot de passe provisoire : l'app impose d'en choisir un nouveau à la première connexion
+  doitChangerMotDePasse    Boolean   @default(false)
+  actif                    Boolean   @default(true)
+  /// Compte de service (portail) : sert à se connecter à l'administration, n'est pas une personne du club
+  service                  Boolean   @default(false)
+  /// Numéro de couleur d'identification (pastilles, liserés) : attribué à la création, voir src/lib/couleurs.ts
+  couleur                  Int?
+  /// Rappels par email (case historique du profil). Sert désormais de **valeur par défaut** des
+  /// types de rappel pour qui n'a rien réglé finement ; voir `preferencesNotifications`.
+  rappelEmail              Boolean   @default(true)
+  /// Choix personnels de notifications, par type **et par canal personnel** :
+  /// JSON `{ "recap_veille": { "email": false, "push": true }, … }`. L'ancien format
+  /// (un booléen par type) reste lu : il vaut alors pour les deux canaux.
+  /// Absent (null) ou illisible = rien de choisi, on retombe sur `rappelEmail` et sur les valeurs
+  /// par défaut (voir src/lib/notifications/preferences.ts). Une personne ne peut que **refuser**
+  /// ce que le club envoie, jamais s'ajouter ce que le club a coupé.
+  preferencesNotifications String?
+  /// Palette de couleurs choisie par la personne dans « Mon profil » (voir src/lib/themes.ts).
+  /// Le mode clair/sombre reste celui du système : le thème ne change que la palette, jamais
+  /// le fait d'être en clair ou en sombre. Valeur inconnue en base = on retombe sur la palette
+  /// par défaut à l'affichage (`themeOuDefaut`).
+  theme                    String    @default("parchemin")
+  /// Dernière fois que la double authentification a été **proposée** à cette personne au moment de
+  /// se connecter par mot de passe (écran « Protéger mon compte », bouton « Plus tard »).
+  /// Elle n'est proposée qu'aux comptes à qui elle n'est **pas** imposée (tout le monde sauf ADMIN),
+  /// et pas plus d'une fois par trimestre : une proposition utile ne doit pas devenir un harcèlement.
+  /// null = jamais proposée. Voir src/lib/auth/acces-admin.ts (`peutProposerDeuxFa`).
+  deuxFaProposeeLe         DateTime?
+  /// Dernière ouverture du panneau des événements : sert la pastille « du nouveau ».
+  /// null = cette personne ne l'a jamais ouvert, tout ce qui est visible lui est nouveau.
+  evenementsVusAt          DateTime?
+  /// **Date d'adhésion au club**, saisie par le bureau dans la fiche du membre (« Au club depuis »).
+  /// C'est elle qui donne l'ancienneté, donc le rang — le club existait bien avant l'application, et
+  /// `createdAt` ne dit que la date de création du **compte**. Facultative : un compte importé n'a pas
+  /// toujours de date d'adhésion connue, et l'ancienneté retombe alors sur `createdAt` (règle de repli
+  /// unique, `dateDAdhesion` dans src/lib/blasons.ts). Jamais dans le futur (refusé à l'enregistrement).
+  auClubDepuis             DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  periodes            PeriodMember[]
+  periodesAnimees     PeriodInstructeur[]
+  seancesAnimees      SessionInstructeur[]
+  partiesAnimees      SessionPartie[]      @relation("PartieInstructeur")
+  /// Les parties où la personne **assiste** celui qui mène (second instructeur) : une relation
+  /// distincte de `partiesAnimees` parce que les deux colonnes pointent vers la même table et que
+  /// Prisma exige alors un nom de relation de chaque côté.
+  partiesAssistees    SessionPartie[]      @relation("PartieInstructeurSecond")
+  partiesModifiees    SessionPartie[]      @relation("PartieModifiePar")
+  attendances         Attendance[]
+  ateliers            Atelier[]
+  invitations         Invitation[]
+  authSessions        AuthSession[]
+  passwordResetTokens PasswordResetToken[]
+  notificationLogs    NotificationLog[]
+  auditLogs           AuditLog[]
+  evenements          Evenement[]
+  pushAbonnements     PushAbonnement[]
+}
+
+/// Un appareil abonné aux notifications (Web Push) : une ligne par navigateur et par personne.
+/// Les clés viennent du navigateur (`PushSubscription`) et ne valent que pour lui ; elles ne
+/// donnent accès à rien d'autre qu'à l'envoi d'une notification. Une souscription périmée est
+/// effacée par l'envoi lui-même (404/410 du service de push).
+model PushAbonnement {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// URL du service de push du navigateur (Firebase, Mozilla, Apple) : identifie l'appareil
+  endpoint String @unique
+  /// Clés de chiffrement du message, fournies par le navigateur
+  p256dh   String
+  auth     String
+  /// Nom lisible de l'appareil, déduit du user-agent (« Chrome sur Android ») : sert à s'y retrouver
+  /// dans la liste du profil et à retirer le bon appareil.
+  appareil String @default("")
+
+  createdAt    DateTime  @default(now())
+  /// Dernier envoi réussi vers cet appareil : une liste d'appareils muets se repère
+  derniereFois DateTime?
+
+  @@index([userId])
+}
+
+/// Période (trimestre). statut : BROUILLON | ACTIVE | CLOSE
+model Period {
+  id        String   @id @default(cuid())
+  nom       String
+  dateDebut String // "AAAA-MM-JJ"
+  dateFin   String // "AAAA-MM-JJ"
+  statut    String   @default("BROUILLON")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Quand les liens personnels de ce trimestre sont réellement partis (3 jours avant son début).
+  /// Nul tant qu'ils n'ont pas été envoyés ; c'est ce qui rend le balayage quotidien idempotent.
+  /// Volontairement distinct de l'activation : activer, c'est ouvrir le trimestre au travail de
+  /// l'équipe (séances, planning) ; envoyer les liens, c'est ouvrir l'application aux membres.
+  liensEnvoyesLe DateTime?
+
+  creneaux     Creneau[]
+  membres      PeriodMember[]
+  instructeurs PeriodInstructeur[]
+  sessions     Session[]
+  invitations  Invitation[]
+  datesExclues PeriodDateExclue[]
+}
+
+/// Date **écartée à la main** de la génération des séances d'une période : une semaine de vacances,
+/// un jour férié, un pont. Elle est gardée en base parce que la génération est **rejouable** —
+/// l'écran « Reste à créer » repropose à chaque visite tout ce que les créneaux donnent et que la
+/// période n'a pas. Sans cette table, les dates décochées revenaient cochées à la visite suivante,
+/// et il fallait les redécocher à chaque fois (et se souvenir desquelles).
+///
+/// `cle` porte soit une journée entière (« AAAA-MM-JJ »), soit **un seul créneau** de la journée
+/// (« AAAA-MM-JJ HH:MM ») : un club à deux cours le même soir peut n'en écarter qu'un. C'est la
+/// même clé que celle des cases de l'écran et que `dejaExistantes` dans `genererSeances` — une
+/// seule forme, comparée telle quelle, aucune `Date` construite (elle basculerait d'un jour selon
+/// le fuseau du serveur).
+model PeriodDateExclue {
+  periodId  String
+  cle       String
+  createdAt DateTime @default(now())
+
+  period Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@id([periodId, cle])
+}
+
+/// Créneau hebdomadaire d'une période (ex. mardi 20h-22h à Villebourg) : sert à générer les séances
+model Creneau {
+  id          String @id @default(cuid())
+  periodId    String
+  jourSemaine Int // 1 = lundi … 7 = dimanche
+  heureDebut  String // "HH:MM"
+  heureFin    String
+  lieu        String
+  adresse     String @default("")
+
+  period Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@index([periodId])
+}
+
+/// Membres invités sur une période (dénominateur du taux de présence)
+model PeriodMember {
+  periodId String
+  userId   String
+  addedAt  DateTime @default(now())
+
+  period Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([periodId, userId])
+  @@index([userId])
+}
+
+/// Instructeurs habituels d'une période (pré-remplis sur chaque séance générée)
+model PeriodInstructeur {
+  periodId String
+  userId   String
+
+  period Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([periodId, userId])
+}
+
+/// Séance de cours (à ne pas confondre avec AuthSession)
+model Session {
+  id                      String    @id @default(cuid())
+  periodId                String
+  date                    String // "AAAA-MM-JJ" (heure locale Europe/Paris)
+  heureDebut              String // "HH:MM"
+  heureFin                String // "HH:MM"
+  lieu                    String
+  adresse                 String    @default("") // adresse postale (lien vers la carte)
+  disciplines             String    @default("") // types de cours, séparés par des virgules (ex. "Messer,Dague")
+  theme                   String    @default("")
+  alternative             String    @default("")
+  annulee                 Boolean   @default(false)
+  motifAnnulation         String?
+  /// Quand le lien d'annulation reçu par email a servi. Il vaut 7 jours et reste techniquement
+  /// rejouable ; cette date le rend **à usage unique** : une fois posée, l'action refuse. Elle est
+  /// effacée quand un membre de l'encadrement rétablit la séance depuis l'application — rétablir
+  /// est une décision prise en conscience, qui rouvre donc le droit d'annuler à nouveau.
+  annulationLienUtiliseLe DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  period        Period               @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  instructeurs  SessionInstructeur[]
+  parties       SessionPartie[]
+  attendances   Attendance[]
+  ateliers      Atelier[]
+  notifications NotificationLog[]
+
+  @@index([periodId, date])
+  @@index([date])
+}
+
+/// **Une partie d'une séance** : une ligne du programme, avec son libellé, son rang, son (ou ses)
+/// instructeur(s), son thème et son niveau. Modifiable par l'équipe (`planning.edit`) ; le dernier
+/// modificateur est conservé, chaque changement est journalisé dans AuditLog.
+///
+/// Le nom de la partie était sa **clé** (`@@unique([sessionId, partie])`), prise dans une liste de
+/// quatre valeurs figées dans le code. Une séance ne pouvait donc avoir ni cinq parties, ni un
+/// intitulé à elle. Le libellé est devenu une **donnée libre** et le rang une colonne à part : une
+/// séance porte autant de parties que le club en a besoin, dans l'ordre qu'il choisit.
+model SessionPartie {
+  id        String @id @default(cuid())
+  sessionId String
+  /// **Nom affiché de la partie — une valeur DÉRIVÉE, plus jamais saisie**. Il vaut toujours
+  /// `libellePartie(rang dans la nature, estOption)` — « Cours 1 », « Cours 2 », « Option 1 »… — et
+  /// le code le remet d'accord à chaque écriture (`rangerParties`, src/lib/planning.ts) : ajouter,
+  /// retirer, déplacer ou basculer la nature d'une partie réécrit les libellés qui ne disent plus
+  /// le bon rang.
+  ///
+  /// **Pourquoi garder la colonne** alors que le nom se calcule : l'API publique, les pages de
+  /// partage, l'embed Discord et l'email du soir la lisent, chacun avec sa propre requête. Une
+  /// colonne tenue à jour leur évite de recompter le rang dans leur coin — et un rang recompté
+  /// après un filtre d'affichage est précisément la faute que le projet a déjà corrigée deux fois.
+  /// Ce qui décrit la partie, c'est son contenu : `theme`, `niveau`, ses encadrants, `description`.
+  libelle   String
+  /// **Ce qu'on fera dans cette partie**, écrit par l'encadrement quand il a envie de le dire. Vide
+  /// par défaut, jamais obligatoire, et affiché **seulement quand il est rempli** (règle
+  /// `champsLus`). Même patron que `theme` : une valeur par défaut plutôt qu'une colonne nullable,
+  /// pour que les cases écrites avant ce champ n'aient besoin d'aucune écriture de masse et
+  /// qu'aucun lecteur n'ait à traduire un `null` en « rien à dire ». Elle **sort du club** par
+  /// l'API publique et les pages de partage, comme le thème — et l'écran de saisie le dit (voir
+  /// `CaseEditeur`).
+  description String @default("")
+  /// Rang dans la séance, **contigu à partir de 0** : chaque écriture renumérote, sinon un trou
+  /// finirait par décider de l'ordre à la place de l'équipe.
+  ordre     Int    @default(0)
+  /// Une partie « en option » : elle se déroule **en parallèle** d'une autre, et c'est elle qu'un
+  /// atelier retenu vient occuper en premier. Un drapeau porté par la partie, réglé à l'ajout.
+  estOption Boolean @default(false)
+
+  instructeurId String?
+  /// **Celui qui assiste** : un second encadrant, facultatif, un seul. Il compte comme le premier
+  /// pour la séance (`SessionInstructeur`, donc les alertes d'effectif) mais ne sort jamais vers le
+  /// public — les pages de partage et l'API ne sélectionnent aucun nom.
+  instructeurSecondId String?
+  theme               String  @default("")
+  /// Niveau annoncé de la case (voir `NIVEAUX`, src/lib/constants.ts) : INDIFFERENT, DEBUTANT,
+  /// INTERMEDIAIRE ou AVANCE. Une **valeur par défaut** plutôt qu'une colonne nullable : les cases
+  /// écrites avant ce champ valent « indifférent » sans la moindre écriture de masse, et aucun
+  /// lecteur n'a à traduire un `null` en « indifférent » — l'oubli se paierait par une mention
+  /// fantôme sur un écran ou par un « Indifférent » affiché là où il ne faut rien dire.
+  niveau              String   @default("INDIFFERENT")
+  atelierId           String?  @unique
+  modifieParId        String?
+  updatedAt           DateTime @updatedAt
+
+  session           Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  instructeur       User?    @relation("PartieInstructeur", fields: [instructeurId], references: [id], onDelete: SetNull)
+  instructeurSecond User?    @relation("PartieInstructeurSecond", fields: [instructeurSecondId], references: [id], onDelete: SetNull)
+  atelier           Atelier? @relation(fields: [atelierId], references: [id], onDelete: SetNull)
+  modifiePar        User?    @relation("PartieModifiePar", fields: [modifieParId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, ordre])
+}
+
+model SessionInstructeur {
+  sessionId String
+  userId    String
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, userId])
+}
+
+/// Réponse d'un membre pour une séance. statut : PRESENT | ABSENT | PEUT_ETRE
+model Attendance {
+  userId    String
+  sessionId String
+  statut    String
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, sessionId])
+  @@index([sessionId])
+}
+
+/// Proposition d'atelier. statut : PROPOSE | VALIDE | REFUSE | PLANIFIE
+model Atelier {
+  id                     String   @id @default(cuid())
+  proposeParId           String
+  sessionId              String?
+  titre                  String
+  description            String
+  dureeMinutes           Int?
+  materiel               String?
+  statut                 String   @default("PROPOSE")
+  commentaireInstructeur String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  proposePar User           @relation(fields: [proposeParId], references: [id], onDelete: Cascade)
+  session    Session?       @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  partie     SessionPartie?
+
+  @@index([statut])
+  @@index([sessionId])
+}
+
+/// Lien d'invitation : seul le SHA-256 du jeton est stocké
+model Invitation {
+  id                String    @id @default(cuid())
+  userId            String
+  periodId          String
+  tokenHash         String    @unique
+  /// 4 mois après la création ; renouvelé automatiquement (ouverture d'un lien expiré, balayage
+  /// quotidien)
+  expiresAt         DateTime
+  usedAt            DateTime?
+  revokedAt         DateTime?
+  /// Motif de révocation : MANUEL | CLOTURE | SUSPECT | REMPLACE
+  motifRevocation   String?
+  /// Le parcours d'accueil (installer l'application, consolider son compte) a-t-il déjà été montré
+  /// **pour ce lien-ci** ? Le marqueur est sur l'invitation et non sur la personne, mais un lien
+  /// neuf naît « déjà vu » dès que la personne a vu le parcours une fois :, renvoyer un lien
+  /// renvoie un lien, rien de plus — une régénération ne remet personne devant l'écran
+  /// d'installation. Il ne se rejoue donc qu'au tout premier lien, ou sur remise à zéro de l'accès
+  /// (`parcours: "force"`, voir `createInvitation` dans src/lib/invitations.ts). null = pas encore
+  /// vu.
+  parcoursVuLe      DateTime?
+  /// Nombre d'ouvertures (connexions) via ce lien et date de la dernière — suivi anti-abus
+  ouvertures        Int       @default(0)
+  derniereOuverture DateTime?
+  createdAt         DateTime  @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period Period @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@index([userId, periodId])
+}
+
+/// Session de connexion (cookie httpOnly) — seul le hash du jeton est stocké
+model AuthSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  /// Session « forte » = ouverte par mot de passe + code 2FA (administration). false = ouverte par lien personnel.
+  forte      Boolean   @default(false)
+  /// **Par où cette session est entrée** : "lien" (lien personnel) ou "mot-de-passe". Le plafond de
+  /// 3 appareils ne compte que les sessions de la première sorte (`verifierAppareils`) : `forte` ne
+  /// dit rien de l'origine depuis que la connexion n'élève plus, et compter *toutes* les sessions
+  /// revenait à révoquer le lien de qui s'était connecté trois fois au mot de passe. **NULL =
+  /// session ouverte**, origine inconnue : elle reste parfaitement valable, et ne compte pour aucun
+  /// plafond — on ne met personne dehors sur une supposition.
+  origine    String?
+  /// **« Rester connecté » était-il coché ?** Le cookie de session n'a une échéance (`maxAge`) que
+  /// si oui ; sinon il meurt avec le navigateur, ce que l'écran promet. La colonne existe parce que
+  /// `touchSession` réécrit le cookie en prolongeant la session et **ne peut pas relire** le
+  /// `maxAge` d'un cookie : sans elle, il reposait toujours une échéance de 12 h, et la seule case
+  /// qu'on pouvait cocher pour se protéger d'un appareil prêté devenait inopérante dès qu'on
+  /// utilisait l'application plus d'une demi-heure. **false pour les sessions ouvertes avant** : le
+  /// comportement prudent, et aucune session existante n'est coupée.
+  persistant Boolean   @default(false)
+  /// Dernière vérification du code 2FA (connexion ou ré-authentification) : les actions sensibles exigent < 10 min
+  reauthAt   DateTime?
+  /// Dernier geste **dans l'espace admin** de cette session. L'élévation se referme après
+  /// `DUREE_INACTIVITE_ELEVATION_MS` sans rien faire : le cookie sans échéance ne suffit pas, les
+  /// navigateurs modernes le restaurant au redémarrage (voir `src/lib/auth/elevation.ts`).
+  elevationVueLe DateTime?
+  /// Quand l'application a prévenu qu'elle passait en arrière-plan ou se fermait. Ce n'est pas une
+  /// fermeture : l'élévation tombe si l'application ne revient pas avant
+  /// `GRACE_SORTIE_ELEVATION_MS`. Ce délai est ce qui distingue « j'ai quitté » d'un simple
+  /// changement de page — le navigateur envoie le même signal dans les deux cas.
+  elevationSortieLe DateTime?
+  expiresAt  DateTime
+  lastSeenAt DateTime  @default(now())
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  /// Sessions actives (Administration → Sessions) et purge quotidienne des expirées
+  @@index([expiresAt])
+}
+
+/// Jeton « mot de passe oublié » (30 min, usage unique)
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Paramètres modifiables dans l'app (recapHour, discordWebhookUrl chiffré, publicApiEnabled…)
+/// Limiteur de débit persistant (fenêtre glissante) : clé "<contexte>:<ip|email|jeton>", horodatages JSON
+model RateLimit {
+  key       String   @id
+  hits      String
+  updatedAt DateTime @updatedAt
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/// Journal des notifications. dedupKey garantit l'idempotence (pas de double envoi)
+model NotificationLog {
+  id        String   @id @default(cuid())
+  type      String // RAPPEL | ANNULATION | ATELIER_STATUT | INVITATION | RESET | TEST
+  canal     String // DISCORD | EMAIL
+  sessionId String?
+  userId    String?
+  dedupKey  String   @unique
+  statut    String // ENVOYE | ECHEC | IGNORE
+  erreur    String?
+  date      DateTime @default(now())
+
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([date])
+}
+
+/// Journal d'audit des actions sensibles et des connexions
+model AuditLog {
+  id          String   @id @default(cuid())
+  acteurId    String?
+  acteurEmail String
+  action      String
+  cible       String?
+  details     String?
+  ip          String?
+  date        DateTime @default(now())
+
+  acteur User? @relation(fields: [acteurId], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@index([acteurId])
+  /// Surveillance ciblée d'une action dans le temps (alerte « liens inconnus », filtres par action)
+  @@index([action, date])
+}
+
+/// Événement du club (stage, tournoi, démonstration) : consultable par tous les membres,
+/// tenu à jour par les instructeurs et les administrateurs (permission `evenements.manage`).
+/// Les dates et heures suivent la convention des séances : "AAAA-MM-JJ" et "HH:MM", heure de Paris.
+model Evenement {
+  id               String    @id @default(cuid())
+  nom              String
+  description      String    @default("")
+  dateDebut        String // "AAAA-MM-JJ"
+  heureDebut       String? // "HH:MM"
+  dateFin          String? // "AAAA-MM-JJ", si l'événement dure plusieurs jours
+  heureFin         String?
+  lieu             String    @default("")
+  adresse          String    @default("")
+  /// Qui organise : le club, une association amie, une fédération… (vide = non précisé)
+  organisateur     String    @default("")
+  /// Tarif affiché, en **texte libre** : « 25 € », « 15 € / 10 € adhérents », « prix libre ».
+  /// Volontairement pas un nombre : un montant imposerait une devise et un format uniques, et
+  /// interdirait les tarifs à deux niveaux ou les participations libres que pratiquent les clubs.
+  /// Vide = l'événement est **gratuit**, et c'est l'affichage qui le dit : on n'écrit jamais le mot
+  /// « Gratuit » dans la donnée, sans quoi on ne saurait plus distinguer un tarif saisi d'un défaut.
+  prix             String    @default("")
+  /// Tarif réduit pour les adhérents, même forme libre que `prix` — mais **règle d'affichage
+  /// opposée**, et c'est le piège à ne pas oublier : un `prix` vide veut dire quelque chose
+  /// (c'est gratuit, l'écran l'écrit), un `prixAdherent` vide ne veut rien dire du tout (le club
+  /// n'a pas de tarif adhérent pour cet événement) et l'écran n'affiche alors aucune ligne.
+  prixAdherent     String    @default("")
+  /// Durée annoncée : un nombre et une unité (« 2 » + « jour »), saisis par un champ chiffre et une
+  /// liste déroulante. null = durée non précisée — les dates de l'annonce suffisent alors, et rien
+  /// ne s'affiche. Stocker le nombre à part permet d'accorder le libellé à l'affichage (« 1 jour »
+  /// contre « 2 jours ») plutôt que de dépendre de la frappe de chacun.
+  dureeNombre      Int?
+  /// Unité de la durée : une **clé** de `UNITES_DUREE` (src/lib/validation/evenements.ts), pas le
+  /// libellé affiché. « jour » par défaut, et c'est aussi le repli quand la valeur reçue est
+  /// inconnue. Sans `dureeNombre`, cette colonne ne veut rien dire : on ne la lit pas.
+  dureeUnite       String    @default("jour")
+  lienInscription  String    @default("")
+  /// Publication d'origine (réseau social, site du club)
+  lienSource       String    @default("")
+  /// Image d'illustration (URL http(s))
+  imageUrl         String    @default("")
+  /// Brouillon (false) : visible seulement par qui a `evenements.edit`
+  publie           Boolean   @default(true)
+  /// Publication effective : passage de brouillon à publié, ou création déjà publiée.
+  /// `updatedAt` ne pouvait pas tenir ce rôle (il bouge à la moindre correction de frappe) ;
+  /// c'est cette date qui dit si une annonce est « nouvelle » depuis le dernier passage.
+  /// null sur une annonce antérieure à cette colonne : on retombe alors sur `createdAt`.
+  publieAt         DateTime?
+  /// Identifiant du message posté sur le salon Discord (webhook appelé avec `?wait=true`, qui
+  /// renvoie alors le message créé). C'est **lui seul** qui fait la différence entre « annoncer »
+  /// et « tenir à jour » : tant qu'il est là, une correction de l'annonce **édite** ce message
+  /// (`PATCH /webhooks/{id}/{token}/messages/{message_id}`) au lieu d'en poster un second, et une
+  /// dépublication le barre sur le salon.
+  /// null = jamais annoncé sur le salon, retiré du salon, ou message effacé à la main là-bas
+  /// (Discord répond alors 404 : on oublie l'identifiant et on repose une annonce propre).
+  discordMessageId String?
+  creeParId        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  creePar User? @relation(fields: [creeParId], references: [id], onDelete: SetNull)
+
+  @@index([dateDebut])
+}

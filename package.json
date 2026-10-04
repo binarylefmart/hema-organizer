@@ -1,0 +1,73 @@
+{
+  "name": "hema-organizer",
+  "version": "0.61.3",
+  "description": "Présences, planning et ateliers d'un club d'AMHE (HEMA) — application web auto-hébergée",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:migrate": "tsx scripts/exiger-base-dev.ts && prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
+    "db:seed:demo": "tsx --env-file-if-exists=.env prisma/seed-demo.ts",
+    "db:seed:demo:grand": "SEED_DEMO_TAILLE=grand tsx --env-file-if-exists=.env prisma/seed-demo.ts",
+    "preview:screenshots": "tsx --env-file-if-exists=.env scripts/preview-screenshots.ts",
+    "guides:pdf": "tsx scripts/guides-pdf.ts",
+    "admin:reset-2fa": "tsx --env-file-if-exists=.env scripts/reset-2fa.ts",
+    "notif:test": "tsx --env-file-if-exists=.env scripts/test-notifications.ts",
+    "icons:generate": "tsx scripts/generer-icones.ts",
+    "db:reparer": "tsx --env-file-if-exists=.env scripts/reparer-donnees.ts"
+  },
+  "prisma": {
+    "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "argon2": "^0.45.1",
+    "next": "15.5.25",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.0.10",
+    "qrcode": "^1.5.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "web-push": "^3.6.7",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^22",
+    "@types/nodemailer": "^8.0.2",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.25",
+    "prisma": "^6.19.3",
+    "sharp": "^0.35.4",
+    "tailwindcss": "^4",
+    "tsx": "^4.20.0",
+    "typescript": "^5",
+    "vitest": "^5.0.1"
+  },
+  "_pasDeGardeDesScriptsDInstallation": [
+    "Ce champ remplace un bloc `allowScripts` qui ressemblait à une liste blanche de scripts",
+    "d'installation (la forme de @lavamoat/allow-scripts) sans en être une : l'outil n'est ni dans les",
+    "dépendances, ni dans le verrou, ni installé, et aucun .npmrc ne pose ignore-scripts. Le bloc ne",
+    "contrôlait donc rien, et ressembler à un contrôle est pire que de ne rien avoir : on s'y fie.",
+    "Retiré au terme de la passe de sécurité.",
+    "Ce qu'il faudrait pour avoir vraiment la garde : ajouter @lavamoat/allow-scripts aux",
+    "devDependencies, poser ignore-scripts=true dans .npmrc, puis relister ici les paquets dont le",
+    "script d'installation est nécessaire — au minimum prisma (il engendre le client), sharp et esbuild",
+    "(binaires), argon2 (module natif). C'est un chantier à part : mal réglé, il casse le build et",
+    "l'image, et le workflow de publication le dit déjà en clair (.github/workflows/release.yml)."
+  ],
+  "license": "AGPL-3.0-or-later"
+}
