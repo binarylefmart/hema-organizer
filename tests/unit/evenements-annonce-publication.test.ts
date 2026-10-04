@@ -38,6 +38,8 @@ const faux = vi.hoisted(() => ({
   discord: [] as Array<{ geste: "poste" | "edite"; titre: string }>,
   telegram: [] as string[],
   canaux: { email: true, push: true, discord: true, telegram: true } as Record<string, boolean>,
+  /** Comptes **sans accès actif** (src/lib/acces-actif.ts) : tous les autres en ont un. */
+  sansAcces: new Set<string>(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -59,7 +61,12 @@ vi.mock("@/lib/db", () => ({
         return { ...faux.evenement };
       }),
     },
-    user: { findMany: vi.fn(async () => faux.membres) },
+    user: {
+      // Le second appel est le tri « accès actif » (`idsAvecAccesActif`).
+      findMany: vi.fn(async (args: { where: Record<string, unknown> }) =>
+        "AND" in args.where ? faux.membres.filter((m) => !faux.sansAcces.has(m.id as string)).map((m) => ({ id: m.id })) : faux.membres,
+      ),
+    },
     notificationLog: {
       findUnique: vi.fn(async (args: { where: { dedupKey: string } }) => faux.logs.find((l) => l.dedupKey === args.where.dedupKey) ?? null),
       findMany: vi.fn(async (args: { where: { dedupKey: { in: string[] } } }) =>
@@ -203,6 +210,7 @@ beforeEach(() => {
   faux.discord = [];
   faux.telegram = [];
   faux.canaux = { email: true, push: true, discord: true, telegram: true };
+  faux.sansAcces = new Set();
 });
 
 /** L'état d'un événement publié **avant** l'arrivée de Telegram : email, push et Discord journalisés. */
@@ -234,6 +242,15 @@ async function redirectionDe(promesse: Promise<unknown>): Promise<string> {
 }
 
 describe("publier une annonce : tout part, une fois", () => {
+  it("n'écrit ni ne réveille un membre sans accès actif ; les salons annoncent toujours", async () => {
+    faux.evenement = null;
+    faux.sansAcces = new Set(["chloe"]);
+    await redirectionDe(creerEvenement({}, formulaire()));
+    expect(faux.emails.map((e) => e.to)).toEqual(["charlie@club.test"]);
+    expect(faux.push.map((p) => p.userId)).toEqual(["charlie"]);
+    expect(faux.discord).toHaveLength(1);
+  });
+
   it("une annonce créée déjà publiée part sur les quatre canaux", async () => {
     faux.evenement = null;
     await redirectionDe(creerEvenement({}, formulaire()));

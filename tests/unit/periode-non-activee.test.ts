@@ -34,6 +34,8 @@ const faux = vi.hoisted(() => ({
   emails: [] as Array<{ to: string; sujet: string; ref?: string }>,
   push: [] as Array<{ userId: string; titre: string; corps: string; url: string; tag?: string }>,
   prefs: null as string | null,
+  /** Comptes **sans accès actif** (src/lib/acces-actif.ts) : tous les autres en ont un. */
+  sansAcces: new Set<string>(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -55,7 +57,13 @@ vi.mock("@/lib/db", () => ({
       ),
     },
     user: {
-      findMany: vi.fn(async (args: { where: { estAdmin: boolean; actif: boolean } }) => faux.admins.filter((u) => u.estAdmin === args.where.estAdmin && u.actif === args.where.actif)),
+      findMany: vi.fn(async (args: { where: { estAdmin: boolean; actif: boolean } | { AND: [{ id: { in: string[] } }, unknown] } }) =>
+        // Le second appel est le tri « accès actif » (`idsAvecAccesActif`) : tout le monde a un
+        // accès, sauf `faux.sansAcces`.
+        "AND" in args.where
+          ? args.where.AND[0].id.in.filter((id) => !faux.sansAcces.has(id)).map((id) => ({ id }))
+          : faux.admins.filter((u) => "estAdmin" in args.where && u.estAdmin === args.where.estAdmin && u.actif === args.where.actif),
+      ),
     },
     notificationLog: {
       findMany: vi.fn(async (args: { where: { dedupKey: { in: string[] } } }) =>
@@ -146,6 +154,7 @@ beforeEach(() => {
   faux.emails = [];
   faux.push = [];
   faux.prefs = null;
+  faux.sansAcces = new Set();
 });
 
 describe("le jalon d'activation", () => {
@@ -174,6 +183,22 @@ describe("l'alerte aux administrateurs", () => {
     expect(faux.emails.map((e) => e.to).sort()).toEqual(["contact@club.test", "delta@club.test", "echo@club.test"]);
     expect(faux.emails[0].sujet).toContain("T2 2026-2027");
     expect(faux.emails[0].sujet).toContain("dans 3 jours");
+  });
+
+  /**
+   * **Accès actif** (src/lib/acces-actif.ts) : un administrateur qui ne peut plus entrer ne reçoit
+   * plus le pense-bête. Le compte de service, lui, reste dans le tri — c'est la boîte de
+   * l'association, et ces messages sont son affaire —, à condition d'avoir lui aussi un accès.
+   */
+  it("n'écrit qu'aux administrateurs qui ont un accès actif, le compte du bureau compris", async () => {
+    faux.sansAcces = new Set(["a2"]);
+    const { db } = await import("@/lib/db");
+    await alerterPeriodeNonActivee(J3);
+    expect(faux.emails.map((e) => e.to).sort()).toEqual(["contact@club.test", "delta@club.test"]);
+    expect(faux.push.map((p) => p.userId).sort()).toEqual(["a1", "contact"]);
+    const tri = vi.mocked(db.user.findMany).mock.calls.map(([args]) => args?.where).find((w) => w && "AND" in w) as { AND: [unknown, Record<string, unknown>] };
+    expect(tri.AND[1]).toMatchObject({ actif: true });
+    expect(tri.AND[1]).not.toHaveProperty("service");
   });
 
   it("dit combien de personnes attendent leur lien, et mène à la période", async () => {

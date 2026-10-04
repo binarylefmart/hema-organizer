@@ -89,23 +89,23 @@ export type DestinataireRecap = MembreSeance & { statut: "PRESENT" | "PEUT_ETRE"
 
 /**
  * Destinataires du récap : **uniquement** les membres inscrits Présent ou Peut-être, compte actif,
- * case « rappel » cochée, canal et notification actifs, et **adresse email renseignée**
+ * **accès actif** (`accesActif`, src/lib/acces-actif.ts), case « rappel » cochée, canal et notification actifs, et **adresse email renseignée**
  * (fonction pure, testée unitairement). Une personne sans adresse est écartée en silence : elle reste
  * inscrite à la séance et comptée dans le taux, elle ne reçoit simplement pas le message.
  */
 export function destinatairesRecap(prefs: PreferencesNotifications, membres: readonly MembreSeance[]): DestinataireRecap[] {
   return membres.filter(
-    (m): m is DestinataireRecap => (m.statut === "PRESENT" || m.statut === "PEUT_ETRE") && destinataireRetenu(prefs, "recap_veille", "email", m) && m.email !== null,
+    (m): m is DestinataireRecap => (m.statut === "PRESENT" || m.statut === "PEUT_ETRE") && m.accesActif && destinataireRetenu(prefs, "recap_veille", "email", m) && m.email !== null,
   );
 }
 
 /**
  * Destinataires du récap **sur le téléphone** : les mêmes inscrits Présent ou Peut-être, mais jugés
- * sur le canal `push` (fonction pure). Pas de condition d'adresse email : c'est justement l'intérêt
+ * sur le canal `push` (fonction pure), avec la même exigence d'accès actif. Pas de condition d'adresse email : c'est justement l'intérêt
  * du canal — un appareil abonné suffit à être prévenu.
  */
 export function destinatairesRecapPush(prefs: PreferencesNotifications, membres: readonly MembreSeance[]): MembreSeance[] {
-  return membres.filter((m) => (m.statut === "PRESENT" || m.statut === "PEUT_ETRE") && destinataireRetenu(prefs, "recap_veille", "push", m));
+  return membres.filter((m) => (m.statut === "PRESENT" || m.statut === "PEUT_ETRE") && m.accesActif && destinataireRetenu(prefs, "recap_veille", "push", m));
 }
 
 /**
@@ -146,7 +146,7 @@ export async function envoyerRecapVeille(now = new Date()): Promise<BilanRecap> 
   ]);
   const bilan: BilanRecap = { seances: 0, emails: 0, discord: 0, telegram: 0 };
   if (!parEmail && !parPush && !parDiscord && !parTelegram) return bilan;
-  const seances = await seancesAvecInvites([dateRecap(todayIso(now))]);
+  const seances = await seancesAvecInvites([dateRecap(todayIso(now))], now);
   bilan.seances = seances.length;
   if (seances.length === 0) return bilan;
   const prefs = await getPreferencesNotifications();

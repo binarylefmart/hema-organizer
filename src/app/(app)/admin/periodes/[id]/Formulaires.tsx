@@ -125,11 +125,9 @@ export function InstructeursPeriode({
 export function AjoutMembresPeriode({
   periodId,
   candidats,
-  active,
 }: {
   periodId: string;
   candidats: Personne[];
-  active: boolean;
 }) {
   const [filtre, setFiltre] = useState("");
   const [choix, setChoix] = useState<Set<string>>(new Set());
@@ -204,14 +202,14 @@ export function AjoutMembresPeriode({
               ]);
               setChoix(new Set());
               setMessage(
-                `${ajoutes} membre${ajoutes > 1 ? "s" : ""} ajouté${ajoutes > 1 ? "s" : ""}${active ? " — leur lien est en cours d'envoi." : "."}`,
+                `${ajoutes} membre${ajoutes > 1 ? "s" : ""} ajouté${ajoutes > 1 ? "s" : ""}. Aucun email n'est parti : l'invitation s'envoie depuis la liste des membres.`,
               );
             })
           }
         >
           {pending
             ? "Ajout…"
-            : `Ajouter ${choix.size || ""} membre${choix.size > 1 ? "s" : ""}${active ? " et envoyer les liens" : ""}`}
+            : `Ajouter ${choix.size || ""} membre${choix.size > 1 ? "s" : ""}`}
         </Bouton>
       </div>
     </details>

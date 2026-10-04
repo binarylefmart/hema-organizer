@@ -37,6 +37,8 @@ const faux = vi.hoisted(() => ({
   emails: [] as { to: string; ref: string }[],
   marquees: [] as string[],
   sansEmail: [] as string[],
+  /** Le dernier lien de chaque personne ; absente = un lien vivant (le cas ordinaire d'un club installé). */
+  derniersLiens: {} as Record<string, { revokedAt: Date | null; motifRevocation: string | null } | null>,
 }));
 
 // L'email d'invitation porte le nom de l'application : il est lu dans l'identité du club, que ces
@@ -89,6 +91,12 @@ vi.mock("@/lib/db", () => ({
     },
     invitation: {
       findFirst: vi.fn(async () => null),
+      findMany: vi.fn(async ({ where }: { where: { userId: { in: string[] } } }) =>
+        where.userId.in.flatMap((userId) => {
+          const l = userId in faux.derniersLiens ? faux.derniersLiens[userId] : { revokedAt: null, motifRevocation: null };
+          return l ? [{ userId, ...l }] : [];
+        }),
+      ),
       updateMany: vi.fn(async ({ where }: { where: unknown }) => {
         faux.revocations.push(where);
         return { count: 1 };
@@ -133,6 +141,7 @@ beforeEach(() => {
   faux.emails = [];
   faux.marquees = [];
   faux.sansEmail = [];
+  faux.derniersLiens = {};
   deconnexions.appels = [];
 });
 
@@ -252,5 +261,29 @@ describe("le repère est le premier cours", () => {
     expect(await envoyerLiensDesTrimestresQuiCommencent(MAINTENANT)).toBe(1);
     expect(faux.emails.map((e) => e.to)).toEqual(["u-1@club.test"]);
     expect(faux.marquees).toEqual(["p-sans-seances"]);
+  });
+});
+
+describe("le balayage ne sert que qui a déjà un lien en service", () => {
+  it("envoie à qui a un lien vivant ou fermé par la clôture, saute les jamais invités et les révoqués", async () => {
+    faux.periodes = [
+      {
+        id: "p-t2",
+        dateDebut: "2026-09-21",
+        seances: [{ date: DANS_TROIS_JOURS }],
+        membres: [{ userId: "u-vivant" }, { userId: "u-cloture" }, { userId: "u-jamais" }, { userId: "u-revoque" }, { userId: "u-adresse" }],
+      },
+    ];
+    faux.derniersLiens = {
+      "u-cloture": { revokedAt: new Date("2026-07-01"), motifRevocation: "CLOTURE" },
+      "u-jamais": null,
+      "u-revoque": { revokedAt: new Date("2026-09-01"), motifRevocation: "MANUEL" },
+      "u-adresse": { revokedAt: new Date("2026-09-01"), motifRevocation: "REMPLACE" },
+    };
+    const n = await envoyerLiensDesTrimestresQuiCommencent(MAINTENANT);
+    expect(n).toBe(2);
+    expect(faux.emails.map((e) => e.to)).toEqual(["u-vivant@club.test", "u-cloture@club.test"]);
+    // Le trimestre est marqué servi quand même : ceux qu'on a sautés s'invitent d'un bouton
+    expect(faux.marquees).toEqual(["p-t2"]);
   });
 });

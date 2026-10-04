@@ -146,9 +146,10 @@ export default async function PagePeriode({ params }: Props) {
   // partiront que des semaines plus tard — et on finit par cliquer deux fois.
   const confirmationActivation =
     `Activer « ${p.nom} » ? Le trimestre s'ouvre à l'équipe : séances et planning deviennent modifiables. ` +
-    `Les liens personnels partiront tout seuls trois jours avant le premier cours` +
+    `Trois jours avant le premier cours, le lien du trimestre partira tout seul à qui a déjà un lien en service ; ` +
+    `les personnes jamais invitées (ou dont le lien a été révoqué) s'invitent depuis la liste des membres` +
     (sansEmail > 0
-      ? `, sauf pour ${sansEmail} personne(s) sans adresse email : l'équipe cochera leur présence.`
+      ? `. ${sansEmail} personne(s) sans adresse email ne recevront rien : l'équipe cochera leur présence.`
       : ".");
   const confirmationRenvoi =
     `Renvoyer son lien à ${avecEmail} personne${avecEmail > 1 ? "s" : ""} ? Chaque lien est régénéré : les anciens cesseront de fonctionner.` +
@@ -656,7 +657,6 @@ export default async function PagePeriode({ params }: Props) {
                     nom: `${u.prenom} ${u.nom}`,
                     email: u.email,
                   }))}
-                  active={p.statut === "ACTIVE"}
                 />
               </div>
             </Carte>

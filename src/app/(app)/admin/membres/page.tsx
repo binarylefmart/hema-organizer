@@ -937,12 +937,12 @@ export default async function PageMembres({ searchParams }: Props) {
               <fieldset>
                 <legend className="mb-1 font-semibold">Inscrire aux périodes</legend>
                 {periodesOuvertes.length === 0 ? (
-                  <p className="text-sm text-texte-secondaire">Aucune période ouverte : le lien partira à l&apos;activation d&apos;une période.</p>
+                  <p className="text-sm text-texte-secondaire">Aucune période ouverte : la personne s&apos;inscrira à la prochaine.</p>
                 ) : (
                   periodesOuvertes.map((p) => (
                     <label key={p.id} className="flex min-h-11 cursor-pointer items-center gap-3">
                       <input key={`periode-${p.id}-${p.statut}`} type="checkbox" name="periodIds" value={p.id} defaultChecked={p.statut === "ACTIVE"} className="size-6 accent-primaire" />
-                      {p.nom} <span className="text-sm text-texte-secondaire">{p.statut === "ACTIVE" ? "(active : lien envoyé tout de suite, si la personne a une adresse)" : "(brouillon)"}</span>
+                      {p.nom} <span className="text-sm text-texte-secondaire">{p.statut === "ACTIVE" ? "(active)" : "(brouillon)"}</span>
                     </label>
                   ))
                 )}

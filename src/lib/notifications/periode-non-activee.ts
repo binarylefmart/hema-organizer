@@ -1,3 +1,4 @@
+import { filtrerAccesActif } from "../acces-actif";
 import { db } from "../db";
 import { addDays, joursAvant, todayIso } from "../dates";
 import { LIENS_AVANT_DEBUT_JOURS } from "../invitations";
@@ -102,7 +103,8 @@ export async function alerterPeriodeNonActivee(now = new Date()): Promise<number
     // raisonnement que pour « la période suivante reste à créer »). Le bureau se lit sur
     // `estAdmin` : `role` ne vaut plus jamais « ADMIN », et la requête d'avant ne rendait plus
     // personne — l'alerte se serait tue sans rien dire.
-    const admins = await db.user.findMany({ where: { estAdmin: true, actif: true }, select: CHAMPS_ADMIN });
+    // Seulement à qui a un **accès actif** (src/lib/acces-actif.ts), compte de service compris.
+    const admins = await filtrerAccesActif(await db.user.findMany({ where: { estAdmin: true, actif: true }, select: CHAMPS_ADMIN }), now, { compteDeService: true });
     const destinataires = parEmail ? admins.filter((u): u is typeof u & { email: string } => destinataireRetenu(prefs, "periode_non_activee", "email", u)) : [];
     const surTelephone = parPush ? admins.filter((u) => destinataireRetenu(prefs, "periode_non_activee", "push", u)) : [];
     if (destinataires.length === 0 && surTelephone.length === 0) return 0;

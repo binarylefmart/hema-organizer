@@ -39,11 +39,19 @@ const faux = vi.hoisted(() => ({
   statutPeriode: "ACTIVE",
   /** Ce que la case visée porte déjà — vide par défaut, puisque c'est la seule case où un atelier se pose. */
   case: {} as Record<string, unknown>,
+  /** Comptes **sans accès actif** (src/lib/acces-actif.ts) : tous les autres en ont un. */
+  sansAcces: new Set<string>(),
 }));
 
 vi.mock("@/lib/db", () => ({
   db: {
     setting: { findUnique: vi.fn(async () => null) },
+    // Le tri « accès actif » (`idsAvecAccesActif`) : un identifiant demandé revient s'il a un accès.
+    user: {
+      findMany: vi.fn(async (args: { where: { AND: [{ id: { in: string[] } }, unknown] } }) =>
+        args.where.AND[0].id.in.filter((id) => !faux.sansAcces.has(id)).map((id) => ({ id })),
+      ),
+    },
     atelier: {
       findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => {
         const a = faux.ateliers.find((x) => x.id === where.id);
@@ -193,6 +201,7 @@ beforeEach(() => {
   faux.canaux = { email: true, push: true };
   faux.statutPeriode = "ACTIVE";
   faux.case = {};
+  faux.sansAcces = new Set();
 });
 
 describe("réponse à une proposition : ce qui part, et ce qui en reste au journal", () => {
@@ -286,6 +295,16 @@ describe("réponse à une proposition : ce qui part, et ce qui en reste au journ
     const res = await deciderAtelier({}, decision("PLANIFIE"));
     expect(res.succes).toContain("Atelier placé dans le planning");
     expect(faux.ateliers[0].statut).toBe("PLANIFIE");
+  });
+
+  it("n'écrit ni ne réveille un proposeur sans accès actif, sans empêcher la décision", async () => {
+    faux.sansAcces = new Set(["u-golf"]);
+    const res = await deciderAtelier({}, decision("REFUSE"));
+    expect(res.succes).toBe("Atelier refusé.");
+    expect(faux.ateliers[0].statut).toBe("REFUSE");
+    expect(faux.emails).toEqual([]);
+    expect(faux.push).toEqual([]);
+    expect(faux.logs).toEqual([]);
   });
 
   it("écarte en silence une personne sans adresse, mais la réveille sur son téléphone", async () => {

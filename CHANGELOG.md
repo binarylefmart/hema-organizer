@@ -2,6 +2,14 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.66.0
+
+### Corrections
+
+- **notifications** : les messages personnels ne partent qu'aux personnes qui ont un accès actif
+- **liens** : le lien de début de trimestre ne part qu'à qui a déjà un lien en service
+- **membres** : ajouter un membre n'envoie plus de lien tout seul
+
 ## 0.65.0
 
 ### Nouveautés

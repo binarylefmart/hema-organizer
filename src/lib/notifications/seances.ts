@@ -1,3 +1,4 @@
+import { filtrerAccesActif } from "@/lib/acces-actif";
 import { db } from "@/lib/db";
 import { formatDateCourte, formatHeure, seanceCommencee, todayIso } from "@/lib/dates";
 import { baseUrl, env } from "@/lib/env";
@@ -227,9 +228,9 @@ export async function alerterEffectifFaible(now = new Date()): Promise<number> {
     let alertee = false;
     // Toujours « chacun le sien » : cette alerte n'est pas routable vers la liste du club, et la
     // raison est écrite dans `RAISON_ROUTAGE_FIXE.effectif_faible`.
-    if (parEmail) alertee = (await alerterEquipeParEmail(s, chiffres, club.partEffectifMin)) || alertee;
+    if (parEmail) alertee = (await alerterEquipeParEmail(s, chiffres, club.partEffectifMin, now)) || alertee;
     // Sur le téléphone, pas de lien d'annulation : il vaut signature et reste dans l'email.
-    if (parPush) alertee = (await alerterEquipeParPush(s, chiffres)) > 0 || alertee;
+    if (parPush) alertee = (await alerterEquipeParPush(s, chiffres, now)) > 0 || alertee;
     if (parDiscord) {
       // Aucun lien d'annulation sur le salon : il vaut signature, il reste dans l'email de l'équipe.
       const publie = await publierSurSalon({
@@ -358,7 +359,7 @@ function chiffresEffectif(s: SeanceEffectif): ChiffresEffectif {
  * pendant `FENETRE_RATTRAPAGE_MIN` : elle est idempotente (`effectif_<id>_<créneau>`), un repassage
  * sans rien à faire ne coûte que quelques requêtes.
  */
-async function alerterEquipeParEmail(s: SeanceEffectif, chiffres: ChiffresEffectif, partEffectifMin: number): Promise<boolean> {
+async function alerterEquipeParEmail(s: SeanceEffectif, chiffres: ChiffresEffectif, partEffectifMin: number, now: Date): Promise<boolean> {
   /*
    * **L'empreinte du créneau, comme le récap et les rappels**.
    *
@@ -376,7 +377,7 @@ async function alerterEquipeParEmail(s: SeanceEffectif, chiffres: ChiffresEffect
   // Les instructeurs de la séance ; à défaut, ceux de la période. Sans adresse email, on écarte en
   // silence ; qui a refusé cette alerte dans son profil est écarté aussi (`destinataireRetenu`).
   const prefs = await getPreferencesNotifications();
-  const equipe = equipeDe(s).filter((u): u is InstructeurAlerte & { email: string } => aUnEmail(u) && destinataireRetenu(prefs, "effectif_faible", "email", u));
+  const equipe = (await equipeJoignable(s, now)).filter((u): u is InstructeurAlerte & { email: string } => aUnEmail(u) && destinataireRetenu(prefs, "effectif_faible", "email", u));
   // Personne à prévenir : la clé n'est pas consommée, une adresse ajoutée demain vaudra alerte.
   if (equipe.length === 0) return false;
   if (!(await journaliser({ type: "EFFECTIF", canal: "EMAIL", sessionId: s.id, dedupKey, statut: "ENVOYE" }))) return false;
@@ -410,12 +411,23 @@ function equipeDe(s: SeanceEffectif): InstructeurAlerte[] {
 }
 
 /**
+ * L'équipe à qui l'alerte peut partir : celle de {@link equipeDe}, réduite à qui a un **accès actif**
+ * (src/lib/acces-actif.ts). Le tri se fait **après** le choix de l'équipe — séance, à défaut période —
+ * et non dans la requête : filtrer en base l'équipe de la séance ferait basculer l'alerte sur celle de
+ * la période dès que ses instructeurs n'ont plus d'accès, ce qui changerait **qui** est concerné, pas
+ * seulement qui reçoit. Les chiffres, eux, ne passent pas par ici.
+ */
+async function equipeJoignable(s: SeanceEffectif, now: Date): Promise<InstructeurAlerte[]> {
+  return filtrerAccesActif(equipeDe(s), now);
+}
+
+/**
  * La même alerte sur le téléphone des instructeurs. Elle mène à la fiche de la séance, d'où
  * l'annulation se fait en deux appuis — le lien signé, lui, reste réservé à l'email.
  */
-async function alerterEquipeParPush(s: SeanceEffectif, chiffres: Pick<ChiffresEffectif, "presents">): Promise<number> {
+async function alerterEquipeParPush(s: SeanceEffectif, chiffres: Pick<ChiffresEffectif, "presents">, now: Date): Promise<number> {
   const prefs = await getPreferencesNotifications();
-  const equipe = equipeDe(s).filter((u) => destinataireRetenu(prefs, "effectif_faible", "push", u));
+  const equipe = (await equipeJoignable(s, now)).filter((u) => destinataireRetenu(prefs, "effectif_faible", "push", u));
   return notifierParPush({
     type: "EFFECTIF",
     sessionId: s.id,
@@ -462,6 +474,13 @@ export async function notifierAnnulation(sessionId: string, now = new Date()): P
     include: { period: { include: { membres: { where: { user: { service: false } }, include: { user: { select: CHAMPS_DESTINATAIRE } } } } } },
   });
   if (!s || !s.annulee) return 0;
+  /*
+   * **Les destinataires personnels, une fois pour l'email et le téléphone** : les invités qui ont un
+   * accès actif (src/lib/acces-actif.ts). Quelqu'un saisi dans l'annuaire sans avoir été invité, ou
+   * dont l'accès a été coupé, n'est prévenu de rien. Ne concerne ni la liste du club ni les salons,
+   * qui ne s'adressent à personne nommément.
+   */
+  const invitesJoignables = parEmail || parPush ? await filtrerAccesActif(s.period.membres.map((m) => m.user), now) : [];
   const motif = s.motifAnnulation ?? "non précisé";
   const horodatage = s.updatedAt.getTime();
   // Le nom du club, lu une fois pour les trois canaux de cette annulation (mise en cache par requête).
@@ -529,9 +548,7 @@ export async function notifierAnnulation(sessionId: string, now = new Date()): P
       // simplement prévenue de rien (l'équipe la préviendra de vive voix). Et qui a refusé les
       // annonces d'annulation dans son profil n'en reçoit plus (`destinataireRetenu`).
       const prefs = prefsEmail;
-      const invites = s.period.membres
-        .map((m) => m.user)
-        .filter((u): u is typeof u & { email: string } => aUnEmail(u) && destinataireRetenu(prefs, "seance_annulee", "email", u));
+      const invites = invitesJoignables.filter((u): u is typeof u & { email: string } => aUnEmail(u) && destinataireRetenu(prefs, "seance_annulee", "email", u));
       const messages = invites.map((u) => ({ to: u.email, ...emailSeanceAnnulee({ prenom: u.prenom, seance: versSeanceEmail(s), motif, nomApp: club.nomCourt }), ref: `annulation_${s.id}_${u.id}` }));
       if (await journaliser({ type: "ANNULATION", canal: "EMAIL", sessionId: s.id, userId: null, dedupKey, statut: "ENVOYE" })) {
         // Une seule clé pour tout l'envoi : on ne la libère donc qu'**une fois**, au premier échec.
@@ -551,7 +568,7 @@ export async function notifierAnnulation(sessionId: string, now = new Date()): P
     // Même décision que pour l'email, mais sur le canal `push` : qui a gardé l'un et coupé l'autre
     // est respecté, et une personne sans adresse email peut n'être prévenue que par là.
     const prefs = await getPreferencesNotifications();
-    const invites = s.period.membres.map((m) => m.user).filter((u) => destinataireRetenu(prefs, "seance_annulee", "push", u));
+    const invites = invitesJoignables.filter((u) => destinataireRetenu(prefs, "seance_annulee", "push", u));
     await notifierParPush({
       type: "ANNULATION",
       sessionId: s.id,

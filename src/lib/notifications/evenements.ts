@@ -1,4 +1,5 @@
 import { libelleDuree, libellePrix } from "@/components/evenements/libelles";
+import { filtrerAccesActif } from "@/lib/acces-actif";
 import { db } from "@/lib/db";
 import { formatDateLongue, formatHeure, formatHoraire } from "@/lib/dates";
 import { baseUrl } from "@/lib/env";
@@ -523,7 +524,7 @@ export async function notifierNouvelEvenement(evenementId: string, now = new Dat
     if (parEmail || parPush) {
       // Une seule lecture des membres et des réglages pour les deux canaux personnels.
       const prefs = await getPreferencesNotifications();
-      const membres = await membresDesPeriodesActives();
+      const membres = await membresDesPeriodesActives(now);
       // « La liste » : un message au lieu de N. Le compte rendu (`emails`) compte les **messages**.
       if (parEmail) bilan.emails = envoiCollectifDans(prefs, "evenement_nouveau") ? await annoncerSurListe(e, prefs) : await annoncerParEmail(e, prefs, membres);
       if (parPush) await annoncerParPush(e, prefs, membres);
@@ -555,16 +556,17 @@ type MembreAnnonce = {
 
 /**
  * Les membres invités sur au moins une période **active** — le compte de service du portail n'est
- * pas une personne du club (`personnesDuClub` en ceinture et bretelles). Chargés **une fois** pour
- * l'email et pour le push.
+ * pas une personne du club (`personnesDuClub` en ceinture et bretelles) — et qui ont un **accès
+ * actif** (src/lib/acces-actif.ts) : on n'annonce rien à qui ne peut pas entrer. Chargés **une fois**
+ * pour l'email et pour le push.
  */
-async function membresDesPeriodesActives(): Promise<MembreAnnonce[]> {
+async function membresDesPeriodesActives(now: Date): Promise<MembreAnnonce[]> {
   const membres = await db.user.findMany({
     where: { actif: true, service: false, periodes: { some: { period: { statut: "ACTIVE" } } } },
     select: { id: true, prenom: true, email: true, actif: true, rappelEmail: true, preferencesNotifications: true, service: true },
     orderBy: { prenom: "asc" },
   });
-  return personnesDuClub(membres);
+  return filtrerAccesActif(personnesDuClub(membres), now);
 }
 
 /**

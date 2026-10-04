@@ -1,3 +1,4 @@
+import { idsAvecAccesActif } from "@/lib/acces-actif";
 import { db } from "@/lib/db";
 import { personnesDuClub } from "@/lib/permissions";
 import { compterPresences, type Compteurs } from "@/lib/presences";
@@ -15,6 +16,8 @@ import { programmeSeance, type CaseProgramme, type SeanceResume } from "./conten
  *   la liste des destinataires l'écarte, au moment de l'envoi (`destinataireRetenu`) ;
  * - les **choix personnels de notifications** (`preferencesNotifications`, à défaut `rappelEmail`) sont
  *   chargés avec les invités pour que `destinataireRetenu` puisse trancher sans nouvelle requête ;
+ * - l'**accès actif** de chacun (`accesActif`, src/lib/acces-actif.ts) est lu en une requête de plus :
+ *   une personne sans accès reste invitée et comptée, elle n'est simplement destinataire de rien ;
  * - le dénominateur du taux reste le nombre d'invités de la période (`src/lib/presences.ts`) ;
  * - le **programme** (cases du planning) est chargé pour le récap Discord — et la requête ne
  *   sélectionne **ni l'instructeur, ni l'animateur de l'atelier** : ce qui n'est pas lu en base ne
@@ -35,6 +38,11 @@ export type MembreSeance = {
   preferencesNotifications?: string | null;
   /** Réponse du membre pour cette séance, ou null s'il n'a pas répondu */
   statut: string | null;
+  /**
+   * La personne a-t-elle un accès actif (lien vivant, mot de passe ou session ouverte) ? Sans lui,
+   * elle reste invitée et comptée, mais aucun message personnel ne lui part.
+   */
+  accesActif: boolean;
 };
 
 export type SeanceAvecInvites = {
@@ -52,7 +60,7 @@ export type SeanceAvecInvites = {
 };
 
 /** Séances non annulées d'une liste de dates ("AAAA-MM-JJ"), avec invités et réponses. */
-export async function seancesAvecInvites(dates: readonly string[]): Promise<SeanceAvecInvites[]> {
+export async function seancesAvecInvites(dates: readonly string[], now = new Date()): Promise<SeanceAvecInvites[]> {
   if (dates.length === 0) return [];
   const seances = await db.session.findMany({
     where: { date: { in: [...dates] }, annulee: false, period: { statut: "ACTIVE" } },
@@ -74,6 +82,11 @@ export async function seancesAvecInvites(dates: readonly string[]): Promise<Sean
       },
     },
   });
+  // Une seule requête pour toutes les séances du passage : qui, parmi les invités, peut encore entrer.
+  const avecAcces = await idsAvecAccesActif(
+    seances.flatMap((s) => s.period.membres.map((m) => m.user.id)),
+    now,
+  );
   return seances.map((s) => {
     const reponses = new Map(s.attendances.map((a) => [a.userId, a.statut]));
     const invites = personnesDuClub(s.period.membres.map((m) => m.user));
@@ -85,6 +98,7 @@ export async function seancesAvecInvites(dates: readonly string[]): Promise<Sean
       rappelEmail: u.rappelEmail,
       preferencesNotifications: u.preferencesNotifications ?? null,
       statut: reponses.get(u.id) ?? null,
+      accesActif: avecAcces.has(u.id),
     }));
     return {
       id: s.id,

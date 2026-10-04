@@ -81,8 +81,10 @@ vi.mock("@/lib/db", () => ({
         if (!c) throw new Error("Compte introuvable");
         return c;
       }),
-      findMany: vi.fn(async ({ where = {} }: { where?: Record<string, unknown> } = {}) =>
-        faux.comptes.filter((c) => {
+      findMany: vi.fn(async ({ where = {} }: { where?: Record<string, unknown> } = {}) => {
+        // Le tri « accès actif » (`idsAvecAccesActif`) : tout identifiant demandé a un accès ici.
+        if (Array.isArray(where.AND)) return (where.AND[0] as { id: { in: string[] } }).id.in.map((id) => ({ id }));
+        return faux.comptes.filter((c) => {
           if (where.role !== undefined && c.role !== where.role) return false;
           /*
            * **`estAdmin`, parce que c'est ce que la vraie requête demande** : les alertes de
@@ -100,8 +102,8 @@ vi.mock("@/lib/db", () => ({
           const email = where.email as { not?: unknown } | undefined;
           if (email && "not" in email && email.not === null && c.email == null) return false;
           return true;
-        }),
-      ),
+        });
+      }),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         verifierUnicite(data.email);
         const cree = { actif: true, service: false, couleur: null, ...data } as Record<string, unknown>;
@@ -363,12 +365,12 @@ describe("création d'un membre sans adresse email", () => {
     expect(faux.comptes.filter((c) => c.email === "bravo.02@club.test")).toHaveLength(1);
   });
 
-  it("envoie le lien aussitôt quand l'adresse est renseignée et qu'une période est active", async () => {
+  it("n'envoie rien, même avec une adresse et une période active : l'invitation part d'un bouton", async () => {
     const fd = formulaire({ prenom: "Chloé", nom: "Dupont", email: "chloe@club.test", role: "MEMBRE" });
     fd.append("periodIds", "p-active");
     const res = await creerMembre({}, fd);
-    expect(res.succes).toContain("son lien d'accès vient de partir");
-    expect(faux.emails.map((e) => e.to)).toEqual(["chloe@club.test"]);
+    expect(res.succes).toContain("Aucun email n'est parti");
+    expect(faux.emails).toEqual([]);
   });
 
   it("inscrit à la période une personne sans adresse, mais ne fabrique ni lien ni email", async () => {
@@ -578,6 +580,7 @@ const membre = (id: string, email: string | null, statut: string | null): Membre
   actif: true,
   rappelEmail: true,
   statut,
+  accesActif: true,
 });
 
 describe("sélection des destinataires (fonctions pures)", () => {

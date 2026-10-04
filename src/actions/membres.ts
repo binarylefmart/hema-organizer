@@ -86,21 +86,20 @@ function rafraichir() {
   revalidatePath("/admin/comptes");
 }
 
-/** Périodes actives : un nouveau membre y est inscrit et reçoit aussitôt son lien. */
-async function inscrireAuxPeriodesActives(userId: string, periodIds: string[]): Promise<number> {
-  let n = 0;
+/**
+ * Inscrit un nouveau membre aux périodes cochées (closes exceptées). **Aucun lien ne part** : ajouter
+ * quelqu'un à l'annuaire et lui ouvrir l'application sont deux gestes, et le second se fait d'un bouton
+ * (« Envoyer l'invitation »), quand l'équipe le décide — souvent après avoir saisi tout le monde.
+ */
+async function inscrireAuxPeriodes(userId: string, periodIds: string[]): Promise<void> {
   for (const periodId of periodIds) {
     const period = await db.period.findUnique({ where: { id: periodId } });
     if (!period || period.statut === "CLOSE") continue;
     await db.periodMember.upsert({ where: { periodId_userId: { periodId, userId } }, create: { periodId, userId }, update: {} });
-    // `envoyerInvitation` renvoie false pour une personne sans adresse email : rien n'est parti, rien à compter
-    // Premier lien d'une personne qu'on vient d'ajouter : il n'y a aucune session à couper
-    if (period.statut === "ACTIVE" && (await envoyerInvitation(userId, periodId))) n++;
   }
-  return n;
 }
 
-/** Ajout d'une personne : compte créé, lien d'accès personnel envoyé aussitôt si une période active est cochée. */
+/** Ajout d'une personne : compte créé et inscrit aux périodes cochées, sans aucun email. */
 export async function creerMembre(_prev: FormState, fd: FormData): Promise<FormState> {
   // Ouvrir un compte est réservé au bureau (un instructeur modifie les fiches existantes, mais n'en crée pas)
   const acteur = await assertPermission("members.create");
@@ -125,17 +124,13 @@ export async function creerMembre(_prev: FormState, fd: FormData): Promise<FormS
   }
   const user = await db.user.create({ data: { ...parsed.data, couleur: await prochaineCouleurLibre() } });
   const periodIds = fd.getAll("periodIds").filter((v): v is string => typeof v === "string");
-  const invitations = await inscrireAuxPeriodesActives(user.id, periodIds);
-  await audit(acteur, "membre.cree", user.id, { email: user.email, role: user.role, invitations });
+  await inscrireAuxPeriodes(user.id, periodIds);
+  await audit(acteur, "membre.cree", user.id, { email: user.email, role: user.role });
   rafraichir();
   if (!user.email) {
     return { succes: `${user.prenom} ${user.nom} ajouté(e), sans adresse email : la personne compte dans l'effectif, l'équipe coche sa présence pour elle. Renseigne une adresse pour lui envoyer son lien.` };
   }
-  return {
-    succes: invitations
-      ? `${user.prenom} ${user.nom} ajouté(e) : son lien d'accès vient de partir par email.`
-      : `${user.prenom} ${user.nom} ajouté(e). Le lien partira à l'activation d'une période (ou depuis la fiche membre).`,
-  };
+  return { succes: `${user.prenom} ${user.nom} ajouté(e). Aucun email n'est parti : envoie-lui son invitation depuis la liste ou sa fiche, quand tu veux.` };
 }
 
 export async function modifierMembre(userId: string, _prev: FormState, fd: FormData): Promise<FormState> {
@@ -838,7 +833,7 @@ export async function importerMembres(_prev: ResultatImport, fd: FormData): Prom
       continue;
     }
     const user = await db.user.create({ data: { ...parsed.data, couleur: await prochaineCouleurLibre() } });
-    await inscrireAuxPeriodesActives(user.id, periodIds);
+    await inscrireAuxPeriodes(user.id, periodIds);
     importes++;
   }
   // Le journal garde de quoi expliquer un écart : ce qui a été reçu, ce qui a été lu, et si

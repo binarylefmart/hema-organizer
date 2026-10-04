@@ -584,9 +584,24 @@ export const LIENS_AVANT_DEBUT_JOURS = 3;
  * un trimestre commence avec une seule clé en circulation par personne. Les sessions ouvertes, elles,
  * ne bougent pas — personne n'est mis dehors un matin de rentrée.
  *
+ * **Seulement à qui a déjà un lien en service** (`lienEncoreEnService`) : son dernier lien vit encore,
+ * ou n'a été fermé que par la clôture du trimestre précédent. Qui n'a jamais été invité reçoit son
+ * invitation d'un bouton, quand l'équipe le décide ; qui a vu son lien révoqué (à la main, adresse
+ * changée, usage suspect…) n'en reçoit pas un neuf dans son dos.
+ *
  * Idempotence : `Period.liensEnvoyesLe`. Le balayage tourne tous les jours, il ne doit pas
  * réexpédier le même trimestre chaque matin jusqu'à sa date de début.
  */
+/**
+ * Le dernier lien d'une personne la rend-elle éligible au lien du trimestre qui commence ? Oui s'il
+ * vit encore, ou si seule la clôture d'un trimestre l'a fermé — c'est le cas de tout le club à chaque
+ * rentrée. Non s'il n'y en a jamais eu, ou si quelqu'un (ou une garde) l'a révoqué.
+ */
+export function lienEncoreEnService(dernier: { revokedAt: Date | null; motifRevocation: string | null } | null | undefined): boolean {
+  if (!dernier) return false;
+  return dernier.revokedAt === null || dernier.motifRevocation === "CLOTURE";
+}
+
 export async function envoyerLiensDesTrimestresQuiCommencent(now = new Date()): Promise<number> {
   const limite = new Date(now.getTime() + LIENS_AVANT_DEBUT_JOURS * 86_400_000).toISOString().slice(0, 10);
   const candidates = await db.period.findMany({
@@ -604,7 +619,16 @@ export async function envoyerLiensDesTrimestresQuiCommencent(now = new Date()): 
   const periodes = candidates.filter((p) => (p.sessions[0]?.date ?? p.dateDebut) <= limite);
   let envoyes = 0;
   for (const p of periodes) {
+    // Le dernier lien de chaque inscrit, en une requête : le plus récent d'abord, le premier vu gagne.
+    const liens = await db.invitation.findMany({
+      where: { userId: { in: p.membres.map((m) => m.userId) } },
+      orderBy: { createdAt: "desc" },
+      select: { userId: true, revokedAt: true, motifRevocation: true },
+    });
+    const dernier = new Map<string, (typeof liens)[number]>();
+    for (const l of liens) if (!dernier.has(l.userId)) dernier.set(l.userId, l);
     for (const m of p.membres) {
+      if (!lienEncoreEnService(dernier.get(m.userId))) continue;
       try {
         // Un trimestre neuf, une clé neuve : les anciennes sont révoquées, toutes périodes confondues.
         if (await envoyerInvitation(m.userId, p.id, "invitation", { remplaceTousLesLiens: true })) envoyes++;

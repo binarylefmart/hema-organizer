@@ -17,7 +17,7 @@
       une période, corriger les présences — une par une ou par lots —, tenir l’annuaire et les liens personnels,
       changer les rôles, nommer les administrateurs, régler la part d’effectif et ce que le
       club envoie, réparer les pannes d’accès.</p>
-    <p class="couverture-pied">Version 0.65.0 — 4 octobre 2026 · organizer.mon-club.fr</p>
+    <p class="couverture-pied">Version 0.66.0 — 4 octobre 2026 · organizer.mon-club.fr</p>
   </section>
 
   <section class="sommaire">
@@ -139,9 +139,12 @@
 
   <div class="encart attention">
     <span class="encart-titre">Activer déclenche le départ des liens</span>
-    <p>Les liens personnels partent <strong>trois jours avant le premier cours</strong>, à 7 h du matin. Si
-      cette date est passée, appuyez sur <strong>Renvoyer tous les liens</strong>. Enlever un créneau ne
-      supprime pas les séances déjà engendrées.</p>
+    <p>Les liens personnels partent <strong>trois jours avant le premier cours</strong>, à 7 h du matin,
+      <strong>à qui a déjà un lien en service</strong> (encore valable, ou fermé par la fin du trimestre
+      précédent). Les personnes jamais invitées, ou dont le lien a été révoqué, reçoivent leur
+      invitation de vous : <strong>Envoyer l’invitation</strong> dans la liste des membres. Si la date est
+      passée, appuyez sur <strong>Renvoyer tous les liens</strong>. Enlever un créneau ne supprime pas les
+      séances déjà engendrées.</p>
   </div>
 
   <h3>Retirer une séance déjà créée</h3>
@@ -252,6 +255,10 @@
     <li>Cochez les périodes sous <strong>Inscrire aux périodes</strong>.</li>
     <li>Appuyez sur <strong>Ajouter la personne</strong>.</li>
   </ol>
+
+  <p><strong>Aucun email ne part</strong> à l’ajout, ni à l’import : quand vous êtes prêt, appuyez sur
+    <strong>Envoyer l’invitation</strong> dans la liste — pour une personne, une sélection ou tout le
+    monde.</p>
 
   <h3>Importer une liste</h3>
 
@@ -595,6 +602,11 @@
     </tbody>
   </table>
 
+  <p>Les messages personnels (email et téléphone) ne partent qu’aux personnes qui ont un <strong>accès
+    actif</strong> : un lien personnel encore valable, un mot de passe, ou une connexion en cours. Une personne
+    saisie dans l’annuaire mais jamais invitée, ou dont l’accès a été coupé, ne reçoit plus rien — elle reste
+    comptée dans les effectifs, et les salons et la liste du club ne changent pas.</p>
+
   <ul>
     <li><strong>« sans objet »</strong> : ce message ne passe pas par ce canal. Posez le doigt dessus,
       ou la souris : la phrase affichée dit pourquoi.</li>
@@ -742,7 +754,7 @@
   <p>Mettre le serveur à jour : <code>docs/DEPLOIEMENT.md</code>. Ce qui protège les accès :
     <code>docs/SECURITE.md</code>.</p>
 
-  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.65.0 — 4 octobre 2026 ·
+  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.66.0 — 4 octobre 2026 ·
     Mon club d'AMHE · organizer.mon-club.fr — à lire après les guides du
     membre et de l’instructeur.</p>
 </div>

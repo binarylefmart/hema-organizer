@@ -44,6 +44,8 @@ const faux = vi.hoisted(() => ({
    * cases avec celles des autres canaux non branchés.
    */
   publicationOuverte: false,
+  /** Comptes **sans accès actif** (src/lib/acces-actif.ts) : tous les autres en ont un. */
+  sansAcces: new Set<string>(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -53,6 +55,12 @@ vi.mock("@/lib/db", () => ({
     // Personne n'a d'appareil abonné dans ce jeu d'essai : le canal push est ouvert, il ne
     // réveille simplement aucun téléphone — mais il journalise, comme l'email.
     pushAbonnement: { count: vi.fn(async () => 0), findMany: vi.fn(async () => []) },
+    // Le tri « accès actif » (`idsAvecAccesActif`) : un identifiant demandé revient s'il a un accès.
+    user: {
+      findMany: vi.fn(async (args: { where: { AND: [{ id: { in: string[] } }, unknown] } }) =>
+        args.where.AND[0].id.in.filter((id) => !faux.sansAcces.has(id)).map((id) => ({ id })),
+      ),
+    },
     session: {
       findUnique: vi.fn(async () => faux.seance),
       findMany: vi.fn(async () => faux.prochaines),
@@ -192,6 +200,7 @@ beforeEach(() => {
   faux.reglages = new Map();
   faux.webhook = "https://discord.test/webhook";
   faux.discordEchoue = false;
+  faux.sansAcces = new Set();
 });
 
 describe("un salon par notification", () => {
@@ -244,6 +253,17 @@ describe("embed d'annulation", () => {
 });
 
 describe("annulation d'une séance", () => {
+  it("ne prévient ni par email ni sur le téléphone un invité sans accès actif, et le salon garde l'annonce", async () => {
+    faux.sansAcces = new Set(["u1"]);
+    const prevenus = await notifierAnnulation("s1");
+    expect(prevenus).toBe(1);
+    expect(faux.emails.map((e) => e.to)).toEqual(["juliett@club.test"]);
+    expect(faux.logs.map((l) => l.dedupKey)).not.toContain(`annulation_push_s1_${MODIFIEE_LE.getTime()}_u1`);
+    expect(faux.logs.map((l) => l.dedupKey)).toContain(`annulation_push_s1_${MODIFIEE_LE.getTime()}_u2`);
+    // Le salon ne vise personne nommément : il n'est pas concerné par l'accès.
+    expect(faux.discord).toHaveLength(1);
+  });
+
   it("prévient les invités par email et poste l'embed sur le salon", async () => {
     const prevenus = await notifierAnnulation("s1");
     expect(prevenus).toBe(2);

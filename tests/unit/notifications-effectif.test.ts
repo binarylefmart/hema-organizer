@@ -34,6 +34,8 @@ const faux = vi.hoisted(() => ({
   echecEmail: null as Error | null,
   /** Canaux ouverts pour `effectif_faible` */
   canaux: { email: true, push: false, discord: false, telegram: false } as Record<string, boolean>,
+  /** Comptes **sans accès actif** (src/lib/acces-actif.ts) : tous les autres en ont un. */
+  sansAcces: new Set<string>(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -41,6 +43,12 @@ vi.mock("@/lib/db", () => ({
     // Aucun réglage en base : le club tourne sur les valeurs par défaut de la matrice.
     setting: { findUnique: vi.fn(async () => null) },
     session: { findMany: vi.fn(async () => faux.seances) },
+    // Le tri « accès actif » (`idsAvecAccesActif`) : un identifiant demandé revient s'il a un accès.
+    user: {
+      findMany: vi.fn(async (args: { where: { AND: [{ id: { in: string[] } }, unknown] } }) =>
+        args.where.AND[0].id.in.filter((id) => !faux.sansAcces.has(id)).map((id) => ({ id })),
+      ),
+    },
     notificationLog: {
       findUnique: vi.fn(async (args: { where: { dedupKey: string } }) => faux.logs.find((l) => l.dedupKey === args.where.dedupKey) ?? null),
       findMany: vi.fn(async (args: { where: { dedupKey: { in: string[] } } }) =>
@@ -157,6 +165,7 @@ beforeEach(() => {
   faux.salon = [];
   faux.echecEmail = null;
   faux.canaux = { email: true, push: false, discord: false, telegram: false };
+  faux.sansAcces = new Set();
 });
 
 describe("alerte « peu de monde » : le journal et l'envoi", () => {
@@ -165,6 +174,22 @@ describe("alerte « peu de monde » : le journal et l'envoi", () => {
     expect(faux.emails.map((e) => e.to).sort()).toEqual(["charlie@club.test", "chloe@club.test"]);
     expect(faux.logs).toHaveLength(1);
     expect(faux.logs[0]).toMatchObject({ type: "EFFECTIF", canal: "EMAIL", sessionId: "s1", dedupKey: "effectif_s1_2026-09-25-1930", statut: "ENVOYE" });
+  });
+
+  it("n'écrit qu'aux instructeurs qui ont un accès actif, et l'alerte part quand même pour les autres", async () => {
+    faux.sansAcces = new Set(["chloe"]);
+    expect(await alerterEffectifFaible(MATIN)).toBe(1);
+    expect(faux.emails.map((e) => e.to)).toEqual(["charlie@club.test"]);
+  });
+
+  it("ne consomme pas la clé quand aucun instructeur n'a d'accès actif", async () => {
+    faux.sansAcces = new Set(["charlie", "chloe"]);
+    expect(await alerterEffectifFaible(MATIN)).toBe(0);
+    expect(faux.emails).toHaveLength(0);
+    expect(faux.logs).toHaveLength(0);
+    // Le jour où l'accès revient, l'alerte part.
+    faux.sansAcces = new Set();
+    expect(await alerterEffectifFaible(MATIN)).toBe(1);
   });
 
   it("ne réalerte pas au passage suivant", async () => {

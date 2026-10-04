@@ -54,11 +54,12 @@ export function cleRappelPush(s: SeanceCle, userId: string, jalon: Jalon): strin
 export type DestinataireRappel = MembreSeance & { email: string };
 
 /**
- * Destinataires d'un rappel : les invités **sans réponse**, compte actif, rappels non coupés et
+ * Destinataires d'un rappel : les invités **sans réponse**, compte actif, **accès actif**
+ * (`accesActif`, src/lib/acces-actif.ts), rappels non coupés et
  * **adresse email renseignée** (fonction pure). Une personne sans adresse est écartée en silence.
  */
 export function destinatairesRappel(prefs: PreferencesNotifications, membres: readonly MembreSeance[]): DestinataireRappel[] {
-  return membres.filter((m): m is DestinataireRappel => m.statut === null && destinataireRetenu(prefs, "rappel_sans_reponse", "email", m) && m.email !== null);
+  return membres.filter((m): m is DestinataireRappel => m.statut === null && m.accesActif && destinataireRetenu(prefs, "rappel_sans_reponse", "email", m) && m.email !== null);
 }
 
 /**
@@ -66,7 +67,7 @@ export function destinatairesRappel(prefs: PreferencesNotifications, membres: re
  * `push` (fonction pure). L'adresse email n'entre pas en jeu ici : un appareil abonné suffit.
  */
 export function destinatairesRappelPush(prefs: PreferencesNotifications, membres: readonly MembreSeance[]): MembreSeance[] {
-  return membres.filter((m) => m.statut === null && destinataireRetenu(prefs, "rappel_sans_reponse", "push", m));
+  return membres.filter((m) => m.statut === null && m.accesActif && destinataireRetenu(prefs, "rappel_sans_reponse", "push", m));
 }
 
 /**
@@ -96,7 +97,7 @@ export async function envoyerRappelsSansReponse(now = new Date()): Promise<Bilan
   const [parEmail, parPush] = await Promise.all([envoiPossible("rappel_sans_reponse", "email"), pushPossible("rappel_sans_reponse")]);
   if (!parEmail && !parPush) return bilan;
   const aujourdHui = todayIso(now);
-  const seances = await seancesAvecInvites(datesJalons(aujourdHui));
+  const seances = await seancesAvecInvites(datesJalons(aujourdHui), now);
   bilan.seances = seances.length;
   if (seances.length === 0) return bilan;
   const prefs = await getPreferencesNotifications();
@@ -125,7 +126,8 @@ export async function envoyerRappelsSansReponse(now = new Date()): Promise<Bilan
  *
  * Le compteur porte sur **tous** les invités actifs sans réponse, pas seulement sur ceux que
  * `destinataireRetenu` aurait gardés : c'est un chiffre sur l'état du cours, pas sur une liste de
- * destinataires. Quelqu'un qui a coupé ses rappels compte quand même comme une réponse manquante.
+ * destinataires. Quelqu'un qui a coupé ses rappels compte quand même comme une réponse manquante, et
+ * quelqu'un sans accès actif aussi : il est invité, sa réponse manque.
  */
 async function envoyerRappelListe(s: SeanceAvecInvites, jalon: Jalon, prefs: PreferencesNotifications): Promise<number> {
   const adresse = adresseListePour(prefs, "rappel_sans_reponse");

@@ -1,3 +1,4 @@
+import { filtrerAccesActif } from "../acces-actif";
 import { db } from "../db";
 import { todayIso } from "../dates";
 import { cheminNouvellePeriode, periodeAttendueApres } from "../periodes";
@@ -87,7 +88,10 @@ export async function rappelerPeriodeSuivante(now = new Date()): Promise<number>
     // d'organisation — la règle « pas de message aux comptes de service » ne s'y applique pas. Le
     // bureau se lit sur `estAdmin` : `role` ne vaut plus jamais « ADMIN », et la requête d'avant ne
     // rendait plus personne — le pense-bête se serait tu sans rien dire.
-    const admins = await db.user.findMany({ where: { estAdmin: true, actif: true }, select: CHAMPS_ADMIN });
+    //
+    // Et seulement à qui a un **accès actif** (src/lib/acces-actif.ts) — compte de service compris,
+    // pour la raison ci-dessus : un administrateur qu'on a sorti n'a plus à recevoir les pense-bêtes.
+    const admins = await filtrerAccesActif(await db.user.findMany({ where: { estAdmin: true, actif: true }, select: CHAMPS_ADMIN }), now, { compteDeService: true });
     const destinataires = parEmail ? admins.filter((u): u is typeof u & { email: string } => destinataireRetenu(prefs, "periode_suivante", "email", u)) : [];
     // Sur le téléphone, l'adresse email n'entre pas en jeu : seul l'accord de la personne compte.
     const surTelephone = parPush ? admins.filter((u) => destinataireRetenu(prefs, "periode_suivante", "push", u)) : [];

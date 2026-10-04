@@ -88,22 +88,21 @@ export async function definirInstructeursPeriode(periodId: string, userIds: stri
   rafraichir(periodId);
 }
 
-/** Ajoute des membres à la période ; si elle est active, envoie aussitôt leur lien. */
+/** Ajoute des membres à la période, **sans envoyer de lien** : l'invitation part d'un bouton, quand l'équipe le décide. */
 export async function ajouterMembresPeriode(periodId: string, userIds: string[]): Promise<{ ajoutes: number }> {
   const user = await assertPermission("periods.manage");
   const demandes = z.array(z.string().min(1)).max(500).parse(userIds);
   // Le compte de connexion du portail n'est pas une personne du club : il n'est jamais invité à une période
   const personnes = await db.user.findMany({ where: { id: { in: demandes }, service: false }, select: { id: true } });
   const ids = personnes.map((p) => p.id);
-  const period = await db.period.findUniqueOrThrow({ where: { id: periodId } });
+  // La période doit exister : un identifiant périmé échoue ici plutôt que sur une contrainte de clé étrangère.
+  await db.period.findUniqueOrThrow({ where: { id: periodId }, select: { id: true } });
   let ajoutes = 0;
   for (const userId of ids) {
     const existant = await db.periodMember.findUnique({ where: { periodId_userId: { periodId, userId } } });
     if (existant) continue;
     await db.periodMember.create({ data: { periodId, userId } });
     ajoutes++;
-    // Personne ajoutée à une période : premier lien, aucune session à couper
-    if (period.statut === "ACTIVE") await envoyerInvitation(userId, periodId);
   }
   await audit(user, "periode.membres_ajoutes", periodId, { nombre: ajoutes });
   rafraichir(periodId);

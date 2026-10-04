@@ -1,3 +1,4 @@
+import { filtrerAccesActif } from "@/lib/acces-actif";
 import { enqueueEmail } from "@/lib/email/mailer";
 import { emailAtelierStatut } from "@/lib/email/templates/ateliers";
 import { envoiPossible } from "./canaux";
@@ -94,9 +95,12 @@ export type DecisionAtelier = {
  * réellement parti — c'est ce que l'écran annonce au bureau, et il ne doit l'annoncer que si c'est
  * vrai (canal branché, case du club cochée, choix du membre respecté, adresse renseignée).
  */
-export async function notifierDecisionAtelier({ atelier, proposePar, statut, commentaire, seance = null }: DecisionAtelier): Promise<boolean> {
+export async function notifierDecisionAtelier({ atelier, proposePar, statut, commentaire, seance = null }: DecisionAtelier, now = new Date()): Promise<boolean> {
   let envoye = false;
   try {
+    // Le proposeur doit avoir un **accès actif** (src/lib/acces-actif.ts) : la décision reste
+    // enregistrée et se lit dans « Mes propositions », mais on n'écrit pas à qui ne peut plus entrer.
+    if ((await filtrerAccesActif([proposePar], now)).length === 0) return false;
     // Dans le `try` comme le reste : rien ici ne doit pouvoir faire échouer une décision déjà prise.
     const horodatage = fenetreDecision(atelier.updatedAt.getTime());
     const [parEmail, parPush] = await Promise.all([envoiPossible("atelier_statut", "email"), pushPossible("atelier_statut")]);

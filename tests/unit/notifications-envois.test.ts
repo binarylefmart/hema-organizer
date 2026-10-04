@@ -38,6 +38,8 @@ const faux = vi.hoisted(() => ({
   discordEchoue: false,
   /** Le bouton porteur de jeton qu'on ajoutera un jour, par distraction, à un gabarit collectif. */
   gabaritCollectifAbime: false,
+  /** Comptes **sans accès actif** (src/lib/acces-actif.ts) : tous les autres en ont un. */
+  sansAcces: new Set<string>(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -65,6 +67,12 @@ vi.mock("@/lib/db", () => ({
     },
     // Lu par l'état du canal push (`canaux.ts`) : ce qui compte ici, c'est qu'il soit opérationnel.
     pushAbonnement: { count: vi.fn(async () => 3) },
+    // Le tri « accès actif » (`idsAvecAccesActif`) : un identifiant demandé revient s'il a un accès.
+    user: {
+      findMany: vi.fn(async (args: { where: { AND: [{ id: { in: string[] } }, unknown] } }) =>
+        args.where.AND[0].id.in.filter((id) => !faux.sansAcces.has(id)).map((id) => ({ id })),
+      ),
+    },
   },
 }));
 
@@ -216,6 +224,7 @@ beforeEach(() => {
   faux.reglages = new Map();
   faux.discordEchoue = false;
   faux.gabaritCollectifAbime = false;
+  faux.sansAcces = new Set();
 });
 
 describe("récap de la veille", () => {
@@ -237,6 +246,21 @@ describe("récap de la veille", () => {
     expect(destinataires).not.toContain("jeanne@club.test"); // compte inactif
     expect(destinataires).not.toContain("charlie@club.test"); // absent
     expect(destinataires).not.toContain("anne@club.test"); // sans réponse
+  });
+
+  /**
+   * **Accès actif** (src/lib/acces-actif.ts) : qui n'a ni lien vivant, ni mot de passe, ni session
+   * ouverte ne reçoit plus rien — ni l'email, ni le téléphone. Il reste invité et compté : le salon
+   * annonce toujours trois présents sur six.
+   */
+  it("n'écrit ni ne réveille un inscrit sans accès actif, sans rien changer aux chiffres", async () => {
+    faux.sansAcces = new Set(["u1"]);
+    const bilan = await envoyerRecapVeille(VEILLE);
+    expect(bilan.emails).toBe(1);
+    expect(faux.emails.map((e) => e.to)).toEqual(["juliett@club.test"]);
+    expect(faux.push.map((p) => p.userId)).toEqual(["u2"]);
+    expect(faux.discord[0].embed.description).toContain("✅ 3 présents / 6 — 50 %");
+    expect(faux.logs.some((l) => l.userId === "u1")).toBe(false);
   });
 
   it("poste un embed Discord aux couleurs du club, sans nommer personne", async () => {
@@ -545,6 +569,15 @@ describe("rappels aux personnes sans réponse", () => {
     expect(cleRappelPush(cle("sj7", "2026-10-01"), "u4", 7)).toBe("rappel_push_j7_sj7_2026-10-01-1930_u4");
   });
 
+  it("ne relance pas un invité sans accès actif, par aucun canal personnel", async () => {
+    faux.sansAcces = new Set(["u4"]);
+    const bilan = await envoyerRappelsSansReponse(JOUR);
+    expect(bilan).toEqual({ seances: 2, emails: 0 });
+    expect(faux.emails).toHaveLength(0);
+    expect(faux.push).toHaveLength(0);
+    expect(faux.logs).toHaveLength(0);
+  });
+
   it("pose la même question sur le téléphone, aux mêmes personnes", async () => {
     await envoyerRappelsSansReponse(JOUR);
     expect(faux.push.map((p) => p.userId)).toEqual(["u4", "u4"]);
@@ -701,6 +734,19 @@ describe("rappels sur la liste de distribution", () => {
     const lignesEmail = faux.logs.filter((l) => l.canal === "EMAIL");
     expect(lignesEmail).toHaveLength(1);
     expect(lignesEmail[0].userId).toBeNull();
+  });
+
+  it("compte toujours, dans le message à la liste, les invités sans accès actif : c'est l'état du cours", async () => {
+    faux.sansAcces = new Set(["a", "b"]);
+    faux.seances = [
+      seanceFausse("sj7", "2026-10-01", [
+        { id: "a", prenom: "Anne", email: "anne@club.test", statut: null },
+        { id: "b", prenom: "Charlie", email: "charlie@club.test", statut: null },
+      ]),
+    ];
+    expect((await envoyerRappelsSansReponse(JOUR)).emails).toBe(1);
+    expect(faux.emails.map((e) => e.to)).toEqual([ADRESSE_LISTE]);
+    expect(faux.emails[0].sujet).toContain("2 réponses manquantes");
   });
 
   it("ne dit rien quand tout le monde a répondu : un rappel de zéro personne ne rappelle rien", async () => {
