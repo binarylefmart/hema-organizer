@@ -130,7 +130,6 @@ tel quel à l'étape 3, et vous n'aurez plus à chercher.
 
 | Nom | Ce que vous mettez | Exemple |
 |---|---|---|
-| `APP_TAG` | la version à faire tourner, **sans le `v`** — la dernière est en haut de la page *Releases* du dépôt | `0.61.3` |
 | `DOMAIN` | votre domaine, **sans** `https://` et **sans** barre oblique à la fin | `organizer.mon-club.fr` |
 | `DATA_DIR` | le dossier du serveur qui portera la base et les sauvegardes | `/srv/organizer` |
 | `SESSION_SECRET` | une longue suite de caractères au hasard. Obtenez-la avec `openssl rand -base64 48` sur le serveur. **Gardez-la** : la changer déconnecte tout le monde | `kJ8…` (64 caractères) |
@@ -179,7 +178,6 @@ Toujours sur le même écran, plus bas : section **Environment variables**, bout
 Collez vos valeurs du tableau préparé plus haut, une par ligne, sous la forme `NOM=valeur` :
 
 ```
-APP_TAG=0.61.3
 DOMAIN=organizer.mon-club.fr
 DATA_DIR=/srv/organizer
 SESSION_SECRET=<collez ici la sortie de openssl rand -base64 48>
@@ -197,7 +195,8 @@ Trois pièges, et ce sont les trois seuls :
 - **pas de guillemets** autour des valeurs — Portainer les garderait comme faisant partie du texte, et
   le serveur d'emails rejetterait l'expéditeur ;
 - **`DOMAIN` sans `https://`** ;
-- **`APP_TAG` sans le `v`** : `0.61.3`, pas `v0.61.3`.
+- **`DATA_DIR` doit être le dossier que vous venez de créer**, et jamais celui d'une autre
+  installation : deux applications sur la même base, c'est une base perdue.
 
 Il reste une valeur à vérifier : `NPM_NETWORK`, le nom du réseau que Docker a donné à Nginx Proxy
 Manager. Regardez dans Portainer → **Networks** : s'il s'appelle `npm_default`, vous n'avez rien à
@@ -322,7 +321,8 @@ Dans **Espace admin** :
 
 | | |
 |---|---|
-| **Mettre à jour** | Passez `APP_TAG` à la nouvelle version, cochez *Re-pull image*, **Update the stack**. La base n'est pas touchée, les migrations s'appliquent au démarrage. [§ 7 et § 8 du guide](docs/DEPLOIEMENT.md) |
+| **Mettre à jour** | **Update the stack**, et c'est tout : l'image est suivie en `latest` et retéléchargée à chaque déploiement. La base n'est pas touchée, les migrations s'appliquent au démarrage. [§ 7 et § 8 du guide](docs/DEPLOIEMENT.md) |
+| **Revenir en arrière** | Ajoutez la variable `APP_TAG` avec la version visée (`0.61.2`), redéployez. C'est son seul usage. Attention : une migration déjà appliquée ne s'annule pas — [§ 9](docs/DEPLOIEMENT.md) |
 | **Sauvegardes** | Une copie de la base part chaque nuit à 03:30 dans `backups/`, gardée 30 jours. Recopiez-la **hors du serveur** : [§ 10](docs/DEPLOIEMENT.md) |
 | **En cas de problème** | Le tableau de dépannage, symptôme par symptôme : [§ 13](docs/DEPLOIEMENT.md) |
 | **Sécurité** | Ce qui protège le club, et ce qui reste à faire sur votre serveur : [docs/SECURITE.md](docs/SECURITE.md) |

@@ -198,7 +198,7 @@ Les exemples ci-dessous sont **inventés**. Ne les recopiez pas tels quels.
 | Variable | Oblig. | À quoi elle sert | Si elle manque | Exemple |
 |---|:--:|---|---|---|
 | `IMAGE` | — | L'adresse de l'image, **sans le numéro de version** (celui-ci est `APP_TAG`). **Le fichier de stack en porte un défaut** : à ne renseigner que si vous fabriquez votre propre image ou la rangez ailleurs | Le défaut du fichier de stack est pris. S'il ne désigne aucune image accessible, le téléchargement échoue (`pull access denied`) et la stack ne démarre pas | `docker.io/mon-compte/hema-organizer` |
-| `APP_TAG` | ✅ | La version d'image à faire tourner, **sans le `v`** | `latest` est pris par défaut. Ça marche, mais on ne sait plus quelle version tourne et le retour en arrière (§ 9) devient impossible | `0.53.0` |
+| `APP_TAG` | — | La version d'image à faire tourner, **sans le `v`**. À ne saisir que pour **épingler** une version — en particulier pour revenir en arrière (§ 9) | `latest` est pris par défaut, et l'image est retéléchargée à chaque déploiement (`pull_policy: always`). C'est le mode courant : on met à jour en redéployant, sans toucher à une variable | `0.53.0` |
 | `NPM_NETWORK` | — | Le nom réel du réseau Docker de Nginx Proxy Manager | `npm_default` est pris par défaut. Si ce n'est pas le bon nom, la stack refuse de démarrer (`network not found`) | `npm_default` |
 | ~~`APP_PORT`~~ | — | **Sans effet** : la stack ne publie aucun port, les deux lignes `ports:` sont commentées (§ 1.2) | — | — |
 | `DATA_DIR` | — | Le dossier du serveur qui porte `data/` et `backups/` | La valeur par défaut inscrite dans le fichier de stack est prise. **Sur une installation existante, ne la changez pas** : pointer ailleurs, c'est repartir d'une base vide en croyant avoir mis à jour | `/srv/organizer` |
@@ -530,8 +530,9 @@ prend alors une sauvegarde avant d'écrire.
 3. **Relire le § 7** si la version apporte des migrations ou change un comportement, et choisir
    l'heure en conséquence.
 4. Dans Portainer : **Stacks → hema-organizer → Editor**.
-5. Dans **Environment variables**, passer `APP_TAG` à la nouvelle version (par exemple `0.53.0`).
-   Ne toucher à rien d'autre.
+5. **Ne toucher à aucune variable.** L'image est suivie en `latest` et retéléchargée à chaque
+   déploiement : c'est le déploiement lui-même qui prend la nouvelle version. (Si vous aviez épinglé
+   `APP_TAG` pour revenir en arrière, c'est ici qu'on le retire pour repartir vers l'avant.)
 6. Cocher **Re-pull image**, puis **Update the stack**. Sans cette case, Portainer peut réutiliser
    une image déjà en cache et vous croirez avoir mis à jour sans l'avoir fait.
 7. **Surveiller les journaux** (§ 11) : les migrations s'appliquent au démarrage et se racontent
@@ -553,7 +554,8 @@ l'image : elles vivent dans les dossiers de l'hôte, que le nouveau conteneur re
 ## 9. Revenir en arrière
 
 1. Portainer → **Stacks → hema-organizer → Editor**.
-2. Remettre `APP_TAG` à la version précédente (par exemple `0.52.0`).
+2. **Saisir `APP_TAG`** avec la version précédente (par exemple `0.52.0`) — c'est son seul usage :
+   épingler. Tant qu'elle est là, les déploiements suivants restent sur cette version.
 3. Cocher **Re-pull image**, puis **Update the stack**.
 
 **Ce qu'il faut savoir avant de le faire :** une migration déjà appliquée **n'est pas annulée** par

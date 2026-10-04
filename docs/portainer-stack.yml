@@ -32,6 +32,16 @@
 services:
   app:
     image: ${IMAGE:-hematools/hema-organizer}:${APP_TAG:-latest}
+    # **`latest` par défaut, et l'image est retéléchargée à chaque déploiement.** Sans `pull_policy`,
+    # redéployer réutilise l'image déjà en cache : on croit avoir mis à jour, et on fait tourner
+    # l'ancienne. Avec, « Update the stack » suffit — la case « Re-pull image » de Portainer devient
+    # une ceinture en plus de la bretelle.
+    #
+    # Le prix de `latest`, et il se paie au mauvais moment : **il n'y a plus de version à remettre**
+    # pour revenir en arrière (§ 9). Quand il faut reculer, on saisit `APP_TAG` avec la version
+    # visée — la variable existe toujours, elle n'est simplement plus obligatoire. Et c'est *Espace
+    # admin → À propos* qui dit ce qui tourne vraiment.
+    pull_policy: always
     container_name: hema-organizer
     restart: always
     environment:
