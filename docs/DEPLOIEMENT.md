@@ -103,6 +103,15 @@ Puis il lance le serveur. Tant que ces trois étapes n'ont pas réussi, aucune r
 annonces d'événements. Tout ce que le club produit est donc **dans ce seul dossier** : perdez-le, et
 vous avez perdu l'application ; gardez-le, et le conteneur est remplaçable à volonté.
 
+**Le journal WAL.** Au démarrage, le serveur passe la base en journal WAL (`PRAGMA journal_mode = WAL`,
+idempotent, enregistré dans le fichier) : lectures et écritures ne se bloquent plus entre elles, ce qui
+évite les attentes de plusieurs secondes et les « database is locked » quand plusieurs personnes
+enregistrent en même temps. Deux fichiers apparaissent donc à côté de la base, `hema.db-wal` et
+`hema.db-shm` : ils font partie de la base **tant que le conteneur tourne**. On ne copie jamais `hema.db`
+seul à chaud — la sauvegarde nocturne (`VACUUM INTO`) produit, elle, une copie complète —, et la
+restauration (§ 10) efface ces deux fichiers, conteneur arrêté. Le dossier `/data` doit rester un
+disque local (pas un partage réseau NFS/SMB), condition ordinaire de SQLite et impérative en WAL.
+
 **Le dossier des sauvegardes.** `<DATA_DIR>/backups` (vu comme `/backups`). Chaque nuit à 03:30,
 l'application y écrit une copie cohérente de la base sous le nom `hema-AAAA-MM-JJ.db`, et efface les
 copies de plus de 30 jours. La copie est faite par SQLite lui-même (`VACUUM INTO`, l'équivalent de

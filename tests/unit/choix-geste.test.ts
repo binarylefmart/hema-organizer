@@ -136,9 +136,9 @@ describe("le bouton", () => {
     expect(libelleBouton("role", 3, { libelle: "Instructeur", changent: 2 })).toBe("Passer 2 comptes en Instructeur");
   });
 
-  it("n'est rouge que pour la suppression", () => {
-    expect(varianteBouton("supprimer")).toBe("danger");
-    for (const g of ["", "inviter", "renvoyer", "revoquer", "reinitialiser", "desactiver", "reactiver", "role"] as const) {
+  it("est rouge pour révoquer, réinitialiser, désactiver et supprimer, et pour rien d'autre", () => {
+    for (const g of ["revoquer", "reinitialiser", "desactiver", "supprimer"] as const) expect(varianteBouton(g), g).toBe("danger");
+    for (const g of ["", "inviter", "renvoyer", "reactiver", "role"] as const) {
       expect(varianteBouton(g), g).toBe("primaire");
     }
   });

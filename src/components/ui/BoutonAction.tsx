@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type ComponentProps } from "react";
 import { Bouton } from "./Bouton";
+import { SansReponse, useAttenteSurveillee } from "./attente-surveillee";
 
 type Props = Omit<ComponentProps<typeof Bouton>, "onClick" | "type"> & {
   /** Action serveur à exécuter au clic */
@@ -26,10 +27,16 @@ type Props = Omit<ComponentProps<typeof Bouton>, "onClick" | "type"> & {
  * ainsi sur « Un instant… » alors que le geste était fait et l'email déjà parti : on ne savait plus
  * s'il fallait recliquer. Même correction que sur les cases du planning — l'attente affichée suit
  * la **promesse de l'action**, et elle seule.
+ *
+ * **Et la transition qui suit est surveillée.** Le bouton rend la main à la réponse, mais l'écran ne
+ * se met à jour qu'à la fin de la transition, qui peut rester suspendue (défaut du React embarqué
+ * par Next 15.5, voir `src/lib/relance-rendu.ts`) : tant que la promesse **ou** la transition
+ * dure, le rendu est relancé, et au-delà d'un délai l'écran propose de recharger.
  */
 export function BoutonAction({ action, confirmation, enCours = "Un instant…", children, ...props }: Props) {
-  const [, start] = useTransition();
+  const [transition, start] = useTransition();
   const [enVol, setEnVol] = useState(false);
+  const silence = useAttenteSurveillee(enVol || transition);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
   return (
@@ -64,6 +71,7 @@ export function BoutonAction({ action, confirmation, enCours = "Un instant…", 
       >
         {enVol ? enCours : children}
       </Bouton>
+      {silence && <SansReponse />}
       {erreur && (
         <span role="alert" className="max-w-prose text-sm font-semibold text-rouge">
           {erreur}

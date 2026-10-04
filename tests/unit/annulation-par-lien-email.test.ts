@@ -53,6 +53,7 @@ vi.mock("@/lib/notifications/seances", async (importOriginal) => ({
 const { porteurJetonAnnulation, urlAnnulation } = await import("@/lib/notifications/seances");
 const { annulerDepuisEmail } = await import("@/actions/seances");
 const { utiliserMagasinMemoire } = await import("@/lib/auth/rate-limit");
+const { todayIso } = await import("@/lib/dates");
 
 const INSTRUCTEUR = { id: "u-charlie", email: "charlie@exemple.fr", role: "INSTRUCTEUR", actif: true };
 const jetonPour = (sessionId: string, userId: string) => urlAnnulation(sessionId, userId).split("/annuler/")[1];
@@ -120,7 +121,9 @@ describe("porteur du lien d'annulation", () => {
     faux.seances[0].date = "2020-09-25";
     expect(await porteurJetonAnnulation(jetonPour("s-1", "u-charlie"))).toBeNull();
     // Le jour même, avant l'heure : le lien vaut encore, c'est tout son objet.
-    const aujourdHui = new Date().toISOString().slice(0, 10);
+    // Le jour du club (fuseau de Paris), comme le code : en UTC, entre minuit et deux heures du
+    // matin, « aujourd'hui » était encore la veille et le cours passait pour commencé.
+    const aujourdHui = todayIso();
     faux.seances[0].date = aujourdHui;
     faux.seances[0].heureDebut = "23:59";
     expect(await porteurJetonAnnulation(jetonPour("s-1", "u-charlie"))).not.toBeNull();

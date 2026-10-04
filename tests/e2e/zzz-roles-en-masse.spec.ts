@@ -48,11 +48,14 @@ const INVITE_SANS_SELECTION = "Coche des lignes pour agir sur plusieurs personne
  */
 async function appliquerRole(page: import("@playwright/test").Page, libelle: string): Promise<void> {
   const barre = barreRoles(page);
-  await barre.getByRole("combobox", { name: "Changer le rôle en" }).click();
+  // « Que veux-tu faire ? » → « Changer le rôle… », puis le rôle visé, puis le seul bouton qui écrit.
+  await barre.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
+  await page.getByRole("listbox").getByRole("option", { name: /^Changer le rôle/ }).click();
+  await barre.getByRole("combobox", { name: "Nouveau rôle" }).click();
   const panneau = page.getByRole("listbox");
   await expect(panneau).toBeVisible();
   await panneau.getByRole("option", { name: libelle, exact: true }).click();
-  await barre.getByRole("button", { name: "Appliquer le rôle", exact: true }).click();
+  await barre.getByRole("button", { name: /^Passer \d+ comptes? en/ }).click();
 }
 
 /** La barre d'action de l'annuaire (la jumelle de celle des présences). */

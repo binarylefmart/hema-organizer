@@ -22,10 +22,27 @@
  * `selection-gestes.ts`, `selection-roles.ts`), qui reprennent les filtres du serveur : le chiffre de
  * la liste, celui du bouton et celui du résultat doivent être le même.
  *
+ * La mécanique et le vocabulaire communs (« Choisir une action… », noms tronqués, retour au choix
+ * vide…) vivent dans `src/components/ui/choix-geste.ts`, partagé avec les autres écrans ; ce module
+ * n'écrit que les mots et les décomptes de l'annuaire.
+ *
  * Ce module ne dépend de rien qui touche aux réglages : il est lu par des composants clients (voir le
  * piège du build dans `CLAUDE.md`).
  */
 
+import {
+  AUCUN_EMAIL,
+  CHOIX_VIDE,
+  entreesGestes,
+  gesteRetenu,
+  messageApresGeste,
+  nomsCourts,
+  phraseEmails as emails,
+  pluriel,
+  QUESTION_GESTE,
+  varianteGeste,
+  type Explication,
+} from "@/components/ui/choix-geste";
 import { resumeGeste, type LigneGeste } from "./selection-gestes";
 import {
   resumeInvitations,
@@ -62,12 +79,6 @@ export type DroitsSelection = {
 /** Un geste que la sélection rend possible, et combien de personnes il toucherait. */
 export type GesteApplicable = { geste: GesteSelection; nombre: number; libelle: string };
 
-/** La valeur vide de la liste : aucun geste choisi, le bouton reste inerte. */
-export const CHOIX_VIDE = { valeur: "", libelle: "Choisir une action…" } as const;
-
-/** L'intitulé du champ, au-dessus de la liste. */
-export const QUESTION_GESTE = "Que veux-tu faire ?";
-
 /** Le nom du geste dans la liste, sans le nombre. */
 const NOMS_GESTES: Record<GesteSelection, string> = {
   inviter: "Envoyer l'invitation",
@@ -79,8 +90,6 @@ const NOMS_GESTES: Record<GesteSelection, string> = {
   role: "Changer le rôle…",
   supprimer: "Supprimer les comptes",
 };
-
-const pluriel = (n: number, mot: string, motPluriel = `${mot}s`) => `${n} ${n > 1 ? motPluriel : mot}`;
 
 /** « Renvoyer le lien (3 personnes) » : le nom du geste et le nombre de ceux qu'il toucherait. */
 export function libelleOption(geste: GesteSelection, nombre: number): string {
@@ -136,20 +145,6 @@ export function gestesApplicables(lignes: readonly LigneChoix[], droits: DroitsS
     .map((g) => ({ ...g, libelle: libelleOption(g.geste, g.nombre) }));
 }
 
-/** Les entrées de la liste déroulante : « Choisir une action… » en tête, puis les gestes applicables. */
-export function entreesGestes(applicables: readonly { geste: string; libelle: string }[]): { valeur: string; libelle: string }[] {
-  return [{ ...CHOIX_VIDE }, ...applicables.map((g) => ({ valeur: g.geste, libelle: g.libelle }))];
-}
-
-/**
- * **Le geste choisi tient-il encore ?** La sélection change sous lui (une case décochée, une page
- * revenue du serveur) : un geste qui ne toucherait plus personne n'est plus proposé, et le choix revient
- * à « Choisir une action… » plutôt que de garder une valeur que la liste ne montre plus.
- */
-export function gesteRetenu<G extends string>(choisi: G | "", applicables: readonly { geste: G }[]): G | "" {
-  return choisi !== "" && applicables.some((g) => g.geste === choisi) ? choisi : "";
-}
-
 /**
  * **Le libellé de l'unique bouton : un verbe et un nombre.** « Envoyer 2 invitations », « Révoquer 3
  * liens », « Supprimer 3 comptes » — on sait ce qui part et combien avant d'appuyer.
@@ -178,20 +173,11 @@ export function libelleBouton(geste: GesteSelection, nombre: number, role?: { li
   }
 }
 
-/** **Seule la suppression est en rouge** : c'est le seul geste qui efface sans retour. */
+/** **En rouge, ce qui enlève quelque chose** : révoquer un lien, réinitialiser des accès, supprimer des comptes (`gesteRouge`). */
+const GESTES_ROUGES: ReadonlySet<GesteSelection | ""> = new Set(["revoquer", "reinitialiser", "desactiver", "supprimer"]);
+
 export function varianteBouton(geste: GesteSelection | ""): "primaire" | "danger" {
-  return geste === "supprimer" ? "danger" : "primaire";
-}
-
-/** Au-delà, le reste est compté : l'explication doit se lire d'un coup d'œil, pas se parcourir. */
-const NOMS_MAX = 3;
-
-/** « Anne », « Anne et Paul », « Anne, Paul et Zoé », « Anne, Paul, Zoé et 4 autres ». */
-export function nomsCourts(liste: readonly string[], max = NOMS_MAX): string {
-  if (liste.length === 0) return "";
-  if (liste.length === 1) return liste[0];
-  if (liste.length <= max) return `${liste.slice(0, -1).join(", ")} et ${liste[liste.length - 1]}`;
-  return `${liste.slice(0, max).join(", ")} et ${pluriel(liste.length - max, "autre")}`;
+  return varianteGeste(GESTES_ROUGES.has(geste));
 }
 
 /**
@@ -201,13 +187,6 @@ export function nomsCourts(liste: readonly string[], max = NOMS_MAX): string {
 function laisses(liste: readonly string[], raison: string): string {
   return `Rien ne change pour ${nomsCourts(liste)} (${raison}).`;
 }
-
-/** L'explication d'un geste : une phrase titre et les précisions, dans l'ordre où on les lit. */
-export type Explication = { titre: string; phrases: string[] };
-
-const emails = (n: number) => (n === 1 ? "1 email partira." : `${n} emails partiront.`);
-
-const AUCUN_EMAIL = "Aucun email ne part.";
 
 /**
  * **Ce que fait le geste choisi, avant de le faire** : à qui (nommés), ce qui arrive, qui est laissé de
@@ -358,7 +337,7 @@ export type ChiffresTous = {
   periode: string | null;
 };
 
-export type GesteTousApplicable = { geste: GesteTous; nombre: number; libelle: string; bouton: string; explication: Explication };
+export type GesteTousApplicable = { geste: GesteTous; nombre: number; libelle: string; bouton: string; explication: Explication; definitif: boolean };
 
 const qui = (n: number) => pluriel(n, "personne");
 
@@ -425,6 +404,7 @@ export function gestesTousApplicables(c: ChiffresTous): GesteTousApplicable[] {
       libelle: libelleOption(geste, nombre),
       bouton: libelleBouton(geste, nombre),
       explication: expliquerTous(geste, c),
+      definitif: GESTES_ROUGES.has(geste),
     }));
 }
 
@@ -435,13 +415,7 @@ export function gestesTousApplicables(c: ChiffresTous): GesteTousApplicable[] {
  * se refait.
  */
 export function messageApres(geste: GesteTous, res: unknown): { type: "ok" | "erreur"; texte: string } {
-  if (res && typeof res === "object") {
-    const r = res as { erreur?: string; succes?: string };
-    if (r.erreur) return { type: "erreur", texte: r.erreur };
-    if (r.succes) return { type: "ok", texte: r.succes };
-  }
-  if (typeof res === "string" && res.trim() !== "") return { type: "ok", texte: res.charAt(0).toUpperCase() + res.slice(1) };
-  return { type: "ok", texte: FAIT[geste] };
+  return messageApresGeste(res, FAIT[geste]);
 }
 
 const FAIT: Record<GesteTous, string> = {
@@ -452,3 +426,5 @@ const FAIT: Record<GesteTous, string> = {
   desactiver: "Les comptes sont désactivés.",
   reactiver: "Les comptes sont réactivés.",
 };
+
+export { CHOIX_VIDE, entreesGestes, gesteRetenu, nomsCourts, QUESTION_GESTE, type Explication };

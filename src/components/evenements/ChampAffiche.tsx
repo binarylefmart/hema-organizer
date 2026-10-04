@@ -277,7 +277,7 @@ export function ChampAffiche({ valeur, onChange, nom = "imageUrl" }: Props) {
               </Bouton>
               <Bouton
                 type="button"
-                variante="secondaire"
+                variante="danger"
                 taille="petite"
                 disabled={envoi}
                 onClick={() => {
@@ -287,7 +287,7 @@ export function ChampAffiche({ valeur, onChange, nom = "imageUrl" }: Props) {
                   setMessage({ texte: "Affiche retirée : la carte montrera l'écu du club.", ton: "info" });
                 }}
               >
-                <Icone nom="croix" taille={18} />
+                <Icone nom="alerte" taille={18} />
                 Retirer l&apos;affiche
               </Bouton>
             </div>

@@ -139,13 +139,13 @@ export default async function PageNotifications() {
         </p>
       </div>
       <Carte id="recap" titre="Récap de la veille">
-        <FormulaireAction action={definirHeureRecap} bouton="Enregistrer">
+        <FormulaireAction action={definirHeureRecap} bouton="Enregistrer l'heure">
           <Champ
-            label="Heure d'envoi (Discord + email), la veille de chaque cours"
+            label="Heure d'envoi, la veille de chaque cours"
             name="recapHour"
             type="time"
             defaultValue={recapHour}
-            aide="Heure de Paris. Les envois eux-mêmes sont mis en place à l'étape suivante (notifications)."
+            aide="Heure de Paris. Le récap part à cette heure-là, la veille de chaque cours non annulé, par les canaux cochés plus bas."
           />
         </FormulaireAction>
       </Carte>
@@ -280,7 +280,7 @@ export default async function PageNotifications() {
           cet écran — la question qu'on se pose y est la même, « qu'est-ce qui part de chez nous, et
           vers qui ? » — mais chacune se décide pour elle-même. */}
       <Carte id="publication" titre="Publication des cours sur le site du club">
-        <FormulaireAction action={enregistrerPublicationCours} bouton="Enregistrer" variante="secondaire">
+        <FormulaireAction action={enregistrerPublicationCours} bouton="Enregistrer la publication">
           <p className="text-sm">
             Le site du club peut afficher <strong>les prochains cours</strong> : date, horaire, lieu, thème et programme, avec le taux de participation.
             C&apos;est à ça, et à rien d&apos;autre, que sert cette case.
@@ -336,7 +336,7 @@ export default async function PageNotifications() {
       </Carte>
 
       <Carte id="alertes" titre="Alertes de sécurité">
-        <FormulaireAction action={enregistrerAlertesSecurite} bouton="Enregistrer" variante="secondaire">
+        <FormulaireAction action={enregistrerAlertesSecurite} bouton="Enregistrer les alertes">
           <Case
             label="Prévenir les administrateurs, par email et sur le téléphone"
             name="alertesSecurite"

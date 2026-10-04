@@ -11,6 +11,7 @@ import { BasculeTemps } from "@/components/filtres/BasculeTemps";
 import { lienTemps, lireQuand, valeurQuand, type Quand } from "@/components/filtres/temps";
 import { dateEvenement, horaireEvenement } from "@/components/evenements/libelles";
 import { Pastille } from "@/components/ui/Pastille";
+import { Icone } from "@/components/ui/Icone";
 
 export const metadata: Metadata = { title: "Événements" };
 
@@ -111,20 +112,24 @@ export default async function PageGestionEvenements({ searchParams }: Props) {
                     </LienBouton>
                     <BoutonAction
                       action={publierEvenement.bind(null, e.id, !e.publie)}
-                      variante="secondaire"
+                      variante={e.publie ? "danger" : "secondaire"}
                       taille="petite"
                       enCours="Un instant…"
                       confirmation={e.publie ? `Retirer « ${e.nom} » de la vue des membres ? L'annonce redevient un brouillon.` : undefined}
                     >
+                      {e.publie && <Icone nom="alerte" taille={18} />}
                       {e.publie ? "Dépublier" : "Publier"}
                     </BoutonAction>
+                    {/* Rouge et pictogramme d'alerte : le seul geste de la ligne qui ne se reprend
+                        pas — dépublier se refait d'un clic. Même bouton que sur la fiche. */}
                     <BoutonAction
                       action={supprimerEvenement.bind(null, e.id)}
-                      variante="secondaire"
+                      variante="danger"
                       taille="petite"
                       enCours="Suppression…"
                       confirmation={`Supprimer « ${e.nom} » ? Cette annonce disparaîtra pour tout le monde.`}
                     >
+                      <Icone nom="alerte" taille={18} />
                       Supprimer
                     </BoutonAction>
                   </span>

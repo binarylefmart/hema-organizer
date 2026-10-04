@@ -5,9 +5,10 @@ import { lienCarte } from "@/lib/dates";
 import { evenementParId } from "@/lib/evenements";
 import { identite } from "@/lib/identite";
 import { can } from "@/lib/permissions";
-import { supprimerEvenement } from "@/actions/evenements";
+import { publierEvenement, supprimerEvenement } from "@/actions/evenements";
 import { Alerte } from "@/components/ui/Alerte";
 import { LienBouton } from "@/components/ui/Bouton";
+import { BoutonAction } from "@/components/ui/BoutonAction";
 import { Icone } from "@/components/ui/Icone";
 import { BoutonPartager } from "@/components/partage/BoutonPartager";
 import { BandeauEvenement } from "@/components/evenements/BandeauEvenement";
@@ -37,9 +38,9 @@ function Ligne({ icone, children }: { icone: "calendrier" | "lieu" | "groupe" | 
  * La page d'un événement : tout ce qu'on veut savoir avant de décider d'y aller.
  *
  * On y arrive par le volet de l'en-tête ou par le fil, jamais par un onglet — l'annonce se lit une
- * fois, elle n'a pas à occuper la barre de navigation en permanence. C'est ici, et non dans une
- * liste, que se font les gestes d'écriture : l'encadrement corrige l'annonce (`evenements.edit`),
- * le bureau seul en ouvre une autre ou efface celle-ci (`evenements.creer_supprimer`).
+ * fois, elle n'a pas à occuper la barre de navigation en permanence. Au bas de la page, les gestes
+ * d'écriture sur cette annonce : la corriger et la publier ou la dépublier (`evenements.edit`),
+ * l'effacer (`evenements.creer_supprimer`).
  *
  * Un brouillon ne s'ouvre que pour l'équipe : `evenementParId` renvoie `null` aux autres, et la
  * page répond « introuvable » — pas « interdit », qui confirmerait son existence.
@@ -88,7 +89,7 @@ export default async function PageEvenement({ params }: Props) {
 
       {!e.publie && (
         <Alerte type="attention" titre="Brouillon">
-          Cette annonce n&apos;est visible que de l&apos;équipe, tant que la case « Publié » n&apos;est pas cochée.
+          Cette annonce n&apos;est visible que de l&apos;équipe tant qu&apos;elle n&apos;est pas publiée — « Publier », au bas de la page.
         </Alerte>
       )}
 
@@ -168,22 +169,44 @@ export default async function PageEvenement({ params }: Props) {
         </div>
       </article>
 
+      {/*
+        * **Les gestes de l'équipe sur CETTE annonce, et seulement ceux qui s'appliquent** : la
+        * corriger, la publier ou la repasser en brouillon, l'effacer. Boutons neutres et courts — la
+        * grammaire d'une fiche à deux ou trois gestes évidents —, rouge pour la seule suppression,
+        * qui ne se reprend pas. « Nouvel événement » n'est plus ici : ouvrir une autre annonce n'est
+        * pas un geste sur celle-ci, et le bouton vit en tête du fil et de la liste de gestion.
+        * Publier se faisait jusqu'ici en rouvrant le formulaire pour cocher « Publié » ; c'est la
+        * même action que la liste de gestion (`publierEvenement`), avec la même confirmation.
+        */}
       {(peutModifier || peutCreerSupprimer) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {peutModifier && (
-            <LienBouton href={`/evenements/${e.id}/modifier`} variante="secondaire" taille="petite" enCours>
-              <Icone nom="outil" taille={18} />
-              Modifier
-            </LienBouton>
-          )}
-          {peutCreerSupprimer && (
-            <>
-              <LienBouton href="/evenements/nouveau" variante="secondaire" taille="petite" enCours>
-                <Icone nom="etendard" taille={18} />
-                Nouvel événement
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-start gap-2">
+            {peutModifier && (
+              <LienBouton href={`/evenements/${e.id}/modifier`} variante="secondaire" taille="petite" enCours>
+                <Icone nom="outil" taille={18} />
+                Modifier
               </LienBouton>
-              <BoutonSupprimerEvenement action={supprimerEvenement.bind(null, e.id)} nom={e.nom} />
-            </>
+            )}
+            {peutModifier && (
+              <BoutonAction
+                action={publierEvenement.bind(null, e.id, !e.publie)}
+                variante={e.publie ? "danger" : "secondaire"}
+                taille="petite"
+                enCours="Un instant…"
+                confirmation={e.publie ? `Retirer « ${e.nom} » de la vue des membres ? L'annonce redevient un brouillon.` : undefined}
+              >
+                {e.publie && <Icone nom="alerte" taille={18} />}
+                {e.publie ? "Dépublier" : "Publier"}
+              </BoutonAction>
+            )}
+            {peutCreerSupprimer && <BoutonSupprimerEvenement action={supprimerEvenement.bind(null, e.id)} nom={e.nom} />}
+          </div>
+          {peutModifier && (
+            <p className="text-base text-texte-secondaire">
+              {e.publie
+                ? "Dépublier la retire de la vue des membres et barre son message sur Discord ; elle redevient un brouillon, rien n'est effacé."
+                : "Publier la montre à tout le club et l'annonce une fois, par les canaux réglés dans les notifications (email, téléphone, Discord, Telegram)."}
+            </p>
           )}
         </div>
       )}

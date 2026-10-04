@@ -48,7 +48,7 @@ export default async function PageCanalDiscord() {
         {etat.configure && (
           <div className="mt-2">
             <BoutonAction action={retirerSalonDiscord} variante="danger" taille="petite" confirmation="Débrancher le salon principal ?">
-              <Icone nom="croix" taille={18} />
+              <Icone nom="alerte" taille={18} />
               Débrancher ce salon
             </BoutonAction>
           </div>
@@ -104,7 +104,7 @@ export default async function PageCanalDiscord() {
                     taille="petite"
                     confirmation={`Retirer le salon dédié de « ${salon.titre} » ? Cette notification repartira sur le salon principal.`}
                   >
-                    <Icone nom="croix" taille={18} />
+                    <Icone nom="alerte" taille={18} />
                     Retirer ce salon
                   </BoutonAction>
                 </div>

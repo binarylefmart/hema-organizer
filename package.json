@@ -1,6 +1,6 @@
 {
   "name": "hema-organizer",
-  "version": "0.67.0",
+  "version": "0.68.0",
   "description": "Présences, planning et ateliers d'un club d'AMHE (HEMA) — application web auto-hébergée",
   "scripts": {
     "dev": "next dev",
@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "postinstall": "node scripts/corriger-react-embarque.mjs",
     "db:migrate": "tsx scripts/exiger-base-dev.ts && prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",

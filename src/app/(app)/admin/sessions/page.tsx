@@ -7,6 +7,7 @@ import { Carte } from "@/components/ui/Carte";
 import { BoutonAction } from "@/components/ui/BoutonAction";
 import { LienBouton } from "@/components/ui/Bouton";
 import { Cellule, Ligne, Tableau } from "@/components/ui/Tableau";
+import { Icone } from "@/components/ui/Icone";
 
 export const metadata: Metadata = { title: "Sessions de connexion" };
 
@@ -64,11 +65,13 @@ export default async function PageSessions({ searchParams }: Props) {
               <Cellule>
                 <div className="flex flex-wrap gap-2">
                   {s.id !== moi.sessionId && (
-                    <BoutonAction action={revoquerSession.bind(null, s.id)} variante="secondaire" taille="petite">
+                    <BoutonAction action={revoquerSession.bind(null, s.id)} variante="danger" taille="petite">
+                      <Icone nom="alerte" taille={18} />
                       Révoquer
                     </BoutonAction>
                   )}
-                  <BoutonAction action={revoquerSessionsUtilisateur.bind(null, s.user.id)} variante="secondaire" taille="petite" confirmation={`Déconnecter tous les appareils de ${s.user.prenom} ?`}>
+                  <BoutonAction action={revoquerSessionsUtilisateur.bind(null, s.user.id)} variante="danger" taille="petite" confirmation={`Déconnecter tous les appareils de ${s.user.prenom} ?`}>
+                    <Icone nom="alerte" taille={18} />
                     Tout révoquer
                   </BoutonAction>
                 </div>

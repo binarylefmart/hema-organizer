@@ -29,6 +29,8 @@ WORKDIR /app
 ##############################################################################
 FROM base AS deps
 COPY package.json package-lock.json ./
+# Le `postinstall` corrige le React embarqué par Next (voir le script) : il doit être là avant `npm ci`.
+COPY scripts/corriger-react-embarque.mjs scripts/
 # `npm ci` reproduit exactement package-lock.json. argon2 fournit un binaire musl
 # précompilé (prebuilds/linux-x64/argon2.musl.node) : aucune chaîne de compilation C++ nécessaire.
 RUN npm ci --no-audit --no-fund

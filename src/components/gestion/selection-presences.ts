@@ -187,6 +187,17 @@ export function resumeEcrasement(lignes: readonly LigneSelectionnable[], cible: 
 }
 
 /**
+ * **Les réponses que la barre propose : seulement celles qui changeraient quelqu'un.** Un lot de
+ * quatre « Présent » ne se voit pas offrir « Présent » — un bouton qui ne s'applique pas n'apparaît
+ * pas, comme partout dans l'administration. L'ordre reste celui de l'application, « Sans réponse »
+ * en dernier. Sans sélection, rien n'est proposé.
+ */
+export function ciblesUtiles(lignes: readonly LigneSelectionnable[]): (AttendanceStatut | null)[] {
+  if (lignes.length === 0) return [];
+  return [...ATTENDANCE_STATUTS, null].filter((cible) => resumeEcrasement(lignes, cible).inchangees < lignes.length);
+}
+
+/**
  * Le détail entre parenthèses : « 2 Absent, 1 Peut-être ». Quand il n'y en a qu'une, le nombre
  * n'apprend rien et on n'écrit que le statut — « (Absent) ».
  */

@@ -9,18 +9,29 @@ import { dateDAdhesion, libelleNumeroSaison, libelleSaison, numeroDeSaison, sais
 import { can, canEditUser, estCompteDeService, peutNommerAdmin } from "@/lib/permissions";
 import { revoquerInvitation } from "@/actions/periodes";
 import { lienARenouveler } from "@/lib/invitations";
-import { definirActif, definirNotificationsMembre, envoyerLienMembre, modifierMembre, reinitialiserAccesMembre, supprimerMembre } from "@/actions/membres";
+import {
+  definirActif,
+  definirNotificationsMembre,
+  envoyerInvitationMembre,
+  envoyerLienMembre,
+  modifierMembre,
+  reinitialiserAccesMembre,
+  supprimerMembre,
+} from "@/actions/membres";
 import { lignesNotificationsMembre } from "@/lib/notifications/membre";
-import { aDejaUnAcces } from "@/lib/membres";
+import { aDejaUnAcces, periodeDuLien } from "@/lib/membres";
 import { Carte } from "@/components/ui/Carte";
 import { Case, Champ } from "@/components/ui/Champ";
 import { Select } from "@/components/ui/Select";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { BoutonAction } from "@/components/ui/BoutonAction";
+import { GestesProposes, type GestePret } from "@/components/ui/GestesProposes";
 import { Alerte } from "@/components/ui/Alerte";
 import { Pastille } from "@/components/ui/Pastille";
 import { SelecteurBureau } from "../SelecteurBureau";
 import { LIBELLE_BUREAU } from "../bureau";
+import { gestesFiche, type GesteFiche } from "../gestes-fiche";
+import { Icone } from "@/components/ui/Icone";
 
 export const metadata: Metadata = { title: "Membre" };
 
@@ -89,6 +100,52 @@ export default async function PageMembre({ params }: Props) {
     aUneSession: m._count.authSessions > 0,
   });
   const peutReinitialiser = modifiable && !portail && aQuelqueChoseAEffacer;
+  /*
+   * **« Que veux-tu faire ? » : les gestes qui s'appliquent à cette personne, et à eux seuls.** Les
+   * deux cartes de boutons du pied de fiche (« Remettre l'accès à zéro », « Compte ») deviennent une
+   * seule question, sur la forme commune de l'administration (`GestesProposes`) : l'invitation à qui
+   * n'est jamais entré, la remise à zéro à qui l'est, désactiver *ou* réactiver, supprimer — chacun
+   * expliqué, un seul bouton, rouge pour ce qui révoque, réinitialise ou supprime, et **les
+   * confirmations d'avant**.
+   *
+   * Les verrous sont ceux des boutons qu'ils remplacent (et des gardes serveur) : la remise à zéro
+   * suit `peutReinitialiser`, le compte suit `modifiable && !soiMeme && !portail`, l'invitation suit
+   * `invitations.manage` et la période active du club — celle d'où l'annuaire envoie la sienne.
+   */
+  const gereLeCompte = modifiable && !soiMeme && !portail;
+  const periodeLien = periodeDuLien(await db.period.findMany({ where: { statut: "ACTIVE" }, select: { id: true, nom: true, statut: true }, orderBy: { dateDebut: "desc" } }));
+  const actionsFiche: Partial<Record<GesteFiche, () => Promise<unknown>>> = {
+    inviter: envoyerInvitationMembre.bind(null, m.id, periodeLien?.id ?? "", `/admin/membres/${m.id}`),
+    reinitialiser: reinitialiserAccesMembre.bind(null, m.id),
+    desactiver: definirActif.bind(null, m.id, false),
+    reactiver: definirActif.bind(null, m.id, true),
+    supprimer: supprimerMembre.bind(null, m.id),
+  };
+  const gestes: GestePret[] = gestesFiche(
+    {
+      prenom: m.prenom,
+      nom: m.nom,
+      actif: m.actif,
+      aUnEmail,
+      dejaEntre: aQuelqueChoseAEffacer,
+      recoitInvitation: m.actif && aUnEmail && m.periodes.some((p) => p.period.statut === "ACTIVE"),
+      estAdmin: m.estAdmin,
+      reponses: m._count.attendances,
+      aEffacer: [m.passwordHash && "le mot de passe", m.totpActiveAt && "la double authentification et les codes de secours", m.invitations.length > 0 && "les liens en cours"].filter(
+        (x): x is string => Boolean(x),
+      ),
+      periodeLien,
+    },
+    {
+      inviter: can(acteur, "invitations.manage") && modifiable && !portail,
+      reinitialiser: peutReinitialiser,
+      activer: peutActiver && gereLeCompte,
+      supprimer: peutSupprimer && gereLeCompte,
+    },
+  ).flatMap((g) => {
+    const action = actionsFiche[g.geste];
+    return action ? [{ ...g, action }] : [];
+  });
   /*
    * **Nommer ou retirer un administrateur depuis la fiche**. Les verrous ne bougent pas d'un cran :
    * ce sont ceux de l'écran « Comptes admin », qui portait déjà ce geste — `admins.manage`
@@ -361,6 +418,7 @@ export default async function PageMembre({ params }: Props) {
                           )}
                           {inv && (
                             <BoutonAction action={revoquerInvitation.bind(null, inv.id, `/admin/membres/${m.id}`)} variante="danger" confirmation={`Révoquer le lien de ${m.prenom} pour « ${p.nom} » ? Il ne pourra plus s'en servir tant qu'un nouveau ne lui est pas envoyé.`}>
+                              <Icone nom="alerte" taille={18} />
                               Révoquer
                             </BoutonAction>
                           )}
@@ -374,6 +432,12 @@ export default async function PageMembre({ params }: Props) {
           </Carte>
         )}
       </div>
+
+      {gestes.length > 0 && (
+        <Carte titre="Accès et compte">
+          <GestesProposes id={`geste-fiche-${m.id}`} gestes={gestes} />
+        </Carte>
+      )}
 
       {notifications && (
         <Carte titre="Notifications de cette personne">
@@ -455,54 +519,6 @@ export default async function PageMembre({ params }: Props) {
         </Carte>
       )}
 
-      {peutReinitialiser && (
-        <Carte titre="Remettre l'accès à zéro">
-          {/* On n'énumère que ce qui existe vraiment sur ce compte : annoncer l'effacement d'un mot
-              de passe qui n'a jamais été défini ferait douter de ce que le bouton fait. */}
-          <p className="mb-4 text-texte-secondaire">
-            Téléphone perdu <em>et</em> mot de passe oublié, retour au club après une absence, ou doute sur un compte : ce bouton efface{" "}
-            {[m.passwordHash && "le mot de passe", m.totpActiveAt && "la double authentification et les codes de secours", m.invitations.length > 0 && "les liens en cours"]
-              .filter(Boolean)
-              .join(", ")
-              .replace(/,([^,]*)$/, " et$1")}
-            , et déconnecte tous les appareils. {m.prenom} reçoit aussitôt un lien neuf par email (s&apos;il a une adresse et un trimestre en cours) : ce lien
-            rejoue le parcours d&apos;entrée complet — installer l&apos;application, se redonner un mot de passe. Sans adresse ni trimestre, rien ne part : c&apos;est
-            alors le bouton « Envoyer le lien » de la carte « Périodes et liens d&apos;accès » qui reprend la main.
-          </p>
-          <p className="mb-4 text-sm text-texte-secondaire">
-            Le compte et tout son historique restent intacts : présences, ateliers, réponses. C&apos;est l&apos;accès qu&apos;on remet à neuf, pas la personne.
-          </p>
-          <BoutonAction
-            action={reinitialiserAccesMembre.bind(null, m.id)}
-            variante="danger"
-            confirmation={`Remettre à zéro l'accès de ${m.prenom} ${m.nom} ? Mot de passe, double authentification, codes de secours et liens en cours seront effacés, et tous ses appareils déconnectés. Son historique n'est pas touché.`}
-          >
-            Réinitialiser l&apos;accès
-          </BoutonAction>
-        </Carte>
-      )}
-
-      {modifiable && !soiMeme && !portail && (peutActiver || peutSupprimer) && (
-        <Carte titre="Compte">
-          <div className="flex flex-wrap gap-2">
-            {peutActiver &&
-              (m.actif ? (
-                <BoutonAction action={definirActif.bind(null, m.id, false)} variante="secondaire" confirmation={`Désactiver le compte de ${m.prenom} ? Il ne pourra plus se connecter.`}>
-                  Désactiver le compte
-                </BoutonAction>
-              ) : (
-                <BoutonAction action={definirActif.bind(null, m.id, true)} variante="succes">
-                  Réactiver le compte
-                </BoutonAction>
-              ))}
-            {peutSupprimer && (
-              <BoutonAction action={supprimerMembre.bind(null, m.id)} variante="danger" confirmation={`Supprimer définitivement ${m.prenom} ${m.nom} et tout son historique ?`}>
-                Supprimer définitivement
-              </BoutonAction>
-            )}
-          </div>
-        </Carte>
-      )}
     </div>
   );
 }

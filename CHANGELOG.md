@@ -2,6 +2,35 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.68.0
+
+### Nouveautés
+
+- **evenements** : les gestes d'une annonce, seulement ceux qui s'y appliquent
+- **ateliers** : chaque proposition pose « Que veux-tu faire ? »
+- **membres** : le volet « Gérer » d'une ligne pose la même question que la fiche
+- **presences** : la barre de correction ne propose que les réponses utiles
+- **membres** : la fiche d'un membre pose « Que veux-tu faire ? »
+
+### Corrections
+
+- **react** : corriger le ping perdu du React embarqué par Next 15.5
+- **attente** : « Que veux-tu faire ? » a la même garde d'attente que les autres boutons
+- **attente** : relancer le rendu qu'une action laisse suspendu, et le dire si le serveur se tait
+- **serveur** : journal WAL au démarrage et délai sur les envois push
+
+### Autres changements
+
+- **attente** : la cause mesurée est le ping perdu de pingSuspendedRoot, la relance devient la ceinture
+- **gestes** : désactiver, dépublier et oublier passent aussi en rouge
+- **gestes** : rouge pour tout ce qui supprime, efface, retire, réinitialise ou révoque
+- **annulation** : « aujourd'hui » se compte à l'heure du club, pas en UTC
+- **notifications** : chaque bouton d'enregistrement dit ce qu'il enregistre
+- **e2e** : les rôles en masse passent par « Que veux-tu faire ? »
+- **etat** : « Que veux-tu faire ? » partout dans l'administration
+- **admin** : plus de vert, et le rouge gardé à ce qui ne se défait pas
+- **ui** : « Que veux-tu faire ? » devient une forme commune
+
 ## 0.67.0
 
 ### Nouveautés

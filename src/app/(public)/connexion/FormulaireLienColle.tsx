@@ -6,6 +6,7 @@ import { FORM_INITIAL } from "@/lib/form";
 import { apercuLien, lireLienMemorise, memoriserLien, oublierLienMemorise } from "@/lib/lien-memorise";
 import { Alerte } from "@/components/ui/Alerte";
 import { Bouton } from "@/components/ui/Bouton";
+import { Icone } from "@/components/ui/Icone";
 import { BoutonEnvoi } from "@/components/ui/BoutonEnvoi";
 import { Champ } from "@/components/ui/Champ";
 
@@ -107,7 +108,8 @@ export function FormulaireLienColle({ enEvidence = false }: { enEvidence?: boole
               appareil cent fois pour une fois qu'on rend celui d'un autre, et que chacune de ces
               fois renvoyait chercher son email. Se déconnecter dépose ici : l'effacement est donc à
               une tape, au moment exact où l'on rend l'appareil. */}
-          <Bouton type="button" variante="discret" taille="petite" onClick={oublier}>
+          <Bouton type="button" variante="danger" taille="petite" onClick={oublier}>
+            <Icone nom="alerte" taille={18} />
             Oublier
           </Bouton>
         </span>

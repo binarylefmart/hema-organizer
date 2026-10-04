@@ -6,6 +6,7 @@ import { formatDateCourte, formatHeure, nomMois } from "@/lib/dates";
 import { Alerte } from "@/components/ui/Alerte";
 import { BoutonEnvoi } from "@/components/ui/BoutonEnvoi";
 import { Bouton } from "@/components/ui/Bouton";
+import { Icone } from "@/components/ui/Icone";
 
 type Candidate = { date: string; heureDebut: string; heureFin: string; lieu: string };
 
@@ -229,6 +230,7 @@ export function SeancesCreees({
       {state.erreur && <Alerte type="erreur">{state.erreur}</Alerte>}
       {state.succes && <Alerte type="succes">{state.succes}</Alerte>}
       <BoutonEnvoi variante="danger" enCours="Suppression…" confirmation={confirmation} disabled={aRetirer.length === 0}>
+        <Icone nom="alerte" taille={18} />
         Retirer {aRetirer.length} séance{aRetirer.length > 1 ? "s" : ""}
       </BoutonEnvoi>
     </form>

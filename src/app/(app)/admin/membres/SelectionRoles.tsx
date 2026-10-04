@@ -30,16 +30,14 @@ import {
 import { resumeRoles, texteConfirmationRoles, texteHorsPage, texteSansCase, type LigneRole } from "./selection-roles";
 import { INVITE_SELECTION, resumeGeste, texteConfirmationGeste, type GesteMasse, type LigneGeste } from "./selection-gestes";
 import {
-  entreesGestes,
   expliquerGeste,
   gesteRetenu,
   gestesApplicables,
   libelleBouton,
-  QUESTION_GESTE,
   varianteBouton,
   type GesteSelection,
 } from "./choix-geste";
-import { ExplicationGeste } from "./ExplicationGeste";
+import { ChoixGeste } from "@/components/ui/ChoixGeste";
 import {
   resumeInvitations,
   resumeLiens,
@@ -525,7 +523,7 @@ export function ZoneSelection({
       ? "Appliquer"
       : libelleBouton(geste, applicable.nombre, resumeRole ? { libelle: libelleRole(roleChoisi), changent: resumeRole.changent } : undefined);
   /** Inerte sans geste, sans rôle choisi, ou quand le rôle choisi ne changerait personne. */
-  const boutonInerte = enCours || geste === "" || (geste === "role" && (resumeRole === null || resumeRole.changent === 0));
+  const boutonInerte = geste === "" || (geste === "role" && (resumeRole === null || resumeRole.changent === 0));
   const explication = geste === "" ? null : expliquerGeste(geste, lot, geste === "role" ? { valeur: roleChoisi, libelle: libelleRole(roleChoisi) } : undefined);
 
   /**
@@ -616,57 +614,47 @@ export function ZoneSelection({
             </Bouton>
           </div>
 
-          {/* **Une question, et une seule liste.** Elle ne propose que les gestes qui feraient
-              quelque chose à la sélection, chacun avec son nombre de personnes (`choix-geste.ts`) ;
-              un geste à zéro n'y figure pas. Le composant est celui du dépôt (`ListeDeroulante`),
-              comme le rôle : il s'ouvre toujours vers le bas, y compris au pied d'une longue liste. */}
-          <div className="flex flex-col gap-1">
-            <label id="geste-en-masse-libelle" htmlFor="geste-en-masse" className="text-base font-semibold">
-              {QUESTION_GESTE}
-            </label>
-            <ListeDeroulante
-              id="geste-en-masse"
-              libelleId="geste-en-masse-libelle"
-              libelle={QUESTION_GESTE}
-              valeur={geste}
-              entrees={entreesGestes(applicables)}
-              onChoisir={(v) => {
-                setGesteChoisi(gesteRetenu(v as GesteSelection | "", applicables));
-                setRoleChoisi("");
-                setMessage(null);
-              }}
-              className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
-            />
-          </div>
-
-          {/* **Le rôle ne se montre que s'il est demandé.** C'est toujours « choisir, puis valider » :
-              la liste n'écrit rien au choix (voir `appliquerRole`), et elle ouvre sur « Choisir un
-              rôle… » pour que le bouton reste inerte tant que personne n'a désigné de rôle. */}
-          {geste === "role" && (
-            <div className="flex flex-col gap-1">
-              <label id="role-en-masse-libelle" htmlFor="role-en-masse" className="text-base font-semibold">
-                Nouveau rôle
-              </label>
-              <ListeDeroulante
-                id="role-en-masse"
-                libelleId="role-en-masse-libelle"
-                libelle="Nouveau rôle"
-                valeur={roleChoisi}
-                entrees={ENTREES_ROLES}
-                onChoisir={setRoleChoisi}
-                className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
-              />
-            </div>
-          )}
-
-          <ExplicationGeste explication={explication} />
-
-          {/* **Un seul bouton, le verbe et le nombre** (« Envoyer 2 invitations »). Plein pour tous
-              les gestes, rouge pour la seule suppression : la couleur ne dit plus « attention » à
-              quatre endroits, elle le dit là où quelque chose s'efface pour de bon. */}
-          <Bouton variante={varianteBouton(geste)} taille="petite" disabled={boutonInerte} aria-busy={enCours} className="w-full sm:w-auto sm:self-start" onClick={lancer}>
-            {libelleDuBouton}
-          </Bouton>
+          {/* **Une question, et une seule liste** — la forme commune de l'administration
+              (`ChoixGeste`). Elle ne propose que les gestes qui feraient quelque chose à la
+              sélection, chacun avec son nombre de personnes (`choix-geste.ts`) ; un geste à zéro n'y
+              figure pas. Le bouton est plein, rouge avec l'alerte pour ce qui enlève quelque chose
+              — révoquer, réinitialiser, supprimer (`gesteRouge`). */}
+          <ChoixGeste
+            id="geste-en-masse"
+            gestes={applicables}
+            valeur={geste}
+            onChoisir={(v) => {
+              setGesteChoisi(gesteRetenu(v as GesteSelection | "", applicables));
+              setRoleChoisi("");
+              setMessage(null);
+            }}
+            explication={explication}
+            bouton={libelleDuBouton}
+            variante={varianteBouton(geste)}
+            inerte={boutonInerte}
+            enCours={enCours}
+            onLancer={lancer}
+          >
+            {/* **Le rôle ne se montre que s'il est demandé.** C'est toujours « choisir, puis valider » :
+                la liste n'écrit rien au choix (voir `appliquerRole`), et elle ouvre sur « Choisir un
+                rôle… » pour que le bouton reste inerte tant que personne n'a désigné de rôle. */}
+            {geste === "role" && (
+              <div className="flex flex-col gap-1">
+                <label id="role-en-masse-libelle" htmlFor="role-en-masse" className="text-base font-semibold">
+                  Nouveau rôle
+                </label>
+                <ListeDeroulante
+                  id="role-en-masse"
+                  libelleId="role-en-masse-libelle"
+                  libelle="Nouveau rôle"
+                  valeur={roleChoisi}
+                  entrees={ENTREES_ROLES}
+                  onChoisir={setRoleChoisi}
+                  className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
+                />
+              </div>
+            )}
+          </ChoixGeste>
         </div>
       )}
 

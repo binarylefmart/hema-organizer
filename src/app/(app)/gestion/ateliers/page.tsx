@@ -10,7 +10,6 @@ import { seancesAVenir } from "@/lib/ateliers-queries";
 import { Carte } from "@/components/ui/Carte";
 import { Alerte } from "@/components/ui/Alerte";
 import { DecisionAtelier } from "./DecisionAtelier";
-import { BoutonAction } from "@/components/ui/BoutonAction";
 import { effacerProposition } from "@/actions/ateliers";
 import { Pastille } from "@/components/ui/Pastille";
 
@@ -24,10 +23,11 @@ const TON: Record<
 type Props = { searchParams: Promise<{ statut?: string }> };
 
 /**
- * **Ce qu'on enseigne** : la file des propositions d'ateliers — un geste par proposition, placer
- * dans le planning (séance choisie) ou refuser. Et, pour le bureau seul, **effacer sans répondre**
- * la proposition qui n'attendait pas de réponse : un doublon, un envoi par erreur (voir
- * `effacerProposition`, et `ateliers.supprimer` pour la frontière).
+ * **Ce qu'on enseigne** : la file des propositions d'ateliers. Chaque carte pose « Que veux-tu
+ * faire ? » (`DecisionAtelier`) avec les seuls gestes que son statut permet — placer dans le
+ * planning (séance choisie), refuser, retirer du planning, remettre en attente — et, pour le bureau
+ * seul, **effacer sans répondre** la proposition qui n'attendait pas de réponse : un doublon, un
+ * envoi par erreur (voir `effacerProposition`, et `ateliers.supprimer` pour la frontière).
  *
  * La file relève de l'équipe, instructeurs compris (`ateliers.moderate`). Les **thèmes du
  * planning**, eux, ont quitté le pied de cet écran pour l'espace admin (`/admin/themes`) : ils
@@ -60,7 +60,7 @@ export default async function PageGestionAteliers({ searchParams }: Props) {
   return (
     /*
      * **La page s'élargit, les cartes non**. Une proposition d'atelier est une **file de décision**
-     * — un titre, deux lignes de description, une liste déroulante et deux boutons : l'étirer à 1
+     * — un titre, deux lignes de description, « Que veux-tu faire ? » et un bouton : l'étirer à 1
      * 400 px coucherait sa description sur une seule ligne, ce que Delta a refusé deux fois (30/09
      * et 01/10). La place se gagne donc **autrement**, en rangeant deux propositions par ligne.
      *
@@ -105,7 +105,7 @@ export default async function PageGestionAteliers({ searchParams }: Props) {
          * **Une grille, pas deux piles** — et sans `items-start` : les cartes d'une même rangée
          * gardent la même hauteur, sinon la file se lit comme un affichage cassé. C'est possible
          * ici, là où ça ne l'était pas pour les tuiles de l'accueil, parce que deux propositions se
-         * ressemblent : même gabarit, mêmes deux gestes, et une description bornée à quelques
+         * ressemblent : même gabarit, même question, et une description bornée à quelques
          * lignes. Les boutons restent **en bas** de carte (`mt-auto` plus bas), donc alignés d'une
          * carte à l'autre.
          */
@@ -147,33 +147,28 @@ export default async function PageGestionAteliers({ searchParams }: Props) {
                   Dernier commentaire : {a.commentaireInstructeur}
                 </p>
               )}
-              {/* `mt-auto` : dans une rangée de deux cartes de hauteurs différentes, les décisions
-                  restent collées au bas de la carte, à la même hauteur que celles de la voisine. */}
+              {/* `mt-auto` : dans une rangée de deux cartes de hauteurs différentes, la décision
+                  reste collée au bas de la carte, à la même hauteur que celle de la voisine.
+                  « Effacer sans répondre » n'est plus un bouton à part au pied de la carte : c'est
+                  le dernier geste de la liste, pour le bureau seul, rouge parce qu'il ne se reprend
+                  pas, et l'explication dit les deux choses qui comptent — personne n'est prévenu,
+                  et « Refuser » existe pour dire non. */}
               <div className="mt-auto pt-4">
                 <DecisionAtelier
                   atelierId={a.id}
                   statut={a.statut}
                   seances={seances}
                   sessionId={a.sessionId}
+                  titre={a.titre}
+                  prenom={a.proposePar.prenom}
+                  seancePlacee={
+                    a.statut === "PLANIFIE" && a.session
+                      ? `${formatDateCourte(a.session.date)} à ${formatHeure(a.session.heureDebut)}`
+                      : null
+                  }
+                  effacer={peutEffacer ? effacerProposition.bind(null, a.id) : undefined}
                 />
               </div>
-              {/* Volontairement à l'écart des décisions, en bas et en petit : ce n'est pas un troisième
-                  verdict, c'est le geste qui retire une proposition qui n'en attendait pas — un doublon,
-                  un envoi par erreur. La confirmation dit les deux choses qui comptent : personne n'est
-                  prévenu, et « Refuser » existe pour dire non. */}
-              {peutEffacer && (
-                <div className="mt-4 flex justify-end border-t-2 border-bordure pt-3">
-                  <BoutonAction
-                    action={effacerProposition.bind(null, a.id)}
-                    variante="secondaire"
-                    taille="petite"
-                    enCours="Suppression…"
-                    confirmation={`Effacer « ${a.titre} » ? La proposition de ${a.proposePar.prenom} disparaît et personne n'est prévenu — pour lui répondre non, utilise « Refuser ».`}
-                  >
-                    Effacer sans répondre
-                  </BoutonAction>
-                </div>
-              )}
             </Carte>
           ))}
         </div>

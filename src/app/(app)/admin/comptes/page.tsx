@@ -11,6 +11,7 @@ import { Cellule, Ligne, Tableau, type PalierTableau } from "@/components/ui/Tab
 import { Pastille } from "@/components/ui/Pastille";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
 import { SelectionNomination } from "./SelectionNomination";
+import { Icone } from "@/components/ui/Icone";
 
 export const metadata: Metadata = { title: "Comptes administrateurs" };
 
@@ -87,7 +88,8 @@ export default async function PageComptesAdmin() {
                 ) : (
                   <span className="flex flex-wrap items-center gap-2">
                     <Pastille ton="vert">activée</Pastille>
-                    <BoutonAction action={reinitialiserDeuxFaCompte.bind(null, a.id)} variante="secondaire" taille="petite" confirmation={`Réinitialiser la double authentification de ${a.prenom} ? Ses sessions seront fermées et un nouveau QR code lui sera proposé à sa prochaine connexion.`}>
+                    <BoutonAction action={reinitialiserDeuxFaCompte.bind(null, a.id)} variante="danger" taille="petite" confirmation={`Réinitialiser la double authentification de ${a.prenom} ? Ses sessions seront fermées et un nouveau QR code lui sera proposé à sa prochaine connexion.`}>
+                      <Icone nom="alerte" taille={18} />
                       Réinitialiser
                     </BoutonAction>
                   </span>
@@ -108,6 +110,8 @@ export default async function PageComptesAdmin() {
                 ) : (
                   <BoutonAction
                     action={retirerDroitsAdmin.bind(null, a.id)}
+                    // Rouge, comme tout ce qui retire quelque chose : le compte reste, avec son rôle et
+                    // son historique, mais les droits partis sont à redonner.
                     variante="danger"
                     taille="petite"
                     // Le libellé tient en un mot dans la colonne « Droits admin » — la phrase
@@ -121,6 +125,7 @@ export default async function PageComptesAdmin() {
                     // rétrogradation.
                     confirmation={`Retirer les droits d'administrateur de ${a.prenom} ${a.nom} ? Le compte reste, avec ses présences et son rôle de ${ROLE_LABELS[a.role as Role].toLowerCase()} : ${a.prenom} n'ouvre simplement plus l'administration.`}
                   >
+                    <Icone nom="alerte" taille={18} />
                     Retirer
                   </BoutonAction>
                 )}

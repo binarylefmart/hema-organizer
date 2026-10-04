@@ -233,7 +233,7 @@ export default async function PageAPropos() {
             </Carte>
 
             <Carte titre="Journal d'audit">
-              <FormulaireAction action={enregistrerRetentionAudit} bouton="Enregistrer" variante="secondaire" className="@container">
+              <FormulaireAction action={enregistrerRetentionAudit} bouton="Enregistrer la durée" className="@container">
                 {/* **Un nombre de jours n'a pas besoin de 1 398 px** : c'est ce que ce champ
                     mesurait, l'écran ayant rejoint les pages larges. La largeur se plafonne au
                     palier du **conteneur** et non de la fenêtre (`@md` = 28 rem) : dans la carte

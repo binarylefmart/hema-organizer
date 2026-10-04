@@ -38,7 +38,7 @@ export default async function PageCanalTelegram() {
       <EnTeteCanal etat={etat} titre="Canal Telegram" />
 
       <Carte titre="Le salon du club">
-        <FormulaireAction action={enregistrerTelegram} bouton={etat.configure ? "Mettre à jour" : "Brancher ce salon"}>
+        <FormulaireAction action={enregistrerTelegram} bouton={etat.configure ? "Changer le salon" : "Brancher ce salon"}>
           <Champ
             label="Jeton du bot"
             name="token"
@@ -66,7 +66,7 @@ export default async function PageCanalTelegram() {
         {etat.configure && (
           <div className="mt-2">
             <BoutonAction action={retirerTelegram} variante="danger" taille="petite" confirmation="Débrancher le canal Telegram ?">
-              <Icone nom="croix" taille={18} />
+              <Icone nom="alerte" taille={18} />
               Débrancher ce canal
             </BoutonAction>
           </div>

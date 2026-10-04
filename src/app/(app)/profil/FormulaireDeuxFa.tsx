@@ -6,6 +6,7 @@ import { FORM_INITIAL } from "@/lib/form";
 import { Alerte } from "@/components/ui/Alerte";
 import { BoutonEnvoi } from "@/components/ui/BoutonEnvoi";
 import { Champ } from "@/components/ui/Champ";
+import { Icone } from "@/components/ui/Icone";
 
 export function FormulaireDeuxFa({ codesRestants }: { codesRestants: number }) {
   const [state, action] = useActionState(reinitialiserMaDeuxFa, FORM_INITIAL);
@@ -29,7 +30,8 @@ export function FormulaireDeuxFa({ codesRestants }: { codesRestants: number }) {
         {state.erreur && <Alerte type="erreur">{state.erreur}</Alerte>}
         {state.succes && <Alerte type="succes">{state.succes}</Alerte>}
         <Champ label="Mot de passe (pour confirmer)" name="motDePasse" id="deuxfa-motDePasse" type="password" autoComplete="current-password" required erreur={state.erreurs?.motDePasse} />
-        <BoutonEnvoi variante="secondaire" enCours="Réinitialisation…">
+        <BoutonEnvoi variante="danger" enCours="Réinitialisation…">
+          <Icone nom="alerte" taille={18} />
           Réinitialiser la double authentification
         </BoutonEnvoi>
       </form>

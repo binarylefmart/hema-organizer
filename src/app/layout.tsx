@@ -3,6 +3,7 @@ import { IM_Fell_Great_Primer_SC } from "next/font/google";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { identite } from "@/lib/identite";
 import { choixOuDefaut } from "@/lib/themes";
+import { RelanceRendu } from "@/components/layout/RelanceRendu";
 import "./globals.css";
 
 // Police des titres : une romaine à empattements anciens, dans l'esprit des traités d'escrime
@@ -87,7 +88,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
          palette à moitié remplacée. */
       style={club.marque ? ({ "--marque": club.marque } as React.CSSProperties) : undefined}
     >
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Débloque une transition que React aurait laissée suspendue après une réponse du
+            serveur (voir `src/lib/relance-rendu.ts`). Ne dessine rien. */}
+        <RelanceRendu />
+      </body>
     </html>
   );
 }

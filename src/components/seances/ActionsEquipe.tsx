@@ -17,6 +17,11 @@ import { annulerSeance, retablirSeance } from "@/actions/seances";
  * gens d'une annulation pendant qu'ils sont dans la salle. La correction d'après-coup se fait sur
  * les présences, pas sur la séance.
  *
+ * **Neutres au pied de chaque carte** : un « Annuler » rouge et un « Rétablir » vert sur chaque
+ * séance de la liste faisaient un mur de couleurs pour des gestes qui se défont l'un l'autre. Le
+ * rouge reste au **dernier** bouton, dans le volet, après le motif : c'est lui qui fait partir
+ * l'annonce à tout le club (emails, salons, site), et celle-là ne se rappelle pas.
+ *
  * Le formulaire d'annulation passe par `Volet` : sur téléphone, le pied de carte est à gauche de
  * l'écran et une bulle ancrée à sa droite en sortait (voir `Volet`).
  */
@@ -28,11 +33,11 @@ export function ActionsEquipe({ id, annulee, passee }: { id: string; annulee: bo
       </LienBouton>
       {!passee &&
         (annulee ? (
-          <BoutonAction action={retablirSeance.bind(null, id)} variante="succes" taille="petite" confirmation="Rétablir cette séance ?">
+          <BoutonAction action={retablirSeance.bind(null, id)} variante="secondaire" taille="petite" confirmation="Rétablir cette séance ?">
             Rétablir
           </BoutonAction>
         ) : (
-          <Volet libelle="Annuler" libelleOuvert="Fermer" titre="Annuler la séance" variante="danger" groupe="annuler-seance">
+          <Volet libelle="Annuler" libelleOuvert="Fermer" titre="Annuler la séance" variante="secondaire" groupe="annuler-seance">
             <FormulaireAction action={annulerSeance} bouton="Annuler la séance" variante="danger" enCours="Annulation…">
               <input type="hidden" name="sessionId" value={id} />
               <Champ

@@ -146,11 +146,11 @@ export default async function PageAteliers({ searchParams }: Props) {
               </LienBouton>
               <BoutonAction
                 action={supprimerAtelier.bind(null, a.id)}
-                variante="secondaire"
+                variante="danger"
                 taille="petite"
                 confirmation="Retirer cette proposition ?"
               >
-                <Icone nom="croix" taille={18} />
+                <Icone nom="alerte" taille={18} />
                 Retirer
               </BoutonAction>
             </div>

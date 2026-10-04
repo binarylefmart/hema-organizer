@@ -23,6 +23,7 @@ import {
   ajouter,
   barreDeMasseVisible,
   basculer,
+  ciblesUtiles,
   compterHorsAffichage,
   etatToutCocher,
   INVITE_SELECTION,
@@ -85,9 +86,6 @@ function couleur(statut: string | null): string {
     ? COULEURS[statut as AttendanceStatut]
     : SANS_REPONSE;
 }
-
-/** Les quatre réponses proposées par la barre d'action, « Sans réponse » comprise. */
-const CIBLES_EN_MASSE = [...ATTENDANCE_STATUTS, null] as const;
 
 /**
  * **Le vocabulaire visuel des trois grands boutons du membre** (`BoutonsPresence`), dans leur état
@@ -785,7 +783,10 @@ export function PresencesEquipe({
               {lotEnVol ? "Enregistrement…" : "Mettre leur réponse à :"}
             </p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {CIBLES_EN_MASSE.map((cible) => (
+              {/* **Seulement les réponses qui changeraient quelqu'un** (`ciblesUtiles`) : quatre
+                  « Présent » cochés ne se voient pas offrir « Présent ». Les boutons restent neutres,
+                  le mot coloré : c'est la même réponse que le membre donne lui-même. */}
+              {ciblesUtiles(lignesSelectionnees(stables, selection).map((p) => ({ id: p.id, statut: statutAffiche(p) }))).map((cible) => (
                 <button
                   key={cible ?? "sans-reponse"}
                   type="button"

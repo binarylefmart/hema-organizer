@@ -148,7 +148,7 @@ export default async function PageCanalEmail() {
           <span aria-hidden> </span>Sympa, un alias de votre hébergeur…). Les notifications réglées sur «{" "}
           {LIBELLES_MODE.liste} » y partent en <strong>un seul message</strong> au lieu d&apos;un par personne.
         </p>
-        <FormulaireAction action={enregistrerListeEmail} bouton="Enregistrer" variante="secondaire" rafraichirApresSucces={false}>
+        <FormulaireAction action={enregistrerListeEmail} bouton="Enregistrer la liste" rafraichirApresSucces={false}>
           <Champ
             label="Adresse de la liste"
             name={CHAMP_ADRESSE_LISTE}

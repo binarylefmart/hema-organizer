@@ -3,7 +3,7 @@ import type { Explication } from "./choix-geste";
 /**
  * **L'encadré qui dit ce que le geste choisi va faire**, avant qu'on appuie : une phrase titre (à qui),
  * puis les précisions (ce qui arrive, qui reste de côté et pourquoi, emails, effacement). Le texte vient
- * de `choix-geste.ts`, où il se teste.
+ * du module de geste de chaque écran (`choix-geste.ts` de l'annuaire, `gestes-fiche.ts`…), où il se teste.
  *
  * **La région existe toujours, même vide** : une région `aria-live` créée en même temps que son
  * contenu n'est pas annoncée, et c'est justement le premier choix qu'un lecteur d'écran doit entendre.

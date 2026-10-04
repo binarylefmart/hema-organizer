@@ -5,6 +5,7 @@ import { nommerAdministrateur, retirerDroitsAdmin } from "@/actions/membres";
 import { Bouton } from "@/components/ui/Bouton";
 import { ListeDeroulante } from "@/components/ui/ListeDeroulante";
 import { ENTREES_BUREAU, texteConfirmationBureau, valeurBureau, VALEUR_BUREAU } from "./bureau";
+import { Icone } from "@/components/ui/Icone";
 
 /**
  * **Le bureau d'une personne, en supplément de son rôle de base**.
@@ -142,9 +143,10 @@ export function SelecteurBureau({ userId, nom, estAdmin, retour }: { userId: str
         />
         {/* Inerte tant que la liste montre l'état du serveur : « Enregistrer » sans objet ferait
             partir une demande de code 2FA pour un enregistrement à blanc. */}
+        {/* Rouge quand il retire les droits, comme tout ce qui retire quelque chose. */}
         <Bouton
           type="button"
-          variante="secondaire"
+          variante={!versBureau && aEcrire ? "danger" : "secondaire"}
           taille="petite"
           disabled={enCours || !aEcrire}
           className="flex-1 basis-32"
@@ -153,6 +155,7 @@ export function SelecteurBureau({ userId, nom, estAdmin, retour }: { userId: str
           {/* Le bouton nomme **ce qu'il va faire**, pas « Enregistrer » : donner les droits du club
               et les retirer ne sont pas le même geste, et un verbe neutre au-dessus d'une liste à
               deux entrées laisserait deviner lequel des deux est en train de partir. */}
+          {!versBureau && aEcrire && <Icone nom="alerte" taille={18} />}
           {versBureau ? "Nommer administrateur" : aEcrire ? "Retirer les droits" : "Enregistrer"}
         </Bouton>
       </div>

@@ -191,7 +191,7 @@ export function ActiverPush({ clePublique, appareils }: Props) {
               Envoyer un essai
             </Bouton>
             <Bouton type="button" variante="danger" onClick={desactiver} disabled={occupe}>
-              <Icone nom="croix" taille={20} />
+              <Icone nom="alerte" taille={20} />
               Désactiver sur cet appareil
             </Bouton>
           </div>
@@ -210,7 +210,7 @@ export function ActiverPush({ clePublique, appareils }: Props) {
                 </span>
                 <Bouton
                   type="button"
-                  variante="secondaire"
+                  variante="danger"
                   taille="petite"
                   disabled={occupe}
                   onClick={async () => {
@@ -222,6 +222,7 @@ export function ActiverPush({ clePublique, appareils }: Props) {
                     router.refresh();
                   }}
                 >
+                  <Icone nom="alerte" taille={18} />
                   Retirer
                 </Bouton>
               </li>

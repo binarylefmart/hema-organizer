@@ -10,7 +10,7 @@ import { aDejaUnAcces, periodeDuLien } from "@/lib/membres";
 import { Carte } from "@/components/ui/Carte";
 import { Pastille, PastillePersonne } from "@/components/ui/Pastille";
 import { Champ } from "@/components/ui/Champ";
-import { BoutonAction } from "@/components/ui/BoutonAction";
+import { GestesProposes, type GestePret } from "@/components/ui/GestesProposes";
 import { renvoyerTousLesLiens } from "@/actions/periodes";
 import { Select } from "@/components/ui/Select";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
@@ -26,11 +26,11 @@ import { SelecteurBureau } from "./SelecteurBureau";
 import { LIBELLE_BUREAU } from "./bureau";
 import { CaseMembre, ZoneSelection } from "./SelectionRoles";
 import { ChoixToutLeMonde } from "./ChoixToutLeMonde";
+import { gestesFiche, type GesteFiche } from "./gestes-fiche";
 import { envoyerInvitationsEnMasse, reinitialiserAccesEnMasse, revoquerLienMembre, revoquerLiensEnMasse } from "./actions";
 import { DEJA_ENTRE, JAMAIS_ENTRE, lienVivant, perimetreToutLeMonde, RECOIT_INVITATION } from "./tout-le-monde";
 import {
   texteConfirmationInvitationsTous,
-  texteConfirmationInvitationUnitaire,
   texteConfirmationReinitialisationTous,
   texteConfirmationReinitialisationUnitaire,
   texteConfirmationRenvoiTous,
@@ -519,6 +519,58 @@ export default async function PageMembres({ searchParams }: Props) {
                   peutChangerRole ||
                   peutDonnerLeBureau ||
                   peutSupprimerLigne;
+                const nomComplet = `${m.prenom} ${m.nom}`;
+                const actionsLigne: Partial<Record<GesteFiche, () => Promise<unknown>>> = {
+                  ...(periodeLien && {
+                    renvoyer: envoyerLienMembre.bind(null, m.id, periodeLien.id, retour),
+                    revoquer: revoquerLienMembre.bind(null, m.id, periodeLien.id, retour),
+                    inviter: envoyerInvitationMembre.bind(null, m.id, periodeLien.id, retour),
+                  }),
+                  reinitialiser: reinitialiserAccesMembre.bind(null, m.id, retour),
+                  desactiver: definirActif.bind(null, m.id, false, retour),
+                  reactiver: definirActif.bind(null, m.id, true, retour),
+                  supprimer: supprimerMembre.bind(null, m.id, retour),
+                };
+                const gestesLigne: GestePret[] = gestesFiche(
+                  {
+                    prenom: m.prenom,
+                    nom: m.nom,
+                    actif: m.actif,
+                    aUnEmail,
+                    dejaEntre: dejaEntre(m),
+                    recoitInvitation: recoitInvitation(m),
+                    estAdmin: m.estAdmin,
+                    reponses: m._count.attendances,
+                    aEffacer: [m.passwordHash && "le mot de passe", m.totpActiveAt && "la double authentification et les codes de secours", lienEnCours && "les liens en cours"].filter(
+                      (x): x is string => Boolean(x),
+                    ),
+                    periodeLien,
+                    lienEnCours,
+                  },
+                  // Les verrous des boutons qu'ils remplacent, à l'identique.
+                  {
+                    renvoyer: peutRecevoirLien,
+                    revoquer: peutRevoquerLien,
+                    inviter: peutInviterLigne,
+                    reinitialiser: peutReinitialiserLigne,
+                    activer: peutChangerActivation,
+                    supprimer: peutSupprimerLigne,
+                  },
+                  // Les questions que ce volet posait déjà.
+                  {
+                    reinitialiser: texteConfirmationReinitialisationUnitaire(nomComplet, recoitInvitation(m)),
+                    desactiver: `Désactiver le compte de ${nomComplet} ? Son lien personnel cessera de fonctionner et il ne recevra plus d'email.`,
+                    reactiver: undefined,
+                    supprimer: `Supprimer définitivement ${nomComplet} et tout son historique ?${
+                      m._count.attendances > 0
+                        ? ` ${m._count.attendances} réponse${m._count.attendances > 1 ? "s" : ""} de présence ser${m._count.attendances > 1 ? "ont perdues" : "a perdue"}.`
+                        : ""
+                    }`,
+                  },
+                ).flatMap((g) => {
+                  const action = actionsLigne[g.geste];
+                  return action ? [{ ...g, action }] : [];
+                });
                 const periodesEnCours = m.periodes.filter((p) => p.period.statut !== "CLOSE");
                 /**
                  * **L'état du lien personnel, qui devient une colonne**. Les cinq booléens sont
@@ -734,101 +786,29 @@ export default async function PageMembres({ searchParams }: Props) {
                                     />
                                   </FormulaireAction>
                                 )}
-                                {peutRecevoirLien && periodeLien && (
-                                  <BoutonAction
-                                    action={envoyerLienMembre.bind(null, m.id, periodeLien.id, retour)}
-                                    variante="secondaire"
-                                    taille="petite"
-                                    pleineLargeur
-                                    enCours="Envoi…"
-                                    confirmation={
-                                      lienEnCours
-                                        ? `Générer un nouveau lien pour ${m.prenom} ${m.nom} et le lui envoyer ? L'ancien cessera de fonctionner.`
-                                        : undefined
-                                    }
-                                  >
-                                    {lienEnCours ? "Renvoyer le lien" : "Envoyer le lien"}
-                                  </BoutonAction>
-                                )}
-                                {peutRevoquerLien && periodeLien && (
-                                  <BoutonAction
-                                    action={revoquerLienMembre.bind(null, m.id, periodeLien.id, retour)}
-                                    variante="secondaire"
-                                    taille="petite"
-                                    pleineLargeur
-                                    enCours="Révocation…"
-                                    confirmation={`Révoquer le lien de ${m.prenom} ${m.nom} ? Il ne pourra plus entrer par ce lien tant qu'un nouveau ne lui est pas envoyé. Aucun email ne part, et ses appareils déjà connectés le restent.`}
-                                  >
-                                    Révoquer le lien
-                                  </BoutonAction>
-                                )}
-                                {peutInviterLigne && periodeLien && (
-                                  <BoutonAction
-                                    action={envoyerInvitationMembre.bind(null, m.id, periodeLien.id, retour)}
-                                    variante="secondaire"
-                                    taille="petite"
-                                    pleineLargeur
-                                    enCours="Envoi…"
-                                    confirmation={texteConfirmationInvitationUnitaire(`${m.prenom} ${m.nom}`)}
-                                  >
-                                    Envoyer l&apos;invitation
-                                  </BoutonAction>
-                                )}
-                                {peutReinitialiserLigne && (
-                                  <BoutonAction
-                                    action={reinitialiserAccesMembre.bind(null, m.id, retour)}
-                                    variante="secondaire"
-                                    taille="petite"
-                                    pleineLargeur
-                                    enCours="Réinitialisation…"
-                                    confirmation={texteConfirmationReinitialisationUnitaire(`${m.prenom} ${m.nom}`, recoitInvitation(m))}
-                                  >
-                                    Réinitialiser les accès
-                                  </BoutonAction>
-                                )}
-                                {peutChangerActivation &&
-                                  (m.actif ? (
-                                    <BoutonAction
-                                      action={definirActif.bind(null, m.id, false, retour)}
-                                      variante="secondaire"
-                                      taille="petite"
-                                      pleineLargeur
-                                      confirmation={`Désactiver le compte de ${m.prenom} ${m.nom} ? Son lien personnel cessera de fonctionner et il ne recevra plus d'email.`}
-                                    >
-                                      Désactiver
-                                    </BoutonAction>
-                                  ) : (
-                                    <BoutonAction action={definirActif.bind(null, m.id, true, retour)} variante="secondaire" taille="petite" pleineLargeur>
-                                      Réactiver
-                                    </BoutonAction>
-                                  ))}
                                 {peutModifierEmail && aUnEmail && (
                                   <FormulaireAction
                                     action={definirEmailMembre.bind(null, m.id, retour)}
-                                    bouton="Retirer l'adresse"
-                                    variante="secondaire"
+                                    bouton={
+                                      <>
+                                        <Icone nom="alerte" taille={18} />
+                                        Retirer l&apos;adresse
+                                      </>
+                                    }
+                                    variante="danger"
                                     enCours="Retrait…"
                                     confirmation={`Retirer l'adresse de ${m.prenom} ${m.nom} ? Plus aucun lien personnel ne pourra lui être envoyé : l'équipe cochera sa présence à sa place.`}
                                   >
                                     <input type="hidden" name="email" value="" />
                                   </FormulaireAction>
                                 )}
-                                {peutSupprimerLigne && (
-                                  <BoutonAction
-                                    action={supprimerMembre.bind(null, m.id, retour)}
-                                    variante="danger"
-                                    taille="petite"
-                                    pleineLargeur
-                                    enCours="Suppression…"
-                                    confirmation={`Supprimer définitivement ${m.prenom} ${m.nom} et tout son historique ?${
-                                      m._count.attendances > 0
-                                        ? ` ${m._count.attendances} réponse${m._count.attendances > 1 ? "s" : ""} de présence ser${m._count.attendances > 1 ? "ont perdues" : "a perdue"}.`
-                                        : ""
-                                    }`}
-                                  >
-                                    Supprimer le compte
-                                  </BoutonAction>
-                                )}
+                                {/* **« Que veux-tu faire ? », comme sur la fiche** : les gestes qui
+                                    s'appliquent à cette personne et à eux seuls (lien, invitation,
+                                    remise à zéro, désactiver ou réactiver, supprimer), expliqués, un
+                                    seul bouton — rouge pour révoquer, réinitialiser, supprimer — et les
+                                    confirmations que ce volet posait déjà. Mêmes mots et mêmes
+                                    règles que la fiche (`gestes-fiche.ts`). */}
+                                {gestesLigne.length > 0 && <GestesProposes id={`geste-ligne-${m.id}`} gestes={gestesLigne} />}
                                 <LienBouton href={`/admin/membres/${m.id}`} variante="discret" taille="petite" pleineLargeur enCours>
                                   Ouvrir la fiche
                                 </LienBouton>

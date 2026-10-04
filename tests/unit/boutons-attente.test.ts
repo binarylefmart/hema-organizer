@@ -18,7 +18,8 @@ describe("le bouton d'action", () => {
   const source = lire("src/components/ui/BoutonAction.tsx");
 
   it("n'affiche plus l'attente d'après `pending`", () => {
-    expect(source).toContain("const [, start] = useTransition();");
+    // La transition n'est plus lue que pour la surveiller (`useAttenteSurveillee`), jamais pour le mot affiché.
+    expect(source).toContain("const [transition, start] = useTransition();");
     expect(source).toContain("{enVol ? enCours : children}");
     expect(source).not.toMatch(/pending \? enCours/);
   });

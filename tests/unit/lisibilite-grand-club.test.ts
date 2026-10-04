@@ -187,7 +187,8 @@ describe("annuaire — quatre-vingts comptes, une ligne par personne", () => {
     const liste = code.indexOf("membres.map(");
     const masse = code.indexOf("<ChoixToutLeMonde");
     expect(masse).toBeGreaterThan(liste);
-    // Et le geste n'est jamais en rouge : ce volet ne supprime rien.
+    // Aucun rouge écrit en dur : ce volet ne supprime rien, et seuls révoquer et réinitialiser y sont
+    // rouges, par la règle commune (`definitif`, vérifié dans couleurs-gestes.test.ts).
     expect(source("src/app/(app)/admin/membres/ChoixToutLeMonde.tsx")).not.toMatch(/variante="danger"/);
   });
 });
@@ -257,10 +258,13 @@ describe("annuaire — cocher plusieurs comptes et changer leur rôle une fois",
     // La condition vient du module partagé avec les présences, jamais d'un `selection.size` recopié.
     expect(code).toContain("barreDeMasseVisible(selection)");
     expect(code).toMatch(/\{montrerBarre && \(\s*<div\s+role="group"/);
-    // L'unique bouton est inerte pendant une écriture et tant qu'aucun geste n'est choisi : sans
-    // sélection, il n'y a plus de barre du tout.
-    expect(code).toMatch(/const boutonInerte = enCours \|\| geste === ""/);
-    expect(code).toContain("disabled={boutonInerte}");
+    // L'unique bouton est inerte tant qu'aucun geste n'est choisi, et pendant une écriture : sans
+    // sélection, il n'y a plus de barre du tout. Le bouton est celui de la forme commune
+    // (`ChoixGeste`), qui ajoute l'écriture en cours à l'inertie que l'écran lui passe.
+    expect(code).toMatch(/const boutonInerte = geste === ""/);
+    expect(code).toContain("inerte={boutonInerte}");
+    expect(code).toContain("enCours={enCours}");
+    expect(source("src/components/ui/ChoixGeste.tsx")).toContain("disabled={inerte || enCours}");
     // Et la phrase du geste d'entrée est rendue **quand la barre ne l'est pas**.
     expect(code).toMatch(/\{!montrerBarre && <p[\s\S]{0,200}INVITE_SELECTION/);
     expect(source(SELECTION_GESTES)).toContain('texteInviteMasse("agir sur plusieurs personnes à la fois")');

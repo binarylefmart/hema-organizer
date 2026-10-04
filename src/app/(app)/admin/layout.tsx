@@ -73,9 +73,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           Connecté(e) en tant qu&apos;administrateur
         </p>
         {/* Pas une déconnexion : on redescend au rang de membre, la session reste ouverte. Le mot
-            « quitter » le dit mieux que « se déconnecter », qui ferait craindre de tout perdre. */}
+            « quitter » le dit mieux que « se déconnecter », qui ferait craindre de tout perdre — et
+            le bouton est neutre pour la même raison : rien ne s'efface en sortant. */}
         <form action={quitterEspaceAdmin}>
-          <Bouton type="submit" variante="danger" taille="petite">
+          <Bouton type="submit" variante="secondaire" taille="petite">
             <Icone nom="sortie" taille={18} />
             Quitter l&apos;espace admin
           </Bouton>

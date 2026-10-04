@@ -200,7 +200,7 @@ export default async function PageProfil({ searchParams }: Props) {
                   Ouvrir l&apos;espace admin
                 </LienBouton>
                 <form action={quitterEspaceAdmin}>
-                  <Bouton type="submit" variante="danger" taille="petite">
+                  <Bouton type="submit" variante="secondaire" taille="petite">
                     <Icone nom="sortie" taille={18} />
                     Quitter l&apos;espace admin
                   </Bouton>

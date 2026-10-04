@@ -27,6 +27,7 @@ import { ProgrammeCases } from "@/components/planning/GrillePlanning";
 import { chargerPlanning } from "@/lib/planning";
 import { Pastille } from "@/components/ui/Pastille";
 import { PLEINE_LARGEUR } from "@/components/ui/pleine-largeur";
+import { Icone } from "@/components/ui/Icone";
 
 export const metadata: Metadata = { title: "Séance" };
 
@@ -101,6 +102,7 @@ export default async function PageSeance({ params }: Props) {
               l'élévation. */}
           {can(user, "periods.manage") && user.sessionForte ? (
             <BoutonAction action={supprimerSeance.bind(null, id)} variante="danger" confirmation="Supprimer définitivement cette séance et ses réponses ?">
+              <Icone nom="alerte" taille={18} />
               Supprimer
             </BoutonAction>
           ) : null}

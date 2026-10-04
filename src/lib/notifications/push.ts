@@ -126,6 +126,9 @@ export async function abonnementsDe(userId: string) {
   return db.pushAbonnement.findMany({ where: { userId }, select: { id: true, endpoint: true, p256dh: true, auth: true } });
 }
 
+/** Délai maximal d'un dépôt chez le service de push d'un appareil. */
+export const DELAI_PUSH_MS = 10_000;
+
 type Abonnement = { id: string; endpoint: string; p256dh: string; auth: string };
 
 /**
@@ -140,7 +143,14 @@ export async function envoyerPush(abonnement: Abonnement, charge: ChargePush): P
     await webpush.sendNotification(
       { endpoint: abonnement.endpoint, keys: { p256dh: abonnement.p256dh, auth: abonnement.auth } },
       JSON.stringify(charge),
-      { TTL: 12 * 60 * 60 },
+      /*
+       * **Un délai, comme pour tous les autres canaux** (Discord, Telegram, SMTP). `web-push` n'en pose
+       * aucun : un service de push qui accepte la connexion et ne répond plus tenait la requête ouverte
+       * indéfiniment — et avec elle l'action qui l'attend (annulation de séance, publication d'une
+       * annonce, décision sur un atelier), dont le bouton restait « en cours ». Passé ce délai, l'envoi
+       * est un échec comme un autre : journalisé, clé libérée, rien de plus.
+       */
+      { TTL: 12 * 60 * 60, timeout: DELAI_PUSH_MS },
     );
     await db.pushAbonnement.update({ where: { id: abonnement.id }, data: { derniereFois: new Date() } }).catch(() => null);
     return true;

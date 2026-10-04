@@ -207,7 +207,7 @@ function BoutonsOrdre({
       {retirable && (
         <button
           type="button"
-          className={`${classe} ml-3 gap-1.5 hover:bg-rouge-doux hover:text-rouge sm:w-auto sm:px-3`}
+          className={`${classe.replace("text-texte", "text-rouge")} ml-3 gap-1.5 hover:bg-rouge-doux sm:w-auto sm:px-3`}
           disabled={enVol}
           title="Retirer cette partie"
           aria-label={`Retirer « ${partie.libelle} »`}
@@ -221,7 +221,8 @@ function BoutonsOrdre({
             start(() => retirerPartie({ partieId: partie.id }));
           }}
         >
-          <Icone nom="croix" />
+          {/* Rouge, avec le pictogramme d'alerte : comme tout ce qui retire quelque chose. */}
+          <Icone nom="alerte" />
           <span className="hidden sm:inline">Retirer</span>
         </button>
       )}

@@ -24,7 +24,6 @@ import {
 } from "@/actions/periodes";
 import { Carte } from "@/components/ui/Carte";
 import { DeuxPiles } from "@/components/ui/DeuxPiles";
-import { Bouton } from "@/components/ui/Bouton";
 import { Champ } from "@/components/ui/Champ";
 import { SelecteurLieu } from "@/components/gestion/SelecteurLieu";
 import { Select } from "@/components/ui/Select";
@@ -36,6 +35,7 @@ import { SeancesCreees, SelectionDates } from "./SelectionDates";
 import { genererSeances } from "@/lib/periodes";
 import { Pastille } from "@/components/ui/Pastille";
 import { getLieux } from "@/lib/planning";
+import { Icone } from "@/components/ui/Icone";
 
 export const metadata: Metadata = { title: "Période" };
 
@@ -225,7 +225,8 @@ export default async function PagePeriode({ params }: Props) {
             <BoutonAction
               action={activerPeriode.bind(null, p.id)}
               confirmation={confirmationActivation}
-              variante="succes"
+              // Plein, pas vert : c'est le geste attendu d'un brouillon, pas une réussite à saluer.
+              variante="primaire"
             >
               Activer la période
             </BoutonAction>
@@ -244,28 +245,17 @@ export default async function PagePeriode({ params }: Props) {
             <BoutonAction
               action={reactiverPeriode.bind(null, p.id)}
               confirmation="Rouvrir la période ? Le trimestre redevient modifiable et les liens que la clôture avait fermés refonctionnent, sauf pour qui a reçu un lien plus récent depuis — il garde le sien. Aucun email ne part."
-              variante="succes"
+              variante="secondaire"
             >
               Rouvrir la période
             </BoutonAction>
           )}
           {peutSupprimer &&
             (p.statut === "ACTIVE" ? (
-              // Bouton montré mais désactivé, avec la raison : on comprend mieux qu'en le cachant
-              <span className="inline-flex flex-col gap-1">
-                <Bouton
-                  type="button"
-                  variante="danger"
-                  taille="petite"
-                  disabled
-                  title={CLOTURE_DABORD}
-                >
-                  Supprimer la période
-                </Bouton>
-                <span className="text-sm text-texte-secondaire">
-                  {CLOTURE_DABORD}
-                </span>
-              </span>
+              /* **Un bouton qui ne s'applique pas n'apparaît pas** : c'était un « Supprimer » rouge
+                 grisé, en permanence, sur la période en cours — le seul rouge de l'écran, pour un
+                 geste impossible. Reste la phrase, qui dit comment y arriver. */
+              <span className="self-center text-sm text-texte-secondaire">{CLOTURE_DABORD}</span>
             ) : (
               <BoutonAction
                 action={supprimerPeriode.bind(null, p.id)}
@@ -273,6 +263,7 @@ export default async function PagePeriode({ params }: Props) {
                 variante="danger"
                 taille="petite"
               >
+                <Icone nom="alerte" taille={18} />
                 Supprimer la période
               </BoutonAction>
             ))}
@@ -419,9 +410,10 @@ export default async function PagePeriode({ params }: Props) {
                       <BoutonAction
                         action={supprimerCreneau.bind(null, c.id)}
                         confirmation="Supprimer ce créneau ? (les séances déjà générées sont conservées)"
-                        variante="secondaire"
+                        variante="danger"
                         taille="petite"
                       >
+                        <Icone nom="alerte" taille={18} />
                         Supprimer
                       </BoutonAction>
                     </li>
@@ -625,9 +617,10 @@ export default async function PagePeriode({ params }: Props) {
                             <BoutonAction
                               action={revoquerInvitation.bind(null, inv.id)}
                               confirmation="Révoquer ce lien ?"
-                              variante="secondaire"
+                              variante="danger"
                               taille="petite"
                             >
+                              <Icone nom="alerte" taille={18} />
                               Révoquer
                             </BoutonAction>
                           )}
@@ -638,9 +631,10 @@ export default async function PagePeriode({ params }: Props) {
                               reponsesParMembre.get(u.id) ?? 0,
                               Boolean(inv),
                             )}
-                            variante="secondaire"
+                            variante="danger"
                             taille="petite"
                           >
+                            <Icone nom="alerte" taille={18} />
                             Retirer
                           </BoutonAction>
                         </div>

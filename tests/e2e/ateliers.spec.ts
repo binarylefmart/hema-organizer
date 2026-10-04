@@ -27,8 +27,11 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
   const carte = page.locator("section", { hasText: "Jeu des trois touches" }).first();
   await expect(carte).toBeVisible();
   await expect(carte.getByText("masques, gants")).toBeVisible();
-  await carte.getByText("Ajouter un mot pour le membre").click();
-  await carte.getByLabel(/Commentaire/).fill("Bonne idée, on programme ça vite.");
+  // « Que veux-tu faire ? » → « Placer dans le planning » : la séance et le mot n'apparaissent
+  // qu'une fois le geste choisi (la forme commune de l'administration).
+  await carte.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
+  await page.getByRole("option", { name: "Placer dans le planning" }).click();
+  await carte.getByLabel(/Un mot pour/).fill("Bonne idée, on programme ça vite.");
   /*
    * **On choisit la deuxième séance proposée, pas celle d'office.** La liste de placement part de la
    * prochaine séance *au sens des ateliers* — le cours du soir même en fait partie, on peut encore y
@@ -37,13 +40,13 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
    * rangé en base. La deuxième entrée est un autre jour : elle est visible dans le planning à
    * n'importe quelle heure.
    *
-   * On retient son identifiant : c'est la carte du planning (`#seance-<id>`) qu'on ira ouvrir,
-   * plutôt qu'un rang dans la grille — une séance n'est pas toujours à la même place.
+   * La carte du planning se retrouve ensuite par le titre qu'elle porte (`article#seance-<id>`),
+   * plutôt que par un rang dans la grille — une séance n'est pas toujours à la même place.
    */
-  const choixSeance = carte.locator('select[name="sessionId"]');
-  const sessionId = await choixSeance.locator("option").nth(1).getAttribute("value");
-  expect(sessionId, "il faut au moins deux séances à venir pour placer un atelier").toBeTruthy();
-  await choixSeance.selectOption(sessionId!);
+  await carte.getByRole("combobox", { name: "Séance" }).click();
+  const options = page.getByRole("option");
+  expect(await options.count(), "il faut au moins deux séances à venir pour placer un atelier").toBeGreaterThan(1);
+  await options.nth(1).click();
   await carte.getByRole("button", { name: "Placer dans le planning" }).click();
   // La proposition quitte aussitôt la file « En attente » (la liste est revalidée)
   await expect(page.locator("section", { hasText: "Jeu des trois touches" })).toHaveCount(0, { timeout: 15_000 });
@@ -59,7 +62,7 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
   // La carte de **cette** séance, désignée par son ancre : le planning a quitté le tableau à quatre
   // colonnes fixes pour une carte par séance (`<article id="seance-…">`) qui liste ses parties
   // (`ListeParties`) — chaque partie est un `<li>`, quel que soit leur nombre.
-  const carteSeance = page.locator(`#seance-${sessionId}`);
+  const carteSeance = page.locator('article[id^="seance-"]', { hasText: "Jeu des trois touches" }).first();
   await expect(carteSeance).toBeVisible();
   // La case porte l'atelier **et** son animatrice. Le tiret qui les sépare vit dans un `<span>` à lui
   // (précédé d'une espace insécable, typographie française) : aucun élément ne porte la phrase
