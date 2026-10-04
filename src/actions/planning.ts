@@ -178,6 +178,19 @@ const REFUS_CASE = {
 } as const;
 
 /**
+ * **Sans thème, ni niveau ni description.** La grille ne montre ces deux champs qu'une fois un thème
+ * choisi, comme le second instructeur attend le premier. Ici on vide plutôt que de refuser : une case
+ * qui portait déjà un niveau sans thème doit rester enregistrable, et ce qu'elle perd n'avait plus de
+ * champ pour être relu. La description, elle, est publiée hors du club : une phrase sans thème qui
+ * sortirait sans que la grille la montre serait la pire des deux issues.
+ */
+function sansThemeNiDetails(c: { theme: string; description: string; niveau: string }): void {
+  if (c.theme.trim()) return;
+  c.description = "";
+  c.niveau = NIVEAU_DEFAUT;
+}
+
+/**
  * **Une case dont les cinq valeurs sont déjà celles de la base n'est pas une écriture.**
  *
  * `SessionPartie.updatedAt` est un `@updatedAt`, et la grille l'affiche dans « Modifié par … le … » :
@@ -267,6 +280,7 @@ export async function enregistrerCase(input: {
     ...input,
   });
   if (!parsed.success) return zodToFormState(parsed.error);
+  sansThemeNiDetails(parsed.data);
   const {
     partieId,
     instructeurId,
@@ -464,7 +478,10 @@ export async function enregistrerCases(input: {
    * — « dernier arrivé gagne », la doctrine du geste unitaire.
    */
   const parPartie = new Map<string, ReglagesCase>();
-  for (const c of parsed.data.cases) parPartie.set(c.partieId, c);
+  for (const c of parsed.data.cases) {
+    sansThemeNiDetails(c);
+    parPartie.set(c.partieId, c);
+  }
 
   // **Tous les verrous avant la première écriture** : c'est ce qui rend le « tout ou rien » vrai.
   const aEcrire: Array<{ reglages: ReglagesCase; avant: CaseAvant }> = [];

@@ -189,6 +189,13 @@ export function CaseEditeur({
    * pas la cible tactile, qui tient les 48 px comme les autres.
    */
   const classeChampSecond = `${hauteur} w-full rounded-lg border border-dashed border-bordure/70 bg-transparent px-2 ${texte} text-texte-secondaire focus:border-primaire`;
+  /**
+   * **Le niveau et la description attendent le thème**, comme le second attend le premier : ils
+   * précisent ce qu'on travaille, et sans thème ils ne précisent rien. Même retrait visuel que le
+   * second (`classeChampSecond`). Une case qui porte déjà l'un des deux sans thème les montre
+   * quand même : une valeur cachée qu'on ne pourrait plus relire serait pire qu'un champ en trop.
+   */
+  const detailsVisibles = theme.trim() !== "" || description.trim() !== "" || niveau !== NIVEAU_DEFAUT;
 
   /**
    * La case suit le serveur quand il dit autre chose qu'elle — atelier programmé entre-temps,
@@ -325,7 +332,15 @@ export function CaseEditeur({
     }
     setAutre(false);
     setTheme(v);
-    sauver({ instructeurId, instructeurSecondId, theme: v, description, niveau });
+    sauverTheme(v);
+  };
+  /** Le thème qui s'efface emporte le niveau et la description — le serveur fait de même. */
+  const sauverTheme = (t: string) => {
+    const d = t ? description : "";
+    const n = t ? niveau : NIVEAU_DEFAUT;
+    setDescription(d);
+    setNiveau(n);
+    sauver({ instructeurId, instructeurSecondId, theme: t, description: d, niveau: n });
   };
 
   if (valeur.atelier) {
@@ -576,7 +591,7 @@ export function CaseEditeur({
               onBlur={() => {
                 const t = theme.trim();
                 if (t !== theme) setTheme(t);
-                sauver({ instructeurId, instructeurSecondId, theme: t, description, niveau });
+                sauverTheme(t);
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -585,25 +600,29 @@ export function CaseEditeur({
           )}
         </div>
         {/* Le niveau vient en dernier : on choisit qui encadre et ce qu'on travaille avant de dire à qui ça s'adresse */}
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label className="sr-only" id={`${partieId}-niveau-libelle`} htmlFor={`${partieId}-niveau`}>
-            Niveau — {label}
-          </label>
-          <Intitule>Niveau</Intitule>
-          <ListeDeroulante
-            id={`${partieId}-niveau`}
-            libelleId={`${partieId}-niveau-libelle`}
-            libelle={`Niveau — ${label}`}
-            className={classeChamp}
-            valeur={niveau}
-            entrees={entreesNiveau}
-            {...deplier("niveaux")}
-            onChoisir={(v) => {
-              const n = (NIVEAUX as readonly string[]).includes(v) ? (v as Niveau) : NIVEAU_DEFAUT;
-              setNiveau(n);
-              sauver({ instructeurId, instructeurSecondId, theme, description, niveau: n });
-            }}
-          />
+        <div className="flex min-w-0 flex-col gap-1.5 empty:hidden">
+          {detailsVisibles && (
+            <>
+              <label className="sr-only" id={`${partieId}-niveau-libelle`} htmlFor={`${partieId}-niveau`}>
+                Niveau — {label}
+              </label>
+              <Intitule>Niveau</Intitule>
+              <ListeDeroulante
+                id={`${partieId}-niveau`}
+                libelleId={`${partieId}-niveau-libelle`}
+                libelle={`Niveau — ${label}`}
+                className={classeChampSecond}
+                valeur={niveau}
+                entrees={entreesNiveau}
+                {...deplier("niveaux")}
+                onChoisir={(v) => {
+                  const n = (NIVEAUX as readonly string[]).includes(v) ? (v as Niveau) : NIVEAU_DEFAUT;
+                  setNiveau(n);
+                  sauver({ instructeurId, instructeurSecondId, theme, description, niveau: n });
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
       {/* **La description, sur toute la largeur et sous les autres réglages.**
@@ -615,45 +634,45 @@ export function CaseEditeur({
 
           Facultative : une case sans description ne montre rien du tout au club (`champsLus`), et
           l'immense majorité des parties s'en passent — le thème et le niveau suffisent. */}
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <label className="sr-only" htmlFor={`${partieId}-description`}>
-          Description — {label}
-        </label>
-        <Intitule>Description</Intitule>
-        <textarea
-          id={`${partieId}-description`}
-          rows={compact ? 2 : 3}
-          value={description}
-          maxLength={PARTIE_DESCRIPTION_MAX}
-          aria-describedby={`${partieId}-description-avertissement`}
-          placeholder="Ce qu'on fera dans cette partie (facultatif)"
-          className={`w-full resize-y rounded-lg border px-2 py-1.5 ${texte} text-texte focus:border-primaire ${
-            discret ? "border-dashed border-bordure/80 bg-transparent" : "border-bordure bg-surface shadow-champ"
-          }`}
-          onFocus={() => setDescriptionEnSaisie(true)}
-          onChange={(e) => setDescription(e.target.value)}
-          onBlur={() => {
-            setDescriptionEnSaisie(false);
-            /* Même règle que le thème libre : on enregistre en quittant le champ, sur la valeur
-               nettoyée. Pas à la frappe — une phrase de trois lignes partirait cinquante fois, et la
-               file d'envoi n'a qu'une place d'attente par case. Pas sur Entrée non plus : dans une
-               zone de texte, Entrée est un retour à la ligne, et le voler serait un piège. */
-            const d = description.trim();
-            if (d !== description) setDescription(d);
-            sauver({ instructeurId, instructeurSecondId, theme, description: d, niveau });
-          }}
-        />
-        {/* **L'avertissement de publication** — la règle « ce qui est publié doit être annoncé à qui le
-            saisit », dans les mêmes mots que portait le champ du nom d'une partie avant de disparaître.
-            Toujours dans la page pour les lecteurs d'écran (`aria-describedby`), visible dès qu'on entre
-            dans le champ. `text-base` et non `text-xs` : ce texte-là dit qu'un texte **sort du club**,
-            et le cahier des charges ne connaît qu'un plancher de 16 px — il vaut d'abord pour ce qui
-            prévient. */}
-        <p id={`${partieId}-description-avertissement`} className={descriptionEnSaisie ? "text-base text-texte-secondaire" : "sr-only"}>
-          Cette description est publiée sur les pages de partage et, si le club l&apos;a ouverte, par l&apos;API publique — visibles hors du club.{" "}
-          {PARTIE_DESCRIPTION_MAX} signes au plus. Les noms des instructeurs, eux, ne sortent jamais.
-        </p>
-      </div>
+      {detailsVisibles && (
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <label className="sr-only" htmlFor={`${partieId}-description`}>
+            Description — {label}
+          </label>
+          <Intitule>Description</Intitule>
+          <textarea
+            id={`${partieId}-description`}
+            rows={compact ? 2 : 3}
+            value={description}
+            maxLength={PARTIE_DESCRIPTION_MAX}
+            aria-describedby={`${partieId}-description-avertissement`}
+            placeholder="Ce qu'on fera dans cette partie (facultatif)"
+            className={`w-full resize-y rounded-lg border border-dashed border-bordure/70 bg-transparent px-2 py-1.5 ${texte} text-texte-secondaire focus:border-primaire`}
+            onFocus={() => setDescriptionEnSaisie(true)}
+            onChange={(e) => setDescription(e.target.value)}
+            onBlur={() => {
+              setDescriptionEnSaisie(false);
+              /* Même règle que le thème libre : on enregistre en quittant le champ, sur la valeur
+                 nettoyée. Pas à la frappe — une phrase de trois lignes partirait cinquante fois, et la
+                 file d'envoi n'a qu'une place d'attente par case. Pas sur Entrée non plus : dans une
+                 zone de texte, Entrée est un retour à la ligne, et le voler serait un piège. */
+              const d = description.trim();
+              if (d !== description) setDescription(d);
+              sauver({ instructeurId, instructeurSecondId, theme, description: d, niveau });
+            }}
+          />
+          {/* **L'avertissement de publication** — la règle « ce qui est publié doit être annoncé à qui le
+              saisit », dans les mêmes mots que portait le champ du nom d'une partie avant de disparaître.
+              Toujours dans la page pour les lecteurs d'écran (`aria-describedby`), visible dès qu'on entre
+              dans le champ. `text-base` et non `text-xs` : ce texte-là dit qu'un texte **sort du club**,
+              et le cahier des charges ne connaît qu'un plancher de 16 px — il vaut d'abord pour ce qui
+              prévient. */}
+          <p id={`${partieId}-description-avertissement`} className={descriptionEnSaisie ? "text-base text-texte-secondaire" : "sr-only"}>
+            Cette description est publiée sur les pages de partage et, si le club l&apos;a ouverte, par l&apos;API publique — visibles hors du club.{" "}
+            {PARTIE_DESCRIPTION_MAX} signes au plus. Les noms des instructeurs, eux, ne sortent jamais.
+          </p>
+        </div>
+      )}
       {/* **Un message d'erreur ne s'écrit pas en 12 px** : c'est la seule chose qui dise qu'un
           réglage du planning n'est **pas** enregistré, et elle était la plus petite de la case.
           `min-h-6` suit la nouvelle interligne, pour que l'apparition du message ne pousse pas la

@@ -302,16 +302,16 @@ describe("remplir et vider une case", () => {
   it("refuse une description au-delà du plafond annoncé, et l'accepte à la limite", async () => {
     const { PARTIE_DESCRIPTION_MAX } = await import("@/lib/constants");
     const trop = "a".repeat(PARTIE_DESCRIPTION_MAX + 1);
-    expect((await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "", description: trop, niveau: "INDIFFERENT" })).erreur).toBeTruthy();
+    expect((await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "Messer", description: trop, niveau: "INDIFFERENT" })).erreur).toBeTruthy();
     expect(partie("c0")?.description).toBe("");
     const pile = "a".repeat(PARTIE_DESCRIPTION_MAX);
-    expect((await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "", description: pile, niveau: "INDIFFERENT" })).succes).toBe("Enregistré");
+    expect((await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "Messer", description: pile, niveau: "INDIFFERENT" })).succes).toBe("Enregistré");
     expect(partie("c0")?.description).toBe(pile);
   });
 
   it("journalise la description avant et après, comme les autres réglages de la case", async () => {
-    await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "", description: "Premier jet.", niveau: "INDIFFERENT" });
-    await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "", description: "Version corrigée.", niveau: "INDIFFERENT" });
+    await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "Messer", description: "Premier jet.", niveau: "INDIFFERENT" });
+    await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "Messer", description: "Version corrigée.", niveau: "INDIFFERENT" });
     expect(faux.audits.at(-1)).toMatchObject({
       action: "planning.case",
       details: { avant: { description: "Premier jet." }, apres: { description: "Version corrigée." } },
@@ -319,9 +319,20 @@ describe("remplir et vider une case", () => {
   });
 
   it("ne repart pas au serveur pour une description inchangée", async () => {
-    await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "", description: "Idem.", niveau: "INDIFFERENT" });
-    const res = await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "", description: "Idem.", niveau: "INDIFFERENT" });
+    await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "Messer", description: "Idem.", niveau: "INDIFFERENT" });
+    const res = await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "Messer", description: "Idem.", niveau: "INDIFFERENT" });
     expect(res.succes).toBe("Rien à changer.");
+  });
+
+  it("sans thème, le niveau et la description sont vidés — la grille ne les montre qu'avec un thème", async () => {
+    await enregistrerCase({ partieId: "c0", instructeurId: "u1", theme: "", description: "Orpheline.", niveau: "AVANCE" });
+    expect(partie("c0")).toMatchObject({ theme: "", description: "", niveau: "INDIFFERENT", instructeurId: "u1" });
+  });
+
+  it("effacer le thème emporte le niveau et la description déjà posés", async () => {
+    await enregistrerCase({ partieId: "c0", instructeurId: "u1", theme: "Messer", description: "Quelque chose.", niveau: "DEBUTANT" });
+    await enregistrerCase({ partieId: "c0", instructeurId: "u1", theme: "", description: "Quelque chose.", niveau: "DEBUTANT" });
+    expect(partie("c0")).toMatchObject({ theme: "", description: "", niveau: "INDIFFERENT" });
   });
 
   it("**ne retire jamais la partie** quand on vide la case", async () => {
