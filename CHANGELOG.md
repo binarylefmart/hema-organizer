@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.68.1
+
+### Corrections
+
+- **public** : un test ne dépend plus d'un prénom que le miroir remplace
+
 ## 0.68.0
 
 ### Nouveautés

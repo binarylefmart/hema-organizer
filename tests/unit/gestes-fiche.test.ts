@@ -15,8 +15,8 @@ const source = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
 const TOUS: DroitsFiche = { inviter: true, reinitialiser: true, activer: true, supprimer: true };
 
 const personne = (autre: Partial<PersonneFiche> = {}): PersonneFiche => ({
-  prenom: "Bravo",
-  nom: "02",
+  prenom: "Ondine",
+  nom: "Vasseur",
   actif: true,
   aUnEmail: true,
   dejaEntre: false,
@@ -61,9 +61,9 @@ describe("dans le volet « Gérer » de l'annuaire", () => {
   it("ajoute le lien de la période active : envoyer ou renvoyer, et révoquer s'il vit", () => {
     expect(noms(personne({ dejaEntre: true, lienEnCours: true }), VOLET)).toEqual(["renvoyer", "revoquer", "reinitialiser", "desactiver", "supprimer"]);
     const [renvoyer] = gestesFiche(personne({ lienEnCours: true }), VOLET);
-    expect(renvoyer.bouton).toBe("Renvoyer le lien à Bravo");
+    expect(renvoyer.bouton).toBe("Renvoyer le lien à Ondine");
     const [envoyer] = gestesFiche(personne({ lienEnCours: false }), VOLET);
-    expect(envoyer.bouton).toBe("Envoyer le lien à Bravo");
+    expect(envoyer.bouton).toBe("Envoyer le lien à Ondine");
     expect(envoyer.confirmation).toBeUndefined();
   });
 
@@ -88,7 +88,7 @@ describe("dans le volet « Gérer » de l'annuaire", () => {
 describe("leurs mots", () => {
   it("le bouton nomme la personne ; révoquer, réinitialiser, désactiver et supprimer sont rouges", () => {
     const gestes = gestesFiche(personne({ dejaEntre: true }), TOUS);
-    expect(gestes.map((g) => g.bouton)).toEqual(["Réinitialiser l'accès d'Bravo", "Désactiver le compte d'Bravo", "Supprimer Bravo 02"]);
+    expect(gestes.map((g) => g.bouton)).toEqual(["Réinitialiser l'accès d'Ondine", "Désactiver le compte d'Ondine", "Supprimer Ondine Vasseur"]);
     expect(gestes.filter((g) => g.definitif).map((g) => g.geste)).toEqual(["reinitialiser", "desactiver", "supprimer"]);
     const avecLien = gestesFiche(personne({ lienEnCours: true }), { ...TOUS, renvoyer: true, revoquer: true });
     expect(avecLien.filter((g) => g.definitif).map((g) => g.geste)).toContain("revoquer");
@@ -100,9 +100,9 @@ describe("leurs mots", () => {
 
   it("gardent les confirmations de la fiche", () => {
     const [reinit, desactiver, supprimer] = gestesFiche(personne({ dejaEntre: true }), TOUS);
-    expect(reinit.confirmation).toMatch(/^Remettre à zéro l'accès de Bravo 02 \?/);
-    expect(desactiver.confirmation).toBe("Désactiver le compte de Bravo ? Il ne pourra plus se connecter.");
-    expect(supprimer.confirmation).toBe("Supprimer définitivement Bravo 02 et tout son historique ?");
+    expect(reinit.confirmation).toMatch(/^Remettre à zéro l'accès de Ondine Vasseur \?/);
+    expect(desactiver.confirmation).toBe("Désactiver le compte de Ondine ? Il ne pourra plus se connecter.");
+    expect(supprimer.confirmation).toBe("Supprimer définitivement Ondine Vasseur et tout son historique ?");
     const [reactiver] = gestesFiche(personne({ actif: false }), TOUS);
     expect(reactiver.confirmation).toBeUndefined();
   });
@@ -123,8 +123,10 @@ describe("leurs mots", () => {
   });
 
   it("élide devant une voyelle", () => {
-    expect(de("Bravo")).toBe("d'Bravo");
+    expect(de("Ondine")).toBe("d'Ondine");
     expect(de("Paul")).toBe("de Paul");
+    // Prénoms fictifs, absents du jeu du club : le miroir public remplace les vrais, et l'élision
+    // d'un prénom remplacé ne se vérifierait plus.
   });
 });
 
