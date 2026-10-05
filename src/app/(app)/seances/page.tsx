@@ -14,9 +14,14 @@ import { Carte } from "@/components/ui/Carte";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { Icone } from "@/components/ui/Icone";
 import { Bloc, CarteSquelette, SelecteurPeriodeSquelette } from "@/components/ui/Squelette";
-import { ActionsEquipe } from "@/components/seances/ActionsEquipe";
+import { GestesSeance } from "@/components/seances/GestesSeance";
+import { modeEditionDemande } from "@/components/planning/mode-edition";
 import { CarteSeance } from "@/components/seances/CarteSeance";
 import { ListeSeances } from "@/components/seances/ListeSeances";
+import { CaseSeance, SelectionSeances } from "@/components/seances/SelectionSeances";
+import type { LigneSeance } from "@/components/seances/selection-seances";
+import { getLieux } from "@/lib/planning";
+import { ecritureFermee } from "@/lib/constants";
 import { Historique } from "@/components/presences/Historique";
 import { SelecteurHorizon } from "@/components/ui/SelecteurHorizon";
 import { SelecteurPeriode, type PeriodeOption } from "@/components/filtres/SelecteurPeriode";
@@ -43,6 +48,7 @@ type Props = {
     note?: string;
     s?: string;
     tout?: string;
+    modifier?: string;
   }>;
 };
 
@@ -217,13 +223,43 @@ async function Confirmation({ contenu, note, s }: { contenu: Promise<Contenu>; n
  * page d'arrivée redemande la même permission : un membre qui taperait l'adresse à la main est
  * renvoyé à l'accueil.
  */
-async function ActionsOrganisation({ contenu }: { contenu: Promise<Contenu> }) {
+async function ActionsOrganisation({
+  contenu,
+  enEdition,
+  lien,
+}: {
+  contenu: Promise<Contenu>;
+  enEdition: boolean;
+  lien: (extra?: Record<string, string | undefined>) => string;
+}) {
+  if (!enEdition) {
+    return (
+      // **Visible sans chercher** : bouton plein, taille normale, toute la largeur sur téléphone —
+      // c'est la seule porte vers les gestes d'organisation, elle ne doit pas se lire comme un lien.
+      <LienBouton href={lien({ modifier: "1" })} className="w-full sm:w-auto">
+        <Icone nom="livre" taille={20} />
+        Modifier les séances
+      </LienBouton>
+    );
+  }
   const { periodeLue, toutes } = await contenu;
   const id = periodeLue?.id ?? toutes[0]?.periodId;
+  // En modification, un bandeau le dit — on ne doit jamais se demander dans quel mode on est — et
+  // la sortie est le bouton plein, à la place de l'entrée.
   return (
-    <LienBouton href={`/seances/nouvelle${id ? `?periode=${id}` : ""}`} taille="petite" enCours>
-      Nouvelle séance
-    </LienBouton>
+    <div role="status" className="flex w-full flex-col gap-3 rounded-xl border-2 border-primaire bg-surface p-4">
+      <p className="font-semibold">
+        Mode modification : les gestes de chaque séance sont au pied de sa carte ; « Sélection multiple » agit sur plusieurs à la fois. Tout s&apos;enregistre tout de suite.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <LienBouton href={lien({ modifier: "" })} className="w-full sm:w-auto">
+          Terminer les modifications
+        </LienBouton>
+        <LienBouton href={`/seances/nouvelle${id ? `?periode=${id}` : ""}`} variante="secondaire" className="w-full sm:w-auto" enCours>
+          Nouvelle séance
+        </LienBouton>
+      </div>
+    </div>
   );
 }
 
@@ -238,12 +274,14 @@ async function Filtres({
   vue,
   peutCreer,
   lien,
+  enEdition,
 }: {
   periodes: Promise<PeriodeOption[]>;
   contenu: Promise<Contenu>;
   vue: Vue;
   peutCreer: boolean;
   lien: (extra?: Record<string, string | undefined>) => string;
+  enEdition: boolean;
 }) {
   const [liste, { choisie, periodeLue, toutes, seances }] = await Promise.all([periodes, contenu]);
   const periodeAffichee = choisie ?? periodeLue ?? liste.find((p) => p.id === toutes[0]?.periodId);
@@ -266,6 +304,7 @@ async function Filtres({
     ...(periodeAffichee ? { periode: periodeAffichee.id } : {}),
     ...(vue.horizon === "periode" ? {} : { h: vue.horizon }),
     ...(vue.quand === "passe" ? { quand: "passe" } : {}),
+    ...(enEdition ? { modifier: "1" } : {}),
   };
   return (
     // Volet laissé ouvert dès qu'une date est posée, comme pour une fenêtre inhabituelle : une liste
@@ -279,7 +318,7 @@ async function Filtres({
         peutCreer={peutCreer}
         // Volontairement sans la date : changer de trimestre à la main, c'est demander à revoir un
         // trimestre entier, pas à retrouver le même jour ailleurs.
-        params={{ ...(vue.horizon === "periode" ? {} : { h: vue.horizon }), ...(vue.quand === "passe" ? { quand: "passe" } : {}) }}
+        params={{ ...(vue.horizon === "periode" ? {} : { h: vue.horizon }), ...(vue.quand === "passe" ? { quand: "passe" } : {}), ...(enEdition ? { modifier: "1" } : {}) }}
       />
       {/* Le jour précis vient juste après la période : les deux disent *quoi* regarder, la fenêtre
           qui suit dit seulement *jusqu'où* — et se retrouve sans objet dès qu'un jour est nommé. */}
@@ -294,7 +333,22 @@ async function Filtres({
 }
 
 /** La fenêtre de temps et les cartes : tout ce qui dépend de la requête lourde, dans un seul îlot. */
-async function Liste({ contenu, vue, equipe, lien }: { contenu: Promise<Contenu>; vue: Vue; equipe: boolean; lien: (extra?: Record<string, string | undefined>) => string }) {
+async function Liste({
+  contenu,
+  periodes,
+  vue,
+  enEdition,
+  peutSupprimer,
+  lien,
+}: {
+  contenu: Promise<Contenu>;
+  periodes: Promise<PeriodeOption[]>;
+  vue: Vue;
+  enEdition: boolean;
+  /** `periods.manage` **et** session forte : la serrure de `supprimerSeance`, lue au rendu. */
+  peutSupprimer: boolean;
+  lien: (extra?: Record<string, string | undefined>) => string;
+}) {
   // La part minimale d'effectif du club, pour la jauge de chaque carte : `BarreTaux` est un
   // composant client et ne peut pas la lire lui-même (voir `src/lib/constants.ts`). Lecture mise en
   // cache pour la durée de la requête, déjà faite par la mise en page racine.
@@ -360,20 +414,71 @@ async function Liste({ contenu, vue, equipe, lien }: { contenu: Promise<Contenu>
             </LienBouton>
           </p>
         </Alerte>
+      ) : enEdition ? (
+        <SelectionEdition seances={seances} periodes={periodes} vue={vue} partEffectifMin={partEffectifMin} peutSupprimer={peutSupprimer} />
       ) : (
-        <ListeSeances
-          cartes={seances.map((x) => (
-            <CarteSeance
-              key={x.id}
-              seance={x}
-              aujourdHui={vue.aujourdHui}
-              partEffectifMin={partEffectifMin}
-              actions={equipe ? <ActionsEquipe id={x.id} annulee={x.annulee} passee={seanceCommencee(x.date, x.heureDebut, vue.maintenant)} /> : undefined}
-            />
-          ))}
-        />
+        <ListeSeances cartes={seances.map((x) => <CarteSeance key={x.id} seance={x} aujourdHui={vue.aujourdHui} partEffectifMin={partEffectifMin} />)} />
       )}
     </>
+  );
+}
+
+/**
+ * **Les cartes en mode modification** : chacune garde son « Que veux-tu faire ? » au pied, et
+ * `SelectionSeances` ajoute l'interrupteur « Sélection multiple », la case de chaque carte et la barre
+ * des gestes de masse.
+ *
+ * Ce qui se décide ici, côté serveur : quelles séances ont une case (pas celles d'un trimestre clos —
+ * leur geste serait refusé par `seancePourEcriture`), si « Supprimer » est proposé (la serrure de
+ * `supprimerSeance`), et les lieux du club pour « Changer le lieu ». Les réponses comptées pour la
+ * suppression sont celles de la carte : le journal, lui, garde le décompte exact fait par le serveur.
+ */
+async function SelectionEdition({
+  seances,
+  periodes,
+  vue,
+  partEffectifMin,
+  peutSupprimer,
+}: {
+  seances: SeanceCarte[];
+  periodes: Promise<PeriodeOption[]>;
+  vue: Vue;
+  partEffectifMin: number;
+  peutSupprimer: boolean;
+}) {
+  const [liste, lieux] = await Promise.all([periodes, getLieux()]);
+  const close = new Set(liste.filter((p) => ecritureFermee(p.statut)).map((p) => p.id));
+  const lignes: (LigneSeance | null)[] = seances.map((x) =>
+    close.has(x.periodId)
+      ? null
+      : {
+          id: x.id,
+          jour: jourSansAnnee(x.date),
+          heureDebut: x.heureDebut,
+          heureFin: x.heureFin,
+          lieu: x.lieu,
+          adresse: x.adresse,
+          annulee: x.annulee,
+          commencee: seanceCommencee(x.date, x.heureDebut, vue.maintenant),
+          reponses: x.compteurs.presents + x.compteurs.absents + x.compteurs.peutEtre,
+        },
+  );
+  return (
+    <SelectionSeances
+      lignes={lignes}
+      lieux={lieux}
+      peutSupprimer={peutSupprimer}
+      cartes={seances.map((x, i) => (
+        <CarteSeance
+          key={x.id}
+          seance={x}
+          aujourdHui={vue.aujourdHui}
+          partEffectifMin={partEffectifMin}
+          selection={lignes[i] ? <CaseSeance id={x.id} jour={lignes[i].jour} /> : undefined}
+          actions={<GestesSeance id={x.id} annulee={x.annulee} passee={seanceCommencee(x.date, x.heureDebut, vue.maintenant)} ouvrir />}
+        />
+      ))}
+    />
   );
 }
 
@@ -420,7 +525,7 @@ function ListeSquelette() {
  * alertes partent avec le premier octet, les sélecteurs et les cartes suivent dans leurs îlots.
  */
 export default async function PageSeances({ searchParams }: Props) {
-  const { mdp, acces, vue: vueDemandee, quand, h, date, periode, seance, reponse, note, s, tout } = await searchParams;
+  const { mdp, acces, vue: vueDemandee, quand, h, date, periode, seance, reponse, note, s, tout, modifier } = await searchParams;
   // Réponse en un clic depuis l'email : sans session, on demande à revenir ici après l'accès.
   // (Aujourd'hui c'est le requireUser() de (app)/layout.tsx, rendu avant la page, qui envoie
   // sur /connexion sans « suite » : la réponse s'applique au retour sur ce même lien.)
@@ -430,6 +535,15 @@ export default async function PageSeances({ searchParams }: Props) {
   // son bouton (POST) qui enregistre. Voir `ConfirmationDemande` pour le pourquoi.
   if (seance && demande) return <ConfirmationDemande sessionId={seance} statut={demande} userId={user.id} />;
   const equipe = can(user, "sessions.manage");
+  /*
+   * **La liste s'ouvre en lecture seule, même pour l'encadrement** — le principe du planning
+   * (`?modifier=1`, `src/components/planning/mode-edition.ts`). Le bureau n'y fait pas exception :
+   * administrateur est un supplément, c'est le rôle de base qui décide de la vue. « Modifier les
+   * séances » ouvre « Que veux-tu faire ? » au pied des cartes et « Nouvelle séance » ; « Terminer
+   * les modifications » les referme. Les gestes s'enregistrent tout de suite : il n'y a pas de
+   * brouillon à appliquer. Et le mode exige le droit en plus du paramètre, qui s'écrit à la main.
+   */
+  const enEdition = equipe && modeEditionDemande(modifier);
   const maintenant = new Date();
   const vue: Vue = {
     historique: vueDemandee === "historique",
@@ -462,6 +576,8 @@ export default async function PageSeances({ searchParams }: Props) {
     const q = new URLSearchParams();
     if (periode) q.set("periode", periode);
     for (const [cle, valeur] of Object.entries(extra)) if (valeur) q.set(cle, valeur);
+    // Le mode modification survit aux filtres, comme sur le planning ; `modifier: ""` le referme.
+    if (enEdition && !("modifier" in extra)) q.set("modifier", "1");
     const qs = q.toString();
     return qs ? `/seances?${qs}` : "/seances";
   };
@@ -526,7 +642,14 @@ export default async function PageSeances({ searchParams }: Props) {
           ordre="avant"
           principal={
             <Suspense fallback={<ListeSquelette />}>
-              <Liste contenu={contenu} vue={vue} equipe={equipe} lien={lien} />
+              <Liste
+                contenu={contenu}
+                periodes={periodes}
+                vue={vue}
+                enEdition={enEdition}
+                peutSupprimer={can(user, "periods.manage") && user.sessionForte}
+                lien={lien}
+              />
             </Suspense>
           }
           cote={
@@ -534,12 +657,12 @@ export default async function PageSeances({ searchParams }: Props) {
               {equipe && (
                 <div className="flex flex-wrap gap-2">
                   <Suspense fallback={<Bloc className="h-12 w-36 rounded-xl" />}>
-                    <ActionsOrganisation contenu={contenu} />
+                    <ActionsOrganisation contenu={contenu} enEdition={enEdition} lien={lien} />
                   </Suspense>
                 </div>
               )}
               <Suspense fallback={<SelecteurPeriodeSquelette />}>
-                <Filtres periodes={periodes} contenu={contenu} vue={vue} peutCreer={can(user, "periods.manage")} lien={lien} />
+                <Filtres periodes={periodes} contenu={contenu} vue={vue} peutCreer={can(user, "periods.manage")} lien={lien} enEdition={enEdition} />
               </Suspense>
             </>
           }

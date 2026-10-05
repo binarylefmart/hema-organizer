@@ -73,9 +73,13 @@ type Props = {
   /** Premier contact : le planning s'en sert pour écrire les entrées avant qu'on ne les regarde. */
   onPointerDown?: PointerEventHandler<HTMLButtonElement>;
   onFocus?: FocusEventHandler<HTMLButtonElement>;
+  /** Liste inerte : elle montre sa valeur, ne s'ouvre pas, et le dit (`disabled`). */
+  disabled?: boolean;
+  /** Identifiants des phrases qui décrivent le champ (aide, erreur), comme sur un `<input>`. */
+  decritPar?: string;
 };
 
-export function ListeDeroulante({ id, libelleId, libelle, valeur, entrees, onChoisir, className = "", style, onPointerDown, onFocus }: Props) {
+export function ListeDeroulante({ id, libelleId, libelle, valeur, entrees, onChoisir, className = "", style, onPointerDown, onFocus, disabled = false, decritPar }: Props) {
   const [ouverte, setOuverte] = useState(false);
   const [actif, setActif] = useState(-1);
   const [recherche, setRecherche] = useState("");
@@ -330,6 +334,7 @@ export function ListeDeroulante({ id, libelleId, libelle, valeur, entrees, onCho
         // Le libellé existant nomme le champ, et le bouton se nomme aussi lui-même : sans son
         // propre id dans `aria-labelledby`, son contenu — la valeur choisie — ne serait pas annoncé.
         aria-labelledby={`${libelleId} ${id}`}
+        aria-describedby={decritPar || undefined}
         /*
          * **Le motif « combobox à choix unique » se porte sur l'élément focalisé, et c'est celui-ci.**
          *
@@ -349,13 +354,19 @@ export function ListeDeroulante({ id, libelleId, libelle, valeur, entrees, onCho
         style={style}
         onPointerDown={onPointerDown}
         onFocus={onFocus}
+        disabled={disabled}
         onClick={() => (ouverte ? fermer() : ouvrir(indexActifRecherche(visibles, recherche, valeur)))}
         onKeyDown={auClavier}
       >
-        <span className="min-w-0 truncate">{affiche}</span>
+        {/* **`w-0 flex-1`, et pas seulement `truncate`** : un texte tronqué garde sa largeur entière comme
+            largeur minimale, et une piste de grille `auto` (la liste des ateliers, deux colonnes sur grand
+            écran) s'élargissait à la longueur du nom de séance le plus long — la carte sortait de l'écran
+            d'un téléphone et la page défilait de côté. Une largeur de base nulle rend la liste aussi
+            étroite que sa place, et c'est la troncature qui fait le reste. */}
+        <span className="w-0 min-w-0 flex-1 truncate">{affiche}</span>
         <Icone nom="chevronBas" taille={16} className="text-texte-secondaire" />
       </button>
-      {ouverte && (
+      {ouverte && !disabled && (
         // `top-full` : sous le déclencheur, toujours. Largeur = celle du déclencheur, jamais plus :
         // un panneau plus large déborderait de l'écran sur la dernière colonne de la grille.
         <div className="absolute inset-x-0 top-full z-20 mt-1 rounded-xl border border-bordure bg-surface text-texte shadow-carte">

@@ -2,6 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { definirRoleMembre } from "@/actions/membres";
+import { ListeDeroulante, type EntreeListe } from "@/components/ui/ListeDeroulante";
+
+/** Les deux rôles de base, dans l'ordre où la liste les a toujours montrés. */
+const ENTREES_ROLE: EntreeListe[] = [
+  { valeur: "MEMBRE", libelle: "Membre" },
+  { valeur: "INSTRUCTEUR", libelle: "Instructeur" },
+];
 
 /**
  * **Le rôle d'une personne, réglable depuis la liste** : membre ou instructeur, en un geste, sans
@@ -53,19 +60,27 @@ export function SelecteurRole({ userId, role, nom }: { userId: string; role: str
     setErreur(null);
   }
   return (
-    <span className="inline-flex flex-col gap-1">
-      <label className="sr-only" htmlFor={`role-${userId}`}>
+    // Un `div` et non plus un `span` : `ListeDeroulante` pose son propre `div` (le panneau s'ancre
+    // dessus), qui n'a rien à faire dans un élément de texte.
+    <div className="inline-flex flex-col gap-1">
+      <label id={`role-${userId}-libelle`} className="sr-only" htmlFor={`role-${userId}`}>
         Rôle de {nom}
       </label>
-      <select
+      {/* La liste du dépôt (`ListeDeroulante`), jamais un `<select>` nu : elle a la forme de sa
+          voisine du bureau (`SelecteurBureau`) et s'ouvre vers le bas même au pied de l'annuaire.
+          **Elle enregistre au choix, comme le `<select>` au `change`** — c'est la différence assumée
+          avec la liste de la barre de masse, qui attend son bouton. `onChoisir` est appelé même quand
+          on rechoisit l'entrée déjà affichée, ce que `change` ne faisait pas : on ne part donc au
+          serveur que pour un vrai changement, sans quoi une ouverture-fermeture enverrait une
+          écriture à blanc (que le serveur ignorerait, mais qui effacerait le refus affiché). */}
+      <ListeDeroulante
         id={`role-${userId}`}
-        /* 48 px et 16 px, comme la case à cocher de la même ligne : cette liste déroulante faisait
-            44 px avec un texte de 15 px, à côté d'une case qui venait de passer à 48 — deux cibles
-            voisines de deux tailles, dans un tableau où l'on descend ligne à ligne. */
-        className="min-h-12 rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte focus:border-primaire"
-        value={valeur}
-        onChange={(e) => {
-          const choix = e.target.value;
+        libelleId={`role-${userId}-libelle`}
+        libelle={`Rôle de ${nom}`}
+        valeur={valeur}
+        entrees={ENTREES_ROLE}
+        onChoisir={(choix) => {
+          if (choix === valeur) return;
           setValeur(choix);
           setErreur(null);
           start(async () => {
@@ -76,10 +91,11 @@ export function SelecteurRole({ userId, role, nom }: { userId: string; role: str
             }
           });
         }}
-      >
-        <option value="MEMBRE">Membre</option>
-        <option value="INSTRUCTEUR">Instructeur</option>
-      </select>
+        /* 48 px et 16 px, comme la case à cocher de la même ligne : cette liste déroulante faisait
+            44 px avec un texte de 15 px, à côté d'une case qui venait de passer à 48 — deux cibles
+            voisines de deux tailles, dans un tableau où l'on descend ligne à ligne. */
+        className="min-h-12 rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte focus:border-primaire"
+      />
       {/* **Le refus est annoncé, et il ne s'écrit pas en 12 px**. C'est le seul message de ce
           contrôle — la liste retombe sur l'ancien rôle sans autre explication —, et il était rendu
           conditionnellement, donc créé **en même temps que son texte** : une région vivante ajoutée
@@ -91,6 +107,6 @@ export function SelecteurRole({ userId, role, nom }: { userId: string; role: str
       <span className="text-base font-semibold text-rouge empty:hidden" aria-live="polite">
         {erreur ?? ""}
       </span>
-    </span>
+    </div>
   );
 }

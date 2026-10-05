@@ -406,26 +406,6 @@ export function libelleNiveau(valeur: string | null | undefined): string {
   return NIVEAU_LABELS[niveauAffiche(valeur) ?? NIVEAU_DEFAUT];
 }
 
-/** Thèmes proposés par défaut dans les cases du planning (liste modifiable dans Gestion → Réglages). */
-export const THEMES_DEFAUT = [
-  "Antrim Bata",
-  "Bauernwehr",
-  "Couteau",
-  "Dague",
-  "Dussack",
-  "Épée et bocle",
-  "Épée longue",
-  "Hache de pas",
-  "Lance",
-  "Lutte",
-  "Messer",
-  "Montante",
-  "Rapière",
-  "Sidesword",
-  "Sparring",
-  "Viking",
-] as const;
-
 export const THEME_MAX = 60;
 
 /*

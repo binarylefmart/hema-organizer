@@ -1,5 +1,5 @@
 import { Champ } from "@/components/ui/Champ";
-import { Select } from "@/components/ui/Select";
+import { ChampListe } from "@/components/ui/ChampListe";
 import { ZoneTexte } from "@/components/ui/ZoneTexte";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { formatDateCourte, formatHeure } from "@/lib/dates";
@@ -23,14 +23,17 @@ export function FormulaireAtelier({
       <Champ label="Titre" name="titre" defaultValue={valeurs?.titre} maxLength={80} placeholder="ex. Échauffement à la corde" />
       <ZoneTexte label="En quelques mots" name="description" defaultValue={valeurs?.description} maxLength={1500} rows={3} placeholder="Ce que tu proposes, comment ça se passe…" />
       <Champ label="Équipement nécessaire" name="materiel" defaultValue={valeurs?.materiel ?? ""} maxLength={300} placeholder="ex. masques, gants, cordes à sauter" />
-      <Select label="Séance souhaitée" name="sessionId" defaultValue={valeurs?.sessionId ?? ""}>
-        <option value="">Peu importe</option>
-        {seances.map((s) => (
-          <option key={s.id} value={s.id}>
-            {formatDateCourte(s.date)} · {formatHeure(s.heureDebut)} · {s.lieu}
-          </option>
-        ))}
-      </Select>
+      {/* La liste du dépôt, non pilotée : le champ caché `sessionId` poste l'identifiant de la
+          séance, ou la chaîne vide pour « Peu importe » — ce que lit l'action, comme avant. */}
+      <ChampListe
+        label="Séance souhaitée"
+        name="sessionId"
+        valeur={valeurs?.sessionId ?? ""}
+        entrees={[
+          { valeur: "", libelle: "Peu importe" },
+          ...seances.map((s) => ({ valeur: s.id, libelle: `${formatDateCourte(s.date)} · ${formatHeure(s.heureDebut)} · ${s.lieu}` })),
+        ]}
+      />
     </FormulaireAction>
   );
 }

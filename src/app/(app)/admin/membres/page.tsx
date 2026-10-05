@@ -12,7 +12,7 @@ import { Pastille, PastillePersonne } from "@/components/ui/Pastille";
 import { Champ } from "@/components/ui/Champ";
 import { GestesProposes, type GestePret } from "@/components/ui/GestesProposes";
 import { renvoyerTousLesLiens } from "@/actions/periodes";
-import { Select } from "@/components/ui/Select";
+import { ChampListe } from "@/components/ui/ChampListe";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { Volet } from "@/components/ui/Volet";
 import { LienBouton } from "@/components/ui/Bouton";
@@ -874,13 +874,23 @@ export default async function PageMembres({ searchParams }: Props) {
                 autoComplete="off"
                 aide="Sans adresse, ce membre n'aura pas de lien personnel : l'équipe cochera sa présence pour lui."
               />
-              <Select label="Rôle" name="role" defaultValue="MEMBRE">
-                <option value="MEMBRE">Membre</option>
-                <option value="INSTRUCTEUR">Instructeur</option>
-                {/* Pas d'« Administrateur » ici : un compte d'administration se crée (ou se nomme
-                    parmi les personnes déjà là) dans l'onglet « Comptes admin », avec ce qu'il faut
-                    sous les yeux — qui les a, leur double authentification, le journal. */}
-              </Select>
+              {/* Pas d'« Administrateur » ici : un compte d'administration se crée (ou se nomme
+                  parmi les personnes déjà là) dans l'onglet « Comptes admin », avec ce qu'il faut
+                  sous les yeux — qui les a, leur double authentification, le journal.
+                  La liste du dépôt (`ChampListe`), plus la liste native de `Select` : son champ caché
+                  porte `role` dans le `FormData` exactement comme le faisait le `<select>`. L'`id`
+                  est explicite parce que `role` tout court est un identifiant trop banal pour une
+                  page qui en pose un par ligne (`role-<id>`, `SelecteurRole`). */}
+              <ChampListe
+                label="Rôle"
+                name="role"
+                id="nouveau-membre-role"
+                valeur="MEMBRE"
+                entrees={[
+                  { valeur: "MEMBRE", libelle: "Membre" },
+                  { valeur: "INSTRUCTEUR", libelle: "Instructeur" },
+                ]}
+              />
               <fieldset>
                 <legend className="mb-1 font-semibold">Inscrire aux périodes</legend>
                 {periodesOuvertes.length === 0 ? (

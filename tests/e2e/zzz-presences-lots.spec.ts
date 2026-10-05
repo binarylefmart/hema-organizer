@@ -70,6 +70,9 @@ test("corriger les réponses par lots : une seule réponse, une entrée de journ
    */
   const barre = page.getByRole("group", { name: "Modifier la réponse de plusieurs personnes à la fois" });
   await expect(barre).toHaveCount(0);
+  // Les cases n'existent qu'interrupteur « Sélection multiple » allumé : éteint, ni case ni phrase.
+  await expect(page.getByLabel(`Sélectionner les ${invites} personnes`)).toHaveCount(0);
+  await page.getByRole("switch", { name: /Sélection multiple/ }).check();
   await expect(page.getByText("Coche des lignes pour corriger plusieurs réponses à la fois")).toBeVisible();
 
   // 2. La case maîtresse **dit** ce qu'elle prend. Sous le seuil du repli et sans recherche, c'est
@@ -111,20 +114,18 @@ test("corriger les réponses par lots : une seule réponse, une entrée de journ
   const modifiees = Number((await message.innerText()).match(/^(\d+) réponses?/)?.[1] ?? "0");
   expect(modifiees, "la moitié du club au moins n'était pas déjà « Absent »").toBeGreaterThan(0);
 
-  // Toutes les lignes affichées portent la réponse du lot.
-  const reponses = page.locator('select[id^="presence-"]');
+  // Toutes les lignes affichées portent la réponse du lot. La liste de chaque ligne est celle du
+  // dépôt (`ListeDeroulante`) : un bouton `combobox` qui **écrit** la réponse choisie, pas un
+  // `<select>` dont on lirait `value` — on lit donc ce qu'il affiche, c'est-à-dire ce qu'on voit.
+  const reponses = page.locator('button[role="combobox"][id^="presence-"]');
   await expect(reponses).toHaveCount(invites);
-  for (const valeur of await reponses.evaluateAll((l) => l.map((s) => (s as HTMLSelectElement).value))) {
-    expect(valeur).toBe("ABSENT");
-  }
+  await expect(reponses).toHaveText(Array<string>(invites).fill("Absent"));
   // Et elles y sont **en base** : le rechargement complet est la seule preuve qui compte, l'écran
   // affichant d'abord ses corrections optimistes.
   await page.reload();
-  const apresRechargement = page.locator('select[id^="presence-"]');
+  const apresRechargement = page.locator('button[role="combobox"][id^="presence-"]');
   await expect(apresRechargement).toHaveCount(invites);
-  for (const valeur of await apresRechargement.evaluateAll((l) => l.map((s) => (s as HTMLSelectElement).value))) {
-    expect(valeur).toBe("ABSENT");
-  }
+  await expect(apresRechargement).toHaveText(Array<string>(invites).fill("Absent"));
 
   // 4. Une entrée de journal par personne réellement modifiée — ni une pour tout le lot, ni une par
   //    ligne cochée. Et sous le **même** mot que le geste unitaire.

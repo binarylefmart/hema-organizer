@@ -5,6 +5,7 @@ import { apercuDeLien } from "@/actions/liens";
 import type { FormState } from "@/lib/form";
 import { Bouton } from "@/components/ui/Bouton";
 import { Case, Champ, CLASSES_CONTROLE } from "@/components/ui/Champ";
+import { ChampListe } from "@/components/ui/ChampListe";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { Icone } from "@/components/ui/Icone";
 import { ZoneTexte } from "@/components/ui/ZoneTexte";
@@ -289,19 +290,21 @@ function ChampDuree({ nombre, unite }: { nombre?: number | null; unite?: string 
           aria-label="Durée : nombre"
           className={`${CLASSES_CONTROLE} w-24 shrink-0 border-bordure px-3`}
         />
-        <select
-          key={`duree-unite-${unite ?? "jour"}`}
-          name="dureeUnite"
-          defaultValue={unite ?? "jour"}
-          aria-label="Durée : unité"
-          className={`${CLASSES_CONTROLE} min-w-0 flex-1 border-bordure px-3`}
-        >
-          {UNITES_DUREE_CHOIX.map((u) => (
-            <option key={u.valeur} value={u.valeur}>
-              {u.libelle}
-            </option>
-          ))}
-        </select>
+        {/* L'unité passe par la liste du dépôt. Son libellé reste lu par les seuls lecteurs
+            d'écran (`libelleMasque`) : à l'œil, « Durée » au-dessus nomme déjà le couple. Non
+            pilotée, elle suit la valeur du serveur par son miroir — le rôle qu'avait la clé de
+            remontage de la liste native — et poste `dureeUnite` par son champ caché. L'enveloppe
+            reprend ce que portait le `<select>` : le reste de la ligne, sans déborder. */}
+        <div className="min-w-0 flex-1">
+          <ChampListe
+            label="Durée : unité"
+            libelleMasque
+            name="dureeUnite"
+            id="duree-unite"
+            valeur={unite ?? "jour"}
+            entrees={UNITES_DUREE_CHOIX.map((u) => ({ valeur: u.valeur, libelle: u.libelle }))}
+          />
+        </div>
       </div>
       <p className="text-sm text-texte-secondaire">Facultative. Laisse le nombre vide pour ne pas la préciser.</p>
     </div>

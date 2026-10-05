@@ -18,7 +18,7 @@ import {
   type PreferencesNotifications,
   type TypeNotification,
 } from "@/lib/notifications/preferences";
-import { CLASSES_CONTROLE } from "@/components/ui/Champ";
+import { ChampListe } from "@/components/ui/ChampListe";
 import { cleValeurServeur } from "@/components/ui/valeur-serveur";
 import { Icone } from "@/components/ui/Icone";
 import { lienCanal } from "./liens";
@@ -277,28 +277,28 @@ export function MatriceNotifications({ prefs, etats, volume }: { prefs: Preferen
                       n'avait pas atteint. */
                   className={`cellule-email ${etats.email.operationnel ? "" : "canal-non-configure"} mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 lg:mt-0`}
                 >
-                  <label htmlFor={`mode-${type}`} className="font-semibold">
+                  {/* **La liste du dépôt, et son libellé reste EN LIGNE.** `ChampListe` pose le sien
+                      au-dessus de la liste ; ici la ligne se lit « Envoi par email : [Par membre] »,
+                      donc le libellé de `ChampListe` est réservé aux lecteurs d'écran
+                      (`libelleMasque`) et celui qu'on voit est un simple texte, `aria-hidden` pour
+                      que la synthèse ne le lise pas deux fois.
+                      Non pilotée : son miroir du serveur reprend la valeur enregistrée après un
+                      « Enregistrer » (le rôle qu'avait la clé de remontage de la liste native), et
+                      son champ caché poste `champMode(type)` comme avant. La phrase d'aide
+                      ci-dessous reste reliée à la liste (`decritPar`), comme elle l'était à la liste
+                      native par `aria-describedby`. */}
+                  <span aria-hidden className="font-semibold">
                     Envoi par email :
-                  </label>
-                  <select
-                    // La valeur vient du serveur : la clé la suit, pour que le champ reparte de la
-                    // valeur enregistrée après un « Enregistrer » (voir `cleValeurServeur`).
-                    key={cleValeurServeur({ defaultValue: prefs.modes[type] })}
+                  </span>
+                  <ChampListe
+                    label="Envoi par email"
+                    libelleMasque
                     id={`mode-${type}`}
                     name={champMode(type)}
-                    defaultValue={prefs.modes[type]}
-                    className={`${CLASSES_CONTROLE} border-bordure px-3`}
-                    aria-describedby={`mode-${type}-aide`}
-                  >
-                    {/* Pas de parenthèse explicative : les deux étiquettes se comprennent seules,
-                        et la phrase d'aide juste dessous dit déjà le reste — avec des chiffres, ce
-                        qu'une parenthèse figée ne peut pas faire. */}
-                    {MODES_ENVOI.map((mode) => (
-                      <option key={mode} value={mode}>
-                        {LIBELLES_MODE[mode]}
-                      </option>
-                    ))}
-                  </select>
+                    valeur={prefs.modes[type]}
+                    decritPar={`mode-${type}-aide`}
+                    entrees={MODES_ENVOI.map((mode) => ({ valeur: mode, libelle: LIBELLES_MODE[mode] }))}
+                  />
                   {/* **Où se règle l'adresse, dit DANS la ligne**. Le renvoi existait en bas de
                       l'écran, après la liste entière des notifications : on choisit « Liste de
                       distribution » ici, et la seule question qui vient ensuite — *quelle* adresse

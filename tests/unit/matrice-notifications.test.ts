@@ -101,14 +101,17 @@ describe("le contrat serveur ne bouge pas d'un caractère", () => {
      * serveur. Sans elle, un second « Enregistrer » renvoie la valeur du chargement de la page.
      */
     expect(code).toContain("key={cleValeurServeur({ defaultChecked: coche })}");
-    expect(code).toContain("key={cleValeurServeur({ defaultValue: prefs.modes[type] })}");
+    // Le mode d'envoi passe par `ChampListe` : non piloté, il suit la valeur du serveur par son
+    // miroir (`vuDuServeur`), qui joue pour une liste le rôle de la clé de remontage.
+    expect(code).toContain("valeur={prefs.modes[type]}");
   });
 
   it("la matrice n'est écrite qu'une fois, et elle est partie de la page", () => {
     expect(code.match(/<table/g) ?? []).toHaveLength(1);
     expect(code.match(/champNotification\(/g) ?? []).toHaveLength(1);
     expect(code.match(/<CaseCouple/g) ?? []).toHaveLength(1);
-    expect(code.match(/<select/g) ?? []).toHaveLength(1);
+    expect(code.match(/<ChampListe/g) ?? []).toHaveLength(1);
+    expect(code).not.toMatch(/<select[\s>]/);
     // La page ne garde aucun morceau de matrice : deux endroits qui écrivent les mêmes champs, c'est
     // un jour sur deux où l'un des deux est oublié.
     const page = sansCommentaires(PAGE);

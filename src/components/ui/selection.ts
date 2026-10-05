@@ -112,6 +112,16 @@ export function barreDeMasseVisible(selection: ReadonlySet<string>): boolean {
 }
 
 /**
+ * **L'interrupteur « Sélection multiple »** (`InterrupteurSelection`) : ce que devient la sélection
+ * quand on le bascule. L'allumer ne coche rien ; l'éteindre **vide** le lot — des cases cachées ne
+ * gardent rien de coché, sinon la prochaine ouverture ferait réapparaître un lot oublié sous une barre
+ * qui écrit en base. Une fonction partagée, pour que les trois écrans de masse le fassent pareil.
+ */
+export function selectionApresInterrupteur(selection: ReadonlySet<string>, actif: boolean): ReadonlySet<string> {
+  return actif ? selection : new Set<string>();
+}
+
+/**
  * **La phrase qui dit ce que les cases permettent**, en une ligne, à côté d'elles.
  *
  * Elle remplace la barre inerte : même rôle (nommer le geste d'entrée avant qu'on l'ait deviné), un

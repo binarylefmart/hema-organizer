@@ -9,6 +9,7 @@ import { Carte } from "@/components/ui/Carte";
 import { Alerte } from "@/components/ui/Alerte";
 import { FormulaireSeance } from "@/components/gestion/FormulaireSeance";
 import { getLieux } from "@/lib/planning";
+import { horaireHabituel } from "@/lib/horaire-habituel";
 
 export const metadata: Metadata = { title: "Nouvelle séance" };
 
@@ -45,6 +46,8 @@ export default async function PageNouvelleSeance({ searchParams }: Props) {
     );
   }
   const c = p.creneaux[0];
+  // Sans créneau dans la période, l'horaire de la dernière séance du club — jamais une heure en dur.
+  const horaire = c ? { heureDebut: c.heureDebut, heureFin: c.heureFin } : await horaireHabituel();
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -60,12 +63,11 @@ export default async function PageNouvelleSeance({ searchParams }: Props) {
           valeurs={{
             periodId: p.id,
             date: todayIso(),
-            heureDebut: c?.heureDebut ?? "19:00",
-            heureFin: c?.heureFin ?? "21:00",
+            heureDebut: horaire.heureDebut,
+            heureFin: horaire.heureFin,
             lieu: c?.lieu ?? "",
             adresse: c?.adresse ?? "",
             theme: "",
-            alternative: "",
           }}
         />
       </Carte>

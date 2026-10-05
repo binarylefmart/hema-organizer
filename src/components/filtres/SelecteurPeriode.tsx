@@ -11,6 +11,7 @@ import {
   SITUATION_LABELS,
   type PeriodeOption,
 } from "./saisons";
+import { ListeDeroulante, type EntreeListe } from "@/components/ui/ListeDeroulante";
 import { Pastille } from "@/components/ui/Pastille";
 
 export type { PeriodeOption };
@@ -82,73 +83,64 @@ export function SelecteurPeriode({ periodes, valeur, base, params, aujourdHui, p
   // La saison suivant la plus récente déjà en base : c'est celle qu'on vient créer
   const saisonSuivante = saisons[0].saison + 1;
 
+  /*
+   * **Les listes du dépôt (`ListeDeroulante`), pilotées par l'URL.** Ce sélecteur n'a jamais marché
+   * sans JavaScript — choisir appelait déjà `router.push` —, rien ne retenait donc la liste native.
+   * La valeur affichée vient des props (la période de la page) et ne bouge qu'à la navigation : une
+   * entrée d'action (« Nouvelle saison… ») n'a plus à remettre la liste sur la valeur affichée, elle
+   * n'en a jamais changé. Les `<optgroup label="Ajouter">` deviennent le champ `groupe` des entrées.
+   */
+  const entreesSaison: EntreeListe[] = [
+    ...saisons.map((s) => ({ valeur: String(s.saison), libelle: s.libelle })),
+    ...(peutCreer ? [{ valeur: CREER_SAISON, libelle: `Nouvelle saison…${MENTION_ADMIN}`, groupe: "Ajouter" }] : []),
+  ];
+  const entreesPeriode: EntreeListe[] = [
+    ...groupe.periodes.map((p) => ({ valeur: p.id, libelle: `${p.nom}${suffixeStatut(p)}` })),
+    ...(peutCreer ? [{ valeur: CREER_PERIODE, libelle: `Nouvelle période…${MENTION_ADMIN}`, groupe: "Ajouter" }] : []),
+  ];
+
   return (
     <div className="flex flex-wrap items-end gap-3">
       <div className="flex min-w-32 flex-1 flex-col gap-1.5 sm:max-w-44">
-        <label htmlFor="selecteur-saison" className="font-semibold">
+        <label id="selecteur-saison-libelle" htmlFor="selecteur-saison" className="font-semibold">
           Saison
         </label>
-        <select
+        <ListeDeroulante
           id="selecteur-saison"
-          value={groupe.saison}
+          libelleId="selecteur-saison-libelle"
+          libelle="Saison"
+          valeur={String(groupe.saison)}
+          entrees={entreesSaison}
           disabled={pending}
-          onChange={(e) => {
-            if (e.target.value === CREER_SAISON) {
-              // Entrée d'action, pas une valeur : la liste revient sur la saison affichée
-              e.target.value = String(groupe.saison);
-              demarrer(() => router.push(`${CREATION}?saison=${saisonSuivante}&trimestre=1`));
-              return;
-            }
-            changerSaison(e.target.value);
+          onChoisir={(v) => {
+            // Entrée d'action, pas une valeur : on part créer, la liste garde la saison affichée
+            if (v === CREER_SAISON) demarrer(() => router.push(`${CREATION}?saison=${saisonSuivante}&trimestre=1`));
+            else changerSaison(v);
           }}
           className={CLASSE_LISTE}
-        >
-          {saisons.map((s) => (
-            <option key={s.saison} value={s.saison}>
-              {s.libelle}
-            </option>
-          ))}
-          {peutCreer && (
-            <optgroup label="Ajouter">
-              <option value={CREER_SAISON}>Nouvelle saison…{MENTION_ADMIN}</option>
-            </optgroup>
-          )}
-        </select>
+        />
       </div>
       <div className="flex min-w-48 flex-1 flex-col gap-1.5 sm:max-w-72">
         <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="selecteur-periode" className="font-semibold">
+          <label id="selecteur-periode-libelle" htmlFor="selecteur-periode" className="font-semibold">
             Période
           </label>
           <Pastille ton={situation === "en-cours" ? "vert" : situation === "a-venir" ? "primaire" : "neutre"}>{SITUATION_LABELS[situation]}</Pastille>
         </div>
-        <select
+        <ListeDeroulante
           id="selecteur-periode"
-          value={choisie.id}
+          libelleId="selecteur-periode-libelle"
+          libelle="Période"
+          valeur={choisie.id}
+          entrees={entreesPeriode}
           disabled={pending}
-          onChange={(e) => {
-            if (e.target.value === CREER_PERIODE) {
-              // Entrée d'action, pas une valeur : la liste revient sur la période affichée
-              e.target.value = choisie.id;
-              demarrer(() => router.push(`${CREATION}?saison=${groupe.saison}`));
-              return;
-            }
-            ouvrir(e.target.value);
+          onChoisir={(v) => {
+            // Entrée d'action, pas une valeur : on part créer, la liste garde la période affichée
+            if (v === CREER_PERIODE) demarrer(() => router.push(`${CREATION}?saison=${groupe.saison}`));
+            else if (v !== choisie.id) ouvrir(v);
           }}
           className={CLASSE_LISTE}
-        >
-          {groupe.periodes.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nom}
-              {suffixeStatut(p)}
-            </option>
-          ))}
-          {peutCreer && (
-            <optgroup label="Ajouter">
-              <option value={CREER_PERIODE}>Nouvelle période…{MENTION_ADMIN}</option>
-            </optgroup>
-          )}
-        </select>
+        />
       </div>
     </div>
   );

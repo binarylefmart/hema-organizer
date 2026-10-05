@@ -112,7 +112,10 @@ describe("cleValeurServeur", () => {
 
 describe("les briques de saisie portent la clé", () => {
   // Toutes les briques passent par `cleValeurServeur` : corriger là, c'est corriger tous les écrans.
-  const briques = ["src/components/ui/Champ.tsx", "src/components/ui/Select.tsx", "src/components/ui/ZoneTexte.tsx"];
+  // `Select` n'en est plus : la liste native a cédé la place à `ChampListe`, dont l'état est piloté
+  // par React et suit le serveur par son miroir (`vuDuServeur`) — l'autre moitié de la doctrine,
+  // gardée par `etat-seme-par-le-serveur.test.ts`.
+  const briques = ["src/components/ui/Champ.tsx", "src/components/ui/ZoneTexte.tsx"];
   for (const fichier of briques) {
     it(`${path.basename(fichier)} : la clé est sur le contrôle, pas sur le formulaire`, () => {
       const source = ts.createSourceFile(fichier, lire(fichier), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);

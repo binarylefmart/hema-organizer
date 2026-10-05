@@ -8,10 +8,12 @@ import { assertPermission, exigerReauth, requireUser } from "@/lib/auth/current-
 import { indiquerPresence } from "@/actions/presences";
 import { champ, zodToFormState, type FormState } from "@/lib/form";
 import { ecritureFermee, REFUS_PERIODE_CLOSE } from "@/lib/constants";
-import { annulationSchema, seanceSchema, themeSchema } from "@/lib/validation/gestion";
+import { annulationSchema, seancesEnMasseSchema, seanceSchema, themeSchema } from "@/lib/validation/gestion";
 import { notifierAnnulation, phraseAnnulation, porteurJetonAnnulation } from "@/lib/notifications/seances";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
 import { partiesInitiales } from "@/lib/planning";
+import { formatDateSansAnnee, seanceCommencee } from "@/lib/dates";
+import { seanceAnnulable, seanceRetablissable } from "@/components/seances/gestes-seance";
 
 function rafraichir(sessionId?: string) {
   revalidatePath("/seances");
@@ -39,14 +41,17 @@ function rafraichir(sessionId?: string) {
  * `src/lib/constants.ts` (`ecritureFermee`, `REFUS_PERIODE_CLOSE`), lue par les quatre appelants.
  */
 
+const SEANCE_INTROUVABLE = "Séance introuvable.";
+
 async function seancePourEcriture(sessionId: string) {
   const seance = await db.session.findUnique({
     where: { id: sessionId },
     // `annulee` et `motifAnnulation` : `annulerSeance` doit savoir si le cours l'est **déjà**, pour ne
     // pas réannoncer (voir son commentaire).
-    select: { id: true, periodId: true, date: true, annulee: true, motifAnnulation: true, period: { select: { statut: true } } },
+    // `heureDebut` : une séance commencée ne s'annule ni ne se rétablit (`seanceAnnulable`).
+    select: { id: true, periodId: true, date: true, heureDebut: true, lieu: true, adresse: true, heureFin: true, annulee: true, motifAnnulation: true, period: { select: { statut: true } } },
   });
-  if (!seance) return { erreur: "Séance introuvable." } as const;
+  if (!seance) return { erreur: SEANCE_INTROUVABLE } as const;
   if (ecritureFermee(seance.period.statut)) return { erreur: REFUS_PERIODE_CLOSE.seance } as const;
   return { seance } as const;
 }
@@ -64,6 +69,41 @@ async function periodePourEcriture(periodId: string) {
   return {} as const;
 }
 
+/**
+ * **Le refus d'un geste sur une séance commencée**, dans les mots de ce geste.
+ *
+ * L'écran ne proposait déjà ni l'un ni l'autre sur un cours commencé (`gestesSeance`) — mais l'écran
+ * n'est pas la garde : `annulerSeance` est une route ouverte, et un appel forgé faisait partir
+ * l'annonce d'annulation d'un cours pendant qu'il se donnait. La règle est **celle de l'écran**
+ * (`seanceAnnulable`, `seanceRetablissable`), lue ici et non recopiée ; le geste de masse s'en sert
+ * pareil, sans quoi le lot aurait eu une serrure que la séance seule n'avait pas.
+ */
+const REFUS_COMMENCEE = {
+  annuler: "Ce cours a déjà commencé : on ne l'annonce plus annulé à des gens qui sont dans la salle.",
+  retablir: "Ce cours a déjà commencé : il ne redevient pas un cours prévu.",
+} as const;
+
+function commencee(seance: { date: string; heureDebut: string }): boolean {
+  return seanceCommencee(seance.date, seance.heureDebut);
+}
+
+/**
+ * **Détacher les ateliers d'une séance qu'on efface** — l'unique écriture de cette règle dans le
+ * module, pour la séance seule comme pour un lot. Voir `supprimerSeance` pour le pourquoi : un atelier
+ * planifié sur une séance disparue repasse « en attente », les autres sont détachés explicitement,
+ * sans compter sur le `SetNull` de la base.
+ *
+ * Elle rend les deux écritures **sans les lancer** : c'est l'appelant qui les range dans sa
+ * transaction, avec l'effacement lui-même — que le balayage des gardes veut lire dans le corps de
+ * l'action exportée, pas dans un utilitaire.
+ */
+function detacherAteliers(sessionId: string | { in: string[] }) {
+  return [
+    db.atelier.updateMany({ where: { sessionId, statut: "PLANIFIE" }, data: { statut: "PROPOSE", sessionId: null } }),
+    db.atelier.updateMany({ where: { sessionId }, data: { sessionId: null } }),
+  ];
+}
+
 function lireSeance(fd: FormData) {
   return seanceSchema.safeParse({
     periodId: champ(fd, "periodId"),
@@ -73,7 +113,6 @@ function lireSeance(fd: FormData) {
     lieu: champ(fd, "lieu"),
     adresse: champ(fd, "adresse"),
     theme: champ(fd, "theme"),
-    alternative: champ(fd, "alternative"),
   });
 }
 
@@ -144,8 +183,14 @@ export async function modifierSeance(sessionId: string, _prev: FormState, fd: Fo
   return { succes: "Séance enregistrée." };
 }
 
-/** Autosave du thème et de l'alternative (appelé à la perte de focus). */
-export async function enregistrerTheme(input: { sessionId: string; theme: string; alternative: string }): Promise<FormState> {
+/**
+ * Autosave du thème détaillé (appelé à la perte de focus).
+ *
+ * **L'alternative ne se saisit plus** : les options et cours ajoutés au planning de la séance disent
+ * mieux « ce qu'on fait si… ». La colonne reste en base, sans éditeur ni écriture : la retirer
+ * demanderait une migration et toucherait l'API publique, le partage et les notifications.
+ */
+export async function enregistrerTheme(input: { sessionId: string; theme: string }): Promise<FormState> {
   const user = await assertPermission("sessions.manage");
   const parsed = themeSchema.safeParse(input);
   if (!parsed.success) return zodToFormState(parsed.error);
@@ -200,6 +245,9 @@ export async function annulerSeance(_prev: FormState, fd: FormData): Promise<For
     rafraichir(parsed.data.sessionId);
     return { succes: "Motif d'annulation corrigé. Personne n'est prévenu à nouveau : l'annonce est déjà partie." };
   }
+  // Après la correction du motif, qui n'annonce rien : seule la **première** annonce est refusée sur un
+  // cours commencé.
+  if (!seanceAnnulable({ annulee: false, passee: commencee(ouverte.seance) })) return { erreur: REFUS_COMMENCEE.annuler };
   await db.session.update({ where: { id: parsed.data.sessionId }, data: { annulee: true, motifAnnulation: parsed.data.motif } });
   await audit(user, "seance.annulee", parsed.data.sessionId, { motif: parsed.data.motif });
   const prevenus = await notifierAnnulation(parsed.data.sessionId);
@@ -252,6 +300,9 @@ export async function retablirSeance(sessionId: string): Promise<void> {
   // du bureau, tracé, plutôt qu'une réécriture discrète depuis la fiche d'une séance.
   const ouverte = await seancePourEcriture(sessionId);
   if (ouverte.erreur) throw new Error(ouverte.erreur);
+  // Une séance déjà debout n'a rien à rétablir : la garde ne regarde que le cours commencé, comme
+  // l'écran — rétablir une séance non annulée ne change rien d'autre que son `updatedAt`.
+  if (ouverte.seance.annulee && !seanceRetablissable({ annulee: true, passee: commencee(ouverte.seance) })) throw new Error(REFUS_COMMENCEE.retablir);
   // Rétablir rouvre le droit d'annuler par lien : la décision est prise en conscience, dans
   // l'application, par quelqu'un qui a le droit d'annuler lui-même (voir `annulerDepuisEmail`).
   await db.session.update({ where: { id: sessionId }, data: { annulee: false, motifAnnulation: null, annulationLienUtiliseLe: null } });
@@ -296,14 +347,195 @@ export async function supprimerSeance(sessionId: string): Promise<void> {
   const s = ouverte.seance;
   await exigerReauth(user, `/seances/${sessionId}`);
   const reponses = await db.attendance.count({ where: { sessionId } });
-  await db.$transaction([
-    db.atelier.updateMany({ where: { sessionId, statut: "PLANIFIE" }, data: { statut: "PROPOSE", sessionId: null } }),
-    db.atelier.updateMany({ where: { sessionId }, data: { sessionId: null } }),
-    db.session.delete({ where: { id: sessionId } }),
-  ]);
+  await db.$transaction([...detacherAteliers(sessionId), db.session.delete({ where: { id: sessionId } })]);
   await audit(user, "seance.supprimee", sessionId, { date: s.date, reponses });
   rafraichir();
   redirect("/seances");
+}
+
+/* ------------------------------------------------------------------ */
+/* Plusieurs séances à la fois                                         */
+/* ------------------------------------------------------------------ */
+
+export type ResultatSeancesEnMasse = { succes?: string; erreur?: string };
+
+/** « 1 séance », « 3 séances » — et l'accord qui suit (« annulée », « annulées »). */
+const seances = (n: number) => `${n} séance${n > 1 ? "s" : ""}`;
+const accord = (n: number) => (n > 1 ? "s" : "");
+
+/**
+ * **L'action journalisée est celle du geste unitaire** (`CLAUDE.md` : « un seul filtre du journal doit
+ * tout retrouver »). Un `seances.annulees_en_masse` obligerait à connaître deux noms d'action pour
+ * répondre à « qui a annulé le cours du 6 octobre ? ». Le lieu et l'horaire sont des morceaux de ce
+ * que `modifierSeance` écrit : ils en gardent l'action.
+ */
+const ACTION_AUDIT = {
+  annuler: "seance.annulee",
+  retablir: "seance.retablie",
+  lieu: "seance.modifiee",
+  horaire: "seance.modifiee",
+  supprimer: "seance.supprimee",
+} as const;
+
+/**
+ * **Annuler, rétablir, déplacer, changer l'horaire ou effacer plusieurs séances d'un coup**, depuis l'onglet
+ * Séances en mode modification (`SelectionSeances`).
+ *
+ * Une seule fonction pour les cinq, comme `appliquerGesteEnMasse` pour l'annuaire : leurs verrous sont
+ * les mêmes à une permission près, et les écrire cinq fois serait cinq occasions d'en oublier un.
+ *
+ * **Les verrous sont exactement ceux du geste unitaire, par appel des mêmes fonctions** — pas par
+ * recopie :
+ *
+ * - `sessions.manage` en plancher, avant de lire l'entrée (celui d'`annulerSeance`, `retablirSeance`,
+ *   `modifierSeance`) ; pour **supprimer**, `periods.manage` **et** `exigerReauth`, ceux de
+ *   `supprimerSeance` — effacer un lot de séances efface les réponses des membres, c'est le geste du
+ *   bureau, avec un code récent, aux trois portes du dépôt qui le font déjà ;
+ * - `seancePourEcriture` **séance par séance** : une séance d'un trimestre clos refuse le lot ;
+ * - `seanceAnnulable` / `seanceRetablissable` : un cours commencé ne s'annule ni ne se rétablit.
+ *
+ * **Tout ou rien.** Une seule séance refusée (trimestre clos, cours commencé, séance disparue depuis
+ * l'affichage) refuse le lot entier, et la nomme : ce sont les signes d'un écran périmé ou d'un appel
+ * forgé, et pour un geste qui prévient tout le club ou qui efface des réponses, un écran en retard sur
+ * la base n'est pas une base de décision. Ce qui porte **déjà** la valeur visée (une séance déjà
+ * annulée, déjà à ce lieu) n'est pas un refus : elle est comptée à part, ni réécrite ni journalisée —
+ * et surtout **pas réannoncée** (voir `annulerSeance`, « une séance déjà annulée ne se réannonce pas »).
+ *
+ * **Une écriture groupée, dans une transaction, puis une entrée de journal par séance** réellement
+ * modifiée, sous la même action que l'unitaire, après le commit et hors transaction (`audit` ne lève
+ * pas, et une annulation ne doit pas tomber parce que sa trace a échoué). `enMasse: true` dit d'où
+ * venait le geste.
+ *
+ * **Les notifications : celles du geste unitaire, et pas une de plus.** Rétablir, déplacer,
+ * changer l'horaire et effacer n'envoient rien à l'unité — rien ne part ici non plus. **Annuler**, si : chaque
+ * séance annulée prévient ses invités et les salons du club, exactement comme une annulation faite
+ * séance par séance (`notifierAnnulation`, avec sa déduplication). Ce n'est pas la notification d'une
+ * écriture multipliée par la taille du lot — l'annonce **est** le geste demandé, comme « Renvoyer le
+ * lien » en masse à l'annuaire ; l'écran le dit donc avant, et sa confirmation annonce **combien
+ * d'annonces partent** (une par séance annulée, pas une par case cochée : une séance déjà annulée du
+ * lot n'en refait pas partir).
+ */
+export async function appliquerGesteSeancesEnMasse(entree: unknown): Promise<ResultatSeancesEnMasse> {
+  const acteur = await assertPermission("sessions.manage");
+  const lu = seancesEnMasseSchema.safeParse(entree);
+  if (!lu.success) {
+    // Le seul refus de forme qu'un écran honnête peut produire est l'horaire à l'envers : on le dit.
+    // Le reste vient d'un appel forgé, et n'a pas besoin de détail.
+    const fin = lu.error.issues.find((i) => i.path[0] === "heureFin");
+    return { erreur: fin ? fin.message : "Sélection invalide : coche des séances, puis choisis le geste." };
+  }
+  const demande = lu.data;
+  const geste = demande.geste;
+  // Effacer des réponses de membres appartient au bureau : la serrure de `supprimerSeance`.
+  if (geste === "supprimer") await assertPermission("periods.manage");
+
+  /*
+   * **La garde de la séance seule, appelée pour chaque séance du lot** — la même fonction, donc le
+   * même refus (trimestre clos) dans les mêmes mots. Puis la règle du cours commencé, pour les deux
+   * gestes qu'elle concerne.
+   */
+  const lues: Array<NonNullable<Awaited<ReturnType<typeof seancePourEcriture>>["seance"]>> = [];
+  const refus: string[] = [];
+  let introuvables = 0;
+  for (const id of demande.sessionIds) {
+    const ouverte = await seancePourEcriture(id);
+    if (ouverte.erreur) {
+      if (ouverte.erreur === SEANCE_INTROUVABLE) introuvables += 1;
+      else refus.push(ouverte.erreur);
+      continue;
+    }
+    const s = ouverte.seance;
+    const passee = commencee(s);
+    if (geste === "annuler" && !s.annulee && !seanceAnnulable({ annulee: false, passee })) refus.push(`${formatDateSansAnnee(s.date)} : ${REFUS_COMMENCEE.annuler}`);
+    else if (geste === "retablir" && s.annulee && !seanceRetablissable({ annulee: true, passee })) refus.push(`${formatDateSansAnnee(s.date)} : ${REFUS_COMMENCEE.retablir}`);
+    lues.push(s);
+  }
+  if (refus.length > 0 || introuvables > 0) {
+    const phrases = ["Rien n'a été écrit : le lot entier est refusé."];
+    // Le refus du trimestre clos est le même pour chaque séance : il se dit une fois.
+    phrases.push(...new Set(refus));
+    if (introuvables > 0) {
+      phrases.push(
+        introuvables === 1
+          ? "1 séance de la sélection est introuvable : elle a été effacée depuis l'affichage de la liste. Recharge l'écran."
+          : `${introuvables} séances de la sélection sont introuvables : elles ont été effacées depuis l'affichage de la liste. Recharge l'écran.`,
+      );
+    }
+    return { erreur: phrases.join(" ") };
+  }
+
+  // L'ordre du journal et des annonces est celui du calendrier, jamais celui des clics.
+  lues.sort((a, b) => (a.date === b.date ? a.heureDebut.localeCompare(b.heureDebut) : a.date.localeCompare(b.date)));
+
+  /*
+   * **Seules les séances qui changent vraiment sont écrites, et journalisées** : `updatedAt` est un
+   * `@updatedAt`, et les clés de déduplication des annonces d'annulation le portent. Une suppression
+   * n'a pas de « déjà fait ».
+   */
+  const aEcrire = lues.filter((s) => {
+    if (geste === "annuler") return !s.annulee;
+    if (geste === "retablir") return s.annulee;
+    if (geste === "lieu") return s.lieu !== demande.lieu || s.adresse !== demande.adresse;
+    if (geste === "horaire") return s.heureDebut !== demande.heureDebut || s.heureFin !== demande.heureFin;
+    return true;
+  });
+  const dejas = lues.length - aEcrire.length;
+  if (aEcrire.length === 0) {
+    // Rien à écrire : rien ne part, et inutile de redemander un code pour un enregistrement à blanc.
+    const deja = { annuler: "déjà annulée", retablir: "déjà prévue", lieu: "déjà à ce lieu", horaire: "déjà à cet horaire", supprimer: "" }[geste];
+    return { succes: `Aucun changement : la sélection était ${deja}${lues.length > 1 ? " pour chaque séance" : ""}.` };
+  }
+  const ids = aEcrire.map((s) => s.id);
+
+  if (demande.geste === "supprimer") {
+    // Le code récent est redemandé **avant** d'effacer : après, il n'y aurait plus rien à protéger.
+    await exigerReauth(acteur, "/seances?modifier=1");
+    // Le décompte des réponses perdues, séance par séance : c'est la seule trace qui restera.
+    const reponses = new Map<string, number>();
+    for (const id of ids) reponses.set(id, await db.attendance.count({ where: { sessionId: id } }));
+    await db.$transaction([...detacherAteliers({ in: ids }), db.session.deleteMany({ where: { id: { in: ids } } })]);
+    for (const s of aEcrire) await audit(acteur, ACTION_AUDIT.supprimer, s.id, { date: s.date, reponses: reponses.get(s.id) ?? 0, enMasse: true });
+    rafraichir();
+    const perdues = [...reponses.values()].reduce((a, b) => a + b, 0);
+    return { succes: `${seances(ids.length)} supprimée${accord(ids.length)} définitivement, avec ${perdues} réponse${accord(perdues)} de membres.` };
+  }
+
+  if (demande.geste === "annuler") {
+    await db.$transaction([db.session.updateMany({ where: { id: { in: ids } }, data: { annulee: true, motifAnnulation: demande.motif } })]);
+    for (const s of aEcrire) await audit(acteur, ACTION_AUDIT.annuler, s.id, { motif: demande.motif, enMasse: true });
+    // Une annonce par séance, après le commit : celle que le geste unitaire envoie, avec sa
+    // déduplication. En série, comme les envois du dépôt — la file d'emails fait le reste.
+    let messages = 0;
+    for (const s of aEcrire) messages += await notifierAnnulation(s.id);
+    rafraichir();
+    const phrases = [`${seances(ids.length)} annulée${accord(ids.length)} : ${ids.length} annonce${accord(ids.length)} d'annulation (${messages} email${accord(messages)}, et les salons du club selon leurs réglages).`];
+    if (dejas > 0) phrases.push(`${seances(dejas)} ${dejas > 1 ? "étaient" : "était"} déjà annulée${accord(dejas)} : personne n'est prévenu à nouveau.`);
+    return { succes: phrases.join(" ") };
+  }
+
+  if (demande.geste === "retablir") {
+    // Comme `retablirSeance` : rétablir rouvre aussi le droit d'annuler par lien.
+    await db.$transaction([db.session.updateMany({ where: { id: { in: ids } }, data: { annulee: false, motifAnnulation: null, annulationLienUtiliseLe: null } })]);
+    for (const s of aEcrire) await audit(acteur, ACTION_AUDIT.retablir, s.id, { enMasse: true });
+    rafraichir();
+    const phrases = [`${seances(ids.length)} rétablie${accord(ids.length)}.`];
+    if (dejas > 0) phrases.push(`${seances(dejas)} n'${dejas > 1 ? "étaient" : "était"} pas annulée${accord(dejas)}.`);
+    return { succes: phrases.join(" ") };
+  }
+
+  // Lieu ou horaire : deux morceaux de ce que `modifierSeance` écrit, journalisés sous son action.
+  const data = demande.geste === "lieu" ? { lieu: demande.lieu, adresse: demande.adresse } : { heureDebut: demande.heureDebut, heureFin: demande.heureFin };
+  await db.$transaction([db.session.updateMany({ where: { id: { in: ids } }, data })]);
+  for (const s of aEcrire) await audit(acteur, ACTION_AUDIT[demande.geste], s.id, { ...data, enMasse: true });
+  rafraichir();
+  const phrases = [
+    demande.geste === "lieu"
+      ? `${seances(ids.length)} déplacée${accord(ids.length)} à « ${demande.lieu} ».`
+      : `${seances(ids.length)} passée${accord(ids.length)} de ${demande.heureDebut} à ${demande.heureFin}.`,
+  ];
+  if (dejas > 0) phrases.push(`${seances(dejas)} y ${dejas > 1 ? "étaient" : "était"} déjà.`);
+  phrases.push("Personne n'est prévenu : c'est la règle de la séance modifiée seule.");
+  return { succes: phrases.join(" ") };
 }
 
 /**

@@ -70,7 +70,9 @@ describe("la barre d'action collante ne recouvre pas la barre d'onglets du tél�
     // Sans quoi les dernières lignes cochées ne sortent de dessous la barre qu'au tout dernier
     // pixel de défilement de la page. La réserve suit **la même condition que la barre**
     // (`barreDeMasseVisible`) : réserver la place d'une barre absente creuserait un trou.
-    expect(source(PRESENCES)).toMatch(/barreDeMasseVisible\(selection\) \? "pb-48 md:pb-0"/);
+    // `masseVisible` = interrupteur « Sélection multiple » allumé **et** `barreDeMasseVisible`.
+    expect(source(PRESENCES)).toContain("const masseVisible = interrupteur && barreDeMasseVisible(selection);");
+    expect(source(PRESENCES)).toMatch(/masseVisible \? "pb-48 md:pb-0"/);
   });
 });
 
@@ -164,7 +166,9 @@ describe("ce que la sélection annonce est dit, y compris la première fois", ()
   it("la barre des présences n'existe qu'avec une sélection, et la phrase du geste d'entrée vit près des cases", () => {
     const code = source(PRESENCES);
     // La condition d'existence est celle du module partagé, jamais un `selection.size > 0` recopié ici.
-    expect(code).toMatch(/\{barreDeMasseVisible\(selection\) \? \(\s*<div\s+role="group"/);
+    // Elle passe aussi par l'interrupteur « Sélection multiple » (`masseVisible`) : éteint, ni case ni barre.
+    expect(code).toContain("const masseVisible = interrupteur && barreDeMasseVisible(selection);");
+    expect(code).toMatch(/\{masseVisible \? \(\s*<div\s+role="group"/);
     expect(sansCommentaires(PRESENCES)).not.toMatch(/\{selection\.size > 0 \? \(\s*<div\s+role="group"/);
     // Les quatre réponses ne sont plus inertes que le temps d'une écriture : sans sélection, elles
     // ne sont plus là du tout.
@@ -172,7 +176,7 @@ describe("ce que la sélection annonce est dit, y compris la première fois", ()
     expect(sansCommentaires(PRESENCES)).not.toContain("!enLot");
     // Et la phrase qui nomme le geste d'entrée est rendue **quand la barre ne l'est pas**.
     expect(code).toContain("INVITE_SELECTION");
-    expect(code).toMatch(/\{!barreDeMasseVisible\(selection\) \? \(/);
+    expect(code).toMatch(/\{!masseVisible \? \(/);
   });
 
   it("le compteur « 20 sur 80 » des présences est monté avec ses boutons, pas avec son texte", () => {

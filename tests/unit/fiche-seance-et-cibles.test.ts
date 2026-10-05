@@ -159,34 +159,36 @@ describe("la fiche d'une séance n'édite pas le thème à deux endroits", () =>
 });
 
 describe("l'écran le dit comme le modèle : un seul éditeur, et l'autre poste", () => {
-  it("le formulaire ne montre thème et alternative qu'à la création", () => {
+  it("le formulaire ne montre le thème qu'à la création", () => {
     const code = source(FORMULAIRE_SEANCE);
     // Le fichier porte deux branches « création » : la période (qui se lit en texte après coup) et
-    // celle-ci, la dernière. C'est elle qui porte les deux champs.
+    // celle-ci, la dernière. C'est elle qui porte le champ.
     const creation = code.lastIndexOf("{creation ? (");
     const sinon = code.indexOf(") : (", creation);
     expect(creation).toBeGreaterThan(0);
     expect(sinon).toBeGreaterThan(creation);
-    // Les deux champs saisissables vivent dans cette branche, et nulle part ailleurs.
-    for (const nom of ["theme", "alternative"]) {
-      const position = code.indexOf(`name="${nom}" id="seance-${nom}"`);
-      expect(position, nom).toBeGreaterThan(creation);
-      expect(position, nom).toBeLessThan(sinon);
-      // Un seul champ de saisie par nom dans tout le fichier : deux en seraient deux éditeurs.
-      expect((code.match(new RegExp(`<Champ label=[^>]*name="${nom}"`, "g")) ?? []).length, nom).toBe(1);
+    const position = code.indexOf('name="theme" id="seance-theme"');
+    expect(position).toBeGreaterThan(creation);
+    expect(position).toBeLessThan(sinon);
+    // Un seul champ de saisie dans tout le fichier : deux en seraient deux éditeurs.
+    expect((code.match(/<Champ label=[^>]*name="theme"/g) ?? []).length).toBe(1);
+  });
+
+  it("l'alternative ne se saisit plus nulle part : les options et cours du planning la remplacent", () => {
+    for (const fichier of [FORMULAIRE_SEANCE, AUTOSAVE]) {
+      expect(source(fichier), fichier).not.toMatch(/name="alternative"/);
     }
   });
 
-  it("en modification, les deux valeurs sont postées par des champs pilotés — jamais par `defaultValue`", () => {
+  it("en modification, le thème est posté par un champ piloté — jamais par `defaultValue`", () => {
     const code = source(FORMULAIRE_SEANCE);
     expect(code).toContain('<input type="hidden" name="theme" value={valeurs.theme} />');
-    expect(code).toContain('<input type="hidden" name="alternative" value={valeurs.alternative} />');
     // `defaultValue` sur un champ caché serait le défaut d'origine déguisé : figé au montage, il
     // reposterait la valeur du chargement de la page par-dessus celle que l'autosave vient d'écrire.
     expect(code).not.toMatch(/type="hidden"[^>]*defaultValue/);
-    // Et le formulaire dit où ces deux champs se règlent : un formulaire muet sur ce qu'il ne montre
-    // plus se lit comme une régression.
-    expect(code).toMatch(/se règlent plus haut, dans « Programme »/);
+    // Et le formulaire dit où ce champ se règle : un formulaire muet sur ce qu'il ne montre plus se
+    // lit comme une régression.
+    expect(code).toMatch(/se règle plus haut, dans « Programme »/);
   });
 
   it("la fiche monte l'autosave une fois, et son formulaire est celui de la modification", () => {

@@ -837,15 +837,39 @@ function toutesLesScenes(): Scene[] {
       pleinePage: true,
     },
     { nom: "ateliers-membre", description: "Proposer un atelier : formulaire sans champ obligatoire, puis mes propositions", connexion: COMPTES.refuse, chemin: "/ateliers", pleinePage: true },
-    { nom: "seances-equipe", description: "Séances vues par l'encadrement : le même écran, avec « Modifier » et « Annuler » au pied des cartes", connexion: COMPTES.instructeur, chemin: "/seances" },
+    { nom: "seances-equipe", description: "Séances vues par l'encadrement : en lecture seule, avec « Modifier les séances »", connexion: COMPTES.instructeur, chemin: "/seances" },
+    {
+      nom: "seances-equipe-modif",
+      description: "Séances en mode modification : bandeau, « Terminer », et « Que veux-tu faire ? » au pied des cartes (ici : annuler, motif demandé)",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances?modifier=1",
+      avant: async (page) => {
+        const gestes = page.locator('[data-annulable="true"]').first();
+        await gestes.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
+        await page.getByRole("option", { name: "Annuler la séance" }).click();
+        await gestes.getByLabel(/Motif/).waitFor();
+      },
+      pleinePage: true,
+    },
     {
       nom: "gestion-seance",
-      description: "Gestion : une séance (autosave du thème, présences, annulation, modification)",
+      description: "Une séance en lecture seule : programme, thème et présences, bouton « Modifier la séance »",
       connexion: COMPTES.instructeur,
-      chemin: "/seances",
+      chemin: "/seances?modifier=1",
       avant: async (page) => {
-        const href = await page.getByRole("link", { name: "Modifier" }).first().getAttribute("href");
-        await allerA(page, `${BASE}${href}`);
+        const id = await page.locator("[data-geste-seance]").first().getAttribute("data-geste-seance");
+        await allerA(page, `${BASE}/seances/${id}`);
+      },
+      pleinePage: true,
+    },
+    {
+      nom: "gestion-seance-modif",
+      description: "Une séance en modification : le programme mène au planning, thème, présences, « Que veux-tu faire ? » et date/horaire/lieu",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances?modifier=1",
+      avant: async (page) => {
+        const id = await page.locator("[data-geste-seance]").first().getAttribute("data-geste-seance");
+        await allerA(page, `${BASE}/seances/${id}?modifier=1`);
       },
       pleinePage: true,
     },
@@ -854,13 +878,13 @@ function toutesLesScenes(): Scene[] {
       description: "Gestion d'une séance : le bureau corrige la réponse de n'importe qui, même après le cours",
       connexion: COMPTES.admin,
       // Bascule « Passé » : on ouvre une séance déjà donnée, là où la correction du registre a posteriori prend son sens
-      chemin: "/seances?quand=passe",
+      chemin: "/seances?quand=passe&modifier=1",
       avant: async (page) => {
-        const href = await page.getByRole("link", { name: "Modifier" }).first().getAttribute("href");
-        await allerA(page, `${BASE}${href}`);
+        const id = await page.locator("[data-geste-seance]").first().getAttribute("data-geste-seance");
+        await allerA(page, `${BASE}/seances/${id}?modifier=1`);
         // La liste éditable est repliée par défaut (comme « Qui était là ? ») : on la déplie pour la photographier
         await page.locator("summary", { hasText: "Modifier les réponses" }).click();
-        await page.locator('select[id^="presence-"]').first().waitFor();
+        await page.locator('button[role="combobox"][id^="presence-"]').first().waitFor();
         // Capture au cadre de la carte « Présences » plutôt qu'en pleine page : c'est elle que la scène montre
         await page.getByRole("heading", { name: "Présences", exact: true }).evaluate((el) => el.scrollIntoView({ block: "start" }));
       },
@@ -886,7 +910,7 @@ function toutesLesScenes(): Scene[] {
       chemin: "/admin/presences",
       avant: async (page) => {
         // La liste des invités s'ouvre dépliée sur cet écran : on attend qu'elle soit là pour la photographier
-        await page.locator('select[id^="presence-"]').first().waitFor();
+        await page.locator('button[role="combobox"][id^="presence-"]').first().waitFor();
       },
       pleinePage: true,
     },
@@ -905,7 +929,7 @@ function toutesLesScenes(): Scene[] {
       connexion: COMPTES.admin,
       chemin: "/admin/presences",
       avant: async (page) => {
-        await page.locator('select[id^="presence-"]').first().waitFor();
+        await page.locator('button[role="combobox"][id^="presence-"]').first().waitFor();
         // Les cases de ligne sont dans les `<li>` de la liste ; la case maîtresse, elle, est au-dessus
         // dans un `<div>` — on ne la coche pas, sinon la barre annonce « les 12 personnes » et l'image
         // ne montre plus le geste courant (« j'en coche trois »).

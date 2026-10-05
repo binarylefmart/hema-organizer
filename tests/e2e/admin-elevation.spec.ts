@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { connecter, COMPTES } from "./helpers";
+import { GRACE_SORTIE_ELEVATION_MS } from "../../src/lib/constants";
 
 /**
  * **L'espace admin se referme tout seul.**
@@ -47,8 +48,9 @@ test("quitter l'application referme l'espace admin, mais changer de page ne le r
   const apresRetour = await db.authSession.findFirst({ where: { userId: compte.id }, orderBy: { lastSeenAt: "desc" } });
   expect(apresRetour?.elevationSortieLe).toBeNull();
 
-  // Partie pour de bon : la sortie dépasse la grâce, et l'élévation tombe.
-  await db.authSession.updateMany({ where: { userId: compte.id }, data: { elevationSortieLe: new Date(Date.now() - 3 * 60 * 1000) } });
+  // Partie pour de bon : la sortie dépasse la grâce (dix minutes depuis `a429ccf`, deux avant — le
+  // test en simulait trois), et l'élévation tombe.
+  await db.authSession.updateMany({ where: { userId: compte.id }, data: { elevationSortieLe: new Date(Date.now() - GRACE_SORTIE_ELEVATION_MS - 60 * 1000) } });
   await page.goto("/admin/comptes");
   /*
    * **L'accueil, et non `/connexion/admin`**. Une élévation qui tombe toute seule n'est pas

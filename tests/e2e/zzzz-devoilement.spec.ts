@@ -49,7 +49,8 @@ test("une longue liste de personnes se dévoile vingt par vingt, avec son compte
   const total = Number((await poignee.innerText()).match(/\((\d+)\)/)?.[1] ?? "0");
   expect(total, "le jeu « grand club » invite bien plus de vingt personnes").toBeGreaterThan(20);
 
-  const lignes = page.locator('select[id^="presence-"]');
+  // Une ligne = une liste de réponse (`ListeDeroulante`, un bouton `combobox`, plus un `<select>`).
+  const lignes = page.locator('button[role="combobox"][id^="presence-"]');
   const compteur = page.getByText(new RegExp(`^\\d+ sur ${total}$`));
 
   // ---- À l'ouverture : vingt lignes, un compteur, et un bouton qui annonce la tranche suivante.
@@ -82,6 +83,8 @@ test("une longue liste de personnes se dévoile vingt par vingt, avec son compte
    * serait faux dans un sens ou dans l'autre. Ce qui reste dehors est compté et dit, et un second
    * bouton propose le geste qu'on voulait vraiment faire.
    */
+  // Les cases n'apparaissent qu'interrupteur « Sélection multiple » allumé.
+  await page.getByRole("switch", { name: /Sélection multiple/ }).check();
   await expect(page.getByLabel("Sélectionner les 20 lignes affichées")).toBeVisible();
   await expect(page.getByText(`${total - 20} autres lignes sont repliées : elles ne sont pas sélectionnées.`)).toBeVisible();
   const deplierEtSelectionner = page.getByRole("button", { name: `Afficher et sélectionner les ${total} personnes` });

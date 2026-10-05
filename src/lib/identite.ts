@@ -3,6 +3,7 @@ import { z } from "zod";
 import { estThemeConnu, THEME_DEFAUT, type ThemeId } from "./themes";
 import { ECU_LIVRE, LOGO_LIVRE, PART_EFFECTIF_LIVREE, SIGLE_LIVRE, SUFFIXE_LIVRE } from "./constants";
 import { CLES, getSetting, setSetting } from "./settings";
+import { FUSEAU_LIVRE, fuseauValide, poserFuseau } from "./fuseau";
 
 /**
  * **L'identité du club** : son nom, son sigle, son logo, sa palette, sa part minimale d'effectif. Tout ce
@@ -51,6 +52,7 @@ export const IDENTITE_LIVREE = {
   logoUrl: null,
   ecuUrl: null,
   partEffectifMin: PART_EFFECTIF_LIVREE,
+  fuseau: FUSEAU_LIVRE,
 } as const;
 
 /**
@@ -70,6 +72,7 @@ export type IdentiteReglee = {
   logoUrl?: string | null;
   ecuUrl?: string | null;
   partEffectifMin?: number;
+  fuseau?: string;
 };
 
 /** L'identité complète, telle que la lisent les écrans, les emails et les notifications. */
@@ -120,6 +123,12 @@ export type Identite = {
    * {@link PART_EFFECTIF_MIN} et {@link PART_EFFECTIF_MAX}, jamais `NaN`.
    */
   partEffectifMin: number;
+  /**
+   * **Le fuseau horaire du club** (identifiant IANA : « Europe/Paris », « America/Montreal »). Les
+   * heures des séances, « aujourd'hui », l'heure du récap et les tâches du matin s'y entendent. Réglé
+   * dans *Club* ; à défaut la variable `TZ` du déploiement ; à défaut Paris. Voir `src/lib/fuseau.ts`.
+   */
+  fuseau: string;
 };
 
 /**
@@ -189,6 +198,7 @@ const schemaReglee = z
     logoUrl: z.string().regex(URL_IMAGE_DEPOSEE).nullable(),
     ecuUrl: z.string().regex(URL_IMAGE_DEPOSEE).nullable(),
     partEffectifMin: z.number().int().min(PART_EFFECTIF_MIN).max(PART_EFFECTIF_MAX),
+    fuseau: z.string().refine(fuseauValide),
   })
   .partial();
 
@@ -200,7 +210,7 @@ const schemaReglee = z
  * c'était le vrai défaut de l'ancienne version, où trois constantes disaient trois fois le même
  * nom et pouvaient diverger à la première modification.
  */
-export function resoudreIdentite(reglee: IdentiteReglee | null | undefined, depuisEnv?: { club?: string; sigle?: string }): Identite {
+export function resoudreIdentite(reglee: IdentiteReglee | null | undefined, depuisEnv?: { club?: string; sigle?: string; fuseau?: string }): Identite {
   const r = reglee ?? {};
   // Un réglage vide en base (champ effacé) doit retomber sur l'environnement puis sur le livré :
   // d'où `||` et non `??`, la chaîne vide n'étant pas une réponse.
@@ -227,15 +237,18 @@ export function resoudreIdentite(reglee: IdentiteReglee | null | undefined, depu
     logoDepose: logoUrl !== null,
     ecuDepose: ecuUrl !== null,
     partEffectifMin: partUtilisable(r.partEffectifMin) ? r.partEffectifMin : IDENTITE_LIVREE.partEffectifMin,
+    fuseau: fuseauValide(r.fuseau) ? r.fuseau : fuseauValide(depuisEnv?.fuseau) ? depuisEnv.fuseau : IDENTITE_LIVREE.fuseau,
   };
 }
 
 /** Ce que l'environnement propose comme nom d'instance au premier démarrage. */
-function depuisEnv(): { club?: string; sigle?: string } {
+function depuisEnv(): { club?: string; sigle?: string; fuseau?: string } {
   // Lecture directe de `process.env` plutôt que `env()` : l'identité est lue par le manifeste et par
   // la mise en page racine, y compris sur les pages publiques, et une configuration incomplète ne
   // doit pas faire tomber l'écran d'accueil pour un nom de club.
-  return { club: process.env.CLUB_NOM?.trim(), sigle: process.env.CLUB_SIGLE?.trim() };
+  // `TZ` est la variable du compose de production : le fuseau de la machine devient celui du club tant
+  // que le bureau n'en a pas réglé un autre.
+  return { club: process.env.CLUB_NOM?.trim(), sigle: process.env.CLUB_SIGLE?.trim(), fuseau: process.env.TZ?.trim() };
 }
 
 /** Ce qui est écrit en base, nettoyé ; `{}` si rien n'est réglé ou si la valeur est illisible. */
@@ -259,6 +272,17 @@ export async function identiteReglee(): Promise<IdentiteReglee> {
 export const identite = cache(async (): Promise<Identite> => {
   return resoudreIdentite(await identiteReglee(), depuisEnv());
 });
+
+/**
+ * **Lit le fuseau du club et le pose côté serveur** (`poserFuseau`). Appelé au démarrage
+ * (`src/instrumentation.ts`), hors de toute requête : d'où la lecture directe, sans le cache de
+ * requête de `identite`.
+ */
+export async function appliquerFuseauDuClub(): Promise<string> {
+  const { fuseau } = resoudreIdentite(await identiteReglee(), depuisEnv());
+  poserFuseau(fuseau);
+  return fuseau;
+}
 
 /**
  * Enregistre un **changement partiel** : les champs absents gardent leur valeur.

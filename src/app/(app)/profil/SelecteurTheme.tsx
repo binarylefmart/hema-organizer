@@ -4,7 +4,8 @@ import { useEffect, useState, useTransition } from "react";
 import { choisirTheme } from "@/actions/profil";
 import { GROUPES_THEMES, lireChoixTheme, THEMES, valeurDuChoix, type ChoixTheme } from "@/lib/themes";
 import { Icone } from "@/components/ui/Icone";
-import { Select } from "@/components/ui/Select";
+import { ChampListe } from "@/components/ui/ChampListe";
+import type { EntreeListe } from "@/components/ui/ListeDeroulante";
 
 /** Pose le thème et son mode sur la page entière : les couleurs viennent de variables CSS, les attributs suffisent. */
 function peindre({ id, mode }: ChoixTheme) {
@@ -61,6 +62,17 @@ export function SelecteurTheme({ valeur }: { valeur: ChoixTheme }) {
   // Les pastilles montrent la palette du mode réellement affiché, sinon elles annoncent d'autres couleurs.
   const pastilles = (choix.mode ? choix.mode === "sombre" : sombre) ? theme.apercuSombre : theme.apercu;
 
+  /*
+   * Un thème qui suit encore l'appareil (celui du club, ou un choix d'avant la séparation) garde sa
+   * ligne, hors groupe et en tête, tant qu'il est le choix en cours : sans elle, la liste afficherait
+   * un autre thème que celui de l'écran. Les deux groupes (`<optgroup>` de la liste native) passent
+   * par le champ `groupe` des entrées.
+   */
+  const entrees: EntreeListe[] = [
+    ...(choix.mode ? [] : [{ valeur: choix.id, libelle: `${theme.nom} (suit l'appareil)` }]),
+    ...GROUPES_THEMES.flatMap((g) => g.choix.map((c) => ({ valeur: c.valeur, libelle: c.nom, groupe: g.libelle }))),
+  ];
+
   function changer(brut: string) {
     const nouveau = lireChoixTheme(brut);
     const precedent = choix;
@@ -102,28 +114,18 @@ export function SelecteurTheme({ valeur }: { valeur: ChoixTheme }) {
 
       <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-start">
         <div className="flex flex-col gap-1 @2xl:w-72">
-          <Select
+          {/* La liste du dépôt, pilotée : c'est `changer` qui peint la page avant même la réponse du
+              serveur, puis enregistre. Pas de `name` : aucun formulaire ne la poste, l'enregistrement
+              part du choix lui-même. */}
+          <ChampListe
             label="Thème de couleurs"
-            name="theme"
-            value={valeurDuChoix(choix)}
+            id="theme"
+            valeur={valeurDuChoix(choix)}
+            entrees={entrees}
             disabled={enCours}
-            onChange={(e) => changer(e.target.value)}
+            onChange={changer}
             className="min-h-11 w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-jauge disabled:opacity-60"
-          >
-            {/* Un thème qui suit encore l'appareil (celui du club, ou un choix d'avant la séparation)
-                garde sa ligne tant qu'il est le choix en cours : sans elle, la liste afficherait un
-                autre thème que celui de l'écran. */}
-            {!choix.mode && <option value={choix.id}>{theme.nom} (suit l&apos;appareil)</option>}
-            {GROUPES_THEMES.map((g) => (
-              <optgroup key={g.mode} label={g.libelle}>
-                {g.choix.map((c) => (
-                  <option key={c.valeur} value={c.valeur}>
-                    {c.nom}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </Select>
+          />
 
           {/* Zone d'état unique, toujours dans le DOM (sinon rien n'est annoncé) et de hauteur réservée :
               placée ici, sous la liste, elle ne creuse plus de vide au milieu de la carte et le texte qui

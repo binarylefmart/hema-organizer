@@ -22,7 +22,7 @@ import { lignesNotificationsMembre } from "@/lib/notifications/membre";
 import { aDejaUnAcces, periodeDuLien } from "@/lib/membres";
 import { Carte } from "@/components/ui/Carte";
 import { Case, Champ } from "@/components/ui/Champ";
-import { Select } from "@/components/ui/Select";
+import { ChampListe } from "@/components/ui/ChampListe";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { BoutonAction } from "@/components/ui/BoutonAction";
 import { GestesProposes, type GestePret } from "@/components/ui/GestesProposes";
@@ -56,10 +56,9 @@ export default async function PageMembre({ params }: Props) {
   const aUnEmail = Boolean(m.email);
   const soiMeme = acteur.id === m.id;
   /**
-   * **Les deux seuls cas où le rôle de base ne se règle pas ici** — et une seule écriture, parce que
-   * le `<select>` et le champ caché qui le remplace quand il est désactivé doivent dire la même chose
-   * (voir le commentaire du champ caché). `!modifiable` en fait partie : un formulaire entièrement
-   * désactivé n'envoie rien non plus.
+   * **Les deux seuls cas où le rôle de base ne se règle pas ici.** Elle commandait aussi un champ
+   * caché qui doublait la liste grisée, et devait donc rester identique au `disabled` ; ce doublon
+   * est tombé avec `ChampListe`, qui poste sa valeur même désactivée (voir sous la liste).
    */
   /*
    * **Sa propre fiche laisse régler son rôle de base** : il n'ouvre aucun droit, et seul un
@@ -259,10 +258,14 @@ export default async function PageMembre({ params }: Props) {
                 ne change pas son propre rôle, règle de tout le dépôt) et le **compte du portail**,
                 qui doit rester administrateur — sans lui, plus personne n'ouvre l'administration
                 technique. */}
-            <Select
+            <ChampListe
               label="Rôle"
               name="role"
-              defaultValue={m.role}
+              valeur={m.role}
+              entrees={[
+                { valeur: "MEMBRE", libelle: "Membre" },
+                { valeur: "INSTRUCTEUR", libelle: "Instructeur" },
+              ]}
               disabled={roleVerrouille}
               aide={
                 portail
@@ -271,33 +274,33 @@ export default async function PageMembre({ params }: Props) {
                     ? "Tu ne peux pas changer ton propre rôle."
                     : "Membre ou instructeur. Les droits d'administrateur se règlent juste en dessous, à part."
               }
-            >
-              <option value="MEMBRE">Membre</option>
-              <option value="INSTRUCTEUR">Instructeur</option>
-            </Select>
+            />
             {/* **Au club depuis** — la seule entrée du rang (voir `ECHELLE`, src/lib/blasons.ts).
                 Une saison plutôt qu'une date ou une durée : personne n'a noté le jour d'arrivée de
                 personne, alors que « il est arrivé la saison 2023-2024 » se retrouve de mémoire, et
                 se relit exactement comme on l'a choisi. */}
             {!portail && (
               <div className="flex flex-col gap-1.5">
-                <Select
-                  key={`saison-${saisonAuClub ?? ""}`}
+                {/* Plus de `key` de remontage : `ChampListe` suit la valeur du serveur par son miroir
+                    (`vuDuServeur`), ce que la clé faisait pour la liste native. Désactivée (fiche
+                    qu'on ne peut pas modifier), elle poste sa valeur — le serveur refuse de toute
+                    façon le formulaire entier (`canEditUser`), avant de lire le moindre champ. */}
+                <ChampListe
                   label="Arrivé(e) au club la saison"
                   name="saisonArrivee"
-                  defaultValue={saisonAuClub === null ? "" : String(saisonAuClub)}
+                  valeur={saisonAuClub === null ? "" : String(saisonAuClub)}
+                  entrees={[
+                    { valeur: "", libelle: "Je ne sais pas" },
+                    ...saisons.map((an, i) => ({
+                      valeur: String(an),
+                      libelle: `${libelleSaison(an)} — ${i === 0 ? "cette saison" : `${libelleNumeroSaison(i + 1)} aujourd'hui`}`,
+                    })),
+                    // Une saison plus ancienne que la liste (saisie d'avant) reste affichée telle quelle.
+                    ...(saisonAuClub !== null && !saisons.includes(saisonAuClub) ? [{ valeur: String(saisonAuClub), libelle: libelleSaison(saisonAuClub) }] : []),
+                  ]}
                   disabled={!modifiable}
                   aide="Sert à calculer son rang. « Je ne sais pas » : la saison de création du compte fera foi."
-                >
-                  <option value="">Je ne sais pas</option>
-                  {saisons.map((an, i) => (
-                    <option key={an} value={an}>
-                      {libelleSaison(an)} — {i === 0 ? "cette saison" : `${libelleNumeroSaison(i + 1)} aujourd'hui`}
-                    </option>
-                  ))}
-                  {/* Une saison plus ancienne que la liste (saisie d'avant) reste affichée telle quelle. */}
-                  {saisonAuClub !== null && !saisons.includes(saisonAuClub) && <option value={saisonAuClub}>{libelleSaison(saisonAuClub)}</option>}
-                </Select>
+                />
                 <p className="text-sm text-texte-secondaire">
                   Aujourd&apos;hui : <strong className="font-semibold text-texte">{libelleNumeroSaison(numeroDeSaison(adhesion))} au club</strong>{" "}
                   {m.auClubDepuis ? `— arrivée la saison ${libelleSaison(saisonEnregistree(adhesion)!)}.` : "— d'après la création du compte, faute de saison choisie."}{" "}
@@ -305,15 +308,13 @@ export default async function PageMembre({ params }: Props) {
                 </p>
               </div>
             )}
-            {/* **Un select désactivé n'est pas envoyé** : le rôle est réaffirmé ici, et refusé côté
-                serveur s'il change. Le champ caché suit donc **exactement** la condition du
-                `disabled`, et c'est un correctif : la condition d'avant (`portail || estAdmin`)
-                couvrait le cas « soi-même » **par accident**, parce qu'un administrateur regardant
-                sa propre fiche satisfaisait `estAdmin`. Le jour où ce mot a changé de sens, sa
-                propre fiche aurait envoyé un formulaire **sans rôle du tout** — et `membreSchema`
-                l'aurait refusé sur un champ qu'on ne peut même pas remplir. Deux conditions qui
-                doivent rester identiques s'écrivent une fois (`roleVerrouille`), pas deux. */}
-            {roleVerrouille && <input type="hidden" name="role" value={m.role} />}
+            {/* **Le rôle verrouillé est toujours envoyé, et par la liste elle-même.** Un `<select
+                disabled>` ne postait rien : un champ caché le doublait, sous **exactement** la
+                condition du `disabled` (`roleVerrouille`) — sans quoi sa propre fiche aurait envoyé
+                un formulaire **sans rôle du tout**, que `membreSchema` refuse sur un champ qu'on ne
+                peut même pas remplir. `ChampListe` poste sa valeur grisée ou non : le doublon est
+                tombé, et avec lui la condition qu'il fallait garder identique à celle du `disabled`.
+                Le serveur réaffirme le rôle et refuse qu'il change sur le portail. */}
           </FormulaireAction>
           {/*
             **Le bureau, à part du formulaire — et c'est le point de la demande** (« pour

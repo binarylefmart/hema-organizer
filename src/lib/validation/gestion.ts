@@ -4,6 +4,7 @@ import { ATELIER_STATUTS, FORME_WEBHOOK_DISCORD, NIVEAU_DEFAUT, NIVEAUX, PARTIE_
 import { dateDepuisSaison, saisonsProposees } from "@/lib/blasons";
 import { isHHMM, isIsoDate } from "@/lib/dates";
 import { emailSchema } from "./auth";
+import { identifiantSchema, SELECTION_MAX } from "./presences";
 
 export const dateIsoSchema = z.string().refine(isIsoDate, "Date invalide (AAAA-MM-JJ attendu).");
 export const heureSchema = z.string().refine(isHHMM, "Heure invalide (HH:MM attendu).");
@@ -205,20 +206,51 @@ export const seanceSchema = z
     lieu: texteCourt(120).min(1, "Indique le lieu."),
     adresse: texteCourt(200),
     theme: texteCourt(120),
-    alternative: texteCourt(120),
   })
   .refine((s) => s.heureFin > s.heureDebut, { path: ["heureFin"], message: "L'heure de fin doit suivre l'heure de début." });
 
 export const themeSchema = z.object({
   sessionId: z.string().min(1),
   theme: texteCourt(120),
-  alternative: texteCourt(120),
 });
 
 export const annulationSchema = z.object({
   sessionId: z.string().min(1),
   motif: texteCourt(200).min(1, "Indique le motif (il sera envoyé aux membres)."),
 });
+
+/**
+ * **Un geste sur plusieurs séances à la fois** (`appliquerGesteSeancesEnMasse`), depuis l'onglet
+ * Séances en mode modification.
+ *
+ * Chaque geste reprend **le schéma de son geste unitaire**, champ pour champ : le motif d'annulation
+ * est celui d'`annulationSchema`, le lieu et l'horaire ceux de `seanceSchema` (mêmes longueurs, même
+ * « la fin suit le début »). Un lot qui accepterait un motif de 500 signes là où la séance seule en
+ * refuse 201 serait une seconde porte, plus large, vers le même message envoyé à tout le club.
+ *
+ * Le plafond et la forme d'un identifiant sont ceux de tous les gestes de masse du dépôt
+ * (`SELECTION_MAX`, `identifiantSchema`) : un lot plus gros que le plus gros club imaginable n'est pas
+ * un geste d'encadrement, c'est un appel forgé. Les doublons sont écartés ici, comme pour les
+ * présences : une séance cochée deux fois ne s'écrit ni ne s'annonce deux fois.
+ */
+const seancesDuLot = z
+  .array(identifiantSchema)
+  .min(1, "Coche au moins une séance.")
+  .max(SELECTION_MAX, "Sélection trop grande.")
+  .transform((ids) => [...new Set(ids)]);
+
+export const GESTES_SEANCES_MASSE = ["annuler", "retablir", "lieu", "horaire", "supprimer"] as const;
+export type GesteSeancesMasse = (typeof GESTES_SEANCES_MASSE)[number];
+
+export const seancesEnMasseSchema = z.discriminatedUnion("geste", [
+  z.object({ geste: z.literal("annuler"), sessionIds: seancesDuLot, motif: annulationSchema.shape.motif }),
+  z.object({ geste: z.literal("retablir"), sessionIds: seancesDuLot }),
+  z.object({ geste: z.literal("lieu"), sessionIds: seancesDuLot, lieu: texteCourt(120).min(1, "Indique le lieu."), adresse: texteCourt(200) }),
+  z
+    .object({ geste: z.literal("horaire"), sessionIds: seancesDuLot, heureDebut: heureSchema, heureFin: heureSchema })
+    .refine((s) => s.heureFin > s.heureDebut, { path: ["heureFin"], message: "L'heure de fin doit suivre l'heure de début." }),
+  z.object({ geste: z.literal("supprimer"), sessionIds: seancesDuLot }),
+]);
 
 /**
  * **La fiche d'un membre**, telle que l'annuaire l'enregistre — plus « Au club depuis », choisi en

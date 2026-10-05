@@ -9,11 +9,11 @@ import { formatDateLongue, formatHoraire, seanceCommencee, todayIso } from "@/li
 import { participantsAPlat, seanceCarte } from "@/lib/seances";
 import { ATELIER_LABELS } from "@/lib/ateliers";
 import type { AtelierStatut } from "@/lib/constants";
-import { annulerSeance, modifierSeance, retablirSeance, supprimerSeance } from "@/actions/seances";
+import { modifierSeance } from "@/actions/seances";
 import { Carte } from "@/components/ui/Carte";
-import { Champ } from "@/components/ui/Champ";
-import { FormulaireAction } from "@/components/ui/FormulaireAction";
-import { BoutonAction } from "@/components/ui/BoutonAction";
+import { LienBouton } from "@/components/ui/Bouton";
+import { GestesSeance } from "@/components/seances/GestesSeance";
+import { lienPlanning, modeEditionDemande } from "@/components/planning/mode-edition";
 import { BarreTaux } from "@/components/seances/BarreTaux";
 import { ListeParticipants } from "@/components/seances/ListeParticipants";
 import { FormulaireSeance } from "@/components/gestion/FormulaireSeance";
@@ -31,11 +31,23 @@ import { Icone } from "@/components/ui/Icone";
 
 export const metadata: Metadata = { title: "Séance" };
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ modifier?: string }> };
 
-export default async function PageSeance({ params }: Props) {
+export default async function PageSeance({ params, searchParams }: Props) {
   const user = await requirePermission("sessions.manage");
   const { id } = await params;
+  /*
+   * **La fiche s'ouvre en lecture seule, comme le planning et la liste des séances** (`?modifier=1`).
+   * Administrateurs compris : le bureau est un supplément, il ne change pas la vue. « Modifier la
+   * séance » ouvre le thème, le formulaire (date, horaire, lieu), la correction des présences et
+   * « Que veux-tu faire ? » (annuler, rétablir, supprimer). Tout s'y enregistre tout de suite :
+   * « Terminer les modifications » ne fait que refermer.
+   *
+   * **Le programme ne se modifie pas ici** : en modification, la
+   * carte « Programme » mène au planning, filtré sur le jour de la séance et déjà en modification —
+   * un seul endroit où l'on règle les parties, avec son brouillon et ses deux boutons.
+   */
+  const enEdition = modeEditionDemande((await searchParams).modifier);
   const [carte, brut, periodes, lieux, club] = await Promise.all([
     seanceCarte(id, user),
     db.session.findUnique({ where: { id }, include: { ateliers: { include: { proposePar: true } } } }),
@@ -85,29 +97,25 @@ export default async function PageSeance({ params }: Props) {
             partage={partageSeance({ ...carte, disciplines: carte.disciplines.join(", "), compteurs: carte.compteurs }, todayIso())}
             libelle="Partager la séance"
           />
-          {carte.annulee ? (
-            <BoutonAction action={retablirSeance.bind(null, id)} variante="secondaire" confirmation="Rétablir cette séance ?">
-              Rétablir la séance
-            </BoutonAction>
-          ) : null}
-          {/* **Effacer une séance efface les réponses des membres : le bouton appartient au bureau,
-              et seulement quand le geste peut aboutir.** `supprimerSeance` exige `periods.manage`
-              (ADMIN), comme son jumeau `supprimerSeancesPeriode` — un instructeur vidait un
-              trimestre séance par séance depuis ce bouton-ci, quand la même destruction lui était
-              refusée sur l'écran de la période. La **session forte** entre dans la condition parce
-              que la permission l'exige (`exigeSessionForte`) alors que cet écran, lui, s'ouvre avec
-              `sessions.manage` : un administrateur entré par son lien personnel verrait sinon un
-              bouton qui ne peut que refuser, et un bouton qui refuse est pire que pas de bouton. Le
-              geste reste à sa portée par l'écran de la période, qui passe par la porte de
-              l'élévation. */}
-          {can(user, "periods.manage") && user.sessionForte ? (
-            <BoutonAction action={supprimerSeance.bind(null, id)} variante="danger" confirmation="Supprimer définitivement cette séance et ses réponses ?">
-              <Icone nom="alerte" taille={18} />
-              Supprimer
-            </BoutonAction>
-          ) : null}
+          {!enEdition && (
+            // **Visible sans chercher** : bouton plein, à côté du partage — la seule porte vers la saisie.
+            <LienBouton href={`/seances/${id}?modifier=1`}>
+              <Icone nom="livre" taille={20} />
+              Modifier la séance
+            </LienBouton>
+          )}
         </div>
       </div>
+
+      {enEdition && (
+        // Le mode se dit, et sa sortie est à la place de l'entrée : on ne se demande jamais où l'on est.
+        <div role="status" className="flex flex-col gap-3 rounded-xl border-2 border-primaire bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-semibold">Mode modification : chaque changement s&apos;enregistre tout de suite.</p>
+          <LienBouton href={`/seances/${id}`} className="w-full sm:w-auto">
+            Terminer les modifications
+          </LienBouton>
+        </div>
+      )}
 
       {/*
        * **Programme et Présences l'un au-dessus de l'autre, et c'est ce qui raccourcit la page**
@@ -131,18 +139,35 @@ export default async function PageSeance({ params }: Props) {
       <div className="flex flex-col gap-5">
         <Carte titre="Programme" actions={<Link href={`/planning?periode=${carte.periodId}`} className="inline-flex min-h-12 items-center text-sm">Voir tout le planning</Link>}>
           <div className="flex flex-col gap-4">
-            {planning && colonne ? (
+            {enEdition ? (
+              <div className="flex flex-col gap-2">
+                <p>Le programme de la séance (cours, options, instructeurs, thèmes) se règle dans le planning.</p>
+                <LienBouton href={`${lienPlanning({ periode: carte.periodId, date: carte.date }, true)}#seance-${id}`} className="w-full sm:w-auto sm:self-start">
+                  <Icone nom="livre" taille={20} />
+                  Modifier le programme dans le planning
+                </LienBouton>
+              </div>
+            ) : planning && colonne ? (
               <ProgrammeCases
                 sessionId={id}
                 // Les parties de cette séance, déjà triées : la carte du planning et cet écran
                 // montrent exactement la même liste, par le même composant.
                 parties={colonne.parties}
-                options={{ personnes: planning.personnes, themes: planning.themes, ateliersDisponibles: planning.ateliersDisponibles, modifiable: planning.modifiable, peutProgrammer: planning.peutProgrammer }}
+                options={{ personnes: planning.personnes, themes: planning.themes, ateliersDisponibles: planning.ateliersDisponibles, modifiable: false, peutProgrammer: false }}
               />
             ) : (
               <p className="text-texte-secondaire">Programme indisponible.</p>
             )}
-            <ThemeAutosave sessionId={id} theme={carte.theme} alternative={carte.alternative} />
+            {enEdition ? (
+              <ThemeAutosave sessionId={id} theme={carte.theme} />
+            ) : (
+              carte.theme.trim() !== "" && (
+                <p>
+                  <span className="text-texte-secondaire">Thème détaillé : </span>
+                  {carte.theme}
+                </p>
+              )
+            )}
           </div>
         </Carte>
         <Carte titre="Présences">
@@ -167,7 +192,8 @@ export default async function PageSeance({ params }: Props) {
                 bouton. À la place, la phrase dit le geste qui manque et y mène, avec le retour
                 préparé : un aller-retour, et on corrige. Cocher repousse ensuite l'élévation
                 elle-même (`toucherElevation`), donc on n'est pas interrompu au milieu de la liste. */}
-              {can(user, "attendances.autrui") &&
+              {enEdition &&
+                can(user, "attendances.autrui") &&
                 (user.sessionForte ? (
                   <PresencesEquipe sessionId={id} participants={trierParActionnabilite(participantsAPlat(carte.participants))} />
                 ) : (
@@ -203,23 +229,18 @@ export default async function PageSeance({ params }: Props) {
         </Carte>
       )}
 
-      {!carte.annulee && (
-        <Carte titre="Annuler la séance">
-          <FormulaireAction action={annulerSeance} bouton="Annuler la séance" variante="danger" enCours="Annulation…">
-            <input type="hidden" name="sessionId" value={id} />
-            <Champ
-              label="Motif (envoyé aux membres)"
-              name="motif"
-              placeholder="ex. Salle indisponible"
-              required
-              maxLength={200}
-              aide="Ce motif est visible par tous, y compris sur le lien de partage : évite les noms."
-            />
-          </FormulaireAction>
+      {enEdition && (
+        <Carte titre="Annuler, rétablir ou supprimer">
+          {/* **Supprimer appartient au bureau, espace admin ouvert** : `supprimerSeance` exige
+              `periods.manage` et l'élévation, comme son jumeau sur l'écran de la période. Le geste
+              n'est proposé qu'à qui peut aboutir — un geste qui ne peut que refuser est pire que pas
+              de geste. */}
+          <GestesSeance id={id} annulee={carte.annulee} passee={commencee} supprimer={can(user, "periods.manage") && user.sessionForte} />
         </Carte>
       )}
 
-      <Carte titre="Modifier la séance">
+      {enEdition && (
+        <Carte titre="Date, horaire et lieu">
         <FormulaireSeance
           action={modifierSeance.bind(null, id)}
           bouton="Enregistrer"
@@ -233,10 +254,10 @@ export default async function PageSeance({ params }: Props) {
             lieu: carte.lieu,
             adresse: carte.adresse,
             theme: carte.theme,
-            alternative: carte.alternative,
           }}
         />
-      </Carte>
+        </Carte>
+      )}
     </div>
   );
 }

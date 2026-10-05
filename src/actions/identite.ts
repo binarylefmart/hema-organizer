@@ -18,6 +18,8 @@ import {
 } from "@/lib/identite";
 import { estThemeConnu } from "@/lib/themes";
 import { z } from "zod";
+import { fuseauValide, poserFuseau } from "@/lib/fuseau";
+import { replanifierFuseau } from "@/lib/taches";
 
 /**
  * **L'identité du club** : son nom, son sigle, son thème, sa couleur de marque, ses logos.
@@ -184,6 +186,28 @@ export async function enregistrerPartEffectifClub(_prev: FormState, fd: FormData
   // cours : c'est toute l'application qu'il faut revalider, pas ce seul écran.
   revalidatePath("/", "layout");
   return { succes: `Part enregistrée : ${partEffectifMin} % de l'effectif invité.` };
+}
+
+/**
+ * **Le fuseau horaire du club.** Un formulaire à lui, comme la part d'effectif : c'est un réglage
+ * d'organisation (où le club s'entraîne), pas d'apparence.
+ *
+ * Il prend effet **tout de suite** : la valeur est posée côté serveur (`poserFuseau`), l'entretien du
+ * matin et la sauvegarde de la nuit repartent dans le nouveau fuseau (`replanifierFuseau`), et toute
+ * l'application est revalidée — la mise en page racine porte le fuseau du navigateur
+ * (`<html data-fuseau>`). Les séances déjà créées ne bougent pas : leurs heures sont des heures
+ * locales, elles s'entendent désormais dans le nouveau fuseau.
+ */
+export async function enregistrerFuseauClub(_prev: FormState, fd: FormData): Promise<FormState> {
+  const user = await assertPermission("settings.technical");
+  const fuseau = champ(fd, "fuseau").trim();
+  if (!fuseauValide(fuseau)) return { erreur: "Ce fuseau horaire n'est pas reconnu.", erreurs: { fuseau: "Choisis un fuseau dans la liste." } };
+  await enregistrerIdentite({ fuseau });
+  poserFuseau(fuseau);
+  replanifierFuseau(fuseau);
+  await audit(user, "identite.fuseau_modifie", null, { fuseau });
+  revalidatePath("/", "layout");
+  return { succes: `Fuseau enregistré : ${fuseau}.` };
 }
 
 /** Les deux emplacements de logo : le grand (pages de connexion, emails) et le carré (en-tête, icône). */

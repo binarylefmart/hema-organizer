@@ -37,21 +37,11 @@ function verifierDansLaFenetre(m: Awaited<ReturnType<typeof ouvrirEtMesurer>>) {
   expect(m.bas, "le panneau sort en bas de l'écran").toBeLessThanOrEqual(m.fenetre.hauteur + 1);
 }
 
-test("annuler une séance : le volet tient dans l'écran, bouton d'envoi compris", async ({ page }) => {
-  // Le compte d'administration plutôt qu'un instructeur : il entre par mot de passe, là où les liens
-  // personnels des autres comptes ont pu être régénérés par un scénario précédent de la suite.
-  await connecter(page, COMPTES.admin, "/seances");
-  const declencheurs = page.locator('details[name="annuler-seance"] > summary');
-  const nombre = await declencheurs.count();
-  expect(nombre, "aucune séance annulable dans le jeu de démonstration").toBeGreaterThan(0);
-
-  // La première carte et la dernière : c'est en bas de page que le panneau débordait aussi.
-  for (const rang of [0, nombre - 1]) {
-    verifierDansLaFenetre(await ouvrirEtMesurer(page, declencheurs.nth(rang)));
-    await expect(page.getByRole("button", { name: "Annuler la séance" })).toBeInViewport();
-    await page.keyboard.press("Escape");
-  }
-});
+/*
+ * Le volet d'annulation d'une séance n'existe plus : annuler se choisit dans
+ * « Que veux-tu faire ? », au pied de la carte, en mode modification — le motif s'y saisit dans le
+ * flux de la carte, sans panneau flottant. Reste le volet de l'annuaire.
+ */
 
 /**
  * Le second volet de l'annuaire est celui de **« Gérer »** (`groupe="membre"`) : le panneau qui
@@ -62,7 +52,9 @@ test("annuler une séance : le volet tient dans l'écran, bouton d'envoi compris
  */
 test("gérer un membre : le volet tient dans l'écran", async ({ page }) => {
   await connecter(page, COMPTES.admin, "/admin/membres");
-  const declencheurs = page.locator('details[name="membre"] > summary');
+  // Le groupe `membre` porte aussi le volet « Pour tout le monde », en tête d'annuaire : on ne vise que
+  // les « Gérer » des lignes, sans quoi le premier panneau ouvert n'est pas celui qu'on mesure.
+  const declencheurs = page.locator('details[name="membre"] > summary').filter({ hasText: "Gérer" });
   const nombre = await declencheurs.count();
   expect(nombre, "aucun membre sur lequel l'annuaire propose un geste").toBeGreaterThan(0);
 

@@ -16,6 +16,8 @@ import {
   retirer,
   texteHorsAffichage,
 } from "@/components/gestion/selection-presences";
+import { selectionApresInterrupteur } from "@/components/ui/selection";
+import { InterrupteurSelection } from "@/components/ui/InterrupteurSelection";
 import {
   appliquerGesteEnMasse,
   definirRolesEnMasse,
@@ -121,7 +123,7 @@ import {
  * remonter pour valider — c'est-à-dire à perdre de vue ce qu'on vient de cocher.
  */
 
-type Contexte = { selection: ReadonlySet<string>; basculer: (id: string) => void };
+type Contexte = { actif: boolean; selection: ReadonlySet<string>; basculer: (id: string) => void };
 
 const Selection = createContext<Contexte | null>(null);
 
@@ -221,6 +223,12 @@ export function ZoneSelection({
   children: ReactNode;
 }) {
   const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set());
+  /**
+   * **L'interrupteur « Sélection multiple »** (`InterrupteurSelection`, commun aux écrans de masse).
+   * L'annuaire se consulte bien plus souvent qu'il ne se traite par lots : éteint, chaque ligne
+   * retrouve son allure sans case, et la case maîtresse disparaît. L'éteindre vide le lot.
+   */
+  const [interrupteur, setInterrupteur] = useState(false);
   /**
    * **Le rôle choisi dans la liste, tant qu'il n'est pas appliqué.**
    *
@@ -544,11 +552,24 @@ export function ZoneSelection({
    * qui le dit : les deux écrans de masse doivent apparaître au même moment, et une condition
    * recopiée de chaque côté aurait deux endroits où diverger.
    */
-  const montrerBarre = barreDeMasseVisible(selection);
+  const montrerBarre = interrupteur && barreDeMasseVisible(selection);
 
   return (
-    <Selection.Provider value={{ selection, basculer: (id) => setSelection((s) => basculer(s, id)) }}>
+    <Selection.Provider value={{ actif: interrupteur, selection, basculer: (id) => setSelection((s) => basculer(s, id)) }}>
       <div className="mt-4 flex flex-col gap-1">
+        <InterrupteurSelection
+          actif={interrupteur}
+          disabled={selectionnables.length === 0 && selection.size === 0}
+          onChange={(suite) => {
+            setInterrupteur(suite);
+            setSelection((s) => selectionApresInterrupteur(s, suite));
+            setGesteChoisi("");
+            setRoleChoisi("");
+            setMessage(null);
+          }}
+        />
+        {interrupteur && (
+          <>
         {/* 48 px et une case de 24 px, comme la case maîtresse des présences : les deux écrans
             portent le même geste, ils ne peuvent pas avoir deux cibles différentes. */}
         <label className="inline-flex min-h-12 w-fit cursor-pointer items-center gap-2 font-semibold">
@@ -572,6 +593,8 @@ export function ZoneSelection({
             cochée — le geste est fait, la barre a pris le relais. Même forme qu'aux présences
             (`texteInviteMasse`). */}
         {!montrerBarre && <p className="text-base text-texte-secondaire">{INVITE_SELECTION}</p>}
+          </>
+        )}
       </div>
 
       {/* **La barre n'existe qu'avec une sélection**. C'est l'inverse de la veille, qui la montait
@@ -680,7 +703,8 @@ export function ZoneSelection({
  */
 export function CaseMembre({ id, nom }: { id: string; nom: string }) {
   const contexte = useContext(Selection);
-  if (!contexte) return null;
+  // Interrupteur éteint : la ligne garde son allure, sans case.
+  if (!contexte || !contexte.actif) return null;
   /*
    * **La cible faisait 20 × 44 px**. Le libellé était `inline-flex min-h-11` et ne contenait qu'un
    * texte `sr-only` et une case de 20 px : il n'était donc large que de sa case — une bande de 20

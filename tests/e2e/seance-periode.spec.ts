@@ -24,16 +24,21 @@ test("la période se choisit à la création d'une séance, et ne se change plus
   // personnel de Charlie 03 a été révoqué un peu plus tôt dans la campagne
   // (`reinitialisation-acces`, qui passe juste avant ce fichier). Même précaution que `volet.spec.ts`.
   await connecter(page, COMPTES.admin, "/seances/nouvelle");
-  const liste = page.locator('select[name="periodId"]');
+  // La liste du dépôt (`ChampListe`) : un déclencheur nommé « Période », la valeur dans un champ caché.
+  const liste = page.getByRole("combobox", { name: "Période" });
   await expect(liste, "à la création, le trimestre se choisit").toHaveCount(1);
   await expect(liste).toBeEnabled();
 
-  await page.goto("/seances");
-  await page.getByRole("link", { name: "Modifier" }).first().click();
-  await page.waitForURL(/\/seances\/[A-Za-z0-9_-]+$/);
+  // La liste s'ouvre en lecture seule : la fiche s'ouvre en modification depuis « Que veux-tu faire ? ».
+  await page.goto("/seances?modifier=1");
+  const gestes = page.locator("[data-geste-seance]").first();
+  await gestes.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
+  await page.getByRole("option", { name: "Modifier la séance" }).click();
+  await gestes.getByRole("button", { name: "Ouvrir la séance" }).click();
+  await page.waitForURL(/\/seances\/[A-Za-z0-9_-]+\?modifier=1$/);
 
   const formulaire = page.locator("form").filter({ has: page.locator('[name="periodId"]') });
-  await expect(formulaire.locator('select[name="periodId"]'), "en modification, plus de liste déroulante").toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Période" }), "en modification, plus de liste déroulante").toHaveCount(0);
   // La période reste lue à l'écran, et repart avec le formulaire : rien n'est perdu, seul le geste l'est.
   await expect(formulaire.locator('input[type="hidden"][name="periodId"]')).toHaveCount(1);
   await expect(formulaire.getByText("Rentrée 2026")).toBeVisible();

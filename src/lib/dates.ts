@@ -1,8 +1,9 @@
+import { decalageMinutes, fuseauCourant } from "./fuseau";
+
 /**
- * Utilitaires de dates en fuseau Europe/Paris.
+ * Utilitaires de dates dans le fuseau du club (`fuseauCourant`, réglé dans *Club* ; Paris par défaut).
  * Les séances stockent une date "AAAA-MM-JJ" et des heures "HH:MM" locales.
  */
-export const TIMEZONE = "Europe/Paris";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -33,14 +34,14 @@ export function nomMois(cle: string): string {
   return capitale(new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${cle}-15T12:00:00Z`)));
 }
 
-/** Date du jour ("AAAA-MM-JJ") en heure de Paris. */
+/** Date du jour ("AAAA-MM-JJ") dans le fuseau du club. */
 export function todayIso(now = new Date()): string {
   return toIsoDate(now);
 }
 
 export function toIsoDate(d: Date): string {
   const parts = new Intl.DateTimeFormat("fr-CA", {
-    timeZone: TIMEZONE,
+    timeZone: fuseauCourant(),
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -142,7 +143,7 @@ export function formatHoraire(debut: string, fin: string): string {
 }
 
 /**
- * Instant (Date) correspondant à une date + heure locale Paris.
+ * Instant (Date) correspondant à une date + heure locale du club.
  * Calculé sans bibliothèque : on part de l'UTC puis on corrige avec le décalage observé.
  */
 export function parisDateTime(iso: string, hhmm: string): Date {
@@ -158,21 +159,9 @@ export function parisDateTime(iso: string, hhmm: string): Date {
   return result;
 }
 
-/** Décalage Europe/Paris ↔ UTC en minutes à un instant donné (+60 ou +120). */
+/** Décalage entre le fuseau du club et UTC, en minutes, à un instant donné (+60 ou +120 à Paris). */
 export function parisOffsetMinutes(at: Date): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: TIMEZONE,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).formatToParts(at);
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-  const asUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
-  return Math.round((asUtc - at.getTime()) / 60_000);
+  return decalageMinutes(fuseauCourant(), at);
 }
 
 /** La séance a-t-elle déjà commencé ? */
@@ -183,7 +172,7 @@ export function seanceCommencee(dateIso: string, heureDebut: string, now = new D
 /* " à 19h30" pour les journaux et emails techniques */
 export function formatDateHeure(d: Date): string {
   return new Intl.DateTimeFormat("fr-FR", {
-    timeZone: TIMEZONE,
+    timeZone: fuseauCourant(),
     dateStyle: "short",
     timeStyle: "short",
   }).format(d);

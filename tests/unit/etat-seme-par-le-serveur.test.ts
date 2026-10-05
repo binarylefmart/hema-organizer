@@ -156,7 +156,9 @@ describe("le trou du balayage de valeurs-fraiches.test.ts", () => {
     // Le balayage ne cherche que des `defaultValue` / `defaultChecked` dynamiques sans `key` : ce
     // fichier n'en porte aucun, il est donc invisible pour lui de bout en bout.
     expect(source).not.toMatch(/defaultValue|defaultChecked/);
-    expect(source).toMatch(/value=\{valeur\}/);
+    // Piloté : la liste du dépôt (`ListeDeroulante`) reçoit l'état en `valeur=`, comme le `<select>`
+    // qu'elle remplace le recevait en `value=` — et n'a donc, elle non plus, aucune clé à porter.
+    expect(source).toMatch(/valeur=\{valeur\}/);
   });
 });
 
@@ -215,6 +217,9 @@ const SEMES_SANS_MIROIR: Record<string, string> = {
   // Les ressemer sur un rendu serveur déferait le travail commencé — l'inverse du service rendu.
   "src/app/(app)/admin/periodes/[id]/Formulaires.tsx::InstructeursPeriode::choix": "sélection en cours, pas une valeur enregistrée",
   "src/app/(app)/admin/periodes/[id]/SelectionDates.tsx::SelectionDates::cochees": "sélection en cours, pas une valeur enregistrée",
+  // Le lieu choisi pour « Changer le lieu » d'un lot de séances : un réglage du geste en cours, semé
+  // par la seule présence (ou non) de lieux du club — il ne reflète aucune valeur enregistrée.
+  "src/components/seances/SelectionSeances.tsx::SelectionSeances::choixLieu": "réglage d'un geste en cours, pas une valeur enregistrée",
   // Position d'un dépliant : un état d'écran, jamais écrit en base. Rien à écraser, rien à suivre.
   "src/components/accueil/Frise.tsx::Frise::ouvert": "état d'affichage (quelle colonne est ouverte)",
   "src/components/accueil/FriseDetail.tsx::FriseDetail::ouvert": "état d'affichage (animation déjà jouée)",

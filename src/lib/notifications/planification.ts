@@ -1,4 +1,5 @@
-import { addDays, joursAvant, TIMEZONE } from "@/lib/dates";
+import { addDays, joursAvant } from "@/lib/dates";
+import { fuseauCourant } from "@/lib/fuseau";
 
 /**
  * Calendrier des envois (fonctions **pures**, sans base ni réseau : c'est ce que les tests vérifient).
@@ -14,7 +15,7 @@ export type Jalon = (typeof JALONS)[number];
 
 /** "HH:MM" en heure de Paris à l'instant donné. */
 export function heureParis(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: TIMEZONE, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).formatToParts(now);
+  const parts = new Intl.DateTimeFormat("fr-FR", { timeZone: fuseauCourant(), hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).formatToParts(now);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
   return `${get("hour")}:${get("minute")}`;
 }

@@ -5,6 +5,7 @@ import { identite } from "@/lib/identite";
 import { choixOuDefaut } from "@/lib/themes";
 import { RelanceRendu } from "@/components/layout/RelanceRendu";
 import "./globals.css";
+import { poserFuseau } from "@/lib/fuseau";
 
 // Police des titres : une romaine à empattements anciens, dans l'esprit des traités d'escrime
 const fell = IM_Fell_Great_Primer_SC({
@@ -76,11 +77,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // toute façon lue une fois par page, et l'identité l'est déjà par les métadonnées.
   const [user, club] = await Promise.all([getCurrentUser(), identite()]);
   const theme = choixOuDefaut(user?.theme, club.theme);
+  // Garde le fuseau du serveur aligné sur le réglage, même si un autre processus l'a changé.
+  poserFuseau(club.fuseau);
   return (
     <html
       lang="fr"
       className={fell.variable}
       data-theme={theme.id}
+      /* **Le fuseau du club, pour le navigateur** (`src/lib/fuseau.ts`) : présent dans le HTML avant
+         l'hydratation, il fait calculer au navigateur les mêmes dates que le serveur. */
+      data-fuseau={club.fuseau}
       data-mode={theme.mode ?? undefined}
       /* **La couleur de marque du club, quand elle est réglée.** Une seule variable posée en ligne,
          par-dessus celle du thème : c'est le nom du club dans l'en-tête et les liserés qui la

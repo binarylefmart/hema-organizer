@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { gesteRouge, varianteGeste, VERBES_ROUGES } from "@/components/ui/choix-geste";
+import { gestesEvenement } from "@/components/evenements/gestes-evenement";
 import { GESTES_SELECTION, gestesTousApplicables, libelleBouton, varianteBouton, type ChiffresTous } from "@/app/(app)/admin/membres/choix-geste";
 
 /**
@@ -34,8 +35,6 @@ function fichiers(dossier: string): string[] {
  * le libellé du bouton.
  */
 const ROUGES_PERMIS: Record<string, string> = {
-  "app/(app)/seances/[id]/page.tsx › Annuler la séance": "annoncer une annulation à tout le club, qui ne se rappelle pas",
-  "components/seances/ActionsEquipe.tsx › Annuler la séance": "même geste depuis la carte d'une séance : l'annonce part à tout le club",
   "app/(app)/profil/BoutonDeconnexion.tsx › Se déconnecter": "sans mot de passe, revenir demande le lien gardé ou son email",
   "app/(public)/annuler/[token]/page.tsx › Confirmer l'annulation": "confirmer l'annulation d'un cours depuis un email : l'annonce part à tout le club",
   "app/(public)/desinscription/[token]/page.tsx › Ne plus recevoir les rappels": "page de confirmation d'un lien d'email, un seul geste",
@@ -166,7 +165,7 @@ describe("les couleurs des gestes", () => {
     expect(vus).toContain("app/(app)/admin/comptes/page.tsx › Retirer");
     expect(vus).toContain("app/(app)/admin/membres/page.tsx › Retirer l'adresse");
     expect(vus).toContain("components/planning/ListeParties.tsx › Retirer");
-    expect(vus).toContain("components/evenements/BoutonSupprimerEvenement.tsx › Supprimer");
+    expect(vus).toContain("components/evenements/ChampAffiche.tsx › Retirer l'affiche");
     expect(gestes.length).toBeGreaterThan(100);
   });
 
@@ -232,6 +231,12 @@ describe("la règle du rouge, dans « Que veux-tu faire ? »", () => {
   it("dans la barre de l'annuaire, le bouton est rouge si et seulement si son libellé l'est", () => {
     for (const g of GESTES_SELECTION) {
       expect(varianteBouton(g) === "danger", g).toBe(gesteRouge(libelleBouton(g, 2, { libelle: "Membre", changent: 2 })));
+    }
+  });
+
+  it("sur une annonce d'événement, pareil : dépublier et supprimer rouges, modifier et publier neutres", () => {
+    for (const publie of [true, false]) {
+      for (const g of gestesEvenement({ nom: "Stage", publie }, { modifier: true, supprimer: true })) expect(Boolean(g.definitif), g.geste).toBe(gesteRouge(g.bouton));
     }
   });
 

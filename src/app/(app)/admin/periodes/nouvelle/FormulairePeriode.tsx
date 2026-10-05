@@ -27,7 +27,7 @@ import { addDays, formatDateLongue, minuscule, todayIso } from "@/lib/dates";
 import { Alerte } from "@/components/ui/Alerte";
 import { BoutonEnvoi } from "@/components/ui/BoutonEnvoi";
 import { Champ } from "@/components/ui/Champ";
-import { Select } from "@/components/ui/Select";
+import { ChampListe } from "@/components/ui/ChampListe";
 
 type Type = "trimestre" | "bimestre" | "personnalisee";
 
@@ -164,21 +164,18 @@ export function FormulairePeriode({
             </div>
             {type === "bimestre" ? (
               <div className="flex flex-col gap-1.5">
-                <Select
+                {/* Pilotée : le choix recalcule nom et dates avant tout envoi, et le champ caché
+                    `bimestre` poste le numéro comme le faisait l'option native. */}
+                <ChampListe
                   label="Bimestre"
                   name="bimestre"
-                  value={bimestre}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
+                  valeur={String(bimestre)}
+                  entrees={bimestresChoix(decalage).map((b) => ({ valeur: String(b.n), libelle: b.label }))}
+                  onChange={(v) => {
+                    const n = Number(v);
                     if (estBimestre(n)) choisirBimestre(saison, n);
                   }}
-                >
-                  {bimestresChoix(decalage).map((b) => (
-                    <option key={b.n} value={b.n}>
-                      {b.label}
-                    </option>
-                  ))}
-                </Select>
+                />
                 {/* Le calage de la grille, demandé : un club dont la saison démarre en octobre veut
                     octobre-novembre, décembre-janvier… et non le découpage calé sur septembre. Les
                     deux mois sont écrits sur les boutons — « pair » et « impair » ne disent rien à
@@ -201,21 +198,16 @@ export function FormulairePeriode({
                 <p className="text-sm text-texte-secondaire">Décale les six cycles d&apos;un mois, pour une saison qui démarre en octobre.</p>
               </div>
             ) : (
-              <Select
+              <ChampListe
                 label="Trimestre"
                 name="trimestre"
-                value={trimestre}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
+                valeur={String(trimestre)}
+                entrees={TRIMESTRES.map((t) => ({ valeur: String(t.n), libelle: t.label }))}
+                onChange={(v) => {
+                  const n = Number(v);
                   if (estTrimestre(n)) choisirTrimestre(saison, n);
                 }}
-              >
-                {TRIMESTRES.map((t) => (
-                  <option key={t.n} value={t.n}>
-                    {t.label}
-                  </option>
-                ))}
-              </Select>
+              />
             )}
           </div>
           <div className="flex flex-col items-start rounded-xl bg-surface-douce px-4 py-3">

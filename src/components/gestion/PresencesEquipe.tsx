@@ -11,6 +11,7 @@ import type { ParticipantStatut } from "@/lib/seances";
 import { Icone } from "@/components/ui/Icone";
 import { PastillePersonne } from "@/components/ui/Pastille";
 import { Bouton } from "@/components/ui/Bouton";
+import { ListeDeroulante, type EntreeListe } from "@/components/ui/ListeDeroulante";
 import {
   LIBELLE_REPLIER,
   libelleAfficher,
@@ -19,6 +20,8 @@ import {
   selonOrdreFige,
 } from "@/components/seances/listes";
 import { useDevoilement } from "@/components/seances/ListeRepliee";
+import { InterrupteurSelection } from "@/components/ui/InterrupteurSelection";
+import { selectionApresInterrupteur } from "@/components/ui/selection";
 import {
   ajouter,
   barreDeMasseVisible,
@@ -80,6 +83,16 @@ const COULEURS: Record<AttendanceStatut, string> = {
 };
 
 const SANS_REPONSE = "border-bordure text-texte-secondaire";
+
+/**
+ * Les réponses qu'on peut donner à quelqu'un, puis l'absence de réponse — l'ordre de l'ancienne liste
+ * native. « Sans réponse » porte la valeur vide, l'écriture du vide de `ListeDeroulante` : choisir
+ * cette entrée efface la réponse (`changer` la traduit en `null`).
+ */
+const ENTREES_REPONSE: EntreeListe[] = [
+  ...ATTENDANCE_STATUTS.map((v) => ({ valeur: v, libelle: STATUT_LABELS[v] })),
+  { valeur: "", libelle: "Sans réponse" },
+];
 
 function couleur(statut: string | null): string {
   return statut && statut in COULEURS
@@ -176,6 +189,14 @@ export function PresencesEquipe({
   );
   /** Un lot est parti au serveur : les quatre boutons se ferment le temps qu'il revienne. */
   const [lotEnVol, setLotEnVol] = useState(false);
+  /**
+   * **L'interrupteur « Sélection multiple »** (`InterrupteurSelection`, commun aux écrans de masse).
+   * Le geste ordinaire de cet écran est la liste déroulante d'**une** ligne ; le lot est l'exception
+   * d'un soir de cours. Éteint, ni case, ni case maîtresse, ni barre : la ligne garde le nom entier et
+   * sa liste. L'éteindre vide le lot (`selectionApresInterrupteur`).
+   */
+  const [interrupteur, setInterrupteur] = useState(false);
+  const masseVisible = interrupteur && barreDeMasseVisible(selection);
 
   /**
    * **La recherche se fait ici, dans le navigateur.** Les invités sont déjà tous chargés — le
@@ -516,7 +537,17 @@ export function PresencesEquipe({
             résultats », jamais « Tout » : le mot serait faux dès qu'une recherche filtre la liste ou
             qu'un repli en cache la fin, et c'est justement là qu'on s'en sert. La décocher ne relâche
             que ces mêmes lignes, et laisse ce qui a été coché sous une recherche précédente. */}
-        {montres.length > 0 ? (
+        {stables.length > 0 ? (
+          <InterrupteurSelection
+            actif={interrupteur}
+            disabled={lotEnVol}
+            onChange={(suite) => {
+              setInterrupteur(suite);
+              setSelection((s) => selectionApresInterrupteur(s, suite));
+            }}
+          />
+        ) : null}
+        {interrupteur && montres.length > 0 ? (
           <div className="flex flex-col gap-1 rounded-xl border border-bordure/60 bg-surface px-3 py-1">
             <label className="flex min-h-12 cursor-pointer items-center gap-3">
               <input
@@ -544,7 +575,7 @@ export function PresencesEquipe({
                 ici, là où l'œil est déjà, au lieu de disparaître avec la tuile. Elle s'efface dès
                 qu'une case est cochée : le geste est fait, la tuile a pris le relais. Même forme et
                 même place qu'à l'annuaire (`texteInviteMasse`), avec les mots de cet écran. */}
-            {!barreDeMasseVisible(selection) ? (
+            {!masseVisible ? (
               <p className="text-sm text-texte-secondaire">{INVITE_SELECTION}</p>
             ) : null}
             {replie ? (
@@ -620,7 +651,7 @@ export function PresencesEquipe({
           serveur : les sans-réponse d'abord. Le remplissage étant par rangées, deux voisins
           alphabétiques sont côte à côte — la liste se lit de gauche à droite, comme un listing. */}
         <ul
-          className={`flex flex-col gap-1 @4xl:grid @4xl:grid-cols-2 @4xl:gap-x-8 ${barreDeMasseVisible(selection) ? "pb-48 md:pb-0" : ""}`}
+          className={`flex flex-col gap-1 @4xl:grid @4xl:grid-cols-2 @4xl:gap-x-8 ${masseVisible ? "pb-48 md:pb-0" : ""}`}
         >
           {montres.map((p) => {
             const statut = statutAffiche(p);
@@ -639,41 +670,47 @@ export function PresencesEquipe({
                     toutes lettres, l'information ne repose donc jamais sur la seule couleur — et les
                     ~30 px gagnés reviennent au nom, qui doit rester entier. */}
                 <label className="flex min-h-12 min-w-0 flex-1 cursor-pointer items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selection.has(p.id)}
-                    disabled={occupe || lotEnVol}
-                    onChange={() => setSelection((s) => basculer(s, p.id))}
-                    className="size-6 shrink-0 accent-primaire"
-                  />
+                  {interrupteur ? (
+                    <input
+                      type="checkbox"
+                      checked={selection.has(p.id)}
+                      disabled={occupe || lotEnVol}
+                      onChange={() => setSelection((s) => basculer(s, p.id))}
+                      className="size-6 shrink-0 accent-primaire"
+                    />
+                  ) : null}
                   <PastillePersonne id={p.id} couleur={p.couleur} taille={10} />
                   <span className="min-w-0">
                     {p.prenom} {p.nom}
                   </span>
                 </label>
-                <label className="sr-only" htmlFor={`presence-${p.id}`}>
+                <label id={`presence-${p.id}-libelle`} className="sr-only" htmlFor={`presence-${p.id}`}>
                   Réponse de {p.prenom} {p.nom}
                 </label>
-                <select
-                  id={`presence-${p.id}`}
-                  value={statut ?? ""}
-                  disabled={occupe}
-                  onChange={(e) => changer(p, e.target.value)}
-                  className={[
-                    // 48 px et non 44 : c'est **la** cible de cet écran, celle qu'on vise cinquante
-                    // fois de suite un soir de cours, et le cahier des charges ne connaît qu'un chiffre.
-                    "min-h-12 w-36 shrink-0 rounded-xl border-2 bg-surface px-2 text-base font-semibold shadow-champ",
-                    "focus:border-primaire disabled:cursor-wait disabled:opacity-60",
-                    teinte,
-                  ].join(" ")}
-                >
-                  {ATTENDANCE_STATUTS.map((v) => (
-                    <option key={v} value={v}>
-                      {STATUT_LABELS[v]}
-                    </option>
-                  ))}
-                  <option value="">Sans réponse</option>
-                </select>
+                {/* La liste du dépôt, jamais un `<select>` nu : au pied d'un registre de quatre-vingts
+                    lignes, la liste native s'ouvrait vers le haut. Elle enregistre au choix comme le
+                    `<select>` au `change` ; rechoisir la réponse affichée ne part pas au serveur,
+                    `changer` s'arrête de lui-même quand rien ne change. L'enveloppe `shrink-0` tient
+                    la place de la liste dans la ligne `flex` : c'est elle, et non plus le déclencheur,
+                    qui est l'enfant de la ligne. */}
+                <div className="shrink-0">
+                  <ListeDeroulante
+                    id={`presence-${p.id}`}
+                    libelleId={`presence-${p.id}-libelle`}
+                    libelle={`Réponse de ${p.prenom} ${p.nom}`}
+                    valeur={statut ?? ""}
+                    entrees={ENTREES_REPONSE}
+                    disabled={occupe}
+                    onChoisir={(v) => changer(p, v)}
+                    className={[
+                      // 48 px et non 44 : c'est **la** cible de cet écran, celle qu'on vise cinquante
+                      // fois de suite un soir de cours, et le cahier des charges ne connaît qu'un chiffre.
+                      "min-h-12 w-36 rounded-xl border-2 bg-surface px-2 text-base font-semibold shadow-champ",
+                      "focus:border-primaire disabled:cursor-wait disabled:opacity-60",
+                      teinte,
+                    ].join(" ")}
+                  />
+                </div>
               </li>
             );
           })}
@@ -756,7 +793,7 @@ export function PresencesEquipe({
             l'on passe le plus de temps. Le décalage reprend la hauteur de la barre d'onglets
             (`env(safe-area- inset-bottom)` comprise, comme elle) ; dès 768 px la barre d'onglets
             n'existe plus, et la barre d'action retrouve ses 8 px du bas. */}
-        {barreDeMasseVisible(selection) ? (
+        {masseVisible ? (
           <div
             role="group"
             aria-label="Modifier la réponse de plusieurs personnes à la fois"

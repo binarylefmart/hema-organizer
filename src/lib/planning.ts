@@ -1,5 +1,6 @@
 import { db } from "./db";
-import { niveauAffiche, NIVEAU_DEFAUT, PARTIES_MODELE, prochainLibellePartie, THEMES_DEFAUT, type Niveau } from "./constants";
+import { niveauAffiche, NIVEAU_DEFAUT, PARTIES_MODELE, prochainLibellePartie, type Niveau } from "./constants";
+import { THEMES_DU_CLUB } from "./themes-club";
 import { addDays, formatDateCourte, isoWeekday, nomMois, seanceCommencee, todayIso } from "./dates";
 import { compterPresences, type Compteurs } from "./presences";
 import { can, isStaff, type UserLike } from "./permissions";
@@ -128,17 +129,17 @@ export function semainesDuMois(colonnes: Array<{ date: string; mois: string }>, 
   return semaines;
 }
 
-/** Liste des thèmes (réglage `themes`, sinon la liste par défaut). */
+/** Liste des thèmes (réglage `themes`, sinon les thèmes du club : `themes-club.ts`). */
 export async function getThemes(): Promise<string[]> {
   const brut = await getSetting(CLES.themes);
-  if (!brut) return [...THEMES_DEFAUT];
+  if (!brut) return [...THEMES_DU_CLUB];
   try {
     const liste = JSON.parse(brut);
     if (Array.isArray(liste) && liste.every((t) => typeof t === "string")) return liste;
   } catch {
     /* réglage corrompu : on retombe sur la liste par défaut */
   }
-  return [...THEMES_DEFAUT];
+  return [...THEMES_DU_CLUB];
 }
 
 export async function setThemes(themes: string[]): Promise<void> {

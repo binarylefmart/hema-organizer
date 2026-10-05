@@ -138,7 +138,6 @@ function formulaireSeance(periodId: string): FormData {
     lieu: "Villebourg",
     adresse: "",
     theme: "Garde haute",
-    alternative: "",
   })) {
     fd.append(nom, valeur);
   }
@@ -148,8 +147,10 @@ function formulaireSeance(periodId: string): FormData {
 beforeEach(() => {
   faux.acteur = { id: "u-admin", email: "delta@club.test", role: "INSTRUCTEUR", estAdmin: true, actif: true };
   faux.seances = [
-    { id: "s1", date: "2026-10-06", heureDebut: "20:00", periodId: "p1", statut: "ACTIVE" },
-    { id: "s2", date: "2026-10-13", heureDebut: "20:00", periodId: "p1", statut: "ACTIVE" },
+    // Dates lointaines : annuler et rétablir refusent un cours commencé (`seanceAnnulable`), et ces
+    // séances doivent rester à venir quel que soit le jour où les tests tournent.
+    { id: "s1", date: "2099-10-06", heureDebut: "20:00", periodId: "p1", statut: "ACTIVE" },
+    { id: "s2", date: "2099-10-13", heureDebut: "20:00", periodId: "p1", statut: "ACTIVE" },
   ];
   faux.reponses = 0;
   faux.reauths = [];
@@ -198,7 +199,7 @@ describe("supprimer une séance : les ateliers ne restent pas orphelins", () => 
 
   it("journalise la date de la séance effacée", async () => {
     await expect(supprimerSeance("s1")).rejects.toThrow("REDIRECTION:");
-    expect(faux.audits).toEqual([{ action: "seance.supprimee", cible: "s1", details: { date: "2026-10-06", reponses: 0 } }]);
+    expect(faux.audits).toEqual([{ action: "seance.supprimee", cible: "s1", details: { date: "2099-10-06", reponses: 0 } }]);
   });
 });
 
@@ -245,7 +246,7 @@ describe("supprimer une séance : la serrure du bureau", () => {
   it("journalise le nombre de réponses perdues — la seule trace qui restera", async () => {
     faux.reponses = 14;
     await expect(supprimerSeance("s1")).rejects.toThrow("REDIRECTION:");
-    expect(faux.audits).toEqual([{ action: "seance.supprimee", cible: "s1", details: { date: "2026-10-06", reponses: 14 } }]);
+    expect(faux.audits).toEqual([{ action: "seance.supprimee", cible: "s1", details: { date: "2099-10-06", reponses: 14 } }]);
   });
 });
 
@@ -276,7 +277,7 @@ describe("période close : la séance se verrouille avec son trimestre", () => {
   });
 
   it("l'autosave du thème est refusée — le chemin le plus discret vers la base", async () => {
-    const etat = await enregistrerTheme({ sessionId: "s1", theme: "Garde haute", alternative: "" });
+    const etat = await enregistrerTheme({ sessionId: "s1", theme: "Garde haute" });
     expect(etat.erreur).toMatch(/clos/i);
     expect(faux.misesAJour).toEqual([]);
   });

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { lieuConnu, type Lieu } from "@/lib/lieux";
 import { Champ } from "@/components/ui/Champ";
-import { Select } from "@/components/ui/Select";
+import { ChampListe } from "@/components/ui/ChampListe";
 
 /**
  * Lieu d'un cours : l'une des salles habituelles du club, ou « Autre » (nom + adresse à préciser).
@@ -23,14 +23,14 @@ export function SelecteurLieu({ lieux, lieu = "", adresse = "", prefixe = "" }: 
   return (
     <div className="flex flex-col gap-4">
       {lieux.length > 0 && (
-        <Select label="Lieu" name={`${prefixe}choixLieu`} id={`${prefixe}choixLieu`} value={choix} onChange={(e) => setChoix(e.target.value)}>
-          {lieux.map((l) => (
-            <option key={l.cle} value={l.cle}>
-              {l.lieu}
-            </option>
-          ))}
-          <option value="autre">Autre lieu…</option>
-        </Select>
+        <ChampListe
+          label="Lieu"
+          name={`${prefixe}choixLieu`}
+          id={`${prefixe}choixLieu`}
+          valeur={choix}
+          onChange={setChoix}
+          entrees={[...lieux.map((l) => ({ valeur: l.cle, libelle: l.lieu })), { valeur: "autre", libelle: "Autre lieu…" }]}
+        />
       )}
       {selection ? (
         <>

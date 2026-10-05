@@ -69,9 +69,12 @@ describe("les deux portes de la même destruction", () => {
   it("effacer une séance et effacer un lot de séances ont la même serrure", () => {
     const seule = exports("src/actions/seances.ts").find((e) => e.nom === "supprimerSeance");
     const lot = exports("src/actions/periodes.ts").find((e) => e.nom === "supprimerSeancesPeriode");
+    // La troisième porte : « Supprimer les séances » de la sélection multiple de l'onglet Séances.
+    const masse = exports("src/actions/seances.ts").find((e) => e.nom === "appliquerGesteSeancesEnMasse");
     expect(seule).toBeDefined();
     expect(lot).toBeDefined();
-    for (const porte of [seule!, lot!]) {
+    expect(masse).toBeDefined();
+    for (const porte of [seule!, lot!, masse!]) {
       // Même permission (le bureau), même second facteur, dans les deux cas.
       expect(porte.corps, `${porte.nom} : la destruction des réponses appartient au bureau`).toContain('assertPermission("periods.manage")');
       expect(porte.corps, `${porte.nom} : un code récent avant d'effacer des réponses`).toContain("exigerReauth(");

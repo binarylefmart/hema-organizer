@@ -39,10 +39,29 @@ import { useDevoilement } from "./ListeRepliee";
  * compteur lu à voix haute.
  */
 export function ListeSeances({ cartes, visibles = SEANCES_VISIBLES }: { cartes: ReactNode[]; visibles?: number }) {
-  const { montrees, cachees } = couper(cartes, visibles);
   // La tranche est du même pas que la coupe — cinq de plus, puis cinq de plus —, et « Replier »
   // ramène aux cinq premières.
-  const { affichees, restantes, prochaine, auDebut, suivante, revenir } = useDevoilement(cartes.length, { tranche: visibles, debut: visibles });
+  const devoilement = useDevoilement(cartes.length, { tranche: visibles, debut: visibles });
+  return <CartesDevoilees cartes={cartes} visibles={visibles} devoilement={devoilement} />;
+}
+
+/**
+ * **Le rendu du repli, sans son état** — pour l'écran qui doit **lire** ce qui est déplié : la
+ * sélection multiple de l'onglet Séances (`SelectionSeances`), dont la case maîtresse ne prend que
+ * les cartes affichées et dont « Afficher et sélectionner » déplie tout. Elle tient donc l'état du
+ * dévoilement elle-même et le passe ici : deux états pour le même repli finiraient par se contredire.
+ */
+export function CartesDevoilees({
+  cartes,
+  visibles = SEANCES_VISIBLES,
+  devoilement,
+}: {
+  cartes: ReactNode[];
+  visibles?: number;
+  devoilement: ReturnType<typeof useDevoilement>;
+}) {
+  const { montrees, cachees } = couper(cartes, visibles);
+  const { affichees, restantes, prochaine, auDebut, suivante, revenir } = devoilement;
   return (
     <div className="flex flex-col gap-4">
       {montrees}

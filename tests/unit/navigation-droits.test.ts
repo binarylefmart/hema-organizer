@@ -52,8 +52,8 @@ describe("un lien qui rebondit sur /connexion/admin le dit", () => {
   it("les entrées « Nouvelle saison / période » du sélecteur annoncent le mot de passe admin", () => {
     const code = lire("src/components/filtres/SelecteurPeriode.tsx");
     expect(code).toContain('const MENTION_ADMIN = " (mot de passe admin)";');
-    expect(code).toContain("<option value={CREER_SAISON}>Nouvelle saison…{MENTION_ADMIN}</option>");
-    expect(code).toContain("<option value={CREER_PERIODE}>Nouvelle période…{MENTION_ADMIN}</option>");
+    expect(code).toContain("{ valeur: CREER_SAISON, libelle: `Nouvelle saison…${MENTION_ADMIN}`, groupe: \"Ajouter\" }");
+    expect(code).toContain("{ valeur: CREER_PERIODE, libelle: `Nouvelle période…${MENTION_ADMIN}`, groupe: \"Ajouter\" }");
   });
 
   it("« ouvre-en un d'abord » (séance sans trimestre) aussi", () => {

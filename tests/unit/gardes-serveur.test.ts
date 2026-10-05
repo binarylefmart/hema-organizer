@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { gestesSeance } from "@/components/seances/gestes-seance";
 
 /**
  * **Le filet qui manquait : une server action sans garde ne doit pas pouvoir naître.**
@@ -434,6 +435,8 @@ describe("balayage : la destruction des réponses des membres appartient au bure
     expect(portes.sort()).toEqual([
       "src/actions/periodes.ts::supprimerPeriode",
       "src/actions/periodes.ts::supprimerSeancesPeriode",
+      // Le geste de masse de l'onglet Séances : « Supprimer les séances », même serrure que la séance seule.
+      "src/actions/seances.ts::appliquerGesteSeancesEnMasse",
       "src/actions/seances.ts::supprimerSeance",
     ]);
   });
@@ -444,9 +447,11 @@ describe("balayage : la destruction des réponses des membres appartient au bure
     // que `periods.manage` l'exige. Les deux conditions sont donc dans le rendu.
     const page = fs.readFileSync(path.join(process.cwd(), "src/app/(app)/seances/[id]/page.tsx"), "utf8");
     expect(page).toContain('can(user, "periods.manage") && user.sessionForte');
-    // …et le bouton est bien dans cette branche, pas à côté.
-    const branche = page.slice(page.indexOf('can(user, "periods.manage")'));
-    expect(branche.slice(0, branche.indexOf("</BoutonAction>"))).toContain("supprimerSeance.bind(null, id)");
+    // …et c'est bien elle qui ouvre le geste « Supprimer » de « Que veux-tu faire ? », pas à côté.
+    expect(page).toMatch(/<GestesSeance[^>]*supprimer=\{can\(user, "periods\.manage"\) && user\.sessionForte\}/);
+    // Le geste n'existe que si l'appelant l'ouvre.
+    expect(gestesSeance({ annulee: false, passee: false, ouvrir: false, supprimer: false }).map((g) => g.geste)).not.toContain("supprimer");
+    expect(gestesSeance({ annulee: false, passee: false, ouvrir: false, supprimer: true }).map((g) => g.geste)).toContain("supprimer");
   });
 
   it("le nombre de réponses perdues part dans le journal, aux trois portes", () => {

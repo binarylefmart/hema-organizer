@@ -89,9 +89,9 @@ function ligneCompte(page: import("@playwright/test").Page, nom: string) {
 
 /**
  * La pastille de rôle **visible** sur une ligne. Le filtre de visibilité n'est pas une précaution
- * d'écriture : le volet « Gérer » de la ligne est un `<details>` replié, et les `<option>` de sa
- * liste déroulante de rôle portent eux aussi les mots « Membre » et « Instructeur ». Sans lui,
- * « aucune pastille » serait toujours faux.
+ * d'écriture : le volet « Gérer » de la ligne est un `<details>` replié, et le déclencheur de sa
+ * liste déroulante de rôle (`SelecteurRole`, un bouton `combobox`) affiche lui aussi « Membre » ou
+ * « Instructeur ». Sans lui, « aucune pastille » serait toujours faux.
  */
 function pastilleRole(page: import("@playwright/test").Page, nom: string, role: string | RegExp) {
   return ligneCompte(page, nom)
@@ -120,6 +120,10 @@ test("changer le rôle par lots : un compte du bureau garde sa case, et son bure
    * restée : elle a juste changé de place.
    */
   await expect(barreRoles(page)).toHaveCount(0);
+  // Éteint, l'interrupteur « Sélection multiple » cache cases, case maîtresse et phrase d'invite.
+  await expect(page.getByLabel(MAITRESSE_TROIS_RESULTATS)).toHaveCount(0);
+  await expect(page.getByLabel("Sélectionner Foxtrot 08")).toHaveCount(0);
+  await page.getByRole("switch", { name: /Sélection multiple/ }).check();
   await expect(page.getByText(INVITE_SANS_SELECTION)).toBeVisible();
 
   // La case maîtresse nomme ce qu'elle emporte : les **résultats** de la recherche, et leur nombre.
@@ -187,6 +191,7 @@ test("changer le rôle par lots : un compte du bureau garde sa case, et son bure
    */
   await page.goto("/admin/membres?q=Foxtrot");
   await expect(page.getByRole("link", { name: "Foxtrot 06" })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("switch", { name: /Sélection multiple/ }).check();
   await page.getByLabel("Sélectionner Foxtrot 08").check();
   await page.getByLabel("Sélectionner Foxtrot 06").check();
   page.once("dialog", (d) => void d.accept());

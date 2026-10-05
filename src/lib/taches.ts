@@ -14,9 +14,11 @@ import { purgerNotifications } from "./notifications/journal";
 import { estPassageEnvois } from "./notifications/planification";
 import { heureRecap } from "./settings";
 import { sauvegarderBase } from "./sauvegarde";
+import { fuseauCourant } from "./fuseau";
+import { appliquerFuseauDuClub } from "./identite";
 
 /**
- * Tâches planifiées de l'application (node-cron, fuseau Europe/Paris), démarrées une fois au lancement
+ * Tâches planifiées de l'application (node-cron, dans le fuseau du club), démarrées une fois au lancement
  * du serveur (src/instrumentation.ts) :
  *
  * - 03:30 — sauvegarde de la base ;
@@ -30,7 +32,6 @@ import { sauvegarderBase } from "./sauvegarde";
  *   (NotificationLog.dedupKey), donc un rejeu ou un redémarrage ne double jamais un message — c'est
  *   ce qui rend le rattrapage gratuit (`estPassageEnvois`).
  */
-export const TZ = "Europe/Paris";
 
 /**
  * Entretien quotidien : sessions expirées purgées, liens d'accès arrivant à terme renouvelés et
@@ -184,15 +185,23 @@ export async function tickEnvois(now = new Date()): Promise<boolean> {
 
 let demarre = false;
 
-export async function demarrerTaches(): Promise<void> {
-  // `bequilleDevActive` et non `process.env` : les béquilles de développement sont neutralisées en
-  // production, et c'est exactement ce qu'on veut ici — une variable posée par mégarde dans la
-  // stack couperait en silence les sauvegardes, l'entretien, la purge d'audit et le récap du soir.
-  if (demarre || bequilleDevActive("CRON_DISABLED")) return;
-  demarre = true;
-  const cron = await import("node-cron");
-  // Tous les jours à 7 h (heure de Paris)
-  cron.schedule(
+type Cron = typeof import("node-cron");
+type Tache = { stop: () => unknown };
+
+declare global {
+  var __tachesQuotidiennes: { cron: Cron; taches: Tache[] } | undefined;
+}
+
+/**
+ * **Les deux tâches à heure fixe — entretien à 7 h, sauvegarde à 3 h 30 — dans le fuseau du club.**
+ *
+ * Elles sont rangées sur `globalThis`, pas dans une variable de module : l'action qui enregistre un
+ * nouveau fuseau ne tourne pas dans la même copie de ce module que l'instrumentation qui les a lancées,
+ * et une variable de module ne lui montrerait rien à arrêter.
+ */
+function planifierQuotidiennes(cron: Cron, fuseau: string): void {
+  for (const t of globalThis.__tachesQuotidiennes?.taches ?? []) t.stop();
+  const entretien = cron.schedule(
     "0 7 * * *",
     async () => {
       try {
@@ -202,11 +211,37 @@ export async function demarrerTaches(): Promise<void> {
         console.error("[taches] entretien quotidien en échec", e);
       }
     },
-    { timezone: TZ },
+    { timezone: fuseau },
   );
-  // Sauvegarde de la base tous les jours à 3 h 30 (heure de Paris), hors des heures d'usage
-  cron.schedule("30 3 * * *", () => void sauvegardeQuotidienne(), { timezone: TZ });
-  // Chaque minute : l'heure du récap est un réglage modifiable, on la relit au lieu de figer un cron
-  cron.schedule("* * * * *", () => void tickEnvois(), { timezone: TZ });
-  console.info("[taches] planification démarrée (sauvegarde à 03:30, entretien quotidien à 07:00, envois du soir à l'heure réglée — Europe/Paris)");
+  // Sauvegarde de la base tous les jours à 3 h 30, hors des heures d'usage
+  const sauvegarde = cron.schedule("30 3 * * *", () => void sauvegardeQuotidienne(), { timezone: fuseau });
+  globalThis.__tachesQuotidiennes = { cron, taches: [entretien, sauvegarde] };
+}
+
+/**
+ * **Le fuseau du club vient de changer** : l'entretien et la sauvegarde repartent à leur heure dans le
+ * nouveau fuseau, sans redémarrer le serveur. Sans effet si les tâches n'ont pas été lancées
+ * (`CRON_DISABLED`, tests).
+ */
+export function replanifierFuseau(fuseau: string): void {
+  const actuel = globalThis.__tachesQuotidiennes;
+  if (!actuel) return;
+  planifierQuotidiennes(actuel.cron, fuseau);
+  console.info(`[taches] entretien et sauvegarde replanifiés dans le fuseau ${fuseau}`);
+}
+
+export async function demarrerTaches(): Promise<void> {
+  // `bequilleDevActive` et non `process.env` : les béquilles de développement sont neutralisées en
+  // production, et c'est exactement ce qu'on veut ici — une variable posée par mégarde dans la
+  // stack couperait en silence les sauvegardes, l'entretien, la purge d'audit et le récap du soir.
+  // Le fuseau du club avant tout, et même sans tâches (`CRON_DISABLED`) : toute date calculée en dépend.
+  await appliquerFuseauDuClub();
+  if (demarre || bequilleDevActive("CRON_DISABLED")) return;
+  demarre = true;
+  const cron = await import("node-cron");
+  planifierQuotidiennes(cron, fuseauCourant());
+  // Chaque minute : l'heure du récap est un réglage modifiable, on la relit au lieu de figer un cron.
+  // Le fuseau n'y joue pas : `estPassageEnvois` lit l'heure dans le fuseau courant à chaque passage.
+  cron.schedule("* * * * *", () => void tickEnvois());
+  console.info(`[taches] planification démarrée (sauvegarde à 03:30, entretien quotidien à 07:00, envois du soir à l'heure réglée — ${fuseauCourant()})`);
 }

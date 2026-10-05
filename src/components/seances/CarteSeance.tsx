@@ -22,6 +22,7 @@ export function CarteSeance({
   aujourdHui,
   partEffectifMin,
   actions,
+  selection,
 }: {
   seance: SeanceCarte;
   aujourdHui: string;
@@ -31,6 +32,12 @@ export function CarteSeance({
    */
   partEffectifMin: number;
   actions?: ReactNode;
+  /**
+   * La case de la sélection multiple (`CaseSeance`), en mode modification seulement : posée **devant
+   * la date**, là où l'œil commence la carte, et non au pied, où elle se perdrait au milieu des gestes
+   * de la séance seule. Elle ne se rend que si l'interrupteur « Sélection multiple » est ouvert.
+   */
+  selection?: ReactNode;
 }) {
   const dans = joursAvant(aujourdHui, s.date);
   /*
@@ -61,6 +68,7 @@ export function CarteSeance({
           `src/app/(app)/page.tsx`), écarter la date du créneau les fait lire comme deux
           informations sans rapport, alors que c'est la même question. */}
       <header className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {selection}
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className={`text-lg font-bold sm:text-xl ${s.annulee ? "text-texte-secondaire" : ""}`}>{formatDateSansAnnee(s.date)}</h2>
           {s.annulee ? (

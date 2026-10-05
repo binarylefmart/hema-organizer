@@ -114,7 +114,7 @@ export async function porteurJetonAnnulation(jeton: string): Promise<{ sessionId
    * **Un cours commencé ne s'annule plus, même par ce lien**.
    *
    * Le lien vaut une semaine (`DUREE_LIEN_ANNULATION_MS`) et ne vérifiait que le statut de la période.
-   * L'interface, elle, sait déjà que ça ne se fait pas : `ActionsEquipe` masque « Annuler » sur une
+   * L'interface, elle, sait déjà que ça ne se fait pas : `gestesSeance` ne propose pas « Annuler » sur une
    * séance passée, « on ne prévient pas les gens d'une annulation pendant qu'ils sont dans la salle ».
    * Le chemin par email ne connaissait pas la règle — un clic le mardi annulait le stage de samedi et
    * envoyait « ❌ Cours annulé — samedi 3 octobre » à tous les invités.

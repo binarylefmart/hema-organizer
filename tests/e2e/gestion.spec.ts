@@ -13,63 +13,69 @@ async function compterEmails(type: string): Promise<number> {
 /**
  * Annule la n-ième séance encore annulable de la liste, puis attend que **cette carte-là** propose « Rétablir ».
  *
- * Deux pièges déjà rencontrés : le jeu de démonstration contient déjà une séance annulée (un « Rétablir »
- * quelconque était donc visible tout de suite, l'attente ne prouvait rien), et la navigation suivante
- * interrompait l'action serveur avant qu'elle n'aboutisse. On retrouve la carte par le lien de la séance,
- * qui ne bouge pas, plutôt que par son rang, qui change dès que la séance sort de la liste des annulables.
+ * La liste s'ouvre en lecture seule : les gestes d'organisation n'apparaissent qu'en mode modification
+ * (`?modifier=1`), au pied de chaque carte, dans « Que veux-tu faire ? ». La carte se retrouve par
+ * l'identifiant de sa séance (`data-geste-seance`), qui ne bouge pas, plutôt que par son rang, qui change
+ * dès que la séance sort des annulables — et le jeu de démonstration contient déjà une séance annulée.
  */
 async function annulerNiemeSeance(page: Page, rang: number, motif: string): Promise<void> {
+  await page.goto("/seances?modifier=1");
   // L'onglet Séances n'affiche que les cinq premières cartes : on déplie d'abord, sinon les
   // suivantes ne sont pas dans la page du tout (repli côté client, `ListeSeances`).
   const suite = page.getByRole("button", { name: /Afficher les .* cours suivants/ });
   if (await suite.isVisible().catch(() => false)) await suite.click();
-  const annulables = page.locator("article").filter({ has: page.getByText("Annuler", { exact: true }) });
-  const carte = annulables.nth(rang);
-  await expect(carte).toBeVisible();
-  const lien = await carte.getByRole("link", { name: "Modifier" }).getAttribute("href");
-  await carte.getByText("Annuler", { exact: true }).click();
-  await carte.getByLabel(/Motif/).fill(motif);
-  await carte.getByRole("button", { name: "Annuler la séance" }).click();
-  await expect(page.locator(`article:has(a[href="${lien}"])`).getByRole("button", { name: "Rétablir" })).toBeVisible({ timeout: 20_000 });
+  const gestes = page.locator('[data-annulable="true"]').nth(rang);
+  await expect(gestes).toBeVisible();
+  const id = await gestes.getAttribute("data-geste-seance");
+  await gestes.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
+  await page.getByRole("option", { name: "Annuler la séance" }).click();
+  await gestes.getByLabel(/Motif/).fill(motif);
+  page.once("dialog", (d) => d.accept());
+  await gestes.getByRole("button", { name: "Annuler la séance" }).click();
+  await expect(page.locator(`[data-geste-seance="${id}"][data-retablissable="true"]`)).toBeVisible({ timeout: 20_000 });
+}
+
+/** Ouvre la fiche de la première séance de la liste, en mode modification. */
+async function ouvrirPremiereSeance(page: Page): Promise<void> {
+  await page.goto("/seances?modifier=1");
+  const gestes = page.locator("[data-geste-seance]").first();
+  await gestes.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
+  await page.getByRole("option", { name: "Modifier la séance" }).click();
+  await gestes.getByRole("button", { name: "Ouvrir la séance" }).click();
+  await page.waitForURL(/\/seances\/[A-Za-z0-9_-]+\?modifier=1$/);
 }
 
 /** Gestion : ajout d'une personne (lien envoyé), annulation d'une séance, accès admin réservé. */
 test.describe("gestion", () => {
-  test("ajouter une personne envoie immédiatement son lien d'accès", async ({ page }) => {
+  /*
+   * **Ajouter une personne n'envoie plus rien** (`dcb431b`) : le lien part avec le trimestre (trois
+   * jours avant son début) ou quand le bureau l'envoie depuis la liste ou la fiche. Ce scénario
+   * attendait encore l'ancien « son lien d'accès vient de partir » ; il vérifie maintenant l'inverse —
+   * le message le dit, et aucun email d'invitation n'est écrit pour cette adresse.
+   */
+  test("ajouter une personne n'envoie aucun email", async ({ page }) => {
     await connecter(page, COMPTES.admin);
     await page.goto("/admin/membres");
     const email = `nouvelle.${Date.now()}@club.test`;
     // Le formulaire d'ajout, et lui seul : chaque ligne de la liste cache aussi un champ « Email de
-    // … ». Les libellés y suivent les réglages (l'adresse est facultative depuis l'étape 5 bis, le
-    // libellé le dit) : on vise le début du libellé et le verbe du bouton, pas leur formulation du
-    // jour. **« Ajouter un membre »** (« remplace ajouter une personne par ajouter un membre ») :
-    // le titre de la carte a changé, et ce scénario le visait encore par l'ancien mot — il est
-    // resté rouge une soirée, la campagne n'ayant pas tourné entre les deux.
+    // … ». On vise le début du libellé et le verbe du bouton, pas leur formulation du jour.
     const ajout = page.locator("section").filter({ has: page.getByRole("heading", { name: "Ajouter un membre" }) }).last();
     await ajout.getByLabel("Prénom").fill("Nadia");
     await ajout.getByLabel("Nom", { exact: true }).fill("Test");
     await ajout.getByLabel(/^Email/).fill(email);
     await ajout.getByRole("button", { name: /^Ajouter/ }).click();
-    await expect(page.getByText(/Nadia Test ajouté\(e\) : son lien d'accès vient de partir/)).toBeVisible();
+    await expect(page.getByText(/Nadia Test ajouté\(e\)\. Aucun email n'est parti/)).toBeVisible();
 
-    await expect
-      .poll(
-        async () => {
-          const fichiers = (await readdir(DOSSIER_EMAILS).catch(() => [])).filter((f) => f.includes("invitation_") && f.endsWith(".txt")).sort();
-          for (const f of fichiers.reverse().slice(0, 5)) {
-            const t = await readFile(path.join(DOSSIER_EMAILS, f), "utf8");
-            if (t.includes(`À : ${email}`) && /\/invitation\/[A-Za-z0-9_-]{43}/.test(t)) return true;
-          }
-          return false;
-        },
-        { timeout: 15_000 },
-      )
-      .toBe(true);
+    // Laisser à un envoi éventuel le temps d'arriver sur disque, puis vérifier qu'il n'existe pas.
+    await page.waitForTimeout(2_000);
+    const fichiers = (await readdir(DOSSIER_EMAILS).catch(() => [] as string[])).filter((f) => f.includes("invitation_") && f.endsWith(".txt"));
+    for (const f of fichiers) {
+      expect(await readFile(path.join(DOSSIER_EMAILS, f), "utf8"), `un lien est parti à ${email}`).not.toContain(`À : ${email}`);
+    }
   });
 
   test("annuler une séance avec un motif la barre dans l'onglet Séances", async ({ page }) => {
     await connecter(page, COMPTES.instructeur);
-    await page.goto("/seances");
     // Annulation depuis la liste : la 3e séance annulable (les deux premières servent aux autres tests)
     await annulerNiemeSeance(page, 2, "Test d'annulation e2e");
     // Le motif est visible sur la carte, dans ce même écran : c'est désormais la seule liste
@@ -78,8 +84,7 @@ test.describe("gestion", () => {
 
   test("l'autosave du thème enregistre sans bouton", async ({ page }) => {
     await connecter(page, COMPTES.instructeur);
-    await page.goto("/seances");
-    await page.getByRole("link", { name: "Modifier" }).first().click();
+    await ouvrirPremiereSeance(page);
     await page.locator("#theme").fill("Thème autosave e2e");
     await page.locator("#theme").blur();
     await expect(page.getByText("Enregistré automatiquement.")).toBeVisible();
@@ -118,7 +123,6 @@ test.describe("gestion", () => {
 
 test("annuler une séance prévient les invités par email", async ({ page }) => {
   await connecter(page, COMPTES.instructeur);
-  await page.goto("/seances");
   // Les emails des campagnes précédentes sont encore là : on compte l'avant pour n'observer que les nouveaux
   const avant = await compterEmails("annulation_");
   await annulerNiemeSeance(page, 3, "Test notification annulation");

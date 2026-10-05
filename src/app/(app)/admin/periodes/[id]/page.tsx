@@ -26,7 +26,7 @@ import { Carte } from "@/components/ui/Carte";
 import { DeuxPiles } from "@/components/ui/DeuxPiles";
 import { Champ } from "@/components/ui/Champ";
 import { SelecteurLieu } from "@/components/gestion/SelecteurLieu";
-import { Select } from "@/components/ui/Select";
+import { ChampListe } from "@/components/ui/ChampListe";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { BoutonAction } from "@/components/ui/BoutonAction";
 import { Alerte } from "@/components/ui/Alerte";
@@ -36,6 +36,7 @@ import { genererSeances } from "@/lib/periodes";
 import { Pastille } from "@/components/ui/Pastille";
 import { getLieux } from "@/lib/planning";
 import { Icone } from "@/components/ui/Icone";
+import { horaireHabituel } from "@/lib/horaire-habituel";
 
 export const metadata: Metadata = { title: "Période" };
 
@@ -129,6 +130,10 @@ export default async function PagePeriode({ params }: Props) {
   const invitationParUser = new Map(p.invitations.map((i) => [i.userId, i]));
   const modifierAction = modifierPeriode.bind(null, p.id);
   const creneauAction = ajouterCreneau.bind(null, p.id);
+  // Pré-remplissage du créneau à ajouter : le dernier créneau de la période, sinon l'horaire de la
+  // dernière séance du club (`horaireHabituel`) — jamais une heure écrite en dur.
+  const dernierCreneau = p.creneaux[p.creneaux.length - 1];
+  const horaire = dernierCreneau ? { heureDebut: dernierCreneau.heureDebut, heureFin: dernierCreneau.heureFin } : await horaireHabituel();
   const genererAction = genererSeancesPeriode.bind(null, p.id);
   const retirerSeancesAction = supprimerSeancesPeriode.bind(null, p.id);
   // Effacer une période est une décision du bureau : le bouton n'existe que pour un administrateur
@@ -430,25 +435,26 @@ export default async function PagePeriode({ params }: Props) {
                 <div className="grid gap-4 @xl:grid-cols-3">
                   {/* Aucun jour pré-choisi : le formulaire proposait le mardi, qui n'était le jour de
                       cours que d'un seul club. La liste s'ouvre donc sur lundi, et l'on choisit. */}
-                  <Select label="Jour" name="jourSemaine">
-                    {JOURS_SEMAINE.slice(1).map((j, i) => (
-                      <option key={j} value={i + 1}>
-                        {j}
-                      </option>
-                    ))}
-                  </Select>
+                  {/* La liste du dépôt, non pilotée : le jour choisi part dans le champ caché
+                      `jourSemaine` (1 = lundi … 7 = dimanche), exactement comme l'option native. */}
+                  <ChampListe
+                    label="Jour"
+                    name="jourSemaine"
+                    valeur="1"
+                    entrees={JOURS_SEMAINE.slice(1).map((j, i) => ({ valeur: String(i + 1), libelle: j }))}
+                  />
                   <Champ
                     label="Début"
                     name="heureDebut"
                     type="time"
-                    defaultValue="19:00"
+                    defaultValue={horaire.heureDebut}
                     required
                   />
                   <Champ
                     label="Fin"
                     name="heureFin"
                     type="time"
-                    defaultValue="21:00"
+                    defaultValue={horaire.heureFin}
                     required
                   />
                 </div>

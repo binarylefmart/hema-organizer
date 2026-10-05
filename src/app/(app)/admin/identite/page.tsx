@@ -5,13 +5,14 @@ import { PART_EFFECTIF_MAX, PART_EFFECTIF_MIN, identite } from "@/lib/identite";
 import { SEUIL_PLANCHER, seuilEnPersonnes } from "@/lib/presences";
 import { db } from "@/lib/db";
 import { THEMES } from "@/lib/themes";
-import { enregistrerApparenceClub, enregistrerNomsClub, enregistrerPartEffectifClub } from "@/actions/identite";
+import { enregistrerApparenceClub, enregistrerFuseauClub, enregistrerNomsClub, enregistrerPartEffectifClub } from "@/actions/identite";
+import { decalageMinutes, entreesFuseaux, libelleDecalage } from "@/lib/fuseau";
 import { ChampLogo } from "@/components/admin/ChampLogo";
 import { Carte } from "@/components/ui/Carte";
 import { Case, Champ } from "@/components/ui/Champ";
 import { DeuxPiles } from "@/components/ui/DeuxPiles";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
-import { Select } from "@/components/ui/Select";
+import { ChampListe } from "@/components/ui/ChampListe";
 
 export const metadata: Metadata = { title: "Le club" };
 
@@ -43,6 +44,11 @@ async function effectifInvite(): Promise<number | null> {
  * changer le nom ou le logo, c'est changer ce que voient **tous** les membres et ce qui part dans
  * leur boîte mail. Le journal d'audit garde chaque modification.
  */
+/** « 23 h 12 » dans le fuseau donné. */
+function heureAuClub(fuseau: string): string {
+  return new Intl.DateTimeFormat("fr-FR", { timeZone: fuseau, hour: "2-digit", minute: "2-digit" }).format(new Date()).replace(":", " h ");
+}
+
 export default async function PageIdentite() {
   await requirePermission("settings.technical");
   const [club, invites] = await Promise.all([identite(), effectifInvite()]);
@@ -192,6 +198,26 @@ export default async function PageIdentite() {
                 </p>
               </FormulaireAction>
             </Carte>
+
+            <Carte titre="Fuseau horaire">
+              <FormulaireAction action={enregistrerFuseauClub} bouton="Enregistrer le fuseau">
+                {/* La liste du dépôt, non pilotée : plus de vingt entrées, donc une recherche (« Montréal »,
+                    « Bruxelles »). Les fuseaux courants d'un club francophone sont en tête. */}
+                <ChampListe
+                  label="Fuseau du club"
+                  name="fuseau"
+                  id="fuseau"
+                  valeur={club.fuseau}
+                  entrees={entreesFuseaux(club.fuseau)}
+                  aide="Les heures des séances, la date du jour, l'heure du récap du soir et les tâches du matin s'entendent dans ce fuseau. Les séances déjà créées gardent leurs heures."
+                />
+                {/* **L'heure qu'il est au club**, calculée par le serveur dans le fuseau réglé : c'est la
+                    vérification qu'on fait d'instinct, et elle évite de deviner un décalage. */}
+                <p className="rounded-xl bg-surface-douce px-4 py-3 text-[1.0625rem]">
+                  Il est <strong>{heureAuClub(club.fuseau)}</strong> au club ({libelleDecalage(decalageMinutes(club.fuseau))}).
+                </p>
+              </FormulaireAction>
+            </Carte>
           </>
         }
         droite={
@@ -201,24 +227,23 @@ export default async function PageIdentite() {
                   était bel et bien enregistré — c'est ce champ-ci qui a fait découvrir le défaut.
                   Chaque champ repart désormais de la valeur du serveur tout seul : la clé de
                   remontage est portée par les briques de saisie elles-mêmes (voir
-                  `cleValeurServeur`), et le message « Apparence enregistrée » survit parce qu'elle
-                  est sur le champ et non sur le formulaire. */}
+                  `cleValeurServeur`) — pour la liste du thème, par le miroir du serveur de
+                  `ChampListe` —, et le message « Apparence enregistrée » survit parce que ce
+                  rattrapage vit dans le champ et non sur le formulaire. */}
               <FormulaireAction action={enregistrerApparenceClub} bouton="Enregistrer l'apparence" className="@container">
                 {/* Même grille de conteneur que la carte du nom, et pour la même raison : deux
                     colonnes dès que la carte dépasse 42 rem, jamais sur la foi de la fenêtre. */}
                 <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
-                  <Select
+                  {/* Non pilotée, mais **miroir du serveur** : `ChampListe` reprend la valeur fraîche
+                      quand la page revient avec un autre `club.theme` (le rôle qu'avait la clé de
+                      remontage de l'ancienne liste native), et son champ caché `theme` porte le choix. */}
+                  <ChampListe
                     label="Thème du club"
                     name="theme"
-                    defaultValue={club.theme}
+                    valeur={club.theme}
+                    entrees={THEMES.map((t) => ({ valeur: t.id, libelle: `${t.nom} — ${t.description}` }))}
                     aide="Les couleurs que voit un membre qui n'a rien choisi dans son profil — c'est-à-dire presque tout le monde. Chacun garde le droit de préférer une autre palette."
-                  >
-                    {THEMES.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.nom} — {t.description}
-                      </option>
-                    ))}
-                  </Select>
+                  />
                   {/* La **couleur** reste collée à sa case à cocher dans une seule cellule : c'est une
                       information, pas deux, et la case décide de ce que le sélecteur veut dire. */}
                   <div className="flex flex-col gap-4">

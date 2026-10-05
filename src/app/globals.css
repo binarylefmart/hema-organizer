@@ -25,18 +25,11 @@
   }
 }
 
-/* ---- Charte « parchemin », alignée sur l'écu livré avec l'application ----
+/* ---- Charte « parchemin » (thème livré par défaut ; le club choisit le sien dans Identité) ----
    Fond parchemin #F4F0EE / #E8E1D8, tan #CAB8A2, encre #282828, gris chaud #928781,
    accent rouille #AF4B2F. Or de l'écu réservé à la jauge et au focus.
    Vert = uniquement « Présent » ; rouille = « Absent », annulations, erreurs ; ocre = « Peut-être ». */
 :root {
-  --marque-bleu: #2b2622;
-  --marque-rouge: #a5472c;
-  --marque-or: #d7b461;
-  --marque-noir: #000000;
-  --marque-gris: #808080;
-  --marque-vert: #1e7a3c;
-
   --fond: #f4f0ee;
   --fond-haut: #ece6de;
   --surface: #fffdfa;
@@ -1251,12 +1244,6 @@
 
 
 @theme inline {
-  --color-hema-bleu: var(--marque-bleu);
-  --color-hema-rouge: var(--marque-rouge);
-  --color-hema-or: var(--marque-or);
-  --color-hema-noir: var(--marque-noir);
-  --color-hema-gris: var(--marque-gris);
-  --color-hema-vert: var(--marque-vert);
   --color-fond: var(--fond);
   --color-surface: var(--surface);
   --color-surface-douce: var(--surface-douce);

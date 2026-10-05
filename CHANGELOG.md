@@ -2,6 +2,30 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.69.0
+
+### Nouveautés
+
+- **seances** : modification par sélection, et l'interrupteur « Sélection multiple »
+- **evenements** : les gestes d'une annonce passent par « Que veux-tu faire ? »
+- **club** : le fuseau horaire se règle dans l'administration
+- **ui** : plus aucune liste native — ChampListe et ListeDeroulante partout
+- **seances** : lecture seule par défaut, « Modifier les séances » et « Que veux-tu faire ? »
+- **seances** : l'alternative ne se saisit plus — les options et cours du planning la remplacent
+
+### Corrections
+
+- **build** : le fuseau se pose depuis demarrerTaches, plus depuis instrumentation
+- **ui** : une liste déroulante n'élargit plus sa carte ; trois scénarios e2e remis à jour
+
+### Autres changements
+
+- **e2e** : la sélection des séances se teste en admin, après zz-liens ; état au 06/10
+- **code** : pas de date d'arbitrage dans les fichiers publiés
+- **club** : les thèmes du club quittent constants.ts, la palette --marque-* morte est retirée
+- **e2e** : l'ajout d'un membre n'envoie aucun email ; « Gérer » visé seul dans l'annuaire
+- **etat** : reprise au 05/10 — v0.68.1, cause du bouton bloqué, gestes rouges à jour
+
 ## 0.68.1
 
 ### Corrections
