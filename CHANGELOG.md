@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.69.1
+
+### Corrections
+
+- **public** : aucun thème d'exemple dans le dépôt public, comme pour les lieux
+
 ## 0.69.0
 
 ### Nouveautés
