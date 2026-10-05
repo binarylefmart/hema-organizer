@@ -10,7 +10,8 @@ import { AFFICHE_TAILLE_MAX, AFFICHE_TAILLE_MAX_LIBELLE, AFFICHE_TAILLE_MAX_MO }
  * Chacune est la réparation d'un écran qui annonçait une chose et en faisait une autre :
  *
  * 1. **Un seul éditeur par champ sur un écran.** La fiche d'une séance en avait deux pour le thème et
- *    l'alternative, et celui du haut écrasait le travail fait en bas.
+ *    l'alternative, et celui du haut écrasait le travail fait en bas. Les deux champs ont depuis quitté
+ *    la fiche : le programme se règle dans le planning.
  * 2. **« Afficher les -2 cours suivants ».** La liste des séances tenait son propre repli, sans rien
  *    emprunter au patron partagé, et son état survivait au changement d'onglet.
  * 3. **Une région vivante est montée avant son premier texte.** La confirmation d'une réponse de
@@ -41,7 +42,6 @@ const sansCommentaires = (fichier: string): string =>
 const FORMULAIRE_SEANCE = "src/components/gestion/FormulaireSeance.tsx";
 const FICHE = "src/app/(app)/seances/[id]/page.tsx";
 const NOUVELLE = "src/app/(app)/seances/nouvelle/page.tsx";
-const AUTOSAVE = "src/app/(app)/seances/[id]/ThemeAutosave.tsx";
 const LISTE_SEANCES = "src/components/seances/ListeSeances.tsx";
 const BOUTONS = "src/components/seances/BoutonsPresence.tsx";
 const CHAMP_AFFICHE = "src/components/evenements/ChampAffiche.tsx";
@@ -53,167 +53,18 @@ const SELECTEUR_ROLE = "src/app/(app)/admin/membres/SelecteurRole.tsx";
 /* 1. Un seul éditeur du thème sur la fiche d'une séance               */
 /* ------------------------------------------------------------------ */
 
-/**
- * **Le défaut, joué de bout en bout.** Deux éditeurs du même champ sur le même écran : celui du bas
- * est un champ non contrôlé avec clé de remontage (il suit donc le serveur), celui du haut un état
- * semé au montage (il ne le suit pas). Le modèle est réduit à ça, parce que c'est ça qui perd la donnée.
- */
-class Serveur {
-  theme = "Messer";
-  alternative = "";
-  /** L'autosave du haut : elle envoie **ses deux valeurs**, celle qu'on n'a pas touchée comprise. */
-  enregistrerTheme(v: { theme: string; alternative: string }) {
-    this.theme = v.theme;
-    this.alternative = v.alternative;
-  }
-  /** Le formulaire du bas : il poste tout son contenu, thème compris. */
-  modifierSeance(v: { theme: string; alternative: string }) {
-    this.theme = v.theme;
-    this.alternative = v.alternative;
-  }
-}
-
-/** Le widget du haut : `useState({theme, alternative})`, semé une fois — ou suivant le serveur. */
-class WidgetAutosave {
-  valeurs: { theme: string; alternative: string };
-  private miroir: { theme: string; alternative: string } | null;
-  constructor(
-    private serveur: Serveur,
-    suitLeServeur: boolean,
-  ) {
-    this.valeurs = { theme: serveur.theme, alternative: serveur.alternative };
-    this.miroir = suitLeServeur ? { ...this.valeurs } : null;
-  }
-  /** Un rendu serveur arrive (l'action a invalidé le chemin de la page). */
-  rendre() {
-    if (!this.miroir) return; // état semé une fois pour toutes
-    if (this.miroir.theme !== this.serveur.theme || this.miroir.alternative !== this.serveur.alternative) {
-      this.miroir = { theme: this.serveur.theme, alternative: this.serveur.alternative };
-      this.valeurs = { ...this.miroir };
+describe("la fiche d'une séance ne porte plus que date, horaire et lieu", () => {
+  it("ni thème détaillé ni alternative ne se saisissent plus : le planning dit le programme", () => {
+    for (const fichier of [FORMULAIRE_SEANCE, FICHE, NOUVELLE]) {
+      const code = sansCommentaires(fichier);
+      expect(code, fichier).not.toMatch(/name="theme"/);
+      expect(code, fichier).not.toMatch(/name="alternative"/);
+      expect(code, fichier).not.toContain("ThemeAutosave");
     }
-  }
-  /** On tape dans l'un des deux champs : l'autosave part avec les deux. */
-  saisir(champ: "theme" | "alternative", valeur: string) {
-    this.valeurs = { ...this.valeurs, [champ]: valeur };
-    this.serveur.enregistrerTheme(this.valeurs);
-  }
-}
-
-/**
- * Le formulaire du bas. Ses champs visibles portent une clé de remontage, donc ils repartent de la
- * valeur du serveur à chaque rendu ; ses champs **cachés** (`value=`, pilotés) font la même chose,
- * sans laisser croire qu'on peut y saisir quelque chose.
- */
-class FormulaireDuBas {
-  constructor(
-    private serveur: Serveur,
-    /** Le thème est-il encore **saisissable** ici ? C'est toute la différence. */
-    private editeLeTheme: boolean,
-  ) {}
-  private valeurs() {
-    return { theme: this.serveur.theme, alternative: this.serveur.alternative };
-  }
-  saisirTheme(valeur: string) {
-    if (!this.editeLeTheme) throw new Error("ce formulaire n'édite plus le thème");
-    this.serveur.modifierSeance({ ...this.valeurs(), theme: valeur });
-  }
-  /** « Enregistrer » : le formulaire poste ce qu'il porte, y compris ses champs cachés. */
-  enregistrer() {
-    this.serveur.modifierSeance(this.valeurs());
-  }
-}
-
-describe("la fiche d'une séance n'édite pas le thème à deux endroits", () => {
-  it("à deux éditeurs, celui du haut écrase ce que le bas vient d'enregistrer", () => {
-    const serveur = new Serveur();
-    const haut = new WidgetAutosave(serveur, false);
-    const bas = new FormulaireDuBas(serveur, true);
-
-    // On règle le thème en bas, et le champ du bas se remonte correctement.
-    bas.saisirTheme("Dague");
-    haut.rendre();
-    expect(serveur.theme).toBe("Dague");
-    // …mais le widget du haut affiche encore « Messer » : son état a été semé au montage.
-    expect(haut.valeurs.theme).toBe("Messer");
-
-    // On touche alors l'alternative en haut : l'autosave renvoie son thème périmé avec elle.
-    haut.saisir("alternative", "Dague si effectif réduit");
-    expect(serveur.theme, "« Dague » vient d'être écrasé sous un « Enregistré automatiquement »").toBe("Messer");
-  });
-
-  it("à un seul éditeur, le formulaire du bas ne peut plus rien écraser", () => {
-    const serveur = new Serveur();
-    const haut = new WidgetAutosave(serveur, true);
-    // Le formulaire du bas n'édite plus le thème : il le **poste** tel que le serveur le dit.
-    const bas = new FormulaireDuBas(serveur, false);
-
-    haut.saisir("theme", "Dague");
-    expect(serveur.theme).toBe("Dague");
-    // On enregistre ensuite la date ou le lieu : le thème posté est celui du serveur, pas celui du montage.
-    bas.enregistrer();
-    expect(serveur.theme).toBe("Dague");
-    // Et le miroir garde le widget d'accord avec le serveur, quoi qu'il arrive entre-temps.
-    haut.rendre();
-    expect(haut.valeurs.theme).toBe("Dague");
+    // En modification, la carte « Programme » ne porte que le lien vers le planning, ouvert sur la séance.
+    expect(source(FICHE)).toContain("Modifier le programme dans le planning");
   });
 });
-
-describe("l'écran le dit comme le modèle : un seul éditeur, et l'autre poste", () => {
-  it("le formulaire ne montre le thème qu'à la création", () => {
-    const code = source(FORMULAIRE_SEANCE);
-    // Le fichier porte deux branches « création » : la période (qui se lit en texte après coup) et
-    // celle-ci, la dernière. C'est elle qui porte le champ.
-    const creation = code.lastIndexOf("{creation ? (");
-    const sinon = code.indexOf(") : (", creation);
-    expect(creation).toBeGreaterThan(0);
-    expect(sinon).toBeGreaterThan(creation);
-    const position = code.indexOf('name="theme" id="seance-theme"');
-    expect(position).toBeGreaterThan(creation);
-    expect(position).toBeLessThan(sinon);
-    // Un seul champ de saisie dans tout le fichier : deux en seraient deux éditeurs.
-    expect((code.match(/<Champ label=[^>]*name="theme"/g) ?? []).length).toBe(1);
-  });
-
-  it("l'alternative ne se saisit plus nulle part : les options et cours du planning la remplacent", () => {
-    for (const fichier of [FORMULAIRE_SEANCE, AUTOSAVE]) {
-      expect(source(fichier), fichier).not.toMatch(/name="alternative"/);
-    }
-  });
-
-  it("en modification, le thème est posté par un champ piloté — jamais par `defaultValue`", () => {
-    const code = source(FORMULAIRE_SEANCE);
-    expect(code).toContain('<input type="hidden" name="theme" value={valeurs.theme} />');
-    // `defaultValue` sur un champ caché serait le défaut d'origine déguisé : figé au montage, il
-    // reposterait la valeur du chargement de la page par-dessus celle que l'autosave vient d'écrire.
-    expect(code).not.toMatch(/type="hidden"[^>]*defaultValue/);
-    // Et le formulaire dit où ce champ se règle : un formulaire muet sur ce qu'il ne montre plus se
-    // lit comme une régression.
-    expect(code).toMatch(/se règle plus haut, dans « Programme »/);
-  });
-
-  it("la fiche monte l'autosave une fois, et son formulaire est celui de la modification", () => {
-    const code = source(FICHE);
-    expect(code.match(/<ThemeAutosave/g) ?? []).toHaveLength(1);
-    // `creation` n'est pas passé : c'est la branche des champs cachés qui est rendue.
-    expect(code.slice(code.indexOf("<FormulaireSeance"))).not.toContain("creation");
-    // Et l'écran de création, lui, le passe : c'est là que les deux champs se saisissent.
-    expect(source(NOUVELLE)).toContain("creation");
-    // Le widget d'autosave n'existe pas à la création — la séance n'a pas encore d'identifiant.
-    expect(source(NOUVELLE)).not.toContain("ThemeAutosave");
-  });
-
-  it("l'autosave est le seul à porter un champ de saisie pour ces deux noms", () => {
-    // Deux `name="theme"` saisissables sur le même écran, c'est le défaut lui-même. Ici : un champ
-    // dans l'autosave, un champ caché dans le formulaire.
-    const champsSaisissables = (f: string) => (sansCommentaires(f).match(/<Champ [^>]*name="theme"/g) ?? []).length;
-    expect(champsSaisissables(AUTOSAVE)).toBe(1);
-    expect(champsSaisissables(FICHE)).toBe(0);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/* 2. Le repli de la liste des séances, par le patron commun           */
-/* ------------------------------------------------------------------ */
 
 describe("la liste des séances ne peut plus annoncer un nombre négatif", () => {
   /**

@@ -22,7 +22,6 @@ import { PresencesEquipe } from "@/components/gestion/PresencesEquipe";
 import { trierParActionnabilite } from "@/components/seances/listes";
 import { BoutonPartager } from "@/components/partage/BoutonPartager";
 import { partageSeance } from "@/components/partage/contenu";
-import { ThemeAutosave } from "./ThemeAutosave";
 import { ProgrammeCases } from "@/components/planning/GrillePlanning";
 import { chargerPlanning } from "@/lib/planning";
 import { Pastille } from "@/components/ui/Pastille";
@@ -39,7 +38,7 @@ export default async function PageSeance({ params, searchParams }: Props) {
   /*
    * **La fiche s'ouvre en lecture seule, comme le planning et la liste des séances** (`?modifier=1`).
    * Administrateurs compris : le bureau est un supplément, il ne change pas la vue. « Modifier la
-   * séance » ouvre le thème, le formulaire (date, horaire, lieu), la correction des présences et
+   * séance » ouvre le formulaire (date, horaire, lieu), la correction des présences et
    * « Que veux-tu faire ? » (annuler, rétablir, supprimer). Tout s'y enregistre tout de suite :
    * « Terminer les modifications » ne fait que refermer.
    *
@@ -141,7 +140,6 @@ export default async function PageSeance({ params, searchParams }: Props) {
           <div className="flex flex-col gap-4">
             {enEdition ? (
               <div className="flex flex-col gap-2">
-                <p>Le programme de la séance (cours, options, instructeurs, thèmes) se règle dans le planning.</p>
                 <LienBouton href={`${lienPlanning({ periode: carte.periodId, date: carte.date }, true)}#seance-${id}`} className="w-full sm:w-auto sm:self-start">
                   <Icone nom="livre" taille={20} />
                   Modifier le programme dans le planning
@@ -157,16 +155,6 @@ export default async function PageSeance({ params, searchParams }: Props) {
               />
             ) : (
               <p className="text-texte-secondaire">Programme indisponible.</p>
-            )}
-            {enEdition ? (
-              <ThemeAutosave sessionId={id} theme={carte.theme} />
-            ) : (
-              carte.theme.trim() !== "" && (
-                <p>
-                  <span className="text-texte-secondaire">Thème détaillé : </span>
-                  {carte.theme}
-                </p>
-              )
             )}
           </div>
         </Carte>
@@ -253,7 +241,6 @@ export default async function PageSeance({ params, searchParams }: Props) {
             heureFin: carte.heureFin,
             lieu: carte.lieu,
             adresse: carte.adresse,
-            theme: carte.theme,
           }}
         />
         </Carte>

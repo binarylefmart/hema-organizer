@@ -525,7 +525,7 @@ describe("balayage : les actions d'une séance consultent le statut de sa pério
     // Nommés un par un, en plus du balayage : c'est la liste que la relecture a trouvée ouverte, et
     // on veut qu'un renommage de l'un d'eux fasse échouer les tests plutôt que de le laisser sortir
     // du balayage sans bruit.
-    const sansGarde = ["creerSeance", "modifierSeance", "enregistrerTheme", "annulerSeance", "retablirSeance", "supprimerSeance"].filter((nom) => {
+    const sansGarde = ["creerSeance", "modifierSeance", "annulerSeance", "retablirSeance", "supprimerSeance"].filter((nom) => {
       const f = fonctions.find((x) => x.nom === nom);
       if (!f) return true;
       const appelees = appels(f.corps);

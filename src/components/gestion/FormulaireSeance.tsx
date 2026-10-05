@@ -12,17 +12,16 @@ type Valeurs = {
   heureFin: string;
   lieu: string;
   adresse: string;
-  theme: string;
 };
 
 /**
- * Formulaire de séance (création et modification) : date, horaire, lieu — et, **à la création
- * seulement**, le thème détaillé. Sur la fiche d'une séance, il appartient au widget d'autosave de
- * la carte « Programme » (`ThemeAutosave`) et n'est plus saisissable ici : voir le commentaire plus bas. Instructeurs et thèmes par partie se règlent dans
- * le planning.
+ * Formulaire de séance (création et modification) : date, horaire, lieu. Rien d'autre : ce qu'on fait
+ * pendant la séance — cours, options, instructeurs, thèmes — se règle dans le planning, partie par
+ * partie.
  *
- * **L'alternative ne se saisit plus nulle part** : on ajoute plutôt des options ou des cours au
- * planning de la séance. Sa colonne reste en base, sans éditeur.
+ * **Ni thème détaillé ni alternative ne se saisissent plus** : le thème de chaque partie et les
+ * options du planning disent la même chose, mieux rangé. Leurs colonnes restent en base, sans
+ * éditeur ni écriture : `lireSeance` ne les lit plus, `modifierSeance` ne peut donc pas les effacer.
  */
 export function FormulaireSeance({
   action,
@@ -66,34 +65,6 @@ export function FormulaireSeance({
         <Champ label="Fin" name="heureFin" id="seance-heureFin" type="time" defaultValue={valeurs.heureFin} required />
       </div>
       <SelecteurLieu lieux={lieux} lieu={valeurs.lieu} adresse={valeurs.adresse} prefixe="seance-" />
-      {/* **Le thème ne se saisit qu'à un seul endroit par écran**. À la création,
-          c'est ici — la séance n'existe pas encore, il n'y a rien à enregistrer automatiquement.
-          Sur la fiche d'une séance, c'est le widget d'autosave de la carte « Programme »
-          (`ThemeAutosave`), et ce champ-ci **disparaît**.
-
-          **Pourquoi :** les deux éditeurs vivaient sur le même écran, et un seul se remontait à la
-          valeur fraîche (`cleValeurServeur` sur `Champ`). On mettait « Dague » ici, on
-          enregistrait, ce champ se remontait correctement — mais le widget du haut, dont l'état
-          n'est semé qu'au montage, affichait encore « Messer ». Toucher l'alternative en haut
-          renvoyait alors `{theme: "Messer"}` et écrasait « Dague » sous un « Enregistré
-          automatiquement » : une perte de donnée silencieuse. Deux éditeurs du même champ, c'est
-          deux vérités concurrentes ; la seule réparation qui tienne est de n'en garder qu'une.
-
-          La valeur continue d'être **postée** : `modifierSeance` lit tout le formulaire
-          (`lireSeance`) et un champ absent y vaudrait chaîne vide, donc un effacement. C'est une
-          entrée **pilotée** par React (`value=`) : elles portent à chaque rendu ce que le serveur
-          vient de dire, jamais la valeur du montage — c'est ce qui les distingue d'un champ nu à
-          `defaultValue`, et pourquoi elle n'a pas de clé de remontage. */}
-      {creation ? (
-        <Champ label="Thème détaillé (facultatif)" name="theme" id="seance-theme" defaultValue={valeurs.theme} maxLength={120} placeholder="ex. Messer — garde haute" />
-      ) : (
-        <>
-          <input type="hidden" name="theme" value={valeurs.theme} />
-          <p className="text-base text-texte-secondaire">
-            Le <strong>thème détaillé</strong> se règle plus haut, dans « Programme » : il s&apos;y enregistre tout seul.
-          </p>
-        </>
-      )}
     </FormulaireAction>
   );
 }

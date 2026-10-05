@@ -401,21 +401,3 @@ describe("SelecteurRole : son état est semé par le serveur, il doit le suivre"
   });
 });
 
-describe("ThemeAutosave : le thème d'une séance suit le serveur", () => {
-  const AUTOSAVE = "src/app/(app)/seances/[id]/ThemeAutosave.tsx";
-  const semes = etatsSemes(AUTOSAVE, "ThemeAutosave");
-
-  it("les deux champs et leur miroir sont des états semés, et tous suivent le serveur", () => {
-    expect(semes.map((s) => s.etat).sort()).toEqual(["valeurs", "vuDuServeur"]);
-    expect(semes.filter((s) => !s.suitLeServeur)).toEqual([]);
-  });
-
-  it("la reprise est ciblée : jamais pendant qu'on tape, jamais pendant un envoi", () => {
-    // Sans cette garde, la valeur revenue de notre propre enregistrement effacerait les lettres
-    // tapées entre-temps — c'est la règle des cases du planning, mot pour mot.
-    const code = lire(AUTOSAVE);
-    expect(code).toMatch(/const auRepos = /);
-    expect(code).toMatch(/const rienDeSaisi = /);
-    expect(code).toMatch(/if \(auRepos && rienDeSaisi\)/);
-  });
-});

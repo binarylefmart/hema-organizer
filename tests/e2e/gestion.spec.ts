@@ -35,16 +35,6 @@ async function annulerNiemeSeance(page: Page, rang: number, motif: string): Prom
   await expect(page.locator(`[data-geste-seance="${id}"][data-retablissable="true"]`)).toBeVisible({ timeout: 20_000 });
 }
 
-/** Ouvre la fiche de la première séance de la liste, en mode modification. */
-async function ouvrirPremiereSeance(page: Page): Promise<void> {
-  await page.goto("/seances?modifier=1");
-  const gestes = page.locator("[data-geste-seance]").first();
-  await gestes.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
-  await page.getByRole("option", { name: "Modifier la séance" }).click();
-  await gestes.getByRole("button", { name: "Ouvrir la séance" }).click();
-  await page.waitForURL(/\/seances\/[A-Za-z0-9_-]+\?modifier=1$/);
-}
-
 /** Gestion : ajout d'une personne (lien envoyé), annulation d'une séance, accès admin réservé. */
 test.describe("gestion", () => {
   /*
@@ -80,16 +70,6 @@ test.describe("gestion", () => {
     await annulerNiemeSeance(page, 2, "Test d'annulation e2e");
     // Le motif est visible sur la carte, dans ce même écran : c'est désormais la seule liste
     await expect(page.getByText("Test d'annulation e2e")).toBeVisible();
-  });
-
-  test("l'autosave du thème enregistre sans bouton", async ({ page }) => {
-    await connecter(page, COMPTES.instructeur);
-    await ouvrirPremiereSeance(page);
-    await page.locator("#theme").fill("Thème autosave e2e");
-    await page.locator("#theme").blur();
-    await expect(page.getByText("Enregistré automatiquement.")).toBeVisible();
-    await page.reload();
-    await expect(page.locator("#theme")).toHaveValue("Thème autosave e2e");
   });
 
   test("un instructeur n'accède pas à l'administration technique", async ({ page }) => {

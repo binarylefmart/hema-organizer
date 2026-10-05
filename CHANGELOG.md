@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.69.2
+
+### Nouveautés
+
+- **seances** : le thème détaillé ne se saisit plus — le programme se règle dans le planning
+
 ## 0.69.1
 
 ### Corrections

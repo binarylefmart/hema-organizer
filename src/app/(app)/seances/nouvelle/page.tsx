@@ -67,7 +67,6 @@ export default async function PageNouvelleSeance({ searchParams }: Props) {
             heureFin: horaire.heureFin,
             lieu: c?.lieu ?? "",
             adresse: c?.adresse ?? "",
-            theme: "",
           }}
         />
       </Carte>

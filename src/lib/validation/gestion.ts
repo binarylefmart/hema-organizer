@@ -205,14 +205,8 @@ export const seanceSchema = z
     heureFin: heureSchema,
     lieu: texteCourt(120).min(1, "Indique le lieu."),
     adresse: texteCourt(200),
-    theme: texteCourt(120),
   })
   .refine((s) => s.heureFin > s.heureDebut, { path: ["heureFin"], message: "L'heure de fin doit suivre l'heure de début." });
-
-export const themeSchema = z.object({
-  sessionId: z.string().min(1),
-  theme: texteCourt(120),
-});
 
 export const annulationSchema = z.object({
   sessionId: z.string().min(1),

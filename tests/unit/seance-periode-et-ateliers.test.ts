@@ -124,7 +124,7 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-const { annulerSeance, enregistrerTheme, modifierSeance, retablirSeance, supprimerSeance } = await import("@/actions/seances");
+const { annulerSeance, modifierSeance, retablirSeance, supprimerSeance } = await import("@/actions/seances");
 const { supprimerSeancesPeriode } = await import("@/actions/periodes");
 
 /** Le formulaire de séance, tel que `FormulaireSeance` l'envoie. */
@@ -137,7 +137,6 @@ function formulaireSeance(periodId: string): FormData {
     heureFin: "22:00",
     lieu: "Villebourg",
     adresse: "",
-    theme: "Garde haute",
   })) {
     fd.append(nom, valeur);
   }
@@ -167,7 +166,7 @@ describe("modifier une séance : la liste déroulante « Période »", () => {
     const etat = await modifierSeance("s1", {}, formulaireSeance("p1"));
     expect(etat.succes).toBe("Séance enregistrée.");
     expect(faux.misesAJour).toHaveLength(1);
-    expect(faux.misesAJour[0].data).toMatchObject({ date: "2026-10-06", lieu: "Villebourg", theme: "Garde haute" });
+    expect(faux.misesAJour[0].data).toMatchObject({ date: "2026-10-06", lieu: "Villebourg" });
     // Le trimestre n'est pas réécrit : il n'a pas bougé, et cette action ne le déplace pas.
     expect(faux.misesAJour[0].data).not.toHaveProperty("periodId");
   });
@@ -274,12 +273,6 @@ describe("période close : la séance se verrouille avec son trimestre", () => {
     expect(faux.prevenus).toEqual([]);
     expect(faux.misesAJour).toEqual([]);
     expect(faux.audits).toEqual([]);
-  });
-
-  it("l'autosave du thème est refusée — le chemin le plus discret vers la base", async () => {
-    const etat = await enregistrerTheme({ sessionId: "s1", theme: "Garde haute" });
-    expect(etat.erreur).toMatch(/clos/i);
-    expect(faux.misesAJour).toEqual([]);
   });
 
   it("l'enregistrement du formulaire de séance est refusé", async () => {

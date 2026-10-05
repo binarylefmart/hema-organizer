@@ -8,7 +8,7 @@ import { assertPermission, exigerReauth, requireUser } from "@/lib/auth/current-
 import { indiquerPresence } from "@/actions/presences";
 import { champ, zodToFormState, type FormState } from "@/lib/form";
 import { ecritureFermee, REFUS_PERIODE_CLOSE } from "@/lib/constants";
-import { annulationSchema, seancesEnMasseSchema, seanceSchema, themeSchema } from "@/lib/validation/gestion";
+import { annulationSchema, seancesEnMasseSchema, seanceSchema } from "@/lib/validation/gestion";
 import { notifierAnnulation, phraseAnnulation, porteurJetonAnnulation } from "@/lib/notifications/seances";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
 import { partiesInitiales } from "@/lib/planning";
@@ -112,7 +112,6 @@ function lireSeance(fd: FormData) {
     heureFin: champ(fd, "heureFin"),
     lieu: champ(fd, "lieu"),
     adresse: champ(fd, "adresse"),
-    theme: champ(fd, "theme"),
   });
 }
 
@@ -181,28 +180,6 @@ export async function modifierSeance(sessionId: string, _prev: FormState, fd: Fo
   await audit(user, "seance.modifiee", sessionId, data);
   rafraichir(sessionId);
   return { succes: "Séance enregistrée." };
-}
-
-/**
- * Autosave du thème détaillé (appelé à la perte de focus).
- *
- * **L'alternative ne se saisit plus** : les options et cours ajoutés au planning de la séance disent
- * mieux « ce qu'on fait si… ». La colonne reste en base, sans éditeur ni écriture : la retirer
- * demanderait une migration et toucherait l'API publique, le partage et les notifications.
- */
-export async function enregistrerTheme(input: { sessionId: string; theme: string }): Promise<FormState> {
-  const user = await assertPermission("sessions.manage");
-  const parsed = themeSchema.safeParse(input);
-  if (!parsed.success) return zodToFormState(parsed.error);
-  const { sessionId, ...data } = parsed.data;
-  // L'autosave écrit sans que personne appuie sur rien : c'est le chemin le plus discret vers la
-  // base, donc celui qui a le plus besoin du verrou (la perte de focus suffit).
-  const ouverte = await seancePourEcriture(sessionId);
-  if (ouverte.erreur) return { erreur: ouverte.erreur };
-  await db.session.update({ where: { id: sessionId }, data });
-  await audit(user, "seance.theme", sessionId, data);
-  rafraichir(sessionId);
-  return { succes: "Enregistré" };
 }
 
 export async function annulerSeance(_prev: FormState, fd: FormData): Promise<FormState> {
