@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Paire } from "./file-envoi";
 import { marquerEnAttente } from "./garde-fermeture";
+import { poserEnMasse, type EcritureEnMasse, type EtatBrouillon, type Imposee } from "./brouillon";
 
 /**
  * **Le brouillon du mode modification du planning**.
@@ -18,6 +19,11 @@ import { marquerEnAttente } from "./garde-fermeture";
  * leurs valeurs par des props traverserait toute la grille, qui est un composant **serveur**. Le
  * fournisseur se monte une fois autour des cartes, comme `FournisseurOptions` juste à côté.
  *
+ * **Deux mains y écrivent** : la case elle-même (`poser`, `oublier`), et la sélection multiple du
+ * planning (`poserPlusieurs`, « Régler une partie » sur plusieurs séances). La seconde laisse une trace
+ * que la case relit (`imposees`, voir `brouillon.ts`) : sans elle, la barre compterait des cases
+ * modifiées que leurs listes déroulantes ne montreraient pas.
+ *
  * **Ce qui n'est pas dans le brouillon, et l'écran le dit en toutes lettres** : ajouter, retirer,
  * déplacer une partie, et programmer un atelier dans une case s'enregistrent **tout de suite**. Deux
  * raisons, et la seconde est la vraie : une partie provisoire n'aurait pas d'identifiant (tout le
@@ -29,8 +35,16 @@ import { marquerEnAttente } from "./garde-fermeture";
 export type Brouillon = {
   /** Poser le contenu voulu d'une case. Remplace ce qui s'y trouvait : seul le dernier état compte. */
   poser: (partieId: string, paire: Paire) => void;
+  /**
+   * **Poser plusieurs cases d'un coup, depuis l'extérieur des cases** (la sélection multiple). Une
+   * case ramenée à la valeur du serveur sort du brouillon ; chacune reprend la valeur posée.
+   * Rend le nombre de cases qui portent désormais une modification.
+   */
+  poserPlusieurs: (ecritures: readonly EcritureEnMasse[]) => number;
   /** Les cases qui portent une modification pas encore enregistrée. */
   modifiees: ReadonlyMap<string, Paire>;
+  /** Les valeurs posées de l'extérieur, que chaque case reprend une fois (`paireImposee`). */
+  imposees: ReadonlyMap<string, Imposee>;
   /**
    * **Retirer une case du brouillon** — quand elle revient à ce que le serveur porte déjà. C'est la
    * case qui le sait (elle garde `vuDuServeur`), le brouillon ne voyant passer que des états voulus.
@@ -43,13 +57,18 @@ export type Brouillon = {
 const ContexteBrouillon = createContext<Brouillon | null>(null);
 
 export function FournisseurBrouillon({ children }: { children: ReactNode }) {
-  const [modifiees, setModifiees] = useState<ReadonlyMap<string, Paire>>(() => new Map());
+  const [etat, setEtat] = useState<EtatBrouillon>(() => ({ modifiees: new Map(), imposees: new Map() }));
   /**
    * **Les mêmes clés, en dehors de React** — pour les retirer du registre de la garde de fermeture
    * sans lire l'état dans une mise à jour (une fonction de mise à jour doit rester pure : React peut
    * l'appeler deux fois).
    */
   const clesGardees = useRef<Set<string>>(new Set());
+  /** Le numéro de la prochaine écriture venue d'ailleurs : chaque tour se distingue du précédent. */
+  const tour = useRef(0);
+  /** Le dernier état connu, pour que `poserPlusieurs` calcule hors d'une fonction de mise à jour. */
+  const dernier = useRef(etat);
+  dernier.current = etat;
 
   /*
    * **Une case qui revient à ce qu'elle était sort du brouillon**, plutôt que d'y rester comme une
@@ -71,32 +90,56 @@ export function FournisseurBrouillon({ children }: { children: ReactNode }) {
      */
     clesGardees.current.add(partieId);
     marquerEnAttente(partieId, true);
-    setModifiees((avant) => {
-      const apres = new Map(avant);
-      apres.set(partieId, paire);
-      return apres;
+    setEtat((avant) => {
+      const modifiees = new Map(avant.modifiees);
+      modifiees.set(partieId, paire);
+      return { ...avant, modifiees };
     });
   }, []);
 
   const oublier = useCallback((partieId: string) => {
     clesGardees.current.delete(partieId);
     marquerEnAttente(partieId, false);
-    setModifiees((avant) => {
-      if (!avant.has(partieId)) return avant;
-      const apres = new Map(avant);
-      apres.delete(partieId);
-      return apres;
+    setEtat((avant) => {
+      if (!avant.modifiees.has(partieId)) return avant;
+      const modifiees = new Map(avant.modifiees);
+      modifiees.delete(partieId);
+      return { ...avant, modifiees };
     });
+  }, []);
+
+  const poserPlusieurs = useCallback((ecritures: readonly EcritureEnMasse[]) => {
+    tour.current += 1;
+    // Calculé une fois, hors de la mise à jour : la garde de fermeture est un effet de bord, et une
+    // fonction de mise à jour appelée deux fois (mode strict) la toucherait deux fois.
+    const suite = poserEnMasse(dernier.current, ecritures, tour.current);
+    for (const cle of suite.posees) {
+      clesGardees.current.add(cle);
+      marquerEnAttente(cle, true);
+    }
+    for (const cle of suite.oubliees) {
+      clesGardees.current.delete(cle);
+      marquerEnAttente(cle, false);
+    }
+    const prochain = { modifiees: suite.modifiees, imposees: suite.imposees };
+    dernier.current = prochain;
+    setEtat(prochain);
+    return suite.modifiees.size;
   }, []);
 
   const vider = useCallback(() => {
     // Appliqué : il n'y a plus rien à perdre, et la garde doit se taire tout de suite.
     for (const cle of clesGardees.current) marquerEnAttente(cle, false);
     clesGardees.current.clear();
-    setModifiees(new Map());
+    // Les imposées restent : vider n'impose rien, et les cases n'ont pas à repeindre l'ancien contenu
+    // pendant que la page revient du serveur (voir `brouillon.ts`).
+    setEtat((avant) => ({ ...avant, modifiees: new Map() }));
   }, []);
 
-  const valeur = useMemo<Brouillon>(() => ({ poser, modifiees, oublier, vider }), [poser, modifiees, oublier, vider]);
+  const valeur = useMemo<Brouillon>(
+    () => ({ poser, poserPlusieurs, modifiees: etat.modifiees, imposees: etat.imposees, oublier, vider }),
+    [poser, poserPlusieurs, etat, oublier, vider],
+  );
   return <ContexteBrouillon.Provider value={valeur}>{children}</ContexteBrouillon.Provider>;
 }
 

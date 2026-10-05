@@ -15,6 +15,7 @@ import { useBrouillon } from "./ContexteBrouillon";
 import { abreger, AUTRE, champsLus, personnesRendues, reglagesVides, themesRendus } from "./options";
 import { auRepos, fileInitiale, pairesEgales, poser, retour, suivreServeur, type Envoi, type FileEnvoi, type Paire } from "./file-envoi";
 import { brancherGardeFermeture, marquerEnAttente } from "./garde-fermeture";
+import { paireImposee } from "./brouillon";
 
 /**
  * Au-delà de ce délai, un enregistrement qui n'est toujours pas revenu cesse d'être passé sous
@@ -113,18 +114,24 @@ export function CaseEditeur({
   const brouillon = useBrouillon();
   // Listes complétées en arrière-plan une fois la page prête (voir ContexteOptions)
   const completes = useListesCompletes();
-  const [instructeurId, setInstructeurId] = useState(valeur.instructeurId ?? "");
-  const [instructeurSecondId, setInstructeurSecondId] = useState(valeur.instructeurSecondId ?? "");
-  const [theme, setTheme] = useState(valeur.theme);
-  const [description, setDescription] = useState(valeur.description);
+  /*
+   * **Une case qui se monte sur un brouillon en cours en part**, pas de la valeur du serveur : une
+   * carte repliée puis dépliée remonte ses cases, et elles doivent montrer ce que la barre compte
+   * encore comme « modifié », réglé à la main ou par la sélection multiple.
+   */
+  const depart = brouillon?.modifiees.get(valeur.id) ?? paireServeur(valeur);
+  const [instructeurId, setInstructeurId] = useState(depart.instructeurId);
+  const [instructeurSecondId, setInstructeurSecondId] = useState(depart.instructeurSecondId);
+  const [theme, setTheme] = useState(depart.theme);
+  const [description, setDescription] = useState(depart.description);
   /**
    * La description est-elle en cours de saisie ? C'est ce qui décide d'afficher l'avertissement de
    * publication, comme le champ du nom d'une partie le faisait avant de disparaître : l'écrire en
    * permanence sous chacune des parties de chacune des séances noierait la carte.
    */
   const [descriptionEnSaisie, setDescriptionEnSaisie] = useState(false);
-  const [niveau, setNiveau] = useState<Niveau>(valeur.niveau);
-  const [autre, setAutre] = useState(!valeur.theme ? false : !options.themes.includes(valeur.theme));
+  const [niveau, setNiveau] = useState<Niveau>(depart.niveau);
+  const [autre, setAutre] = useState(!depart.theme ? false : !options.themes.includes(depart.theme));
   /**
    * « Autre… » vient-il d'être choisi **ici** ? La saisie libre ne prend le curseur que dans ce
    * cas-là. Un thème libre déjà enregistré (les ateliers du planning en portent) ouvre la même
@@ -217,6 +224,29 @@ export function CaseEditeur({
       setNiveau(duServeur.niveau);
       setAutre(!duServeur.theme ? false : !options.themes.includes(duServeur.theme));
     }
+  }
+
+  /**
+   * **La case reprend ce qu'on lui impose d'ailleurs** — la sélection multiple du planning (« Régler
+   * une partie » sur plusieurs séances) écrit dans le même brouillon, et la case doit le **montrer** :
+   * sans ce retour, la barre compterait la case modifiée pendant que ses listes afficheraient l'ancien
+   * contenu, et le premier réglage fait ensuite à la main renverrait cet ancien contenu par-dessus
+   * (la case pousse toujours son état entier). Le numéro de tour dit si l'imposition est neuve : voir
+   * `brouillon.ts`, qui explique pourquoi on ne compare pas simplement les valeurs.
+   */
+  const imposee = brouillon?.imposees.get(partieId) ?? null;
+  // Au montage, ce qui a déjà été imposé est déjà dans `depart` : on ne le reprend pas une seconde fois.
+  const [tourVu, setTourVu] = useState(imposee?.tour ?? 0);
+  const aReprendre = paireImposee(imposee, tourVu);
+  if (imposee && aReprendre) {
+    setTourVu(imposee.tour);
+    setInstructeurId(aReprendre.instructeurId);
+    setInstructeurSecondId(aReprendre.instructeurSecondId);
+    setTheme(aReprendre.theme);
+    setDescription(aReprendre.description);
+    setNiveau(aReprendre.niveau);
+    setAutre(!aReprendre.theme ? false : !options.themes.includes(aReprendre.theme));
+    setAutreDemande(false);
   }
 
   /**

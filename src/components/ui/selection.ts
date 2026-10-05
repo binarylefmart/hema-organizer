@@ -275,3 +275,100 @@ export function memoriserLignes<T extends { id: string }>(connues: ReadonlyMap<s
   for (const ligne of lignes) suite.set(ligne.id, ligne);
   return suite;
 }
+
+/* ------------------------------------------------------------------ */
+/* « Tous les mardis » : sélectionner par jour de la semaine           */
+/* ------------------------------------------------------------------ */
+
+/** Les jours de la semaine, du lundi (1) au dimanche (7) — l'ordre ISO, celui du calendrier du club. */
+export const NOMS_JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"] as const;
+
+/**
+ * **Le jour de la semaine d'une date « AAAA-MM-JJ »**, de 1 (lundi) à 7 (dimanche).
+ *
+ * Calculé à **midi UTC**, comme `isoWeekday` (`src/lib/dates.ts`) : une date sans heure lue à minuit
+ * local tomberait la veille dans un fuseau à l'ouest de Greenwich, et un navigateur réglé à l'heure
+ * de Montréal rangerait les mardis du club parmi les lundis. La règle est recopiée plutôt
+ * qu'importée parce que ce module **ne dépend de rien** (voir l'en-tête) ; un test vérifie que les
+ * deux disent la même chose.
+ */
+export function jourDeSemaine(iso: string): number {
+  const d = new Date(`${iso}T12:00:00Z`).getUTCDay();
+  return d === 0 ? 7 : d;
+}
+
+/** Un raccourci « Tous les mardis » : les lignes de ce jour-là, et ce que son entrée dit. */
+export type JourPropose = {
+  /** 1 = lundi … 7 = dimanche. */
+  jour: number;
+  nom: (typeof NOMS_JOURS)[number];
+  /** Les lignes de ce jour, dans l'ordre de la liste. */
+  ids: string[];
+  /** Toutes déjà cochées : l'entrée devient « Retirer les mardis », et la choisir les **retire**. */
+  complet: boolean;
+  libelle: string;
+};
+
+/**
+ * **Le libellé d'un raccourci** : « Tous les mardis (6) », « Le mardi (1) » — et, quand ces séances
+ * sont déjà toutes cochées, « Retirer les mardis (6) », « Retirer le mardi (1) » : l'entrée dit alors
+ * ce qu'elle fait, puisque la choisir les retire du lot.
+ *
+ * Il ne compte **que** les lignes affichées, comme la case maîtresse : « Tous les mardis » d'un
+ * planning replié à cinq cartes n'emporte que les mardis de ces cinq cartes, et le chiffre l'écrit.
+ */
+export function libelleJour(nom: string, n: number, complet = false): string {
+  if (complet) return n === 1 ? `Retirer le ${nom} (1)` : `Retirer les ${nom}s (${n})`;
+  return n === 1 ? `Le ${nom} (1)` : `Tous les ${nom}s (${n})`;
+}
+
+/** La liste des raccourcis : son intitulé, et l'entrée vide sur laquelle elle s'ouvre et revient. */
+export const LIBELLE_PAR_JOUR = "Sélectionner par jour";
+export const CHOIX_JOUR_VIDE = { valeur: "", libelle: "Choisir un jour…" } as const;
+
+/** Les entrées de la liste « Sélectionner par jour » : « Choisir un jour… », puis un jour par entrée. */
+export function entreesJours(jours: readonly JourPropose[]): { valeur: string; libelle: string }[] {
+  return [{ ...CHOIX_JOUR_VIDE }, ...jours.map((j) => ({ valeur: String(j.jour), libelle: j.libelle }))];
+}
+
+/**
+ * **Les raccourcis par jour de la semaine**, une liste dépliante posée à côté de la case maîtresse :
+ * une entrée par jour — jamais deux jours groupés : cumuler, c'est choisir deux entrées — qui
+ * porte **au moins une ligne affichée et cochable**, du lundi au dimanche. Le club s'entraîne le
+ * mardi et le vendredi : on obtient « Tous les mardis (6) » et « Tous les vendredis (5) » ; un club
+ * du lundi, du mercredi et du dimanche aurait les trois.
+ *
+ * `lignes` est **ce que l'écran montre et permet de cocher** — rien d'autre : la règle de la case
+ * maîtresse (« ne prend jamais ce qui n'est pas affiché ») vaut pour ces entrées aussi.
+ *
+ * **Une entrée par jour présent, même s'il n'y en a qu'un** : un planning filtré sur les seuls mardis
+ * propose « Tous les mardis (4) » à côté de la case maîtresse. Le doublon est assumé — l'entrée dit
+ * le jour en toutes lettres, et sa présence ne dépend pas d'un filtre qu'on a oublié avoir posé.
+ *
+ * Seul le planning s'en sert : l'onglet Séances garde sa case maîtresse seule.
+ */
+export function joursProposes(lignes: readonly { id: string; date: string }[], selection: ReadonlySet<string>): JourPropose[] {
+  const parJour = new Map<number, string[]>();
+  for (const l of lignes) {
+    const j = jourDeSemaine(l.date);
+    const ids = parJour.get(j) ?? [];
+    ids.push(l.id);
+    parJour.set(j, ids);
+  }
+  return [...parJour.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([jour, ids]) => {
+      const nom = NOMS_JOURS[jour - 1];
+      const complet = ids.every((id) => selection.has(id));
+      return { jour, nom, ids, complet, libelle: libelleJour(nom, ids.length, complet) };
+    });
+}
+
+/**
+ * **Choisir « Tous les mardis »** : ajoute les mardis affichés au lot — et les en **retire** s'ils y
+ * étaient déjà tous (l'entrée s'appelle alors « Retirer les mardis »). C'est le geste de la case
+ * maîtresse, limité à un jour : il ne touche ni aux autres jours ni à ce qui a été coché ailleurs.
+ */
+export function basculerJour(selection: ReadonlySet<string>, jour: Pick<JourPropose, "ids" | "complet">): Set<string> {
+  return jour.complet ? retirer(selection, jour.ids) : ajouter(selection, jour.ids);
+}

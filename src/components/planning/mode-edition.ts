@@ -15,7 +15,7 @@
  * ramènerait la grille entière et obligerait à tout refiltrer avant de corriger la case qu'on avait
  * sous les yeux. C'est la même raison qui fait voyager la séance dans l'URL de `/admin/presences`.
  */
-export type FiltresPlanning = { periode?: string; h?: string; quand?: string; date?: string };
+export type FiltresPlanning = { periode?: string; h?: string; quand?: string; date?: string; seances?: string };
 
 export function lienPlanning(filtres: FiltresPlanning, edition: boolean): string {
   const q = new URLSearchParams();
@@ -25,6 +25,7 @@ export function lienPlanning(filtres: FiltresPlanning, edition: boolean): string
   if (filtres.h) q.set("h", filtres.h);
   if (filtres.quand) q.set("quand", filtres.quand);
   if (filtres.date) q.set("date", filtres.date);
+  if (filtres.seances) q.set("seances", filtres.seances);
   if (edition) q.set("modifier", "1");
   const suite = q.toString();
   return `/planning${suite ? `?${suite}` : ""}`;
@@ -38,4 +39,15 @@ export function lienPlanning(filtres: FiltresPlanning, edition: boolean): string
  */
 export function modeEditionDemande(modifier: string | undefined): boolean {
   return modifier === "1";
+}
+
+/**
+ * **Les séances choisies depuis l'onglet Séances** (`?seances=id1,id2`), lues de l'URL : des
+ * identifiants, rien d'autre, et pas plus que ce qu'un lot de sélection peut porter. Une valeur
+ * illisible vaut « pas de filtre » — comme les autres filtres de cet écran.
+ */
+export function lireSeancesChoisies(brut: string | undefined): string[] {
+  if (!brut) return [];
+  const ids = brut.split(",").map((s) => s.trim()).filter((s) => /^[A-Za-z0-9_-]{1,64}$/.test(s));
+  return [...new Set(ids)].slice(0, 500);
 }

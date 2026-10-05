@@ -2,6 +2,18 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.70.0
+
+### Nouveautés
+
+- **planning** : modification multiple et « Sélectionner par jour »
+- **seances** : « Modifier le programme » ouvre le planning sur les séances cochées
+- **seances** : en modification, le programme est un bouton pleine largeur vers le planning
+
+### Autres changements
+
+- **e2e** : la carte du planning se retrouve depuis sa case
+
 ## 0.69.2
 
 ### Nouveautés

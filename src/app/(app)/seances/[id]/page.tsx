@@ -136,16 +136,17 @@ export default async function PageSeance({ params, searchParams }: Props) {
        * l'élargissement, plus haut.
        */}
       <div className="flex flex-col gap-5">
-        <Carte titre="Programme" actions={<Link href={`/planning?periode=${carte.periodId}`} className="inline-flex min-h-12 items-center text-sm">Voir tout le planning</Link>}>
-          <div className="flex flex-col gap-4">
-            {enEdition ? (
-              <div className="flex flex-col gap-2">
-                <LienBouton href={`${lienPlanning({ periode: carte.periodId, date: carte.date }, true)}#seance-${id}`} className="w-full sm:w-auto sm:self-start">
-                  <Icone nom="livre" taille={20} />
-                  Modifier le programme dans le planning
-                </LienBouton>
-              </div>
-            ) : planning && colonne ? (
+        {/* **En modification, pas de carte « Programme » : un seul bouton, pleine largeur.** Le programme se
+            règle dans le planning, ouvert sur cette séance et déjà en modification ; une carte qui n'aurait
+            porté que ce lien n'était qu'un cadre de plus autour d'un bouton. */}
+        {enEdition ? (
+          <LienBouton href={`${lienPlanning({ periode: carte.periodId, date: carte.date }, true)}#seance-${id}`} pleineLargeur>
+            <Icone nom="livre" taille={20} />
+            Modifier le programme dans le planning
+          </LienBouton>
+        ) : (
+          <Carte titre="Programme" actions={<Link href={`/planning?periode=${carte.periodId}`} className="inline-flex min-h-12 items-center text-sm">Voir tout le planning</Link>}>
+            {planning && colonne ? (
               <ProgrammeCases
                 sessionId={id}
                 // Les parties de cette séance, déjà triées : la carte du planning et cet écran
@@ -156,8 +157,8 @@ export default async function PageSeance({ params, searchParams }: Props) {
             ) : (
               <p className="text-texte-secondaire">Programme indisponible.</p>
             )}
-          </div>
-        </Carte>
+          </Carte>
+        )}
         <Carte titre="Présences">
           {carte.annulee ? (
             <p className="text-texte-secondaire">Séance annulée : {carte.motifAnnulation}</p>

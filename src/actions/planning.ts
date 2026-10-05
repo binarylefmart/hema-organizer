@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { formatDateSansAnnee, minuscule, todayIso } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
@@ -33,6 +34,7 @@ import {
   lieuxSchema,
   naturePartieSchema,
   nouvellePartieSchema,
+  partiesEnMasseSchema,
   PARTIES_PAR_SEANCE_MAX,
   partieIdSchema,
   retirerPartieSchema,
@@ -555,6 +557,67 @@ export async function enregistrerCases(input: {
 }
 
 /**
+ * **Créer une partie en queue de sa série, dans une transaction déjà ouverte** — le corps de
+ * l'ajout, partagé par le geste unitaire (`ajouterPartie`) et le geste de masse
+ * (`ajouterPartiesEnMasse`) : deux portes vers la même écriture, une seule façon de l'écrire (rang,
+ * nom calculé, rangement de la séance, plafond). Rend `null` quand la séance a atteint
+ * `PARTIES_PAR_SEANCE_MAX` : chaque appelant dit le refus dans ses mots.
+ */
+async function creerPartie(tx: Prisma.TransactionClient, sessionId: string, estOption: boolean, auteurId: string) {
+  const existantes = await tx.sessionPartie.findMany({
+    where: { sessionId },
+    select: {
+      id: true,
+      ordre: true,
+      estOption: true,
+      libelle: true,
+      updatedAt: true,
+    },
+  });
+  if (existantes.length >= PARTIES_PAR_SEANCE_MAX) return null;
+  const nouvelle = await tx.sessionPartie.create({
+    // Le nom se déduit du rang que la partie prend dans sa nature : dernière de sa série, puisque
+    // l'ajout se fait en queue de **sa** série. Le rang, lui, est provisoire — `rangerParties`
+    // juste en dessous le remet à sa place.
+    data: {
+      sessionId,
+      libelle: prochainLibellePartie(existantes, estOption),
+      estOption,
+      ordre: existantes.length,
+      modifieParId: auteurId,
+    },
+    select: {
+      id: true,
+      libelle: true,
+      ordre: true,
+      estOption: true,
+      updatedAt: true,
+    },
+  });
+  /*
+   * **La nouvelle ligne est rangée AVEC les autres, pas après elles**.
+   *
+   * Le rangement ne portait que sur `existantes`, et la nouvelle gardait son rang provisoire
+   * `existantes.length` — soit la dernière place de la séance. Or `rangerParties` tient l'invariant
+   * « les cours d'abord, les options ensuite » : sur une séance au modèle livré (Cours 1, Cours 2,
+   * Option 1, Option 2), « Ajouter un cours » posait donc **Cours 3 derrière Option 2**.
+   *
+   * Rien ne se contredisait — le libellé reste juste, `rangsDansNature` comptant par nature — mais
+   * la **place** était fausse, et tous les lecteurs trient sur `ordre` seul : la grille du planning,
+   * la fiche de séance, la carte de l'accueil, la colonne `disciplines` qui nourrit l'objet de l'email
+   * du soir, le programme des embeds Discord et Telegram, et l'API publique. Tous affichaient
+   * « Cours 1 · Cours 2 · Option 1 · Option 2 · Cours 3 », c'est-à-dire exactement ce que la demande
+   * du 30/09 au matin voulait supprimer.
+   *
+   * L'état se réparait de lui-même à la première autre écriture sur la séance (déplacer, retirer,
+   * changer de nature, poser un atelier) — ce qui explique qu'il n'ait pas sauté aux yeux.
+   */
+  for (const ecriture of rangerParties([...existantes, nouvelle], tx))
+    await ecriture;
+  return nouvelle;
+}
+
+/**
  * **Ajouter une partie à une séance.** Sous `planning.edit`, comme remplir une case : c'est le même
  * geste de tenue du programme, fait par les mêmes personnes, et le réserver au bureau obligerait un
  * instructeur à demander l'autorisation d'ajouter la ligne qu'il va lui-même remplir.
@@ -589,59 +652,7 @@ export async function ajouterPartie(input: {
    *    même rang. Prisma ne tient qu'une connexion vers SQLite, qui n'accepte de toute façon qu'un
    *    écrivain à la fois : la transaction les met donc réellement à la file.
    */
-  const creee = await db.$transaction(async (tx) => {
-    const existantes = await tx.sessionPartie.findMany({
-      where: { sessionId },
-      select: {
-        id: true,
-        ordre: true,
-        estOption: true,
-        libelle: true,
-        updatedAt: true,
-      },
-    });
-    if (existantes.length >= PARTIES_PAR_SEANCE_MAX) return null;
-    const nouvelle = await tx.sessionPartie.create({
-      // Le nom se déduit du rang que la partie prend dans sa nature : dernière de sa série, puisque
-      // l'ajout se fait en queue de **sa** série. Le rang, lui, est provisoire — `rangerParties`
-      // juste en dessous le remet à sa place.
-      data: {
-        sessionId,
-        libelle: prochainLibellePartie(existantes, estOption),
-        estOption,
-        ordre: existantes.length,
-        modifieParId: user.id,
-      },
-      select: {
-        id: true,
-        libelle: true,
-        ordre: true,
-        estOption: true,
-        updatedAt: true,
-      },
-    });
-    /*
-     * **La nouvelle ligne est rangée AVEC les autres, pas après elles**.
-     *
-     * Le rangement ne portait que sur `existantes`, et la nouvelle gardait son rang provisoire
-     * `existantes.length` — soit la dernière place de la séance. Or `rangerParties` tient l'invariant
-     * « les cours d'abord, les options ensuite » : sur une séance au modèle livré (Cours 1, Cours 2,
-     * Option 1, Option 2), « Ajouter un cours » posait donc **Cours 3 derrière Option 2**.
-     *
-     * Rien ne se contredisait — le libellé reste juste, `rangsDansNature` comptant par nature — mais
-     * la **place** était fausse, et tous les lecteurs trient sur `ordre` seul : la grille du planning,
-     * la fiche de séance, la carte de l'accueil, la colonne `disciplines` qui nourrit l'objet de l'email
-     * du soir, le programme des embeds Discord et Telegram, et l'API publique. Tous affichaient
-     * « Cours 1 · Cours 2 · Option 1 · Option 2 · Cours 3 », c'est-à-dire exactement ce que la demande
-     * du 30/09 au matin voulait supprimer.
-     *
-     * L'état se réparait de lui-même à la première autre écriture sur la séance (déplacer, retirer,
-     * changer de nature, poser un atelier) — ce qui explique qu'il n'ait pas sauté aux yeux.
-     */
-    for (const ecriture of rangerParties([...existantes, nouvelle], tx))
-      await ecriture;
-    return nouvelle;
-  });
+  const creee = await db.$transaction((tx) => creerPartie(tx, sessionId, estOption, user.id));
   if (!creee)
     return {
       erreur: `Une séance ne peut pas porter plus de ${PARTIES_PAR_SEANCE_MAX} parties.`,
@@ -658,6 +669,73 @@ export async function ajouterPartie(input: {
     succes: estOption ? "Option ajoutée." : "Cours ajouté.",
     partieId: creee.id,
   };
+}
+
+/**
+ * **Ajouter un cours ou une option à plusieurs séances d'un coup** — la sélection multiple du planning.
+ *
+ * Comme son jumeau de la carte (`ajouterPartie`), le geste s'enregistre **tout de suite** : une partie
+ * provisoire n'aurait pas d'identifiant à donner au brouillon. Les verrous sont **exactement** ceux du
+ * geste unitaire, par les **mêmes fonctions** : `planning.edit`, `seancePourEcriture` pour chaque
+ * séance (trimestre clos, séance annulée, séance introuvable), puis `creerPartie` — rang, nom calculé,
+ * rangement, plafond `PARTIES_PAR_SEANCE_MAX`.
+ *
+ * **Tout ou rien.** Les refus de séance se pèsent tous avant la transaction ; dans la transaction, le
+ * plafond est vérifié pour **toutes** les séances avant la première création — un lot où la douzième
+ * séance déborderait n'a rien écrit sur les onze premières. Le lot est plafonné à `SELECTION_MAX`,
+ * dédoublonné (une séance cochée deux fois ne reçoit pas deux cours).
+ *
+ * **Le journal** : une entrée par séance, sous la **même action** que l'ajout unitaire
+ * (`planning.partie.ajout`), avec `enMasse: true`, après le commit et hors transaction. Rien ne part
+ * vers les gens : le planning ne notifie personne.
+ */
+export async function ajouterPartiesEnMasse(input: { sessionIds: string[]; estOption?: boolean }): Promise<FormState & { ajoutees?: number }> {
+  const user = await assertPermission("planning.edit");
+  const parsed = partiesEnMasseSchema.safeParse(input);
+  if (!parsed.success) return { erreur: "Sélection invalide : coche des séances, puis choisis le geste. Rien n'a été ajouté." };
+  const { sessionIds, estOption } = parsed.data;
+
+  // **Toutes les gardes avant la première écriture** : la garde du geste unitaire, séance par séance.
+  const seances: Array<{ id: string; date: string }> = [];
+  const refus = new Set<string>();
+  for (const id of sessionIds) {
+    const ctx = await seancePourEcriture(id);
+    if (ctx.erreur !== undefined) refus.add(ctx.erreur);
+    else seances.push({ id: ctx.session.id, date: ctx.session.date });
+  }
+  // Le même refus pour dix séances (trimestre clos) se dit une fois.
+  if (refus.size > 0) return { erreur: ["Rien n'a été ajouté : le lot entier est refusé.", ...refus].join(" ") };
+  // L'ordre du journal est celui du calendrier, jamais celui des clics.
+  seances.sort((x, y) => x.date.localeCompare(y.date));
+
+  const issue = await db.$transaction(async (tx) => {
+    // Le plafond pesé pour toutes avant d'en créer une : c'est ce qui rend le « tout ou rien » vrai.
+    for (const s of seances) {
+      const existantes = await tx.sessionPartie.findMany({ where: { sessionId: s.id }, select: { id: true } });
+      if (existantes.length >= PARTIES_PAR_SEANCE_MAX) return { pleine: s, creees: [] };
+    }
+    const creees: Array<{ seance: { id: string; date: string }; libelle: string }> = [];
+    for (const s of seances) {
+      const creee = await creerPartie(tx, s.id, estOption, user.id);
+      // Impossible après la vérification ci-dessus, sauf écriture concurrente : on annule la transaction.
+      if (!creee) throw new Error(`Séance pleine : ${s.id}`);
+      creees.push({ seance: s, libelle: creee.libelle });
+    }
+    return { pleine: null, creees };
+  });
+  if (issue.pleine)
+    return {
+      erreur: `La séance du ${minuscule(formatDateSansAnnee(issue.pleine.date))} porte déjà ${PARTIES_PAR_SEANCE_MAX} parties, le plafond d'une séance. Rien n'a été ajouté.`,
+    };
+
+  for (const { seance } of issue.creees) await synchroniserSeance(seance.id);
+  for (const { seance, libelle } of issue.creees) {
+    await audit(user, "planning.partie.ajout", seance.id, { date: seance.date, partie: libelle, option: estOption, enMasse: true });
+  }
+  for (const { seance } of issue.creees) rafraichir(seance.id);
+  const n = issue.creees.length;
+  const quoi = estOption ? "Option ajoutée" : "Cours ajouté";
+  return { succes: n === 1 ? `${quoi} à 1 séance.` : `${quoi} à ${n} séances.`, ajoutees: n };
 }
 
 /**

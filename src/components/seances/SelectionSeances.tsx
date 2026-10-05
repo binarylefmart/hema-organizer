@@ -44,6 +44,7 @@ import {
   texteSansCaseSeances,
   type GesteSeances,
   type LigneSeance,
+  lienProgrammeSeances,
   type ReglageSeances,
 } from "./selection-seances";
 
@@ -154,6 +155,12 @@ export function SelectionSeances({
 
   const lancer = () => {
     if (geste === "" || inerte) return;
+    // « Modifier le programme » n'écrit rien : il emmène au planning, réduit aux séances cochées.
+    if (geste === "programme") {
+      const lien = lienProgrammeSeances(lot);
+      if (lien) router.push(lien);
+      return;
+    }
     if (!window.confirm(confirmationSeances(geste, lot, reglage))) return;
     // Les séances que le geste touche, et elles seules : une séance déjà annulée du lot n'est pas
     // envoyée à l'annulation. Le serveur refait le tri de son côté, avec ses propres gardes.

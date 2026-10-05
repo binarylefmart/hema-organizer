@@ -23,16 +23,33 @@ import { Icone } from "@/components/ui/Icone";
  * **Du bloc, plus du tableau** : le planning n'a plus de colonnes à traverser (`colSpan`), ses
  * cartes sont posées dans une grille CSS. Le bouton y occupe une rangée entière (`col-span-full`) —
  * il commande toutes les colonnes, il ne peut pas se ranger dans l'une d'elles.
+ *
+ * **Piloté au besoin** (`tout` + `onBasculer`) : la sélection multiple du mode modification
+ * (`SelectionPlanning`) doit **lire** ce qui est déplié — sa case maîtresse ne prend que les cartes
+ * affichées, et « Afficher et sélectionner » déplie tout. Deux états pour le même repli finiraient par
+ * se contredire ; sans ces deux propriétés, le composant garde son propre état, comme avant.
  */
-export function SeancesRepliees({ cachees, restantes }: { cachees: ReactNode[]; restantes: number }) {
-  const [tout, setTout] = useState(false);
+export function SeancesRepliees({
+  cachees,
+  restantes,
+  tout: toutPilote,
+  onBasculer,
+}: {
+  cachees: ReactNode[];
+  restantes: number;
+  tout?: boolean;
+  onBasculer?: (tout: boolean) => void;
+}) {
+  const [toutLocal, setToutLocal] = useState(false);
+  const tout = toutPilote ?? toutLocal;
+  const basculer = onBasculer ?? setToutLocal;
   // Tout tient : pas de bouton du tout. Un « Afficher les 0 autres séances » serait un mensonge.
   if (cachees.length === 0) return null;
   return (
     <>
       {tout && cachees}
       <div className="col-span-full pt-1">
-        <Bouton variante="secondaire" pleineLargeur onClick={() => setTout(!tout)}>
+        <Bouton variante="secondaire" pleineLargeur onClick={() => basculer(!tout)}>
           <Icone nom={tout ? "chevronHaut" : "chevronBas"} />
           {tout ? "Replier le trimestre" : `Afficher les ${restantes} autres séances`}
         </Bouton>

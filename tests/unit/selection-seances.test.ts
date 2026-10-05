@@ -1,3 +1,4 @@
+import { lireSeancesChoisies } from "@/components/planning/mode-edition";
 import { describe, expect, it } from "vitest";
 import {
   ciblesGeste,
@@ -7,6 +8,7 @@ import {
   gestesSeancesApplicables,
   INVITE_SEANCES,
   libelleBoutonSeances,
+  lienProgrammeSeances,
   libelleToutesSeances,
   reglageManquant,
   seancesQuiChangent,
@@ -24,6 +26,7 @@ import { varianteGeste } from "@/components/ui/choix-geste";
 
 const ligne = (id: string, x: Partial<LigneSeance> = {}): LigneSeance => ({
   id,
+  periodId: "p1",
   jour: `jour ${id}`,
   heureDebut: "19:30",
   heureFin: "21:30",
@@ -44,13 +47,14 @@ describe("les gestes proposés à un lot de séances", () => {
   it("ne propose que ce qui toucherait au moins une séance, avec son nombre", () => {
     const g = gestesSeancesApplicables([prevue, annulee, passee], { supprimer: false });
     expect(g.map((x) => [x.geste, x.nombre])).toEqual([
+      ["programme", 2],
       ["annuler", 1],
       ["retablir", 1],
       ["lieu", 3],
       ["horaire", 3],
     ]);
-    expect(g[0].libelle).toBe("Annuler les séances (1 séance)");
-    expect(g[2].libelle).toBe("Changer le lieu (3 séances)");
+    expect(g[1].libelle).toBe("Annuler les séances (1 séance)");
+    expect(g[3].libelle).toBe("Changer le lieu (3 séances)");
   });
 
   it("une séance commencée ne s'annule ni ne se rétablit — la règle de la carte, pas une copie", () => {
@@ -60,7 +64,7 @@ describe("les gestes proposés à un lot de séances", () => {
       expect(ciblesGeste("annuler", [l]).length === 1).toBe(seanceAnnulable({ annulee: l.annulee, passee: l.commencee }));
       expect(ciblesGeste("retablir", [l]).length === 1).toBe(seanceRetablissable({ annulee: l.annulee, passee: l.commencee }));
     }
-    expect(gestesSeancesApplicables([passee], { supprimer: false }).map((g) => g.geste)).toEqual(["lieu", "horaire"]);
+    expect(gestesSeancesApplicables([passee], { supprimer: false }).map((g) => g.geste)).toEqual(["programme", "lieu", "horaire"]);
   });
 
   it("« Supprimer » n'existe que si l'appelant l'ouvre (bureau, session forte)", () => {
@@ -70,7 +74,7 @@ describe("les gestes proposés à un lot de séances", () => {
 
   it("annuler et supprimer sont rouges ; les autres non", () => {
     for (const g of ["annuler", "supprimer"] as const) expect(varianteGeste(gesteSeancesDefinitif(g), libelleBoutonSeances(g, 2))).toBe("danger");
-    for (const g of ["retablir", "lieu", "horaire"] as const) expect(varianteGeste(gesteSeancesDefinitif(g), libelleBoutonSeances(g, 2))).toBe("primaire");
+    for (const g of ["programme", "retablir", "lieu", "horaire"] as const) expect(varianteGeste(gesteSeancesDefinitif(g), libelleBoutonSeances(g, 2))).toBe("primaire");
   });
 
   it("le bouton dit le verbe et le nombre", () => {
@@ -147,5 +151,23 @@ describe("l'interrupteur « Sélection multiple »", () => {
     expect([...selectionApresInterrupteur(lot, false)]).toEqual([]);
     expect(selectionApresInterrupteur(lot, true)).toBe(lot);
     expect([...selectionApresInterrupteur(new Set(), true)]).toEqual([]);
+  });
+});
+
+describe("« Modifier le programme » : le planning, réduit aux séances cochées", () => {
+  it("est proposé en tête, sans les séances annulées, et n'écrit rien", () => {
+    const gestes = gestesSeancesApplicables([prevue, annulee, passee], { supprimer: false });
+    expect(gestes[0]).toMatchObject({ geste: "programme", nombre: 2 });
+    expect(reglageManquant("programme", [prevue], {})).toBe(false);
+    expect(lienProgrammeSeances([prevue, annulee, passee])).toBe("/planning?periode=p1&seances=a%2Cc&modifier=1");
+    expect(lienProgrammeSeances([annulee])).toBeNull();
+  });
+});
+
+describe("le filtre « séances choisies » du planning", () => {
+  it("ne lit que des identifiants, sans doublon", () => {
+    expect(lireSeancesChoisies("a,b,a, c")).toEqual(["a", "b", "c"]);
+    expect(lireSeancesChoisies("a,<script>,b")).toEqual(["a", "b"]);
+    expect(lireSeancesChoisies(undefined)).toEqual([]);
   });
 });

@@ -214,6 +214,21 @@ export const annulationSchema = z.object({
 });
 
 /**
+ * **Ajouter un cours ou une option à plusieurs séances** (`ajouterPartiesEnMasse`), depuis la sélection
+ * multiple du planning. Le drapeau est celui de l'ajout unitaire (`nouvellePartieSchema`) ; le lot suit
+ * la règle de tous les gestes de masse : identifiants bien formés, `SELECTION_MAX` au plus, doublons
+ * écartés — une séance cochée deux fois ne reçoit pas deux cours.
+ */
+export const partiesEnMasseSchema = z.object({
+  sessionIds: z
+    .array(identifiantSchema)
+    .min(1, "Coche au moins une séance.")
+    .max(SELECTION_MAX, "Sélection trop grande.")
+    .transform((ids) => [...new Set(ids)]),
+  estOption: nouvellePartieSchema.shape.estOption,
+});
+
+/**
  * **Un geste sur plusieurs séances à la fois** (`appliquerGesteSeancesEnMasse`), depuis l'onglet
  * Séances en mode modification.
  *

@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { chargerPlanning, periodePlanningParDefaut, periodesVisiblesPar, type ColonnePlanning, type Planning } from "@/lib/planning";
-import { lienPlanning, modeEditionDemande } from "@/components/planning/mode-edition";
+import { lienPlanning, lireSeancesChoisies, modeEditionDemande } from "@/components/planning/mode-edition";
 import { Alerte } from "@/components/ui/Alerte";
 import { LienBouton } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
@@ -27,13 +27,13 @@ import { lienTemps, lireDateFiltre, lireQuand, seancesDuJour, selectionnerSeance
 
 export const metadata: Metadata = { title: "Planning" };
 
-type Props = { searchParams: Promise<{ periode?: string; h?: string; quand?: string; date?: string; modifier?: string }> };
+type Props = { searchParams: Promise<{ periode?: string; h?: string; quand?: string; date?: string; modifier?: string; seances?: string }> };
 
 /**
  * Le temps tel qu'il est lu ici : le sens (à venir / passé), la fenêtre, l'instant de référence —
  * et, quand on en cherche une, **la date précise**, qui prend le pas sur les deux premiers.
  */
-type Temps = { quand: Quand; horizon: Horizon; date?: string; maintenant: Date; aujourdHui: string };
+type Temps = { quand: Quand; horizon: Horizon; date?: string; seances: string[]; maintenant: Date; aujourdHui: string };
 
 /**
  * Séances retenues : d'abord le sens (à venir par défaut, passé sur demande), puis la fenêtre
@@ -45,6 +45,8 @@ type Temps = { quand: Quand; horizon: Horizon; date?: string; maintenant: Date; 
  */
 function colonnesVisibles(planning: Planning | null, t: Temps): ColonnePlanning[] {
   if (!planning) return [];
+  // Les séances cochées dans l'onglet Séances (« Modifier le programme ») : elles, et rien d'autre.
+  if (t.seances.length > 0) return planning.colonnes.filter((c) => t.seances.includes(c.id));
   if (t.date) return seancesDuJour(planning.colonnes, t.date);
   return selectionnerSeances(planning.colonnes, t.quand, t.horizon, t.maintenant, t.aujourdHui);
 }
@@ -159,7 +161,16 @@ async function SousLesFiltres({ planning, temps }: Omit<IlotPlanning, "choisie">
   const aVenir = p.colonnes.filter((c) => c.date >= temps.aujourdHui);
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      {temps.date && (
+      {temps.seances.length > 0 && (
+        <p className="w-full text-sm text-texte-secondaire">
+          <span className="font-semibold text-texte">
+            {temps.seances.length === 1 ? "La séance choisie" : `Les ${temps.seances.length} séances choisies`}
+          </span>{" "}
+          dans l&apos;onglet Séances, et elles seules.{" "}
+          <Link href={lienPlanning({ periode: p.periode.id }, false)}>Voir tout le planning</Link>
+        </p>
+      )}
+      {temps.date && temps.seances.length === 0 && (
         <p className="w-full text-sm text-texte-secondaire">
           <span className="font-semibold text-texte">{formatDateLongue(temps.date)}</span> — seul ce jour est affiché.
           Changer le sens du temps ou la fenêtre dans les filtres ramène le planning du trimestre.
@@ -268,7 +279,7 @@ async function CorpsPlanning({
  */
 export default async function PagePlanning({ searchParams }: Props) {
   const user = await requireUser();
-  const { periode, h, quand, date, modifier } = await searchParams;
+  const { periode, h, quand, date, modifier, seances } = await searchParams;
   /*
    * **Le mode modification du planning vit dans l'URL**. Comme le trimestre, la fenêtre de temps et
    * la date cherchée : le retour du navigateur sort du mode, un lien se partage tel qu'on le lit,
@@ -279,13 +290,14 @@ export default async function PagePlanning({ searchParams }: Props) {
    * doit pas faire perdre le trimestre, l'horizon ni la date qu'on regardait.
    */
   const modeEdition = modeEditionDemande(modifier);
-  const lienMode = (edition: boolean) => lienPlanning({ periode, h, quand, date }, edition);
+  const seancesChoisies = lireSeancesChoisies(seances);
+  const lienMode = (edition: boolean) => lienPlanning({ periode, h, quand, date, seances: seancesChoisies.join(",") || undefined }, edition);
   const admin = can(user, "audit.view");
   const maintenant = new Date();
   // Une date illisible (forme fausse, 31 février) vaut date absente : l'écran retombe sur son
   // affichage habituel plutôt que de filtrer sur un jour que personne ne peut atteindre.
   const dateCherchee = lireDateFiltre(date);
-  const temps: Temps = { quand: lireQuand(quand), horizon: lireHorizon(h), date: dateCherchee, maintenant, aujourdHui: todayIso(maintenant) };
+  const temps: Temps = { quand: lireQuand(quand), horizon: lireHorizon(h), date: dateCherchee, seances: seancesChoisies, maintenant, aujourdHui: todayIso(maintenant) };
   // Promesses volontairement non attendues : elles sont remises aux îlots ci-dessous.
   // Périodes proposées : uniquement celles où la personne a été invitée (l'équipe les voit toutes),
   // exactement comme l'onglet Séances. Closes comprises : on doit pouvoir revenir sur un trimestre

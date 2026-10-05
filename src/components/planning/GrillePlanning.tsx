@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { formatDateCourte, formatHeure } from "@/lib/dates";
+import { formatDateCourte, formatDateSansAnnee, formatHeure, minuscule } from "@/lib/dates";
 import { caseVide, type CasePlanning, type ColonnePlanning, type Planning } from "@/lib/planning";
 import { Icone } from "@/components/ui/Icone";
 import { Alerte } from "@/components/ui/Alerte";
@@ -13,6 +13,8 @@ import { FournisseurOptions } from "./ContexteOptions";
 import { FournisseurBrouillon } from "./ContexteBrouillon";
 import { BarreEdition, BoutonModifier } from "./BarreEdition";
 import { optionsDepuis } from "./options";
+import { CaseSeancePlanning, SelectionPlanning } from "./SelectionPlanning";
+import type { LignePlanning } from "./selection-planning";
 import type { OptionsCase } from "./options";
 
 /**
@@ -56,6 +58,7 @@ function EtatVidePlanning() {
 function couper(blocs: Array<{ noeud: ReactNode; estSeance: boolean }>): { visibles: ReactNode[]; cachees: ReactNode[]; restantes: number } {
   const total = blocs.filter((l) => l.estSeance).length;
   if (total <= SEANCES_VISIBLES) return { visibles: blocs.map((l) => l.noeud), cachees: [], restantes: 0 };
+  // (La sélection multiple compte de son côté `Math.min(total, SEANCES_VISIBLES)` cartes visibles : même coupure.)
   let vues = 0;
   let coupure = blocs.length;
   for (const [i, bloc] of blocs.entries()) {
@@ -127,6 +130,40 @@ export function TauxColonne({ c }: { c: ColonnePlanning }) {
       <span className="text-texte-secondaire">/ {c.compteurs.invites}</span>
     </span>
   );
+}
+
+/** « mardi 6 octobre » : le nom de la case d'une carte, et celui des séances citées par la sélection. */
+function jourCase(date: string): string {
+  return minuscule(formatDateSansAnnee(date));
+}
+
+/**
+ * **Ce que la sélection multiple sait d'une séance** — `null` pour une séance annulée, qui n'a pas de
+ * case (son programme est verrouillé, `partiePourEcriture`). Les parties portent la valeur **du
+ * serveur** : c'est le point de comparaison du brouillon, qui n'écrit que ce qui change vraiment.
+ * Rien de nominatif ne traverse ici : des identifiants, les mêmes que les cases ont déjà.
+ */
+function lignePlanning(c: ColonnePlanning): LignePlanning | null {
+  if (c.annulee) return null;
+  return {
+    id: c.id,
+    date: c.date,
+    jour: jourCase(c.date),
+    parties: c.parties.map((p) => ({
+      id: p.id,
+      libelle: p.libelle,
+      estOption: p.estOption,
+      rang: p.rang,
+      atelier: p.atelier !== null,
+      serveur: {
+        instructeurId: p.instructeurId ?? "",
+        instructeurSecondId: p.instructeurSecondId ?? "",
+        theme: p.theme,
+        description: p.description,
+        niveau: p.niveau,
+      },
+    })),
+  };
 }
 
 /** Séances regroupées par mois, dans l'ordre : un simple intertitre de lecture, sans navigation. */
@@ -229,7 +266,16 @@ export function GrillePlanning({
         : []),
       ...m.colonnes.map((c) => ({
         estSeance: true,
-        noeud: <CarteSeancePlanning key={c.id} c={c} gestion={gestion} modifiable={options.modifiable} />,
+        noeud: (
+          <CarteSeancePlanning
+            key={c.id}
+            c={c}
+            gestion={gestion}
+            modifiable={options.modifiable}
+            // La case de la sélection multiple : jamais sur une séance annulée, dont le programme est verrouillé.
+            selection={enEdition && !c.annulee ? <CaseSeancePlanning id={c.id} jour={jourCase(c.date)} /> : undefined}
+          />
+        ),
       })),
     ]),
   );
@@ -256,10 +302,15 @@ export function GrillePlanning({
            brouillon s'enregistre toute seule — c'est ce qui garde la fiche d'une séance inchangée. */
         <FournisseurBrouillon>
           <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-1 items-start gap-3">
-              {decoupe.visibles}
-              <SeancesRepliees cachees={decoupe.cachees} restantes={decoupe.restantes} />
-            </div>
+            {/* **La sélection multiple** (interrupteur, case maîtresse, « Sélectionner par jour »,
+                « Que veux-tu faire ? ») enveloppe la grille : elle doit savoir ce qui est déplié. */}
+            <SelectionPlanning
+              lignes={colonnes.map(lignePlanning)}
+              visibles={decoupe.visibles}
+              cachees={decoupe.cachees}
+              restantes={decoupe.restantes}
+              nbVisibles={Math.min(colonnes.length, SEANCES_VISIBLES)}
+            />
             <BarreEdition lienLecture={lienLecture} />
           </div>
         </FournisseurBrouillon>
@@ -291,7 +342,7 @@ export function GrillePlanning({
  * aligne le **haut** de la carte (`block: "start"`) : en centrage, une marge de bord n'a presque
  * aucun effet, et la valeur était inerte — voir le commentaire de ce composant.
  */
-function CarteSeancePlanning({ c, gestion, modifiable }: { c: ColonnePlanning; gestion: boolean; modifiable: boolean }) {
+function CarteSeancePlanning({ c, gestion, modifiable, selection }: { c: ColonnePlanning; gestion: boolean; modifiable: boolean; selection?: ReactNode }) {
   const parties = partiesVisibles(c, modifiable);
   return (
     <article
@@ -301,7 +352,10 @@ function CarteSeancePlanning({ c, gestion, modifiable }: { c: ColonnePlanning; g
       {/* La date et le taux côte à côte, séparés du programme par un filet : c'est l'en-tête de la
           carte, et il doit se lire sans être confondu avec la première partie. */}
       <header className="flex flex-wrap items-start justify-between gap-2 border-b border-bordure/60 pb-2">
-        <EnteteSeance c={c} gestion={gestion} />
+        <div className="flex min-w-0 items-start gap-2">
+          {selection}
+          <EnteteSeance c={c} gestion={gestion} />
+        </div>
         <TauxColonne c={c} />
       </header>
       {c.annulee ? (

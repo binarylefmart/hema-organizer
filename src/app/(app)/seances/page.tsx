@@ -453,6 +453,7 @@ async function SelectionEdition({
       ? null
       : {
           id: x.id,
+          periodId: x.periodId,
           jour: jourSansAnnee(x.date),
           heureDebut: x.heureDebut,
           heureFin: x.heureFin,
