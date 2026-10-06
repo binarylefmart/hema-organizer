@@ -93,6 +93,8 @@ model User {
   partiesModifiees    SessionPartie[]      @relation("PartieModifiePar")
   attendances         Attendance[]
   ateliers            Atelier[]
+  ateliersAnimes      Atelier[]            @relation("AtelierAnimateur")
+  ateliersSeconde     Atelier[]            @relation("AtelierAnimateurSecond")
   invitations         Invitation[]
   authSessions        AuthSession[]
   passwordResetTokens PasswordResetToken[]
@@ -254,11 +256,12 @@ model Session {
 model SessionPartie {
   id        String @id @default(cuid())
   sessionId String
-  /// **Nom affiché de la partie — une valeur DÉRIVÉE, plus jamais saisie**. Il vaut toujours
-  /// `libellePartie(rang dans la nature, estOption)` — « Cours 1 », « Cours 2 », « Option 1 »… — et
+  /// **Nom affiché de l'élément — une valeur DÉRIVÉE, plus jamais saisie**. Il vaut toujours
+  /// `libelleElement(bloc, nature, rang, nombre)` — « Partie 1 · Cours », « Partie 2 · Option 2 »…
+  /// (le numéro de l'élément seulement si sa partie porte plusieurs éléments de cette nature) — et
   /// le code le remet d'accord à chaque écriture (`rangerParties`, src/lib/planning.ts) : ajouter,
-  /// retirer, déplacer ou basculer la nature d'une partie réécrit les libellés qui ne disent plus
-  /// le bon rang.
+  /// retirer, déplacer ou changer la nature d'un élément réécrit les libellés qui ne disent plus
+  /// la bonne place.
   ///
   /// **Pourquoi garder la colonne** alors que le nom se calcule : l'API publique, les pages de
   /// partage, l'embed Discord et l'email du soir la lisent, chacun avec sa propre requête. Une
@@ -275,11 +278,18 @@ model SessionPartie {
   /// `CaseEditeur`).
   description String @default("")
   /// Rang dans la séance, **contigu à partir de 0** : chaque écriture renumérote, sinon un trou
-  /// finirait par décider de l'ordre à la place de l'équipe.
+  /// finirait par décider de l'ordre à la place de l'équipe. L'ordre de lecture est
+  /// (bloc, rang de la nature dans `NATURES_ELEMENT`, ordre, id) — `ordre` le matérialise.
   ordre     Int    @default(0)
-  /// Une partie « en option » : elle se déroule **en parallèle** d'une autre, et c'est elle qu'un
-  /// atelier retenu vient occuper en premier. Un drapeau porté par la partie, réglé à l'ajout.
-  estOption Boolean @default(false)
+  /// **Numéro de la partie** qui porte cet élément (« une gestion par partie, partie
+  /// 1, 2, 3 ») — **contigu à partir de 1**. Une partie n'existe que par ses éléments : retirer le
+  /// dernier la fait disparaître et les suivantes se renumérotent (`rangerParties`).
+  bloc      Int    @default(1)
+  /// **Ce qu'est l'élément** : ECHAUFFEMENT | COURS | OPTION | ATELIER (`NATURES_ELEMENT`,
+  /// src/lib/constants.ts). Remplace l'ancien drapeau `estOption`. OPTION et ATELIER se déroulent
+  /// en parallèle ; un élément ATELIER porte normalement un `atelierId`, et vidé (atelier retiré)
+  /// il reste un élément Atelier vide, réutilisable par le prochain atelier placé.
+  nature    String @default("COURS")
 
   instructeurId String?
   /// **Celui qui assiste** : un second encadrant, facultatif, un seul. Il compte comme le premier
@@ -334,6 +344,11 @@ model Attendance {
 model Atelier {
   id                     String   @id @default(cuid())
   proposeParId           String
+  /// Qui anime : n'importe quel compte actif du club, la personne qui propose par
+  /// défaut. Le planning le prend pour instructeur de la case où l'atelier est placé.
+  animateurId            String?
+  /// Le second animateur, facultatif (le « second instructeur » de la case).
+  animateurSecondId      String?
   sessionId              String?
   titre                  String
   description            String
@@ -344,7 +359,9 @@ model Atelier {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  proposePar User           @relation(fields: [proposeParId], references: [id], onDelete: Cascade)
+  proposePar      User           @relation(fields: [proposeParId], references: [id], onDelete: Cascade)
+  animateur       User?          @relation("AtelierAnimateur", fields: [animateurId], references: [id], onDelete: SetNull)
+  animateurSecond User?          @relation("AtelierAnimateurSecond", fields: [animateurSecondId], references: [id], onDelete: SetNull)
   session    Session?       @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   partie     SessionPartie?
 

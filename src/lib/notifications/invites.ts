@@ -68,8 +68,8 @@ export async function seancesAvecInvites(dates: readonly string[], now = new Dat
     include: {
       attendances: { select: { userId: true, statut: true } },
       // Volontairement limité au thème, au niveau et au titre de l'atelier : pas d'instructeur, pas d'animateur.
-      // Le libellé et le thème, **jamais un nom** : le récap du soir ne publie pas qui encadre.
-      parties: { select: { libelle: true, theme: true, niveau: true, atelier: { select: { titre: true } } }, orderBy: { ordre: "asc" } },
+      // La partie, la nature et le thème, **jamais un nom** : le récap du soir ne publie pas qui encadre.
+      parties: { select: { ordre: true, bloc: true, nature: true, theme: true, niveau: true, atelier: { select: { titre: true } } }, orderBy: { ordre: "asc" } },
       period: {
         include: {
           membres: {

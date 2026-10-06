@@ -1,8 +1,9 @@
-import { LIBELLE_VIDE, NIVEAU_DEFAUT, type Niveau } from "@/lib/constants";
+import { AJOUT_NATURE, LIBELLE_VIDE, NIVEAU_DEFAUT, NOMS_NATURE, nomPartie, rangNature, type NatureElement, type Niveau } from "@/lib/constants";
 import { pluriel, type Explication } from "@/components/ui/choix-geste";
 import { texteInviteMasse, type MotsLignes } from "@/components/ui/selection";
 import { pairesEgales, type Paire } from "./file-envoi";
 import type { EcritureEnMasse } from "./brouillon";
+import { NATURES_AJOUTABLES, nombreDeParties, type NatureAjoutable } from "./parties-carte";
 
 /**
  * **Agir sur plusieurs séances du planning à la fois** — la partie sans React ni base, donc testable.
@@ -12,16 +13,19 @@ import type { EcritureEnMasse } from "./brouillon";
  * (`src/components/ui/selection.ts` : cocher, case maîtresse, raccourcis « Tous les mardis »), la
  * forme de la question de `ChoixGeste` ; **ce qui se duplique ici, ce sont les mots** du planning.
  *
- * Trois gestes :
+ * Deux gestes :
  *
- * - **régler une partie** (« Cours 1 », « Option 2 »…) sur toutes les séances cochées qui l'ont :
+ * - **régler une partie** (« Partie 1 · Cours », « Partie 2 · Option 2 »…) sur toutes les séances
+ *   cochées qui portent cet élément :
  *   instructeur, second, thème, niveau, description, chacun facultatif. **Rien ne part** : les
  *   réglages entrent dans le brouillon, comme si chaque case avait été réglée à la main, et c'est
  *   « Appliquer les modifications » qui les enregistre (`enregistrerCases`, ses verrous, son
  *   tout-ou-rien, son journal) ;
- * - **ajouter un cours**, **ajouter une option** à chaque séance cochée : ces deux-là s'enregistrent
- *   **tout de suite**, comme leurs jumeaux de la carte (`ajouterPartiesEnMasse`) — une partie
- *   provisoire n'aurait pas d'identifiant à donner au brouillon.
+ * - **ajouter un élément** — un échauffement, un cours ou une option — dans la partie choisie
+ *   (1 à la dernière + 1) de chaque séance cochée : celui-là s'enregistre **tout de suite**, comme
+ *   son jumeau de la carte (`ajouterPartiesEnMasse`) — un élément provisoire n'aurait pas
+ *   d'identifiant à donner au brouillon. Les ateliers n'y sont pas : un atelier ne se pose qu'une
+ *   fois, sur une séance, depuis sa carte.
  *
  * **Pas de retrait en masse** : retirer une partie emporte ce qui y est écrit, sans brouillon pour
  * revenir en arrière. Le geste reste sur chaque carte, avec sa confirmation.
@@ -30,10 +34,12 @@ import type { EcritureEnMasse } from "./brouillon";
 /** Une partie d'une séance cochable, telle que la sélection la connaît. */
 export type PartieLigne = {
   id: string;
-  /** « Cours 1 », « Option 2 » — le nom **calculé**, qui sert ici de clé de regroupement entre séances. */
+  /** « Partie 1 · Cours » — le nom **calculé**, qui sert ici de clé de regroupement entre séances. */
   libelle: string;
-  estOption: boolean;
-  /** Rang dans sa nature, à partir de 1 : l'ordre des noms proposés. */
+  /** Numéro de la partie, à partir de 1. */
+  bloc: number;
+  nature: NatureElement;
+  /** Rang dans sa nature et sa partie, à partir de 1 : l'ordre des noms proposés. */
   rang: number;
   /** Un atelier occupe la case : elle ne se règle pas ici (le serveur la refuserait). */
   atelier: boolean;
@@ -54,13 +60,16 @@ export type LignePlanning = {
   parties: PartieLigne[];
 };
 
-export type GestePlanning = "regler" | "ajouterCours" | "ajouterOption";
+export type GestePlanning = "regler" | "ajouter";
+
+/** Ce que l'ajout en masse pose : une nature, dans une partie. */
+export type ChoixAjout = { bloc: number; nature: NatureAjoutable };
 
 /** Les mots de cet écran pour les phrases partagées (`texteHorsAffichage`). */
 export const MOTS_PLANNING: MotsLignes = { singulier: "séance", pluriel: "séances", accord: "f" };
 
 /** La phrase posée sous la case maîtresse tant que rien n'est coché (`texteInviteMasse`). */
-export const INVITE_PLANNING = texteInviteMasse("régler une partie ou ajouter un cours sur plusieurs séances à la fois");
+export const INVITE_PLANNING = texteInviteMasse("régler une partie ou ajouter un élément sur plusieurs séances à la fois");
 
 const nbSeances = (n: number) => pluriel(n, "séance");
 
@@ -109,19 +118,17 @@ export function gestesPlanningApplicables(lot: readonly LignePlanning[]): GesteP
   const offres: GestePlanningOffert[] = [];
   const reglables = seancesReglables(lot).length;
   if (reglables > 0) offres.push({ geste: "regler", nombre: reglables, libelle: `Régler une partie (${nbSeances(reglables)})` });
-  if (lot.length > 0) {
-    offres.push({ geste: "ajouterCours", nombre: lot.length, libelle: `Ajouter un cours (${nbSeances(lot.length)})` });
-    offres.push({ geste: "ajouterOption", nombre: lot.length, libelle: `Ajouter une option (${nbSeances(lot.length)})` });
-  }
+  if (lot.length > 0) offres.push({ geste: "ajouter", nombre: lot.length, libelle: `Ajouter dans une partie (${nbSeances(lot.length)})` });
   return offres;
 }
 
-/** Une partie proposée au réglage : son nom, et combien de séances cochées la portent. */
-export type PartieProposee = { libelle: string; estOption: boolean; rang: number; nombre: number };
+/** Un élément proposé au réglage : son nom, et combien de séances cochées le portent. */
+export type PartieProposee = { libelle: string; bloc: number; nature: NatureElement; rang: number; nombre: number };
 
 /**
- * **Les parties qu'on peut choisir** : celles qui existent dans au moins une séance cochée, par leur
- * nom calculé, les cours d'abord puis les options, chacun dans son rang — l'ordre d'une carte.
+ * **Les éléments qu'on peut choisir** : ceux qui existent dans au moins une séance cochée, par leur
+ * nom calculé (« Partie 1 · Cours »), partie par partie et, dans une partie, dans l'ordre des natures
+ * puis des rangs — l'ordre d'une carte.
  * Le nombre compte les séances qui portent la partie, atelier compris : c'est ce que la carte montre.
  */
 export function partiesProposees(lot: readonly LignePlanning[]): PartieProposee[] {
@@ -133,15 +140,43 @@ export function partiesProposees(lot: readonly LignePlanning[]): PartieProposee[
       vues.add(p.libelle);
       const deja = parNom.get(p.libelle);
       if (deja) deja.nombre += 1;
-      else parNom.set(p.libelle, { libelle: p.libelle, estOption: p.estOption, rang: p.rang, nombre: 1 });
+      else parNom.set(p.libelle, { libelle: p.libelle, bloc: p.bloc, nature: p.nature, rang: p.rang, nombre: 1 });
     }
   }
-  return [...parNom.values()].sort((a, b) => Number(a.estOption) - Number(b.estOption) || a.rang - b.rang);
+  return [...parNom.values()].sort((a, b) => a.bloc - b.bloc || rangNature(a.nature) - rangNature(b.nature) || a.rang - b.rang);
 }
 
-/** « Cours 1 (5 séances) » : l'entrée de la liste des parties. */
+/** « Partie 1 · Cours (5 séances) » : l'entrée de la liste des parties. */
 export function libellePartieProposee(p: PartieProposee): string {
   return `${p.libelle} (${nbSeances(p.nombre)})`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Ajouter un élément : la partie et la nature                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * **Les parties où l'on peut ajouter** : de 1 à la plus longue séance du lot, plus une — la nouvelle
+ * partie. Une séance qui en compte moins reçoit l'élément dans une nouvelle partie à sa fin
+ * (`ajouterPartiesEnMasse`), et l'explication le dit.
+ */
+export function blocsProposes(lot: readonly LignePlanning[]): number[] {
+  const max = lot.reduce((m, l) => Math.max(m, nombreDeParties(l.parties)), 0);
+  return Array.from({ length: max + 1 }, (_, i) => i + 1);
+}
+
+/** « Partie 3 (nouvelle) » quand aucune séance du lot ne l'a encore. */
+export function libelleBlocPropose(bloc: number, lot: readonly LignePlanning[]): string {
+  const existe = lot.some((l) => nombreDeParties(l.parties) >= bloc);
+  return existe ? nomPartie(bloc) : `${nomPartie(bloc)} (nouvelle)`;
+}
+
+/** Les natures qu'on ajoute en masse, dans l'ordre d'une partie. */
+export const NATURES_AJOUT_MASSE: ReadonlyArray<{ valeur: NatureAjoutable; libelle: string }> = NATURES_AJOUTABLES.map((n) => ({ valeur: n, libelle: NOMS_NATURE[n] }));
+
+/** Les séances du lot qui n'ont pas encore la partie visée : l'élément y ouvre une partie à la fin. */
+export function seancesSansLaPartie(lot: readonly LignePlanning[], bloc: number): number {
+  return lot.filter((l) => nombreDeParties(l.parties) < bloc).length;
 }
 
 /* ------------------------------------------------------------------ */
@@ -268,23 +303,22 @@ export function phrasesEcarts(ecarts: Record<RaisonEcart, number>): string[] {
 /* ------------------------------------------------------------------ */
 
 /** L'unique bouton : un verbe et un nombre. */
-export function libelleBoutonPlanning(geste: GestePlanning, n: number, libelle = ""): string {
+export function libelleBoutonPlanning(geste: GestePlanning, n: number, libelle = "", ajout: ChoixAjout | null = null): string {
   const s = nbSeances(n);
   if (geste === "regler") return libelle ? `Régler « ${libelle} » sur ${s}` : "Régler la partie";
-  return geste === "ajouterCours" ? `Ajouter un cours à ${s}` : `Ajouter une option à ${s}`;
+  return ajout ? `Ajouter ${AJOUT_NATURE[ajout.nature]} dans la partie ${ajout.bloc} à ${s}` : "Ajouter";
 }
 
-/** La question d'avant, pour les deux gestes qui écrivent tout de suite. Régler n'en a pas : rien ne part. */
-export function confirmationPlanning(geste: "ajouterCours" | "ajouterOption", n: number): string {
-  const quoi = geste === "ajouterCours" ? "un cours" : "une option";
-  return `Ajouter ${quoi} à ${nbSeances(n)} ? C'est enregistré tout de suite, sans passer par « Appliquer les modifications ».`;
+/** La question d'avant, pour le geste qui écrit tout de suite. Régler n'en a pas : rien ne part. */
+export function confirmationPlanning(ajout: ChoixAjout, n: number): string {
+  return `Ajouter ${AJOUT_NATURE[ajout.nature]} dans la partie ${ajout.bloc} de ${nbSeances(n)} ? C'est enregistré tout de suite, sans passer par « Appliquer les modifications ».`;
 }
 
 /**
  * **Le geste expliqué avant d'agir** : ce qui arrive, quand c'est écrit, ce qui reste de côté.
  * `plan` n'a de sens que pour « régler » une fois la partie et un champ choisis.
  */
-export function expliquerGestePlanning(geste: GestePlanning, lot: readonly LignePlanning[], plan: PlanReglage | null, libelle = ""): Explication {
+export function expliquerGestePlanning(geste: GestePlanning, lot: readonly LignePlanning[], plan: PlanReglage | null, libelle = "", ajout: ChoixAjout | null = null): Explication {
   if (geste === "regler") {
     if (!libelle) return { titre: "Choisis la partie, puis ce qui change.", phrases: ["Chaque réglage reste « Ne pas changer » tant que tu n'y touches pas ; « ---------- » vide le champ."] };
     if (!plan) return { titre: `« ${libelle} » : choisis ce qui change.`, phrases: ["Chaque réglage reste « Ne pas changer » tant que tu n'y touches pas ; « ---------- » vide le champ."] };
@@ -301,13 +335,26 @@ export function expliquerGestePlanning(geste: GestePlanning, lot: readonly Ligne
       ],
     };
   }
-  const quoi = geste === "ajouterCours" ? "Un cours" : "Une option";
+  if (!ajout) return { titre: "Choisis la partie, puis ce qu'on y ajoute.", phrases: ["Un échauffement, un cours ou une option : il naît vide, à remplir."] };
+  const ou = lot.length === 1 ? "la séance" : `chacune des ${lot.length} séances`;
+  const sans = seancesSansLaPartie(lot, ajout.bloc);
+  // Le serveur range l'élément dans une **nouvelle** partie à la fin d'une séance trop courte : la
+  // partie 4 visée devient la partie 3 d'une séance qui n'en avait que deux. On le dit avant.
+  const nouvelles =
+    sans === 0
+      ? []
+      : [
+          sans === lot.length
+            ? `La partie ${ajout.bloc} n'existe encore sur aucune : elle est créée${sans === 1 ? "" : " sur chacune"}, à la fin.`
+            : `${sans === 1 ? "1 séance n'a" : `${sans} séances n'ont`} pas encore de partie ${ajout.bloc} : l'élément y ouvre une nouvelle partie, à la fin.`,
+        ];
   return {
-    titre: `${quoi} s'ajoute en queue de sa série sur ${lot.length === 1 ? "la séance" : `chacune des ${lot.length} séances`}, tout de suite.`,
+    titre: `${NOMS_NATURE[ajout.nature]} s'ajoute dans la partie ${ajout.bloc} sur ${ou}, tout de suite.`,
     phrases: [
-      "Comme le bouton de la carte : son nom se calcule (« Cours 3 », « Option 2 »…), et il naît vide, à remplir.",
-      "C'est enregistré sans attendre « Appliquer les modifications », et « Annuler » ne le défait pas : on retire une partie depuis sa carte.",
-      "Tout ou rien : si une séance refuse (trop de parties), aucune n'est modifiée.",
+      "Comme le menu de la carte : son nom se calcule (« Partie 2 · Cours », « Partie 2 · Option 2 »…), et il naît vide, à remplir.",
+      ...nouvelles,
+      "C'est enregistré sans attendre « Appliquer les modifications », et « Annuler » ne le défait pas : on retire un élément depuis sa carte.",
+      "Tout ou rien : si une séance refuse (trop d'éléments), aucune n'est modifiée.",
     ],
   };
 }

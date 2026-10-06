@@ -34,9 +34,11 @@ import {
 } from "@/components/ui/selection";
 import { useBrouillon } from "./ContexteBrouillon";
 import { useOptionsCase } from "./ContexteOptions";
-import { AUTRE } from "./options";
+import { AUTRE, themesDeNature } from "./options";
 import { SeancesRepliees } from "./SeancesRepliees";
+import { estNatureAjoutable } from "./parties-carte";
 import {
+  blocsProposes,
   compteurPlanning,
   confirmationPlanning,
   ENTREES_TETE,
@@ -44,16 +46,19 @@ import {
   gestesPlanningApplicables,
   INVITE_PLANNING,
   libelleAfficherEtSelectionnerPlanning,
+  libelleBlocPropose,
   libelleBoutonPlanning,
   libellePartieProposee,
   libelleToutesSeancesPlanning,
   lireChoix,
   MOTS_PLANNING,
+  NATURES_AJOUT_MASSE,
   NE_PAS_CHANGER,
   partiesProposees,
   planReglage,
   reglageVide,
   texteSansCasePlanning,
+  type ChoixAjout,
   type GestePlanning,
   type LignePlanning,
   type ReglagePartie,
@@ -76,8 +81,9 @@ import {
  *
  * **« Régler une partie » n'écrit rien** : il pose les cases dans le brouillon du mode modification
  * (`poserPlusieurs`), exactement comme si on les avait réglées à la main — et c'est la barre du bas,
- * « Appliquer les modifications », qui les enregistre avec tous ses verrous. **Ajouter un cours ou une
- * option** s'enregistre tout de suite, comme les boutons de la carte (`ajouterPartiesEnMasse`).
+ * « Appliquer les modifications », qui les enregistre avec tous ses verrous. **Ajouter dans une
+ * partie** — choisir la partie (1 à la dernière + 1), puis l'échauffement, le cours ou l'option —
+ * s'enregistre tout de suite, comme le menu de la carte (`ajouterPartiesEnMasse`).
  *
  * **La sélection ne porte que sur ce qui est affiché** : les cartes visibles, et les repliées une fois
  * dépliées. Le repli du planning est donc tenu **ici** (et rendu par `SeancesRepliees`, piloté) : la
@@ -117,6 +123,8 @@ export function SelectionPlanning({
   const [brute, setSelection] = useState<ReadonlySet<string>>(() => new Set());
   const [gesteChoisi, setGesteChoisi] = useState<GestePlanning | "">("");
   const [partieChoisie, setPartieChoisie] = useState("");
+  const [blocChoisi, setBlocChoisi] = useState("");
+  const [natureChoisie, setNatureChoisie] = useState("");
   const [instructeur, setInstructeur] = useState(NE_PAS_CHANGER);
   const [second, setSecond] = useState(NE_PAS_CHANGER);
   const [themeChoix, setThemeChoix] = useState(NE_PAS_CHANGER);
@@ -152,16 +160,28 @@ export function SelectionPlanning({
   const parties = partiesProposees(lot);
   // Une partie qui n'existe plus dans le lot (séance décochée) n'est plus choisie.
   const partie = parties.some((p) => p.libelle === partieChoisie) ? partieChoisie : "";
+  /*
+   * **La liste « Thème » suit la nature de la partie choisie** (avenant 4) : un
+   * échauffement propose les thèmes d'échauffement, le reste les thèmes de cours et options. Un
+   * thème choisi dans l'autre liste ne survit pas au changement de partie : il revient à « Ne pas
+   * changer », plutôt que d'écrire sur un échauffement un thème qu'il ne proposerait pas.
+   */
+  const themesPartie = themesDeNature(options, parties.find((p) => p.libelle === partie)?.nature ?? "COURS");
+  const themeRetenu = themeChoix === NE_PAS_CHANGER || themeChoix === "" || themeChoix === AUTRE || themesPartie.includes(themeChoix) ? themeChoix : NE_PAS_CHANGER;
 
   const reglage: ReglagePartie = {
     instructeurId: lireChoix(instructeur),
     instructeurSecondId: lireChoix(second),
-    theme: themeChoix === AUTRE ? themeLibre.trim() || undefined : lireChoix(themeChoix),
+    theme: themeRetenu === AUTRE ? themeLibre.trim() || undefined : lireChoix(themeRetenu),
     niveau: lireChoix(niveau) as Niveau | undefined,
     description: descriptionChoix === ECRIRE ? descriptionTexte.trim() || undefined : lireChoix(descriptionChoix),
   };
   const plan = geste === "regler" && partie && !reglageVide(reglage) ? planReglage(lot, partie, reglage, brouillon?.modifiees ?? new Map()) : null;
-  const inerte = geste === "" || (geste === "regler" && (!plan || plan.ecritures.length === 0));
+  // L'ajout attend ses deux choix, la partie et la nature : rien ne se devine sur plusieurs séances.
+  const blocs = blocsProposes(lot);
+  const bloc = blocs.includes(Number(blocChoisi)) ? Number(blocChoisi) : null;
+  const ajout: ChoixAjout | null = geste === "ajouter" && bloc !== null && estNatureAjoutable(natureChoisie) ? { bloc, nature: natureChoisie } : null;
+  const inerte = geste === "" || (geste === "regler" && (!plan || plan.ecritures.length === 0)) || (geste === "ajouter" && !ajout);
   const nombreBouton = geste === "regler" ? (plan?.ecritures.length ?? 0) : lot.length;
 
   const remettreReglage = () => {
@@ -176,6 +196,8 @@ export function SelectionPlanning({
   const remettreAZero = () => {
     setGesteChoisi("");
     setPartieChoisie("");
+    setBlocChoisi("");
+    setNatureChoisie("");
     remettreReglage();
   };
 
@@ -193,12 +215,12 @@ export function SelectionPlanning({
       remettreReglage();
       return;
     }
-    if (!window.confirm(confirmationPlanning(geste, lot.length))) return;
+    if (!ajout || !window.confirm(confirmationPlanning(ajout, lot.length))) return;
     const sessionIds = lot.map((l) => l.id);
     setMessage(null);
     demarrer(async () => {
       try {
-        const res = await ajouterPartiesEnMasse({ sessionIds, estOption: geste === "ajouterOption" });
+        const res = await ajouterPartiesEnMasse({ sessionIds, bloc: ajout.bloc, nature: ajout.nature });
         if (res.erreur) {
           setMessage({ type: "erreur", texte: res.erreur });
           return;
@@ -221,7 +243,7 @@ export function SelectionPlanning({
   const entreesInstructeur: EntreeListe[] = [...ENTREES_TETE, ...personnes()];
   // Le second ne se propose pas la personne choisie pour mener : on ne s'assiste pas soi-même.
   const entreesSecond: EntreeListe[] = [...ENTREES_TETE, ...personnes(choixInstructeur || undefined)];
-  const entreesTheme: EntreeListe[] = [...ENTREES_TETE, ...options.themes.map((t) => ({ valeur: t, libelle: t })), { valeur: AUTRE, libelle: "Autre…" }];
+  const entreesTheme: EntreeListe[] = [...ENTREES_TETE, ...themesPartie.map((t) => ({ valeur: t, libelle: t })), { valeur: AUTRE, libelle: "Autre…" }];
   const entreesNiveau: EntreeListe[] = [ENTREES_TETE[0], ...NIVEAUX.map((n) => ({ valeur: n, libelle: libelleChoixNiveau(n) }))];
   const entreesDescription: EntreeListe[] = [...ENTREES_TETE, { valeur: ECRIRE, libelle: "Écrire une description…" }];
 
@@ -334,13 +356,37 @@ export function SelectionPlanning({
               setGesteChoisi(gesteRetenu(v as GestePlanning | "", applicables));
               setMessage(null);
             }}
-            explication={geste === "" ? null : expliquerGestePlanning(geste, lot, plan, partie)}
-            bouton={geste === "" ? "Appliquer" : libelleBoutonPlanning(geste, nombreBouton, partie)}
+            explication={geste === "" ? null : expliquerGestePlanning(geste, lot, plan, partie, ajout)}
+            bouton={geste === "" ? "Appliquer" : libelleBoutonPlanning(geste, nombreBouton, partie, ajout)}
             variante={varianteGeste(false)}
             inerte={inerte}
             enCours={enCours}
             onLancer={lancer}
           >
+            {geste === "ajouter" && (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Liste
+                  id="bloc-planning-en-masse"
+                  libelle="Dans quelle partie"
+                  valeur={bloc === null ? "" : String(bloc)}
+                  entrees={[{ valeur: "", libelle: "Choisir une partie…" }, ...blocs.map((b) => ({ valeur: String(b), libelle: libelleBlocPropose(b, lot) }))]}
+                  onChoisir={(v) => {
+                    setBlocChoisi(v);
+                    setMessage(null);
+                  }}
+                />
+                <Liste
+                  id="nature-planning-en-masse"
+                  libelle="Ce qu'on ajoute"
+                  valeur={estNatureAjoutable(natureChoisie) ? natureChoisie : ""}
+                  entrees={[{ valeur: "", libelle: "Choisir…" }, ...NATURES_AJOUT_MASSE]}
+                  onChoisir={(v) => {
+                    setNatureChoisie(v);
+                    setMessage(null);
+                  }}
+                />
+              </div>
+            )}
             {geste === "regler" && (
               <div className="flex flex-col gap-3">
                 <Liste
@@ -371,12 +417,12 @@ export function SelectionPlanning({
                       <Liste
                         id="theme-planning-en-masse"
                         libelle="Thème"
-                        valeur={themeChoix}
+                        valeur={themeRetenu}
                         entrees={entreesTheme}
                         onChoisir={setThemeChoix}
                         aide="Le thème est publié sur les pages de partage et, si le club l'a ouverte, par l'API publique."
                       />
-                      {themeChoix === AUTRE && (
+                      {themeRetenu === AUTRE && (
                         <Champ
                           label="Thème libre"
                           name="themeLibre"

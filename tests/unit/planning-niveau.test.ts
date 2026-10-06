@@ -53,10 +53,13 @@ describe("colonnes de SessionPartie", () => {
     expect(modele).toMatch(/niveau\s+String\s+@default\("INDIFFERENT"\)/);
   });
 
-  it("porte le libellé libre, le rang et le drapeau « option » à la place du code de partie", () => {
+  it("porte le libellé calculé, le rang, la partie et la nature à la place du code de partie", () => {
     expect(modele).toMatch(/libelle\s+String/);
     expect(modele).toMatch(/ordre\s+Int\s+@default\(0\)/);
-    expect(modele).toMatch(/estOption\s+Boolean\s+@default\(false\)/);
+    expect(modele).toMatch(/bloc\s+Int\s+@default\(1\)/);
+    expect(modele).toMatch(/nature\s+String\s+@default\("COURS"\)/);
+    // L'ancien drapeau a disparu : `nature` dit la même chose, et davantage.
+    expect(modele).not.toMatch(/estOption\s+Boolean/);
     // Le nom de la partie n'est plus une clé : deux « Option » dans la même séance sont permises.
     expect(modele).not.toMatch(/@@unique\(\[sessionId, partie\]\)/);
   });
@@ -87,14 +90,14 @@ describe("validation de la case (côté serveur)", () => {
 describe("le niveau suit la case jusqu'aux écrans", () => {
   it("voyage avec le programme de la séance", () => {
     const prog = programmeDepuisParties([
-      { id: "c1", ordre: 0, libelle: "Cours 1", estOption: false, theme: "Messer", niveau: "DEBUTANT", instructeurId: null, instructeur: null, atelier: null },
-      { id: "c2", ordre: 1, libelle: "Cours 2", estOption: false, theme: "Lutte", instructeurId: null, instructeur: null, atelier: null },
+      { id: "c1", ordre: 0, libelle: "Partie 1 · Cours", bloc: 1, nature: "COURS", theme: "Messer", niveau: "DEBUTANT", instructeurId: null, instructeur: null, atelier: null },
+      { id: "c2", ordre: 1, libelle: "Partie 2 · Cours", bloc: 2, nature: "COURS", theme: "Lutte", instructeurId: null, instructeur: null, atelier: null },
     ]);
     expect(prog.map((c) => c.niveau)).toEqual(["DEBUTANT", "INDIFFERENT"]);
   });
 
   it("ne donne rien à lire sur la fiche quand il est indifférent", () => {
-    const ligne = { estOption: false, instructeur: null, instructeurId: null, instructeurSecond: null, instructeurSecondId: null, description: "", atelier: null };
+    const ligne = { bloc: 1, nature: "COURS" as const, nombre: 1, instructeur: null, instructeurId: null, instructeurSecond: null, instructeurSecondId: null, description: "", atelier: null };
     const [avec, sans] = lignesFiche([
       { ...ligne, id: "c1", ordre: 0, rang: 1, libelle: "Cours 1", theme: "Messer", niveau: "AVANCE" },
       { ...ligne, id: "c2", ordre: 1, rang: 2, libelle: "Cours 2", theme: "Lutte", niveau: "INDIFFERENT" },
@@ -105,15 +108,17 @@ describe("le niveau suit la case jusqu'aux écrans", () => {
 
   it("se dit dans le programme du salon, et se tait quand il est indifférent", () => {
     const cases = programmeSeance([
-      { libelle: "Cours 1", ordre: 0, theme: "Messer", niveau: "DEBUTANT", atelier: null },
-      { libelle: "Cours 2", ordre: 1, theme: "Lutte", niveau: "INDIFFERENT", atelier: null },
-      { libelle: "Option 1", ordre: 2, theme: "", niveau: "AVANCE", atelier: { titre: "Nœuds de corde" } },
+      { bloc: 1, nature: "COURS", ordre: 0, theme: "Messer", niveau: "DEBUTANT", atelier: null },
+      { bloc: 2, nature: "COURS", ordre: 1, theme: "Lutte", niveau: "INDIFFERENT", atelier: null },
+      { bloc: 2, nature: "ATELIER", ordre: 2, theme: "", niveau: "AVANCE", atelier: { titre: "Nœuds de corde" } },
     ]);
-    expect(lignesSalon(cases)).toEqual([
-      "• Cours 1 — Messer (Débutant)",
-      "• Cours 2 — Lutte",
-      "• Option 1 — Nœuds de corde (Avancé, atelier)",
-    ]);
+    // La forme de la ligne appartient aux messages (`src/lib/notifications/contenu.ts`) ; ce qu'on
+    // juge ici, c'est le niveau : dit quand il est annoncé, tu quand il est indifférent.
+    const lignes = lignesSalon(cases);
+    expect(lignes).toHaveLength(3);
+    expect(lignes[0]).toMatch(/Messer \(Débutant\)$/);
+    expect(lignes[1]).toMatch(/Lutte$/);
+    expect(lignes[2]).toMatch(/Nœuds de corde \(Avancé/);
   });
 });
 

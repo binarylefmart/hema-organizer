@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { LIBELLE_VIDE, libellePartie, PARTIE_DESCRIPTION_MAX, PARTIES_MODELE, prochainLibellePartie } from "@/lib/constants";
+import { LIBELLE_VIDE, libelleElement, nomElement, nomPartie, PARTIE_DESCRIPTION_MAX, PARTIES_MODELE, partiesNommees } from "@/lib/constants";
+import { placesDansPartie } from "@/components/planning/rangement";
+import { partiesInitiales } from "@/lib/planning";
 import { champsLus } from "@/components/planning/options";
 
 /**
@@ -10,11 +12,11 @@ import { champsLus } from "@/components/planning/options";
  * Trois décisions de Delta, prises sur les captures d'un club de quatre-vingts, et qui n'ont de sens
  * qu'ensemble :
  *
- * 1. **« Cours 1 », « Cours 2 »… et « Option 1 », « Option 2 »…**. Deux séries distinctes, chacune
- *    numérotée dans sa nature, **une seule forme par série** — le « n° » et le cas particulier « 1ère
- *    option » ont disparu —, et surtout : ce nom **ne se saisit plus**, il se calcule
- *    (`libellePartie`). Ce qui décrit un cours, ce sont ses informations : instructeur, thème, niveau,
- *    et sa **description** facultative.
+ * 1. **« Partie 1 · Cours », « Partie 2 · Option 2 »…** (« une gestion par partie »).
+ *    La partie se numérote, et dans une partie chaque nature se numérote **seulement quand elle est
+ *    plusieurs** — le « n° » et le cas particulier « 1ère option » ont disparu depuis longtemps —, et
+ *    surtout : ce nom **ne se saisit plus**, il se calcule (`libelleElement`). Ce qui décrit un cours,
+ *    ce sont ses informations : instructeur, thème, niveau, et sa **description** facultative.
  * 2. **`----------` plutôt qu'un mot inventé** dans les listes déroulantes d'une case vide
  *    (« Indifférent », « aucun thème », « personne en second » disaient trois choses différentes pour
  *    le même état : rien de choisi).
@@ -30,53 +32,53 @@ const lire = (p: string) => fs.readFileSync(path.join(process.cwd(), p), "utf8")
 
 describe("le vocabulaire des parties", () => {
   /**
-   * **Le modèle ne porte que deux cours** (« par défaut je ne veux que le cours 1 et cours 2
-   * d'affiché (pas les options) »). Les noms des options, eux, restent définis — ils se calculent
-   * dès qu'on en ajoute une (`libellePartie`, juste en dessous).
+   * **Le modèle : une seule partie, un cours** (« par défaut 1 seule partie par
+   * séance, qui n'est pas notifiée partie 1, uniquement à partir de 2 »). Autant de cours,
+   * échauffements, options et ateliers qu'on veut s'ajoutent ensuite, dans cette partie ou une autre.
    */
-  it("fait naître une séance avec « Cours 1 » et « Cours 2 », et rien d'autre", () => {
-    expect(PARTIES_MODELE.map((p) => p.libelle)).toEqual(["Cours 1", "Cours 2"]);
-    expect(PARTIES_MODELE.map((p) => p.estOption)).toEqual([false, false]);
+  it("fait naître une séance avec un seul « Cours », sans « Partie 1 · »", () => {
+    expect(PARTIES_MODELE).toEqual([{ bloc: 1, nature: "COURS" }]);
+    expect(partiesInitiales().map((p) => p.libelle)).toEqual(["Cours"]);
   });
 
-  it("numérote chaque nature dans sa propre série, **une seule forme par série**", () => {
-    expect(libellePartie(1, false)).toBe("Cours 1");
-    expect(libellePartie(2, false)).toBe("Cours 2");
-    expect(libellePartie(3, false)).toBe("Cours 3");
-    expect(libellePartie(1, true)).toBe("Option 1");
-    expect(libellePartie(2, true)).toBe("Option 2");
-    expect(libellePartie(3, true)).toBe("Option 3");
+  it("ne numérote une nature que quand la partie en porte plusieurs", () => {
+    expect(nomElement("COURS", 1, 1)).toBe("Cours");
+    expect(nomElement("COURS", 1, 2)).toBe("Cours 1");
+    expect(nomElement("COURS", 2, 2)).toBe("Cours 2");
+    expect(nomElement("ECHAUFFEMENT", 1, 1)).toBe("Échauffement");
+    expect(nomElement("ATELIER", 3, 3)).toBe("Atelier 3");
+    expect(nomPartie(2)).toBe("Partie 2");
+    expect(libelleElement(2, "OPTION", 2, 2, 3)).toBe("Partie 2 · Option 2");
+    expect(libelleElement(1, "COURS", 1, 1, 2)).toBe("Partie 1 · Cours");
   });
 
-  it("n'écrit plus le premier rang autrement que les autres : « 1ère option » n'existe plus", () => {
-    // C'était deux formes à produire, à reconnaître en SQL et à lire à l'écran pour un seul objet.
-    // Le premier rang se lit comme les suivants, et les deux séries se ressemblent enfin.
-    for (const estOption of [false, true]) {
-      const serie = [1, 2, 3, 4].map((r) => libellePartie(r, estOption));
-      const mot = estOption ? "Option" : "Cours";
-      expect(serie).toEqual([1, 2, 3, 4].map((r) => `${mot} ${r}`));
-    }
+  it("ne dit « Partie N » que si la séance a plusieurs parties (avenant du 06/10)", () => {
+    expect(partiesNommees(0)).toBe(false);
+    expect(partiesNommees(1)).toBe(false);
+    expect(partiesNommees(2)).toBe(true);
+    expect(partiesNommees(3)).toBe(true);
+    expect(libelleElement(1, "COURS", 1, 1, 1)).toBe("Cours");
+    expect(libelleElement(1, "OPTION", 2, 2, 1)).toBe("Option 2");
+    expect(libelleElement(1, "ECHAUFFEMENT", 1, 1, 1)).toBe("Échauffement");
+    expect(libelleElement(1, "ATELIER", 1, 1, 1)).toBe("Atelier");
   });
 
-  it("le modèle d'une séance neuve se relit avec la même fonction : une seule règle de nommage", () => {
-    let cours = 0;
-    let options = 0;
-    for (const p of PARTIES_MODELE) {
-      expect(p.libelle).toBe(libellePartie(p.estOption ? ++options : ++cours, p.estOption));
-    }
-  });
-
-  it("propose le libellé suivant **de la nature demandée**, pas du rang dans la séance", () => {
-    const seance = [
-      { estOption: false },
-      { estOption: false },
-      { estOption: true },
-      { estOption: true },
+  it("compte le rang dans la nature **et** dans la partie, jamais sur la séance entière", () => {
+    const elements = [
+      { bloc: 1, nature: "COURS" as const },
+      { bloc: 1, nature: "OPTION" as const },
+      { bloc: 2, nature: "COURS" as const },
+      { bloc: 2, nature: "COURS" as const },
+      { bloc: 2, nature: "OPTION" as const },
     ];
-    expect(prochainLibellePartie(seance, false)).toBe("Cours 3");
-    expect(prochainLibellePartie(seance, true)).toBe("Option 3");
-    expect(prochainLibellePartie([], false)).toBe("Cours 1");
-    expect(prochainLibellePartie([], true)).toBe("Option 1");
+    const places = placesDansPartie(elements);
+    expect(elements.map((e, i) => libelleElement(e.bloc, e.nature, places[i].rang, places[i].nombre, 2))).toEqual([
+      "Partie 1 · Cours",
+      "Partie 1 · Option",
+      "Partie 2 · Cours 1",
+      "Partie 2 · Cours 2",
+      "Partie 2 · Option",
+    ]);
   });
 
   it("ne laisse plus les anciens mots **en valeur** nulle part (les commentaires d'histoire, eux, restent)", () => {
@@ -111,7 +113,9 @@ describe("plus aucun champ de saisie pour le nom d'une partie", () => {
    * `changerNaturePartie` existe toujours côté serveur, avec ses gardes et ses tests, mais **aucun
    * écran ne l'appelle** — c'est écrit dans son en-tête.
    */
-  it("n'appelle plus d'action de nature : elle se choisit à l'ajout", () => {
+  it("ne change jamais la nature depuis l'écran : elle se choisit à l'ajout", () => {
+    // le menu « Ajouter dans la partie N… » décide de la nature,
+    // l'étiquette ne fait que la montrer — la décision du 01/10 tient.
     expect(liste).not.toContain("changerNaturePartie");
     expect(fs.existsSync(path.join(process.cwd(), "src/components/planning/bascule-nature.ts"))).toBe(false);
   });
@@ -131,11 +135,10 @@ describe("plus aucun champ de saisie pour le nom d'une partie", () => {
    * slider et mets 2 boutons » le soir. Ce qui justifiait le bouton unique était la bascule de
    * chaque ligne ; elle est partie, donc la nature se choisit là où elle se décide, à l'ajout.
    */
-  it("ajoute une partie **sans demander de nom**, par deux boutons qui disent leur nature", () => {
-    expect(liste).toContain("ajouterPartie({ sessionId, estOption })");
-    expect(liste).toContain("Ajouter un cours");
-    expect(liste).toContain("Ajouter une option");
-    expect(liste).not.toContain("Ajouter un cours ou une option");
+  it("ajoute **sans demander de nom** : un menu par partie, et « Ajouter une partie »", () => {
+    expect(liste).toContain("ajouterPartie({ sessionId, bloc, ...ajout })");
+    expect(liste).toContain("Ajouter une partie");
+    expect(lire("src/components/planning/parties-carte.ts")).toContain("`Ajouter dans la partie ${bloc}…`");
   });
 });
 
@@ -264,10 +267,9 @@ describe("la migration des libellés calculés et de la description", () => {
   it("écrit exactement ce que le code écrit, au caractère près", () => {
     expect(sql).toContain(`'Cours ' ||`);
     expect(sql).toContain(`'Option ' ||`);
-    // Et c'est bien la règle du code qui est recopiée dans le SQL, pas une variante voisine : on la
-    // relit plutôt que de la réécrire ici, pour que les deux ne puissent pas diverger.
-    expect(libellePartie(3, false)).toBe("Cours 3");
-    expect(libellePartie(1, true)).toBe("Option 1");
+    // La règle du code d'alors (`libellePartie`, remplacée depuis par
+    // `libelleElement`) ; la migration « Parties et éléments » a réécrit ces libellés depuis, et son
+    // propre test la compare à `rangementsParties` (`migration-parties-elements.test.ts`).
     // Plus de « n° », plus de « 1ère » **dans le SQL exécuté** : ce sont les deux formes que la
     // migration fait disparaître. La prose du fichier a le droit de les citer — c'est là qu'elle
     // raconte ce qu'elle remplace.
@@ -477,7 +479,9 @@ describe("une étiquette de partie ne reste jamais seule", () => {
      * héritée) passe le filtre d'amont — `caseVide` la voit remplie — mais n'affiche personne.
      */
     expect(liste).toContain("champsLus(partie).length === 0");
-    expect(liste).toMatch(/if \(!modifiable && !partie\.atelier && champsLus\(partie\)\.length === 0\) return null;/);
+    expect(liste).toMatch(/if \(!modifiable && !partie\.atelier && champsLus\(partie\)\.length === 0\) return false;/);
+    // Et la partie dont aucun élément ne se lit ne montre pas son intitulé.
+    expect(liste).toContain(".filter((groupe) => groupe.elements.length > 0)");
   });
 
   it("garde l'étiquette côté encadrement : c'est la poignée qui renomme et retire la partie", () => {
@@ -499,9 +503,14 @@ describe("les tailles des cases suivent la place disponible", () => {
     // Cinq blocs de ce gabarit : les **quatre** de la rangée, plus la **description**, qui est
     // volontairement *hors* de la grille — c'est une phrase, et le quart d'une carte ne se lit pas
     // (voir `CaseEditeur`). La grille, elle, s'arrête bien avant.
-    expect(editeur.match(/className="flex min-w-0 flex-col gap-1\.5/g)).toHaveLength(5);
+    //
+    // Depuis le 06/10, le **thème** s'écrit sous deux formes exclusives dans la source : la liste
+    // déroulante, ou — pour un atelier — son titre figé. Six blocs dans le fichier, cinq dans la
+    // grille, mais toujours **quatre** rendus : une case n'est jamais les deux à la fois.
+    expect(editeur.match(/className="flex min-w-0 flex-col gap-1\.5/g)).toHaveLength(6);
     const grille = editeur.slice(editeur.indexOf("xl:grid-cols-4"));
-    expect(grille.slice(0, grille.indexOf("La description, sur toute la largeur")).match(/className="flex min-w-0 flex-col gap-1\.5/g)).toHaveLength(4);
+    expect(grille.slice(0, grille.indexOf("La description, sur toute la largeur")).match(/className="flex min-w-0 flex-col gap-1\.5/g)).toHaveLength(5);
+    expect(editeur).toContain("{valeur.atelier && (");
   });
 
   it("ne tronque plus rien hors de l'affichage resserré", () => {
@@ -537,12 +546,12 @@ describe("l'écran d'édition ne connaît que « cours » et « option »", () =
     expect(sansCommentaires(LISTE_PARTIES)).not.toMatch(/parallèle/i);
   });
 
-  it("nomme les deux natures, et c'est l'ajout qui les porte", () => {
+  it("nomme les natures par leur nom commun, et c'est le menu d'ajout qui les porte", () => {
     const code = sansCommentaires(LISTE_PARTIES);
-    // Les deux mots sont écrits sur les deux boutons d'ajout : c'est là, et seulement là, que la
-    // nature se choisit.
-    expect(code).toContain("Ajouter un cours");
-    expect(code).toContain("Ajouter une option");
+    // Les mots viennent de `NOMS_NATURE` (« Échauffement », « Cours », « Option ») par le menu
+    // « Ajouter dans la partie N… » (`entreesAjout`), et du nom calculé de chaque élément.
+    expect(code).toContain("entreesAjout(");
+    expect(code).toContain("nomElement(");
     // « Nouvelle option dans cette séance » était le titre du formulaire d'ajout. Le formulaire a
     // disparu avec le champ du nom : il n'existait que pour lui.
     expect(code).not.toContain("Nouvelle option dans cette séance");

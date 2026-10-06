@@ -25,3 +25,17 @@ export const ATELIER_LABELS: Record<AtelierStatut, string> = {
   PLANIFIE: "Dans le planning",
   REFUSE: "Refusé",
 };
+
+type Personne = { prenom: string; nom: string } | null | undefined;
+
+/**
+ * « Animé par Prénom Nom (avec Prénom Nom) » — `null` quand personne n'est renseigné (un atelier
+ * d'avant la colonne `animateurId`, ou des comptes effacés depuis). Si seul le premier a été effacé, le
+ * second se lit seul : c'est lui qui reste pour animer.
+ */
+export function libelleAnimation(animateur: Personne, second: Personne): string | null {
+  const [premier, avec] = animateur ? [animateur, second] : [second, null];
+  if (!premier) return null;
+  const nom = (p: { prenom: string; nom: string }) => `${p.prenom} ${p.nom}`.trim();
+  return avec ? `Animé par ${nom(premier)} (avec ${nom(avec)})` : `Animé par ${nom(premier)}`;
+}

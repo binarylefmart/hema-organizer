@@ -1,21 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { libelleElement, type NatureElement } from "@/lib/constants";
+import { placesDansPartie, rangementsParties, sequenceRangee } from "@/components/planning/rangement";
 
 /**
- * **Les parties d'une séance sont devenues des données** : on en ajoute, on en retire, on les
- * monte, on les descend, on change leur nature, et chacune peut porter un second instructeur —
- * celui qui assiste.
+ * **Les éléments d'une séance, rangés en parties** : on ajoute un échauffement, un
+ * cours, une option ou un atelier dans une partie, on en retire, on les change de partie, on change
+ * leur nature, et chacun peut porter un second instructeur — celui qui assiste.
  *
  * Ce fichier verrouille ce que ces cinq actions promettent et que rien à l'écran ne montrerait si
  * elles se brisaient :
  *
  * - **vider une case ne retire plus jamais la ligne** (l'ancien code la supprimait, et le programme
  *   perdait une partie sans que personne ne l'ait demandé) ;
- * - **`ordre` reste contigu à partir de 0** après chaque écriture — un trou finirait par décider de
- *   l'affichage à la place de l'équipe ;
- * - **le `libelle` redit toujours le rang dans la nature** : il ne se saisit plus, il se calcule,
- *   et `rangerParties` le remet d'accord à chaque écriture. Une colonne dérivée qui ne suit pas est
- *   pire qu'une colonne absente — l'API publique et les emails la lisent ;
- * - **un atelier programmé barre le retrait** de sa partie ;
+ * - **`bloc` reste contigu à partir de 1 et `ordre` à partir de 0** après chaque écriture — retirer
+ *   le dernier élément d'une partie la fait disparaître, et les suivantes se renumérotent ;
+ * - **le `libelle` redit toujours la partie et le rang dans la nature** (« Partie 2 · Cours 2 ») : il
+ *   ne se saisit plus, il se calcule, et `rangerParties` le remet d'accord à chaque écriture. Une
+ *   colonne dérivée qui ne suit pas est pire qu'une colonne absente — l'API publique et les emails la
+ *   lisent ;
+ * - **retirer un élément qui porte un atelier rend l'atelier à la file d'attente** ;
  * - et les cinq passent par `planning.edit` : ce sont des routes ouvertes sur le réseau.
  */
 
@@ -24,7 +27,8 @@ type Partie = {
   sessionId: string;
   libelle: string;
   ordre: number;
-  estOption: boolean;
+  bloc: number;
+  nature: NatureElement;
   instructeurId: string | null;
   instructeurSecondId: string | null;
   theme: string;
@@ -49,6 +53,7 @@ const faux = vi.hoisted(() => ({
   statutPeriode: "ACTIVE",
   users: [{ id: "u1", actif: true, service: false }, { id: "u2", actif: true, service: false }, { id: "u-service", actif: true, service: true }],
   audits: [] as Array<{ action: string; cible: string | null; details: unknown }>,
+  ateliers: [] as Array<{ id: string; titre: string; statut: string; sessionId: string | null; commentaireInstructeur: string | null; proposePar: { id: string; prenom: string; nom: string; email: string } }>,
   compteur: 0,
   /**
    * L'horloge des écritures : chaque `update` sans `updatedAt` explicite la fait avancer, comme le
@@ -84,13 +89,20 @@ vi.mock("@/lib/db", () => {
         };
       }),
       findMany: vi.fn(async ({ where }: { where: { sessionId: string } }) => faux.parties.filter((p) => p.sessionId === where.sessionId).map((p) => ({ ...p }))),
+      findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const p = partie(where.id);
+        if (!p) throw new Error("introuvable");
+        return { ...p };
+      }),
+      findFirst: vi.fn(async ({ where }: { where: { atelierId: string } }) => faux.parties.find((p) => p.atelierId === where.atelierId) ?? null),
       create: vi.fn(async ({ data }: { data: Partial<Partie> }) => {
         const creee: Partie = {
           id: `c-${++faux.compteur}`,
           sessionId: data.sessionId!,
           libelle: data.libelle ?? "",
           ordre: data.ordre ?? 0,
-          estOption: data.estOption ?? false,
+          bloc: data.bloc ?? 1,
+          nature: data.nature ?? "COURS",
           instructeurId: null,
           instructeurSecondId: null,
           theme: "",
@@ -123,7 +135,20 @@ vi.mock("@/lib/db", () => {
       }),
     },
     session: {
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => ({ id: where.id, date: "2126-10-01", period: { statut: faux.statutPeriode } })),
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => ({ id: where.id, date: "2126-10-01", heureDebut: "19:00", lieu: "Gymnase", annulee: false, period: { statut: faux.statutPeriode } })),
+    },
+    atelier: {
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => faux.ateliers.find((a) => a.id === where.id) ?? null),
+      update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const a = faux.ateliers.find((x) => x.id === where.id)!;
+        Object.assign(a, data);
+        return { ...a, updatedAt: new Date(faux.horloge) };
+      }),
+      updateMany: vi.fn(async ({ where, data }: { where: { id: string; statut?: string }; data: Record<string, unknown> }) => {
+        const vises = faux.ateliers.filter((a) => a.id === where.id && (where.statut === undefined || a.statut === where.statut));
+        for (const a of vises) Object.assign(a, data);
+        return { count: vises.length };
+      }),
     },
     user: { findUnique: vi.fn(async ({ where }: { where: { id: string } }) => faux.users.find((u) => u.id === where.id) ?? null) },
   };
@@ -163,6 +188,7 @@ vi.mock("@/lib/planning", async (original) => ({
   }),
   placerAtelier: vi.fn(async () => null),
 }));
+vi.mock("@/lib/notifications/ateliers", () => ({ notifierDecisionAtelier: vi.fn(async () => true) }));
 
 const { ajouterPartie, changerNaturePartie, deplacerPartie, enregistrerCase, retirerPartie } = await import("@/actions/planning");
 const { db } = await import("@/lib/db");
@@ -171,36 +197,30 @@ const { PARTIES_PAR_SEANCE_MAX } = await import("@/lib/validation/gestion");
 /** L'ordre lu comme la grille le lira : les libellés rangés par `ordre`. */
 const rangee = () => [...faux.parties].sort((a, b) => a.ordre - b.ordre).map((p) => p.libelle);
 /**
- * **Les parties elles-mêmes, rangées.** Depuis que le libellé est une valeur *dérivée* du rang, la
- * suite des libellés ne dit plus quelle partie a bougé : descendre « Cours 1 » sous « Cours 2 » rend
- * exactement la même suite de noms, échangés. C'est donc l'identifiant qu'il faut lire pour juger un
+ * **Les éléments eux-mêmes, rangés.** Le libellé est une valeur *dérivée* de la place : la suite des
+ * libellés ne dit pas quel élément a bougé. C'est l'identifiant qu'il faut lire pour juger un
  * déplacement, et le libellé pour juger le **nommage**.
  */
 const ordreIds = () => [...faux.parties].sort((a, b) => a.ordre - b.ordre).map((p) => p.id);
 /** Les rangs eux-mêmes : c'est la contiguïté qu'on surveille, pas seulement l'ordre apparent. */
 const rangs = () => [...faux.parties].sort((a, b) => a.ordre - b.ordre).map((p) => p.ordre);
+/** Les numéros de partie, dans l'ordre de lecture. */
+const blocs = () => [...faux.parties].sort((a, b) => a.ordre - b.ordre).map((p) => p.bloc);
 /**
- * Les parties **réellement écrites** par la dernière action. `SessionPartie.updatedAt` est un
+ * Les éléments **réellement écrits** par la dernière action. `SessionPartie.updatedAt` est un
  * `@updatedAt` : chaque `update` repousse l'horodatage que la bulle « Modifié par … le … » affiche.
  * Une ligne qu'on n'a pas fait bouger ne doit donc pas figurer ici.
  */
 const touchees = () => vi.mocked(db.sessionPartie.update).mock.calls.map((c) => (c[0] as { where: { id: string } }).where.id);
 
-/**
- * Poser des parties **avec leurs rangs tels quels** — y compris troués ou en double. C'est l'état
- * qu'une séance partiellement remplie pouvait avoir en sortant de la migration : il faut que
- * l'application le répare, pas qu'elle le propage.
- */
-/** La nature se lit dans le libellé du jeu d'essai : « Option 2 » est une option, « Cours 2 » non. */
-const optionDe = (libelle: string) => libelle.toLowerCase().startsWith("option");
-
-function ligne(libelle: string, ordre: number, id: string): Partie {
+function ligne(id: string, bloc: number, nature: NatureElement, ordre: number, libelle: string): Partie {
   return {
     id,
     sessionId: "s1",
     libelle,
     ordre,
-    estOption: optionDe(libelle),
+    bloc,
+    nature,
     instructeurId: null,
     instructeurSecondId: null,
     theme: "",
@@ -212,13 +232,28 @@ function ligne(libelle: string, ordre: number, id: string): Partie {
   };
 }
 
-function poserRangs(lignes: Array<[string, number]>) {
-  faux.parties = lignes.map(([libelle, ordre], i) => ligne(libelle, ordre, `c${i}`));
+/** Une séance **saine** : les éléments dans l'ordre de lecture, nommés comme le code les nomme. */
+function poser(elements: Array<[number, NatureElement]>) {
+  const places = placesDansPartie(elements.map(([bloc, nature]) => ({ bloc, nature })));
+  const nbParties = new Set(elements.map(([bloc]) => bloc)).size;
+  faux.parties = elements.map(([bloc, nature], i) => ligne(`c${i}`, bloc, nature, i, libelleElement(bloc, nature, places[i].rang, places[i].nombre, nbParties)));
 }
 
-function poser(libelles: string[]) {
-  faux.parties = libelles.map((libelle, ordre) => ligne(libelle, ordre, `c${ordre}`));
+/**
+ * Poser des éléments **tels quels** — rangs troués ou en double, parties trouées, noms faux. C'est
+ * l'état qu'une base abîmée peut avoir : il faut que l'application le répare, pas qu'elle le propage.
+ */
+function poserBrut(lignes: Array<[number, NatureElement, number, string]>) {
+  faux.parties = lignes.map(([bloc, nature, ordre, libelle], i) => ligne(`c${i}`, bloc, nature, ordre, libelle));
 }
+
+/** La séance de départ : une option en parallèle du cours de la partie 1, puis deux parties d'un cours. */
+const DEPART: Array<[number, NatureElement]> = [
+  [1, "COURS"],
+  [1, "OPTION"],
+  [2, "COURS"],
+  [3, "COURS"],
+];
 
 /** L'annuaire de départ, reposé à chaque cas : deux instructeurs et le compte du portail. */
 const USERS_DEPART = [
@@ -236,7 +271,10 @@ beforeEach(() => {
   faux.statutPeriode = "ACTIVE";
   faux.compteur = 0;
   faux.horloge = Date.parse("2026-09-30T20:14:00.000Z");
-  poser(["Cours 1", "Cours 2", "Option 1", "Option 2"]);
+  poser(DEPART);
+  faux.ateliers = [
+    { id: "at-1", titre: "Lutte au sol", statut: "PROPOSE", sessionId: null, commentaireInstructeur: null, proposePar: { id: "u2", prenom: "Charlie", nom: "Sel", email: "b@ex.fr" } },
+  ];
   vi.clearAllMocks();
 });
 
@@ -380,199 +418,214 @@ describe("remplir et vider une case", () => {
   });
 });
 
-describe("ajouter, changer de nature, retirer", () => {
-  /**
-   * **Un cours ajouté va en queue de SA série, donc devant les options**.
-   *
-   * Ce test attendait « Cours 1, Cours 2, Option 1, Option 2, **Cours 3** » : il encodait un défaut.
-   * `ajouterPartie` ne rangeait que les lignes **existantes** et laissait la nouvelle à son rang
-   * provisoire — la dernière place de la séance. L'invariant « les cours d'abord, les options ensuite »
-   * était donc faux juste après un ajout, et tous les lecteurs trient sur `ordre` seul : la grille, la
-   * fiche, la carte de l'accueil, l'objet de l'email du soir, les embeds des salons et l'API publique
-   * affichaient « Cours 3 » derrière « Option 2 » — exactement ce que la demande du 30/09 au matin
-   * voulait supprimer. L'état se réparait au premier autre geste sur la séance, ce qui explique qu'il
-   * soit passé inaperçu.
-   */
-  it("ajoute un cours en queue de sa série — donc **devant les options**", async () => {
-    const res = await ajouterPartie({ sessionId: "s1", estOption: false });
+describe("ajouter un élément dans une partie", () => {
+  it("ajoute un second cours dans une partie : les deux se numérotent, l'option reste derrière", async () => {
+    const res = await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" });
     expect(res.succes).toBe("Cours ajouté.");
     expect(res.partieId).toBeTruthy();
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Cours 3", "Option 1", "Option 2"]);
+    expect(rangee()).toEqual(["Partie 1 · Cours 1", "Partie 1 · Cours 2", "Partie 1 · Option", "Partie 2 · Cours", "Partie 3 · Cours"]);
     expect(rangs()).toEqual([0, 1, 2, 3, 4]);
+    expect(partie(res.partieId!)).toMatchObject({ bloc: 1, nature: "COURS", libelle: "Partie 1 · Cours 2" });
   });
 
-  it("ajoute une option sous le nom de la série des options", async () => {
-    const res = await ajouterPartie({ sessionId: "s1", estOption: true });
-    expect(res.succes).toBe("Option ajoutée.");
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Option 1", "Option 2", "Option 3"]);
+  it("pose un échauffement **devant** le cours de sa partie, quel que soit l'ordre d'ajout", async () => {
+    const res = await ajouterPartie({ sessionId: "s1", bloc: 2, nature: "ECHAUFFEMENT" });
+    expect(res.succes).toBe("Échauffement ajouté.");
+    expect(rangee()).toEqual(["Partie 1 · Cours", "Partie 1 · Option", "Partie 2 · Échauffement", "Partie 2 · Cours", "Partie 3 · Cours"]);
+  });
+
+  it("ouvre une partie nouvelle à la fin (`nbParties + 1`), et ramène un numéro trop grand à celle-là", async () => {
+    await ajouterPartie({ sessionId: "s1", bloc: 4, nature: "OPTION" });
+    expect(rangee().at(-1)).toBe("Partie 4 · Option");
+    const res = await ajouterPartie({ sessionId: "s1", bloc: 20, nature: "COURS" });
+    expect(partie(res.partieId!)).toMatchObject({ bloc: 5, libelle: "Partie 5 · Cours" });
+    expect(blocs()).toEqual([1, 1, 2, 3, 4, 5]);
+  });
+
+  it("refuse une partie hors bornes et une nature inconnue — le schéma, avant toute lecture", async () => {
+    expect((await ajouterPartie({ sessionId: "s1", bloc: 0, nature: "COURS" })).erreur).toBeTruthy();
+    expect((await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "SPARRING" as never })).erreur).toBeTruthy();
+    expect(faux.parties).toHaveLength(4);
   });
 
   it("n'accepte **aucun libellé** venu du réseau : le nom se calcule, il ne s'envoie pas", async () => {
-    // Une requête forgée qui glisserait un `libelle` ne doit pas pouvoir nommer une partie
-    // « Promotions » : Zod ignore la clé inconnue, et le rang décide seul.
-    // On lit **la partie créée** et non la dernière ligne : depuis que le rangement place un cours
-    // devant les options, « en queue de la séance » et « la nouvelle » ne sont plus la même ligne.
-    const res = await ajouterPartie({ sessionId: "s1", libelle: "Choisi par le réseau" } as never);
-    expect(partie(res.partieId!)).toMatchObject({ libelle: "Cours 3" });
+    const res = await ajouterPartie({ sessionId: "s1", bloc: 3, nature: "OPTION", libelle: "Choisi par le réseau" } as never);
+    expect(partie(res.partieId!)).toMatchObject({ libelle: "Partie 3 · Option" });
   });
 
-  it("**répare les rangs de la séance** au lieu de propager un trou hérité de la migration", async () => {
-    // Une séance qui n'avait que ses deux options : la migration du 29/09 la laissait en 1, 1.
-    poserRangs([["Option 1", 1], ["Option 2", 1]]);
-    await ajouterPartie({ sessionId: "s1" });
-    expect(rangs()).toEqual([0, 1, 2]);
+  it("**répare la séance** au lieu de propager des rangs troués ou une partie manquante", async () => {
+    poserBrut([
+      [1, "COURS", 3, "n'importe quoi"],
+      [3, "COURS", 3, "Partie 3 · Cours"],
+      [1, "OPTION", 0, "Option 1"],
+    ]);
+    await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ECHAUFFEMENT" });
+    expect(rangs()).toEqual([0, 1, 2, 3]);
+    expect(rangee()).toEqual(["Partie 1 · Échauffement", "Partie 1 · Cours", "Partie 1 · Option", "Partie 2 · Cours"]);
   });
 
   it("écrit l'ajout **et** le rangement dans une seule transaction", async () => {
-    // Sinon une lecture concurrente verrait la séance à moitié rangée — et deux ajouts
-    // simultanés (deux instructeurs, ou un double clic) naîtraient au même rang.
-    await ajouterPartie({ sessionId: "s1" });
+    await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" });
     expect(db.$transaction).toHaveBeenCalledTimes(1);
     expect(typeof vi.mocked(db.$transaction).mock.calls[0][0]).toBe("function");
   });
 
-  it("refuse d'ajouter au-delà du plafond de parties d'une séance", async () => {
-    poser(Array.from({ length: PARTIES_PAR_SEANCE_MAX }, (_, i) => `Cours ${i + 1}`));
-    const res = await ajouterPartie({ sessionId: "s1" });
+  it("refuse d'ajouter au-delà du plafond d'éléments d'une séance, et accepte le dernier", async () => {
+    poser(Array.from({ length: PARTIES_PAR_SEANCE_MAX - 1 }, (_, i) => [i + 1, "COURS"] as [number, NatureElement]));
+    expect((await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" })).succes).toBe("Cours ajouté.");
+    const res = await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" });
     expect(res.erreur).toMatch(new RegExp(String(PARTIES_PAR_SEANCE_MAX)));
     expect(faux.parties).toHaveLength(PARTIES_PAR_SEANCE_MAX);
   });
 
-  it("accepte le dernier rang sous le plafond", async () => {
-    poser(Array.from({ length: PARTIES_PAR_SEANCE_MAX - 1 }, (_, i) => `Cours ${i + 1}`));
-    expect((await ajouterPartie({ sessionId: "s1" })).succes).toBe("Cours ajouté.");
-    expect(rangs()).toEqual(Array.from({ length: PARTIES_PAR_SEANCE_MAX }, (_, i) => i));
+  it("n'écrit que la ligne créée quand rien d'autre ne bouge (une partie nouvelle à la fin)", async () => {
+    const res = await ajouterPartie({ sessionId: "s1", bloc: 4, nature: "COURS" });
+    // La seule écriture de rangement est celle qui pose le nom de la ligne née ici.
+    expect(touchees()).toEqual([res.partieId]);
   });
 
-  /**
-   * **L'invariant « aucune écriture inutile » se vérifie sur le geste qui ne décale rien.**
-   *
-   * `SessionPartie.updatedAt` est un `@updatedAt` et la grille l'affiche dans la bulle « Modifié par …
-   * le … » : réécrire une ligne que rien ne concerne ferait dire à sa case que la personne qui l'a
-   * remplie la semaine dernière y est revenue à l'instant. Ajouter une **option** la met en queue de la
-   * séance entière : aucun rang, aucun nom existant ne bouge, donc aucune écriture.
-   *
-   * Ce test portait sur l'ajout d'un **cours**, du temps où la nouvelle ligne restait en queue. Elle
-   * passe maintenant devant les options, qui se décalent donc réellement d'un rang — et doivent être
-   * écrites. L'invariant n'a pas changé ; c'est le cas d'épreuve qui devait changer, et le cas voisin
-   * ci-dessous garde l'autre moitié : ce décalage-là est **nécessaire**, et limité aux options.
-   */
-  it("n'écrit rien d'autre que la ligne créée quand rien ne se décale (ajout d'une option)", async () => {
-    await ajouterPartie({ sessionId: "s1", estOption: true });
-    expect(touchees()).toEqual([]);
+  it("renomme la voisine qui cesse d'être seule de sa nature, **sans** repeindre sa bulle", async () => {
+    await ajouterPartie({ sessionId: "s1", bloc: 3, nature: "COURS" });
+    expect(partie("c3")).toMatchObject({ libelle: "Partie 3 · Cours 1", updatedAt: REMPLI_LE });
+    expect(touchees()).toContain("c3");
   });
 
-  it("ajouter un cours ne décale **que** les options, et pas les cours qui le précèdent", async () => {
-    await ajouterPartie({ sessionId: "s1", estOption: false });
-    // Les deux options reculent d'un rang ; les deux premiers cours ne sont pas touchés.
-    expect(touchees().sort()).toEqual(["c-1", "c2", "c3"].sort());
+  it("journalise l'ajout avec la partie et la nature", async () => {
+    await ajouterPartie({ sessionId: "s1", bloc: 2, nature: "OPTION" });
+    expect(faux.audits.at(-1)).toMatchObject({
+      action: "planning.partie.ajout",
+      details: { partie: "Partie 2 · Option", bloc: 2, nature: "OPTION" },
+    });
+  });
+});
+
+describe("ajouter un atelier en attente depuis le menu", () => {
+  it("exige l'atelier : une nature ATELIER sans atelier est refusée", async () => {
+    const res = await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ATELIER" });
+    expect(res.erreur).toBeTruthy();
+    expect(faux.parties).toHaveLength(4);
   });
 
-  it("change la nature d'une partie, et les **deux séries** se renumérotent", async () => {
-    const res = await changerNaturePartie({ partieId: "c2", estOption: false });
-    expect(res.succes).toBe("Partie passée en cours.");
-    // « Option 1 » devient le 3e cours (elle reste à sa place, ordre 2), et « Option 2 » devient la
-    // 1ère option de la séance : deux noms changent pour un seul clic, c'est tout l'objet du calcul.
-    expect(partie("c2")).toMatchObject({ libelle: "Cours 3", estOption: false });
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Cours 3", "Option 1"]);
-    expect(rangs()).toEqual([0, 1, 2, 3]);
+  it("crée l'élément Atelier, planifie l'atelier sur la séance et le place dans **cet** élément", async () => {
+    const { placerAtelier } = await import("@/lib/planning");
+    const { notifierDecisionAtelier } = await import("@/lib/notifications/ateliers");
+    const res = await ajouterPartie({ sessionId: "s1", bloc: 2, nature: "ATELIER", atelierId: "at-1" });
+    expect(res.succes).toMatch(/^Atelier placé/);
+    expect(partie(res.partieId!)).toMatchObject({ bloc: 2, nature: "ATELIER", libelle: "Partie 2 · Atelier" });
+    expect(faux.ateliers[0]).toMatchObject({ statut: "PLANIFIE", sessionId: "s1" });
+    expect(placerAtelier).toHaveBeenCalledWith("at-1", "s1", "u-admin", res.partieId);
+    expect(notifierDecisionAtelier).toHaveBeenCalledTimes(1);
+    expect(faux.audits.map((a) => a.action)).toEqual(["atelier.decision", "planning.partie.ajout"]);
+    expect(faux.audits[0].details).toMatchObject({ statut: "PLANIFIE", depuis: "planning" });
   });
 
-  it("ne fait rien — sans se plaindre — quand la nature demandée est déjà la bonne", async () => {
-    const res = await changerNaturePartie({ partieId: "c2", estOption: true });
-    expect(res.succes).toBe("Rien à changer.");
-    expect(touchees()).toEqual([]);
+  it("refuse un atelier qui n'est plus en attente, ou déjà dans une case — sans rien créer", async () => {
+    faux.ateliers[0].statut = "PLANIFIE";
+    expect((await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ATELIER", atelierId: "at-1" })).erreur).toMatch(/plus en attente/);
+    faux.ateliers[0].statut = "PROPOSE";
+    partie("c1")!.atelierId = "at-1";
+    expect((await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ATELIER", atelierId: "at-1" })).erreur).toMatch(/plus en attente/);
+    expect(faux.parties).toHaveLength(4);
+    expect(faux.audits).toEqual([]);
   });
 
-  /**
-   * **« Modifié par … le … » ne doit jamais coller l'heure du clic de l'un sur le nom de l'autre.**
-   *
-   * Le défaut, celui que le dossier croyait avoir tué le matin même : il avait seulement déménagé
-   * de « toute la séance » vers « les voisines dont le nom glisse ». Depuis que le nom suit le
-   * rang, basculer « Cours 1 » en option renomme **trois** autres lignes pour de bon — elles sont
-   * donc réécrites, et leur `updatedAt` (un `@updatedAt`) passait à l'instant du clic pendant que
-   * `modifieParId` continuait de nommer celui qui les avait remplies. La case de Charlie annonçait «
-   * Modifié par Charlie à 20:14 », et Chloé, qui venait de cliquer, n'apparaissait nulle part.
-   *
-   * Le choix retenu : **ranger ne touche pas `updatedAt`**. Porter l'auteur à sa place aurait écrit
-   * le nom de Chloé sur des cases qu'elle n'a jamais remplies, et fait perdre le seul renseignement
-   * que la bulle donne. Le rangement, lui, se lit dans le journal d'audit.
-   */
-  it("renomme les voisines **sans** repeindre leur bulle, et n'horodate que la partie du clic", async () => {
-    await changerNaturePartie({ partieId: "c0", estOption: true });
-    // Les trois voisines changent bel et bien de nom : c'est ce qui les faisait réécrire. Et le
-    // cours devenu option **rejoint la fin de sa nouvelle série** : les cours passent devant.
-    expect(rangee()).toEqual(["Cours 1", "Option 1", "Option 2", "Option 3"]);
-    for (const id of ["c1", "c2", "c3"]) {
-      expect(partie(id)?.updatedAt).toEqual(REMPLI_LE);
-      expect(partie(id)?.modifieParId).toBeNull();
-    }
-    // Contre-épreuve : la partie qu'on a basculée, elle, porte l'heure du clic **et** son auteur.
+  it("refuse une séance passée, comme la grille et la file", async () => {
+    vi.mocked(db.session.findUnique).mockImplementation((async ({ where }: { where: { id: string } }) => ({
+      id: where.id,
+      date: "2000-01-01",
+      heureDebut: "19:00",
+      lieu: "Gymnase",
+      annulee: false,
+      period: { statut: faux.statutPeriode },
+    })) as never);
+    expect((await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ATELIER", atelierId: "at-1" })).erreur).toMatch(/à venir/);
+    expect(faux.parties).toHaveLength(4);
+  });
+});
+
+describe("changer la nature d'un élément", () => {
+  it("passe le cours seul d'une partie en option, dans sa partie", async () => {
+    const res = await changerNaturePartie({ partieId: "c3", nature: "OPTION" });
+    expect(res.succes).toBe("Passé en option.");
+    expect(partie("c3")).toMatchObject({ bloc: 3, nature: "OPTION", libelle: "Partie 3 · Option" });
+  });
+
+  it("met l'élément **en queue** de sa nouvelle nature, et numérote la partie", async () => {
+    await changerNaturePartie({ partieId: "c0", nature: "OPTION" });
+    expect(ordreIds()).toEqual(["c1", "c0", "c2", "c3"]);
+    expect(rangee()).toEqual(["Partie 1 · Option 1", "Partie 1 · Option 2", "Partie 2 · Cours", "Partie 3 · Cours"]);
+  });
+
+  it("renomme la voisine **sans** repeindre sa bulle, et n'horodate que l'élément du clic", async () => {
+    await changerNaturePartie({ partieId: "c0", nature: "OPTION" });
+    expect(partie("c1")).toMatchObject({ libelle: "Partie 1 · Option 1", updatedAt: REMPLI_LE, modifieParId: null });
     expect(partie("c0")!.updatedAt.getTime()).toBeGreaterThan(REMPLI_LE.getTime());
     expect(partie("c0")?.modifieParId).toBe("u-admin");
   });
 
-  it("refuse de changer la nature d'une partie occupée par un atelier programmé", async () => {
-    /*
-     * Ses deux voisines le refusaient déjà (`enregistrerCase`, `retirerPartie`), pas celle-ci : un
-     * clic sur « Cours » faisait atterrir l'atelier dans « Cours 3 », `estOption = false`, et il
-     * était publié tel quel par l'API publique et les pages de partage.
-     */
-    partie("c2")!.atelierId = "at-1";
-    const res = await changerNaturePartie({ partieId: "c2", estOption: false });
-    expect(res.erreur).toMatch(/déprogramme-le d'abord/);
-    expect(partie("c2")).toMatchObject({ estOption: true, libelle: "Option 1" });
+  it("ne fait rien — sans se plaindre — quand la nature demandée est déjà la bonne", async () => {
+    const res = await changerNaturePartie({ partieId: "c1", nature: "OPTION" });
+    expect(res.succes).toBe("Rien à changer.");
     expect(touchees()).toEqual([]);
-    // Contre-épreuve : l'atelier déprogrammé, la même bascule passe.
-    partie("c2")!.atelierId = null;
-    expect((await changerNaturePartie({ partieId: "c2", estOption: false })).succes).toBe("Partie passée en cours.");
-    expect(partie("c2")).toMatchObject({ estOption: false, libelle: "Cours 3" });
   });
 
-  it("journalise le changement de nature sous sa propre action, avec le nom d'avant et d'après", async () => {
-    await changerNaturePartie({ partieId: "c2", estOption: false });
+  it("refuse un élément qui porte un atelier, mais accepte un élément Atelier **vide**", async () => {
+    Object.assign(partie("c1")!, { atelierId: "at-1", nature: "ATELIER" });
+    expect((await changerNaturePartie({ partieId: "c1", nature: "COURS" })).erreur).toMatch(/déprogramme-le d'abord/);
+    expect(touchees()).toEqual([]);
+    partie("c1")!.atelierId = null;
+    expect((await changerNaturePartie({ partieId: "c1", nature: "OPTION" })).succes).toBe("Passé en option.");
+    expect(partie("c1")).toMatchObject({ nature: "OPTION", libelle: "Partie 1 · Option" });
+  });
+
+  it("ne laisse pas choisir « atelier » à la main : un atelier naît d'une proposition", async () => {
+    expect((await changerNaturePartie({ partieId: "c0", nature: "ATELIER" as never })).erreur).toBeTruthy();
+  });
+
+  it("journalise le changement sous sa propre action, avec le nom et la nature d'avant et d'après", async () => {
+    await changerNaturePartie({ partieId: "c2", nature: "ECHAUFFEMENT" });
     expect(faux.audits.at(-1)).toMatchObject({
       action: "planning.partie.nature",
-      details: { avant: { partie: "Option 1", option: true }, apres: { partie: "Cours 3", option: false } },
+      details: { bloc: 2, avant: { partie: "Partie 2 · Cours", nature: "COURS" }, apres: { partie: "Partie 2 · Échauffement", nature: "ECHAUFFEMENT" } },
     });
   });
+});
 
-  it("retire la partie, **renumérote** ce qui reste et **renomme** ce qui a changé de rang", async () => {
-    const res = await retirerPartie({ partieId: "c0" });
-    expect(res.succes).toBe("Partie retirée.");
-    // Retirer « Cours 1 » fait du second cours le premier : son nom suit.
-    expect(ordreIds()).toEqual(["c1", "c2", "c3"]);
-    expect(rangee()).toEqual(["Cours 1", "Option 1", "Option 2"]);
+describe("retirer un élément", () => {
+  it("retirer le seul élément d'une partie la fait disparaître, et **renumérote** les suivantes", async () => {
+    const res = await retirerPartie({ partieId: "c2" });
+    expect(res.succes).toBe("Élément retiré.");
+    expect(ordreIds()).toEqual(["c0", "c1", "c3"]);
+    expect(blocs()).toEqual([1, 1, 2]);
+    expect(rangee()).toEqual(["Partie 1 · Cours", "Partie 1 · Option", "Partie 2 · Cours"]);
     expect(rangs()).toEqual([0, 1, 2]);
+    // Renommée parce que sa partie a changé de numéro — pas modifiée par quelqu'un.
+    expect(partie("c3")?.updatedAt).toEqual(REMPLI_LE);
   });
 
-  it("ne renomme rien quand la partie retirée est la dernière de sa série", async () => {
-    // « Option 2 » s'en va : les trois autres gardent leur rang **et** leur nom, aucune écriture.
-    const res = await retirerPartie({ partieId: "c3" });
-    expect(res.succes).toBe("Partie retirée.");
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Option 1"]);
+  it("ne renomme rien quand l'élément retiré ne décale personne", async () => {
+    await ajouterPartie({ sessionId: "s1", bloc: 4, nature: "COURS" });
+    vi.clearAllMocks();
+    await retirerPartie({ partieId: faux.parties.find((p) => p.bloc === 4)!.id });
     expect(touchees()).toEqual([]);
+    expect(rangee()).toEqual(["Partie 1 · Cours", "Partie 1 · Option", "Partie 2 · Cours", "Partie 3 · Cours"]);
   });
 
-  /**
-   * **Ce que l'écran promet d'effacer, le journal doit le garder.** La confirmation annonce « son
-   * instructeur, son thème et sa **description** seront perdus » ; le journal, lui, ne gardait que le
-   * thème et l'instructeur — la règle avait été écrite avant que la description, le niveau et le
-   * second instructeur n'existent. Le geste est irréversible : le journal est tout ce qui reste.
-   */
-  it("garde dans le journal **les cinq champs** que le retrait efface", async () => {
-    Object.assign(partie("c1")!, {
+  it("garde dans le journal **les cinq champs** que le retrait efface, avec la partie et la nature", async () => {
+    Object.assign(partie("c2")!, {
       instructeurId: "u1",
       instructeurSecondId: "u2",
       theme: "Messer",
       description: "Garde haute, trois passes lentes, puis libre.",
       niveau: "DEBUTANT",
     });
-    await retirerPartie({ partieId: "c1" });
+    await retirerPartie({ partieId: "c2" });
     expect(faux.audits.at(-1)).toMatchObject({
       action: "planning.partie.retrait",
       details: {
-        partie: "Cours 2",
+        partie: "Partie 2 · Cours",
+        bloc: 2,
+        nature: "COURS",
         theme: "Messer",
         instructeur: "Alice Roy",
         instructeurSecond: "Charlie Sel",
@@ -583,156 +636,98 @@ describe("ajouter, changer de nature, retirer", () => {
   });
 
   it("ne raconte rien d'une case vide : les champs y sont, vides, sans inventer de mot", async () => {
-    // Contre-épreuve de la précédente : le journal doit dire « rien » plutôt que de taire le champ.
     await retirerPartie({ partieId: "c1" });
     expect(faux.audits.at(-1)?.details).toMatchObject({ theme: "", description: "", instructeur: null, instructeurSecond: null, niveau: "Indifférent" });
   });
 
-  it("refuse de retirer une partie occupée par un atelier programmé", async () => {
-    partie("c2")!.atelierId = "at-1";
-    const res = await retirerPartie({ partieId: "c2" });
-    expect(res.erreur).toMatch(/déprogramme-le d'abord/);
-    expect(rangee()).toHaveLength(4);
+  it("rend l'atelier d'un élément retiré à la file d'attente, et le journalise comme une décision", async () => {
+    Object.assign(partie("c1")!, { atelierId: "at-1", nature: "ATELIER", theme: "Lutte au sol", instructeurId: "u2" });
+    Object.assign(faux.ateliers[0], { statut: "PLANIFIE", sessionId: "s1" });
+    const res = await retirerPartie({ partieId: "c1" });
+    expect(res.succes).toMatch(/de retour en attente/);
+    expect(faux.ateliers[0]).toMatchObject({ statut: "PROPOSE", sessionId: null });
+    expect(partie("c1")).toBeUndefined();
+    expect(faux.audits.map((a) => a.action)).toEqual(["atelier.decision", "planning.partie.retrait"]);
+    expect(faux.audits[0]).toMatchObject({ cible: "at-1", details: { statut: "PROPOSE", depuis: "planning" } });
+    expect(faux.audits[1].details).toMatchObject({ atelier: "Lutte au sol", nature: "ATELIER" });
   });
 });
 
-describe("monter et descendre", () => {
-  it("descend une partie, renumérote tout le monde — et **le nom suit la place**", async () => {
-    await deplacerPartie({ partieId: "c0", versOrdre: 1 });
-    // Les deux cours ont échangé leurs places, donc leurs noms : c'est exactement ce que la
-    // décision promet. La suite des libellés est inchangée ; celle des identifiants, non.
-    expect(ordreIds()).toEqual(["c1", "c0", "c2", "c3"]);
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Option 1", "Option 2"]);
-    expect(partie("c0")?.libelle).toBe("Cours 2");
-    expect(partie("c1")?.libelle).toBe("Cours 1");
+describe("changer un élément de partie", () => {
+  it("descend un cours dans la partie suivante : il y arrive en queue, les deux se numérotent", async () => {
+    const res = await deplacerPartie({ partieId: "c0", versBloc: 2 });
+    expect(res.succes).toBe("Élément déplacé.");
+    expect(ordreIds()).toEqual(["c1", "c2", "c0", "c3"]);
+    expect(rangee()).toEqual(["Partie 1 · Option", "Partie 2 · Cours 1", "Partie 2 · Cours 2", "Partie 3 · Cours"]);
     expect(rangs()).toEqual([0, 1, 2, 3]);
   });
 
-  /**
-   * **Une option montée « tout en haut » s'arrête à la tête de sa série**.
-   *
-   * Le rang visé est intercalaire, donc il peut désigner un point situé avant le premier cours — mais
-   * le rangement trie d'abord par nature. La partie remonte donc jusqu'à la frontière et pas au-delà :
-   * elle devient « Option 1 », et l'autre option « Option 2 ». Changer de série reste le travail de
-   * l'interrupteur Cours/Option, pas celui des flèches.
-   */
-  it("monte une option jusqu'en tête de **sa** série, jamais devant les cours", async () => {
-    await deplacerPartie({ partieId: "c3", versOrdre: 0 });
-    expect(ordreIds()).toEqual(["c0", "c1", "c3", "c2"]);
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Option 1", "Option 2"]);
+  it("monte l'élément seul d'une partie : la partie vidée disparaît, les suivantes se renumérotent", async () => {
+    await deplacerPartie({ partieId: "c2", versBloc: 1 });
+    expect(blocs()).toEqual([1, 1, 1, 2]);
+    expect(rangee()).toEqual(["Partie 1 · Cours 1", "Partie 1 · Cours 2", "Partie 1 · Option", "Partie 2 · Cours"]);
   });
 
-  it("ne fait rien — sans se plaindre — quand on monte la première ligne", async () => {
-    const res = await deplacerPartie({ partieId: "c0", versOrdre: 0 });
-    expect(res.succes).toBe("Rien à changer.");
-    expect(ordreIds()).toEqual(["c0", "c1", "c2", "c3"]);
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Option 1", "Option 2"]);
+  it("descend vers une partie nouvelle à la fin (`nbParties + 1`)", async () => {
+    await deplacerPartie({ partieId: "c1", versBloc: 4 });
+    expect(rangee()).toEqual(["Partie 1 · Cours", "Partie 2 · Cours", "Partie 3 · Cours", "Partie 4 · Option"]);
   });
 
-  it("ramène un rang hors des limites dans la séance plutôt que de refuser", async () => {
-    // Le plafond d'une séance est le plus grand rang que le schéma accepte ; au-delà de la séance
-    // elle-même, l'action ramène dans les limites au lieu d'afficher une erreur.
-    await deplacerPartie({ partieId: "c0", versOrdre: PARTIES_PAR_SEANCE_MAX });
-    // Ramené dans les limites **et** dans sa série : le cours descend derrière l'autre cours, pas
-    // derrière les options.
-    expect(ordreIds()).toEqual(["c1", "c0", "c2", "c3"]);
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Option 1", "Option 2"]);
-    expect(rangs()).toEqual([0, 1, 2, 3]);
+  it("ne fait rien — sans se plaindre — quand le résultat rangé est le même", async () => {
+    // Monter depuis la partie 1 (le bouton envoie 0), ou rester où l'on est.
+    expect((await deplacerPartie({ partieId: "c0", versBloc: 0 })).succes).toBe("Rien à changer.");
+    expect((await deplacerPartie({ partieId: "c0", versBloc: 1 })).succes).toBe("Rien à changer.");
+    // L'élément **seul** de la dernière partie « descendu » vers une partie nouvelle y retombe.
+    expect((await deplacerPartie({ partieId: "c3", versBloc: 4 })).succes).toBe("Rien à changer.");
+    expect(touchees()).toEqual([]);
+    expect(faux.audits).toEqual([]);
   });
 
-  /**
-   * **Un déplacement n'écrit que les lignes qui bougent.**
-   *
-   * La transaction réécrivait `ordre` sur **toutes** les parties de la séance, celles déjà au bon rang
-   * comprises. Or `ordre` porte `@updatedAt` : chaque « descendre » repoussait donc l'horodatage de
-   * toute la séance, et `chargerPlanning` recopie ce champ dans la bulle « Modifié par … le … » de
-   * chaque case — avec `modifieParId`, lui, inchangé. Quelqu'un remplissait « Cours n°1 » le
-   * 12 septembre ; une autre personne descendait « 2e option » le 30 à 20h14 ; la case de
-   * « Cours n°1 » annonçait « Modifié par <la première> le 30 septembre à 20:14 ». Elle n'avait rien
-   * fait ce soir-là, et c'est la seule trace que la grille montre.
-   *
-   * La règle est tenue partout ailleurs — `renumeroter` saute les lignes déjà au bon rang, et les
-   * migrations qui réparent des rangs ne touchent volontairement pas `updatedAt` : réparer un rang
-   * n'est pas une modification du programme par quelqu'un.
-   */
-  it("n'écrit que les lignes dont le rang ou le nom change vraiment", async () => {
-    // « Option 2 » remonte d'un cran : seules elle et sa voisine changent de rang, donc de nom.
-    await deplacerPartie({ partieId: "c3", versOrdre: 2 });
-    expect(ordreIds()).toEqual(["c0", "c1", "c3", "c2"]);
-    expect(rangee()).toEqual(["Cours 1", "Cours 2", "Option 1", "Option 2"]);
-    expect(rangs()).toEqual([0, 1, 2, 3]);
-    // Les deux cours ne bougent pas : ni leur rang, ni leur nom. Une écriture sur eux repousserait
-    // `updatedAt`, et la grille annoncerait « Modifié par … » sur des cases que personne n'a touchées.
-    expect(new Set(touchees())).toEqual(new Set(["c2", "c3"]));
-    // Et une seule écriture par ligne, même quand le rang **et** le nom changent.
-    expect(touchees()).toHaveLength(2);
+  it("ramène un numéro hors de la séance à la partie nouvelle plutôt que de refuser", async () => {
+    await deplacerPartie({ partieId: "c0", versBloc: PARTIES_PAR_SEANCE_MAX + 1 });
+    expect(partie("c0")).toMatchObject({ bloc: 4, libelle: "Partie 4 · Cours" });
   });
 
-  it("ne repeint la bulle de personne : les rangs bougent, les horodatages restent", async () => {
-    // Trois lignes changent de rang et deux changent de nom — aucune n'a changé de **contenu**.
-    await deplacerPartie({ partieId: "c3", versOrdre: 2 });
+  it("refuse en revanche un numéro qui n'est plus un déplacement", async () => {
+    expect((await deplacerPartie({ partieId: "c0", versBloc: -1 })).erreur).toBeTruthy();
+    expect((await deplacerPartie({ partieId: "c0", versBloc: PARTIES_PAR_SEANCE_MAX + 2 })).erreur).toBeTruthy();
+    expect(touchees()).toEqual([]);
+  });
+
+  it("n'écrit que les lignes qui changent, et ne repeint la bulle de personne", async () => {
+    await deplacerPartie({ partieId: "c1", versBloc: 2 });
+    // L'option change de partie et de nom ; le cours de la partie 2 avance d'un rang (l'option ne
+    // le précède plus) — et la partie 1 et la partie 3 ne sont pas touchées.
+    expect(new Set(touchees())).toEqual(new Set(["c1", "c2"]));
+    expect(rangee()).toEqual(["Partie 1 · Cours", "Partie 2 · Cours", "Partie 2 · Option", "Partie 3 · Cours"]);
     for (const p of faux.parties) expect(p.updatedAt).toEqual(REMPLI_LE);
-    // Contre-épreuve : remplir la case, ça, c'est une modification — et elle s'horodate.
-    await enregistrerCase({ partieId: "c3", instructeurId: "u1", theme: "Messer", niveau: "INDIFFERENT" });
-    expect(partie("c3")!.updatedAt.getTime()).toBeGreaterThan(REMPLI_LE.getTime());
-    expect(partie("c3")?.modifieParId).toBe("u-admin");
   });
 
-  /**
-   * **« Monter » la première ligne vaut le rang −1**, et l'action promet de le ramener dans les
-   * limites « plutôt que refusé : un "monter" sur la première ligne ne doit pas afficher d'erreur, il
-   * ne doit rien faire ». Le schéma, lui, posait `min(0)` et le **refusait** avant que l'action n'ait
-   * la main : un message d'erreur rouge pour un geste qui devait être sans effet.
-   */
-  it("accepte un rang négatif et ne fait rien, comme promis", async () => {
-    const res = await deplacerPartie({ partieId: "c0", versOrdre: -1 });
-    expect(res.erreur).toBeUndefined();
-    expect(res.succes).toBe("Rien à changer.");
-    expect(touchees()).toEqual([]);
-    // Et il ramène vraiment dans les limites quand la partie n'est pas déjà en tête **de sa série** :
-    // « Option 1 » visait le rang -5, elle s'arrête à la frontière des cours, donc ne bouge pas.
-    expect((await deplacerPartie({ partieId: "c2", versOrdre: -5 })).succes).toBe("Rien à changer.");
-    expect(ordreIds()).toEqual(["c0", "c1", "c2", "c3"]);
-  });
-
-  it("refuse en revanche un rang qui n'est plus un déplacement, dans les deux sens", async () => {
-    // Contre-épreuve du précédent : au-delà d'une séance entière, ce n'est plus un rang de séance.
-    expect((await deplacerPartie({ partieId: "c0", versOrdre: -(PARTIES_PAR_SEANCE_MAX + 1) })).erreur).toBeTruthy();
-    expect((await deplacerPartie({ partieId: "c0", versOrdre: PARTIES_PAR_SEANCE_MAX + 1 })).erreur).toBeTruthy();
-    expect(touchees()).toEqual([]);
-  });
-
-  it("ne touche personne quand le déplacement ne change rien", async () => {
-    await deplacerPartie({ partieId: "c0", versOrdre: 0 });
-    expect(touchees()).toEqual([]);
-  });
-
-  it("écrit bien tout le monde quand tout le monde bouge", async () => {
-    // Le premier cours descend en queue de sa série, la dernière option remonte en tête de la sienne :
-    // les quatre rangs bougent, donc les quatre noms, donc les quatre lignes s'écrivent.
-    await deplacerPartie({ partieId: "c0", versOrdre: 1 });
-    await deplacerPartie({ partieId: "c3", versOrdre: 2 });
-    expect(ordreIds()).toEqual(["c1", "c0", "c3", "c2"]);
-    expect(new Set(touchees())).toEqual(new Set(["c0", "c1", "c2", "c3"]));
+  it("journalise d'où à où, avec la nature", async () => {
+    await deplacerPartie({ partieId: "c2", versBloc: 4 });
+    expect(faux.audits.at(-1)).toMatchObject({
+      action: "planning.partie.ordre",
+      details: { partie: "Partie 2 · Cours", nature: "COURS", de: 2, vers: 3 },
+    });
   });
 });
 
-describe("la garde des six actions", () => {
+describe("la garde des actions", () => {
   it("toutes passent par planning.edit", async () => {
     faux.permissions = [];
     await enregistrerCase({ partieId: "c0", instructeurId: "", theme: "", niveau: "INDIFFERENT" });
-    await ajouterPartie({ sessionId: "s1" });
-    await changerNaturePartie({ partieId: "c0", estOption: true });
-    await deplacerPartie({ partieId: "c0", versOrdre: 1 });
+    await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" });
+    await changerNaturePartie({ partieId: "c0", nature: "OPTION" });
+    await deplacerPartie({ partieId: "c0", versBloc: 2 });
     await retirerPartie({ partieId: "c0" });
     expect(faux.permissions).toEqual(["planning.edit", "planning.edit", "planning.edit", "planning.edit", "planning.edit"]);
   });
 
-  it("une partie qui n'existe plus ne fait rien écrire", async () => {
+  it("un élément qui n'existe plus ne fait rien écrire", async () => {
     for (const res of [
       await enregistrerCase({ partieId: "inconnu", instructeurId: "", theme: "", niveau: "INDIFFERENT" }),
-      await changerNaturePartie({ partieId: "inconnu", estOption: true }),
-      await deplacerPartie({ partieId: "inconnu", versOrdre: 0 }),
+      await changerNaturePartie({ partieId: "inconnu", nature: "OPTION" }),
+      await deplacerPartie({ partieId: "inconnu", versBloc: 1 }),
       await retirerPartie({ partieId: "inconnu" }),
     ]) {
       expect(res.erreur).toBe("Cette partie n'existe plus.");
@@ -743,20 +738,17 @@ describe("la garde des six actions", () => {
   it("chacune resynchronise la séance : disciplines et encadrants suivent toujours les cases", async () => {
     synchronisations.length = 0;
     await enregistrerCase({ partieId: "c0", instructeurId: "u1", theme: "Messer", niveau: "INDIFFERENT" });
-    await ajouterPartie({ sessionId: "s1" });
-    await changerNaturePartie({ partieId: "c0", estOption: true });
-    // `c0` est devenue une option : on la déplace **dans sa série** (rang 2), sinon le rangement la
-    // ramène chez elle et le geste ne change rien — donc ne synchronise rien, à juste titre.
-    await deplacerPartie({ partieId: "c0", versOrdre: 3 });
+    await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" });
+    await changerNaturePartie({ partieId: "c0", nature: "OPTION" });
+    await deplacerPartie({ partieId: "c0", versBloc: 2 });
     await retirerPartie({ partieId: "c0" });
     expect(synchronisations).toEqual(["s1", "s1", "s1", "s1", "s1"]);
   });
 
   it("journalise chaque geste sous sa propre action", async () => {
-    await ajouterPartie({ sessionId: "s1" });
-    await changerNaturePartie({ partieId: "c0", estOption: true });
-    // Même raison qu'au-dessus : un déplacement qui ne déplace rien ne se journalise pas.
-    await deplacerPartie({ partieId: "c0", versOrdre: 3 });
+    await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" });
+    await changerNaturePartie({ partieId: "c0", nature: "OPTION" });
+    await deplacerPartie({ partieId: "c0", versBloc: 2 });
     await retirerPartie({ partieId: "c0" });
     expect(faux.audits.map((a) => a.action)).toEqual([
       "planning.partie.ajout",
@@ -764,57 +756,54 @@ describe("la garde des six actions", () => {
       "planning.partie.ordre",
       "planning.partie.retrait",
     ]);
-    // Le raccourci « planning » du journal filtre sur ce préfixe : toutes doivent le porter.
-    expect(faux.audits.every((a) => a.action.startsWith("planning."))).toBe(true);
   });
 
-  it("refuse le changement de nature dans une période close, comme les autres", async () => {
+  it("refuse chaque geste dans une période close", async () => {
     faux.statutPeriode = "CLOSE";
-    expect((await changerNaturePartie({ partieId: "c0", estOption: true })).erreur).toMatch(/close/);
+    expect((await changerNaturePartie({ partieId: "c0", nature: "OPTION" })).erreur).toMatch(/close/);
+    expect((await deplacerPartie({ partieId: "c0", versBloc: 2 })).erreur).toMatch(/close/);
+    expect((await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" })).erreur).toMatch(/close/);
+    expect(touchees()).toEqual([]);
   });
 });
 
 /**
- * **Le libellé est une valeur dérivée, et le rester est un invariant du planning.**
- *
- * La colonne `SessionPartie.libelle` n'est plus saisie par personne : elle vaut toujours
- * `libellePartie(rang dans la nature, estOption)`. Elle reste en base parce que l'API publique, les
- * pages de partage, l'embed Discord et l'email du soir la lisent chacun avec leur propre requête — et
- * une colonne dérivée qui prend du retard sur son rang est pire qu'une colonne absente : elle publie
- * une fausse information sans que rien à l'écran ne le montre.
- *
- * Les quatre gestes qui déplacent un rang sont donc éprouvés **ensemble** ici, sur une séance qu'on
- * secoue : ce qui compte n'est pas qu'un geste isolé soit juste, c'est que la colonne le soit encore
- * après une suite de gestes.
+ * **Les trois invariants tiennent après n'importe quelle suite de gestes** : parties contiguës à
+ * partir de 1, rangs contigus à partir de 0 dans l'ordre de lecture, libellés d'accord. Ce qui compte
+ * n'est pas qu'un geste isolé soit juste, c'est que la colonne le soit encore après une suite de
+ * gestes — c'est elle que lisent l'API publique, les emails et les embeds.
  */
-describe("le libellé dit toujours le rang, quoi qu'on fasse à la séance", () => {
-  /** Ce que le code devrait écrire, recalculé depuis zéro sur l'état courant de la séance. */
-  const attendus = async () => {
-    const { libellePartie } = await import("@/lib/constants");
-    let cours = 0;
-    let options = 0;
-    return [...faux.parties].sort((a, b) => a.ordre - b.ordre).map((p) => libellePartie(p.estOption ? ++options : ++cours, p.estOption));
+describe("la séance reste rangée, quoi qu'on lui fasse", () => {
+  /** La règle elle-même ne trouve plus rien à corriger : c'est la définition d'une séance rangée. */
+  const rangeeSelonLaRegle = () => {
+    expect(rangementsParties(faux.parties)).toEqual([]);
+    expect(ordreIds()).toEqual(sequenceRangee(faux.parties));
+    expect(rangs()).toEqual(faux.parties.map((_, i) => i));
+    const presents = [...new Set(blocs())];
+    expect(presents).toEqual(presents.map((_, i) => i + 1));
   };
 
-  it("après n'importe quelle suite d'ajouts, de retraits, de déplacements et de bascules", async () => {
-    await ajouterPartie({ sessionId: "s1", estOption: true });
-    await deplacerPartie({ partieId: "c3", versOrdre: 0 });
-    await changerNaturePartie({ partieId: "c0", estOption: true });
-    await retirerPartie({ partieId: "c1" });
-    await ajouterPartie({ sessionId: "s1" });
-    await deplacerPartie({ partieId: "c2", versOrdre: 4 });
-    await changerNaturePartie({ partieId: "c2", estOption: false });
-    expect(rangee()).toEqual(await attendus());
-    // Et les rangs sont restés contigus pendant tout ce temps : les deux invariants tiennent ensemble.
-    expect(rangs()).toEqual(faux.parties.map((_, i) => i));
+  it("après n'importe quelle suite d'ajouts, de retraits, de déplacements et de changements de nature", async () => {
+    await ajouterPartie({ sessionId: "s1", bloc: 2, nature: "OPTION" });
+    await deplacerPartie({ partieId: "c3", versBloc: 1 });
+    await changerNaturePartie({ partieId: "c0", nature: "ECHAUFFEMENT" });
+    await retirerPartie({ partieId: "c2" });
+    await ajouterPartie({ sessionId: "s1", bloc: 9, nature: "COURS" });
+    await deplacerPartie({ partieId: "c1", versBloc: 3 });
+    await changerNaturePartie({ partieId: "c1", nature: "COURS" });
+    rangeeSelonLaRegle();
   });
 
-  it("y compris au départ d'une séance aux rangs abîmés", async () => {
-    // Les rangs troués que la migration du 29/09 pouvait laisser : l'application les répare, elle ne
-    // les propage pas — et elle recale les noms dans le même mouvement.
-    poserRangs([["Option 2", 1], ["Cours 2", 1], ["Option 1", 5]]);
-    await ajouterPartie({ sessionId: "s1" });
-    expect(rangs()).toEqual([0, 1, 2, 3]);
-    expect(rangee()).toEqual(await attendus());
+  it("y compris au départ d'une séance abîmée (parties trouées, rangs en double, noms faux)", async () => {
+    poserBrut([
+      [2, "OPTION", 1, "Option 2"],
+      [5, "COURS", 1, "Cours 2"],
+      [2, "COURS", 5, "Option 1"],
+    ]);
+    await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ECHAUFFEMENT" });
+    rangeeSelonLaRegle();
+    // Les parties 2 et 5 deviennent 2 et 3 derrière la partie 1 née ici ; dans la partie 2, le cours
+    // passe devant l'option.
+    expect(rangee()).toEqual(["Partie 1 · Échauffement", "Partie 2 · Cours", "Partie 2 · Option", "Partie 3 · Cours"]);
   });
 });

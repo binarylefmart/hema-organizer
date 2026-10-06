@@ -11,23 +11,27 @@ import {
   ecritureFermee,
   libelleNiveau,
   NIVEAU_DEFAUT,
-  prochainLibellePartie,
+  NOMS_NATURE,
   REFUS_PERIODE_CLOSE,
+  type NatureElement,
 } from "@/lib/constants";
 import { notifierDecisionAtelier } from "@/lib/notifications/ateliers";
 import { champ, zodToFormState, type FormState } from "@/lib/form";
 import {
+  natureLue,
   nettoyerThemes,
   partieLibre,
   placerAtelier,
   rangerParties,
+  SELECTION_RANGEMENT,
   setLieux,
   setThemes,
+  setThemesEchauffement,
   synchroniserSeance,
 } from "@/lib/planning";
-import { sequenceRangee } from "@/components/planning/rangement";
+import { rangementsParties, type PartieARanger } from "@/components/planning/rangement";
 import { transitionAutorisee } from "@/lib/ateliers";
-import { estCompteDeService } from "@/lib/permissions";
+import { can, estCompteDeService } from "@/lib/permissions";
 import {
   casePlanningSchema,
   deplacerPartieSchema,
@@ -148,7 +152,7 @@ type CaseAvant = Extract<
 >["partie"];
 
 /**
- * **Les trois refus d'une case, écrits une fois pour les deux portes.**
+ * **Les refus d'une case, écrits une fois pour les deux portes.**
  *
  * `enregistrerCase` les rendait en clair dans son corps. Depuis qu'un **lot** passe par les mêmes
  * verrous (`enregistrerCases`), la phrase doit venir du même endroit : deux portes vers la même
@@ -158,8 +162,6 @@ type CaseAvant = Extract<
  * (`nommerCase`) et n'en change pas un mot.
  */
 const REFUS_CASE = {
-  atelier:
-    "Cette case est réservée à un atelier programmé : passe par la gestion des ateliers pour la changer.",
   // Une même personne ne peut pas s'assister elle-même : deux fois le même nom sur une ligne du
   // programme n'annonce rien de plus, et fausserait la lecture de « qui encadre ».
   memePersonne: "Choisis deux personnes différentes pour mener et assister.",
@@ -178,6 +180,20 @@ const REFUS_CASE = {
   secondSansPremier:
     "Indique d'abord qui mène la partie : le second instructeur vient assister quelqu'un.",
 } as const;
+
+/**
+ * **Une case qui porte un atelier se règle comme les autres, sauf son thème** (Delta :
+ * « pour chaque sous-section les mêmes champs (instructeurs, thèmes, descriptions etc.) »).
+ * Instructeur, second, niveau et description s'enregistrent ; le thème, lui, **est** le titre de
+ * l'atelier, posé par `placerAtelier` : la valeur envoyée est ignorée et celle de la base gardée —
+ * un appel forgé ne peut pas rebaptiser un atelier depuis le planning. Le reste des gardes (même
+ * personne, second sans premier, trimestre clos, séance annulée) s'applique tel quel. À appeler
+ * **avant** `sansThemeNiDetails`, pour que le niveau et la description d'un atelier ne soient pas
+ * effacés parce que l'écran n'a pas renvoyé de thème.
+ */
+function themeFigeParAtelier(avant: CaseAvant, c: { theme: string }): void {
+  if (avant.atelierId) c.theme = avant.theme;
+}
 
 /**
  * **Sans thème, ni niveau ni description.** La grille ne montre ces deux champs qu'une fois un thème
@@ -282,6 +298,11 @@ export async function enregistrerCase(input: {
     ...input,
   });
   if (!parsed.success) return zodToFormState(parsed.error);
+
+  const ctx = await partiePourEcriture(parsed.data.partieId);
+  if ("erreur" in ctx) return ctx;
+  const avant = ctx.partie;
+  themeFigeParAtelier(avant, parsed.data);
   sansThemeNiDetails(parsed.data);
   const {
     partieId,
@@ -291,11 +312,6 @@ export async function enregistrerCase(input: {
     description,
     niveau,
   } = parsed.data;
-
-  const ctx = await partiePourEcriture(partieId);
-  if ("erreur" in ctx) return ctx;
-  const avant = ctx.partie;
-  if (avant.atelierId) return { erreur: REFUS_CASE.atelier };
   if (instructeurId && instructeurId === instructeurSecondId)
     return { erreur: REFUS_CASE.memePersonne };
   if (!instructeurId && instructeurSecondId)
@@ -401,8 +417,8 @@ function compteRenduLot(ecrites: number, inchangees: number): string {
  *
  * `planning.edit`, `casePlanningSchema` (avec le même pré-remplissage `instructeurSecondId: ""`),
  * `partiePourEcriture` **par case** — qui porte le refus d'une période close et retrouve la séance
- * depuis la ligne, jamais depuis ce que l'écran a envoyé —, le refus d'une case réservée à un atelier,
- * celui d'une même personne en instructeur **et** en second, celui d'un second sans premier, et
+ * depuis la ligne, jamais depuis ce que l'écran a envoyé —, le thème d'une case atelier figé au titre
+ * de l'atelier (`themeFigeParAtelier`), le refus d'une même personne en instructeur **et** en second, celui d'un second sans premier, et
  * `instructeurUtilisable` avec son exception « laisser en place ce qui est déjà écrit ». Aucun verrou
  * en plus, aucun en moins, et **aucune règle reformulée** : ce sont les mêmes fonctions et les mêmes
  * phrases (`REFUS_CASE`), parce que deux chemins d'écriture aux règles différentes, c'est une porte
@@ -480,10 +496,7 @@ export async function enregistrerCases(input: {
    * — « dernier arrivé gagne », la doctrine du geste unitaire.
    */
   const parPartie = new Map<string, ReglagesCase>();
-  for (const c of parsed.data.cases) {
-    sansThemeNiDetails(c);
-    parPartie.set(c.partieId, c);
-  }
+  for (const c of parsed.data.cases) parPartie.set(c.partieId, c);
 
   // **Tous les verrous avant la première écriture** : c'est ce qui rend le « tout ou rien » vrai.
   const aEcrire: Array<{ reglages: ReglagesCase; avant: CaseAvant }> = [];
@@ -494,7 +507,8 @@ export async function enregistrerCases(input: {
     // se recopie pas : la phrase partagée dit déjà ce qu'il faut faire.
     if ("erreur" in ctx) return { erreur: `${ctx.erreur} Rien n'a été enregistré.` };
     const avant = ctx.partie;
-    if (avant.atelierId) return refusDuLot(avant, REFUS_CASE.atelier);
+    themeFigeParAtelier(avant, reglages);
+    sansThemeNiDetails(reglages);
     if (reglages.instructeurId && reglages.instructeurId === reglages.instructeurSecondId)
       return refusDuLot(avant, REFUS_CASE.memePersonne);
     if (!reglages.instructeurId && reglages.instructeurSecondId)
@@ -556,144 +570,201 @@ export async function enregistrerCases(input: {
   return { succes: compteRenduLot(aEcrire.length, inchangees) };
 }
 
-/**
- * **Créer une partie en queue de sa série, dans une transaction déjà ouverte** — le corps de
- * l'ajout, partagé par le geste unitaire (`ajouterPartie`) et le geste de masse
- * (`ajouterPartiesEnMasse`) : deux portes vers la même écriture, une seule façon de l'écrire (rang,
- * nom calculé, rangement de la séance, plafond). Rend `null` quand la séance a atteint
- * `PARTIES_PAR_SEANCE_MAX` : chaque appelant dit le refus dans ses mots.
- */
-async function creerPartie(tx: Prisma.TransactionClient, sessionId: string, estOption: boolean, auteurId: string) {
-  const existantes = await tx.sessionPartie.findMany({
-    where: { sessionId },
-    select: {
-      id: true,
-      ordre: true,
-      estOption: true,
-      libelle: true,
-      updatedAt: true,
-    },
-  });
-  if (existantes.length >= PARTIES_PAR_SEANCE_MAX) return null;
-  const nouvelle = await tx.sessionPartie.create({
-    // Le nom se déduit du rang que la partie prend dans sa nature : dernière de sa série, puisque
-    // l'ajout se fait en queue de **sa** série. Le rang, lui, est provisoire — `rangerParties`
-    // juste en dessous le remet à sa place.
-    data: {
-      sessionId,
-      libelle: prochainLibellePartie(existantes, estOption),
-      estOption,
-      ordre: existantes.length,
-      modifieParId: auteurId,
-    },
-    select: {
-      id: true,
-      libelle: true,
-      ordre: true,
-      estOption: true,
-      updatedAt: true,
-    },
-  });
-  /*
-   * **La nouvelle ligne est rangée AVEC les autres, pas après elles**.
-   *
-   * Le rangement ne portait que sur `existantes`, et la nouvelle gardait son rang provisoire
-   * `existantes.length` — soit la dernière place de la séance. Or `rangerParties` tient l'invariant
-   * « les cours d'abord, les options ensuite » : sur une séance au modèle livré (Cours 1, Cours 2,
-   * Option 1, Option 2), « Ajouter un cours » posait donc **Cours 3 derrière Option 2**.
-   *
-   * Rien ne se contredisait — le libellé reste juste, `rangsDansNature` comptant par nature — mais
-   * la **place** était fausse, et tous les lecteurs trient sur `ordre` seul : la grille du planning,
-   * la fiche de séance, la carte de l'accueil, la colonne `disciplines` qui nourrit l'objet de l'email
-   * du soir, le programme des embeds Discord et Telegram, et l'API publique. Tous affichaient
-   * « Cours 1 · Cours 2 · Option 1 · Option 2 · Cours 3 », c'est-à-dire exactement ce que la demande
-   * du 30/09 au matin voulait supprimer.
-   *
-   * L'état se réparait de lui-même à la première autre écriture sur la séance (déplacer, retirer,
-   * changer de nature, poser un atelier) — ce qui explique qu'il n'ait pas sauté aux yeux.
-   */
-  for (const ecriture of rangerParties([...existantes, nouvelle], tx))
-    await ecriture;
-  return nouvelle;
+/** Ce que le journal et les messages disent d'une nature : « Cours ajouté. », « Option ajoutée. » */
+const AJOUTEE: Record<NatureElement, string> = {
+  ECHAUFFEMENT: "Échauffement ajouté",
+  COURS: "Cours ajouté",
+  OPTION: "Option ajoutée",
+  ATELIER: "Atelier placé",
+};
+
+/** Le nombre de parties d'une séance : son plus grand `bloc` (contigu à partir de 1 par construction). */
+function nombreDeParties(parties: ReadonlyArray<{ bloc: number }>): number {
+  return parties.reduce((m, p) => Math.max(m, p.bloc), 0);
 }
 
 /**
- * **Ajouter une partie à une séance.** Sous `planning.edit`, comme remplir une case : c'est le même
- * geste de tenue du programme, fait par les mêmes personnes, et le réserver au bureau obligerait un
- * instructeur à demander l'autorisation d'ajouter la ligne qu'il va lui-même remplir.
+ * **Où atterrit chaque élément une fois la séance rangée** — `bloc` et `ordre` finaux, par id. C'est
+ * ce qui permet de répondre « ce geste change-t-il quelque chose ? » **avant** d'écrire : un élément
+ * seul dans la dernière partie qu'on « descend » vers une partie nouvelle retombe, rangé, exactement
+ * où il était.
+ */
+function placesApresRangement(parties: ReadonlyArray<PartieARanger>): Map<string, string> {
+  const finales = new Map(parties.map((p) => [p.id, { bloc: p.bloc, ordre: p.ordre }]));
+  for (const r of rangementsParties(parties)) {
+    const f = finales.get(r.id)!;
+    if (r.data.bloc !== undefined) f.bloc = r.data.bloc;
+    if (r.data.ordre !== undefined) f.ordre = r.data.ordre;
+  }
+  return new Map([...finales].map(([id, f]) => [id, `${f.bloc}:${f.ordre}`]));
+}
+
+/** Les éléments d'une séance, prêts à ranger (nature lue, jamais une chaîne inconnue). */
+async function elementsARanger(client: Pick<Prisma.TransactionClient, "sessionPartie">, sessionId: string): Promise<PartieARanger[]> {
+  const lus = await client.sessionPartie.findMany({ where: { sessionId }, select: SELECTION_RANGEMENT });
+  return lus.map((p) => ({ ...p, nature: natureLue(p.nature) }));
+}
+
+/**
+ * **Créer un élément dans une partie, dans une transaction déjà ouverte** — le corps de l'ajout,
+ * partagé par le geste unitaire (`ajouterPartie`) et le geste de masse (`ajouterPartiesEnMasse`) :
+ * deux portes vers la même écriture, une seule façon de l'écrire (partie, rang, nom calculé,
+ * rangement de la séance, plafond). Rend `null` quand la séance a atteint `PARTIES_PAR_SEANCE_MAX`
+ * éléments : chaque appelant dit le refus dans ses mots.
  *
- * La partie naît **en queue** : ajouter n'insère pas au milieu, on monte ensuite si besoin. Elle
- * naît aussi **sans nom à saisir** : seule sa nature est demandée, et son libellé se déduit du rang
- * qu'elle prend dans cette série — le troisième cours de la séance s'appelle « Cours 3 ».
+ * **La partie demandée est ramenée aux limites de la séance** : au-delà de la dernière, c'est une
+ * partie nouvelle à la fin (`nbParties + 1`). C'est ce qui fait marcher le geste de masse sur des
+ * séances qui n'ont pas toutes le même nombre de parties — « ajouter un échauffement en partie 3 » à
+ * une séance qui n'en a qu'une le pose dans une partie 2 nouvelle, plutôt que de laisser un trou.
+ *
+ * L'élément naît **dernier de sa nature dans sa partie** ; le rangement le met à sa place de lecture
+ * (un échauffement passe devant le cours de sa partie) et recale les noms des voisins — le cours
+ * seul d'une partie devient « Cours 1 » quand un second arrive.
+ */
+async function creerPartie(
+  tx: Prisma.TransactionClient,
+  sessionId: string,
+  voulu: { bloc: number; nature: NatureElement },
+  auteurId: string,
+) {
+  const existantes = await elementsARanger(tx, sessionId);
+  if (existantes.length >= PARTIES_PAR_SEANCE_MAX) return null;
+  const bloc = Math.min(Math.max(voulu.bloc, 1), nombreDeParties(existantes) + 1);
+  const ordre = existantes.reduce((m, p) => Math.max(m, p.ordre), -1) + 1;
+  const nouvelle = await tx.sessionPartie.create({
+    // Libellé provisoire : `rangerParties`, juste en dessous, pose le vrai (et rien d'autre ne lit la
+    // ligne avant le commit).
+    data: { sessionId, libelle: "", bloc, nature: voulu.nature, ordre, modifieParId: auteurId },
+    select: SELECTION_RANGEMENT,
+  });
+  for (const ecriture of rangerParties([...existantes, nouvelle], tx)) await ecriture;
+  return tx.sessionPartie.findUniqueOrThrow({ where: { id: nouvelle.id }, select: { id: true, libelle: true, bloc: true, nature: true } });
+}
+
+/**
+ * **Ajouter un élément à une séance** : un échauffement, un cours, une option — ou un atelier en
+ * attente — dans la partie `bloc` (`nbParties + 1` = une partie nouvelle). Sous `planning.edit`,
+ * comme remplir une case : c'est le même geste de tenue du programme, fait par les mêmes personnes.
+ *
+ * **Un atelier** (`nature: "ATELIER"`) se pose comme depuis une case (`programmerAtelierDansCase`),
+ * avec les mêmes serrures : `ateliers.moderate`, un atelier **en attente** (et pas déjà dans une
+ * case), une séance **à venir**. Il devient planifié sur la séance, son proposant mène l'élément et
+ * son titre en devient le thème (`placerAtelier`), et le membre est prévenu.
+ *
+ * L'élément naît **sans nom à saisir** : son libellé se déduit de sa partie et de son rang dans sa
+ * nature (`libelleElement`).
  */
 export async function ajouterPartie(input: {
   sessionId: string;
-  estOption?: boolean;
+  bloc: number;
+  nature: NatureElement;
+  atelierId?: string;
 }): Promise<FormState & { partieId?: string }> {
   const user = await assertPermission("planning.edit");
   const parsed = nouvellePartieSchema.safeParse(input);
   if (!parsed.success) return zodToFormState(parsed.error);
-  const { sessionId, estOption } = parsed.data;
+  const { sessionId, bloc, nature, atelierId } = parsed.data;
 
   const ctx = await seancePourEcriture(sessionId);
   if ("erreur" in ctx) return ctx;
 
+  // Les serrures de l'atelier, toutes pesées **avant** la première écriture.
+  let aPlacer: Extract<Awaited<ReturnType<typeof atelierAPlacer>>, { atelier: unknown }> | null = null;
+  if (nature === "ATELIER" && atelierId) {
+    if (!can(user, "ateliers.moderate")) return { erreur: "Programmer un atelier est réservé à l'équipe qui les modère." };
+    const verdict = await atelierAPlacer(atelierId, sessionId);
+    if ("erreur" in verdict) return { erreur: verdict.erreur };
+    aPlacer = verdict;
+  }
+
   /*
-   * **L'ajout était la seule écriture qui ne renumérotait ni ne vérifiait rien** : il posait
-   * `ordre = nombre de parties`, hors transaction, alors que le retrait et le déplacement
-   * enferment bien les leurs. Deux ennuis, tous les deux corrigés ici :
-   *
-   * 1. sur une séance aux rangs troués — celles qu'a laissées la migration — le nombre de parties
-   *    n'est pas le rang libre suivant : la nouvelle ligne venait s'asseoir sur un rang déjà pris, et
-   *    l'ajout **propageait** l'état faux au lieu de le réparer. On renumérote l'existant dans la même
-   *    transaction, et la nouvelle vient juste après.
-   * 2. la séance est **relue dans** la transaction : deux ajouts au même instant (deux instructeurs
-   *    sur la même séance, ou un double clic) lisaient dehors la même longueur et naissaient au
-   *    même rang. Prisma ne tient qu'une connexion vers SQLite, qui n'accepte de toute façon qu'un
-   *    écrivain à la fois : la transaction les met donc réellement à la file.
+   * La séance est **relue dans** la transaction : deux ajouts au même instant (deux instructeurs
+   * sur la même séance, ou un double clic) liraient sinon dehors le même nombre de parties. Prisma
+   * ne tient qu'une connexion vers SQLite, qui n'accepte qu'un écrivain à la fois : la transaction
+   * les met réellement à la file.
    */
-  const creee = await db.$transaction((tx) => creerPartie(tx, sessionId, estOption, user.id));
+  const creee = await db.$transaction((tx) => creerPartie(tx, sessionId, { bloc, nature }, user.id));
   if (!creee)
     return {
-      erreur: `Une séance ne peut pas porter plus de ${PARTIES_PAR_SEANCE_MAX} parties.`,
+      erreur: `Une séance ne peut pas porter plus de ${PARTIES_PAR_SEANCE_MAX} éléments.`,
     };
+
+  let libelle = creee.libelle;
+  if (aPlacer) {
+    const a = aPlacer.atelier;
+    const decide = await db.atelier.update({ where: { id: a.id }, data: { statut: "PLANIFIE", sessionId } });
+    const posee = await placerAtelier(a.id, sessionId, user.id, creee.id);
+    libelle = posee?.libelle ?? libelle;
+    const prevenir = await notifierDecisionAtelier({
+      atelier: decide,
+      proposePar: a.proposePar,
+      statut: "PLANIFIE",
+      commentaire: a.commentaireInstructeur,
+      seance: aPlacer.seance,
+    });
+    await audit(user, "atelier.decision", a.id, { statut: "PLANIFIE", sessionId, partie: libelle, depuis: "planning" });
+    await audit(user, "planning.partie.ajout", sessionId, { date: ctx.session.date, partie: libelle, bloc: creee.bloc, nature });
+    rafraichir(sessionId);
+    return { succes: prevenir ? "Atelier placé — le membre est prévenu par email." : "Atelier placé.", partieId: creee.id };
+  }
 
   await synchroniserSeance(sessionId);
   await audit(user, "planning.partie.ajout", sessionId, {
     date: ctx.session.date,
-    partie: creee.libelle,
-    option: estOption,
+    partie: libelle,
+    bloc: creee.bloc,
+    nature,
   });
   rafraichir(sessionId);
-  return {
-    succes: estOption ? "Option ajoutée." : "Cours ajouté.",
-    partieId: creee.id,
-  };
+  return { succes: `${AJOUTEE[nature]}.`, partieId: creee.id };
 }
 
 /**
- * **Ajouter un cours ou une option à plusieurs séances d'un coup** — la sélection multiple du planning.
+ * **L'atelier qu'on veut poser depuis le menu d'ajout, et la séance qui le recevra** — les serrures
+ * de `programmerAtelierDansCase`, dans les mêmes mots : un atelier en attente qui n'occupe aucune
+ * case, et une séance à venir.
+ */
+async function atelierAPlacer(atelierId: string, sessionId: string) {
+  const [atelier, occupe, seance] = await Promise.all([
+    db.atelier.findUnique({ where: { id: atelierId }, include: { proposePar: true } }),
+    db.sessionPartie.findFirst({ where: { atelierId }, select: { id: true } }),
+    db.session.findUnique({ where: { id: sessionId }, select: { date: true, heureDebut: true, lieu: true } }),
+  ]);
+  if (!atelier || !seance) return { erreur: "Atelier ou séance introuvable." } as const;
+  if (atelier.statut !== "PROPOSE" || occupe || !transitionAutorisee(atelier.statut, "PLANIFIE"))
+    return { erreur: "Cet atelier n'est plus en attente : il a déjà été traité." } as const;
+  if (seance.date < todayIso()) return { erreur: "Choisis une séance à venir pour placer l'atelier." } as const;
+  return { atelier, seance } as const;
+}
+
+/**
+ * **Ajouter un même élément à plusieurs séances d'un coup** — la sélection multiple du planning :
+ * un échauffement, un cours ou une option, dans la partie `bloc` (un atelier se place un à un).
  *
- * Comme son jumeau de la carte (`ajouterPartie`), le geste s'enregistre **tout de suite** : une partie
- * provisoire n'aurait pas d'identifiant à donner au brouillon. Les verrous sont **exactement** ceux du
- * geste unitaire, par les **mêmes fonctions** : `planning.edit`, `seancePourEcriture` pour chaque
- * séance (trimestre clos, séance annulée, séance introuvable), puis `creerPartie` — rang, nom calculé,
- * rangement, plafond `PARTIES_PAR_SEANCE_MAX`.
+ * Comme son jumeau de la carte (`ajouterPartie`), le geste s'enregistre **tout de suite** : un
+ * élément provisoire n'aurait pas d'identifiant à donner au brouillon. Les verrous sont **exactement**
+ * ceux du geste unitaire, par les **mêmes fonctions** : `planning.edit`, `seancePourEcriture` pour
+ * chaque séance (trimestre clos, séance annulée, séance introuvable), puis `creerPartie` — partie
+ * ramenée aux limites de **chaque** séance (une séance qui a moins de `bloc - 1` parties reçoit
+ * l'élément dans une partie nouvelle, à la fin), rang, nom calculé, rangement, plafond.
  *
  * **Tout ou rien.** Les refus de séance se pèsent tous avant la transaction ; dans la transaction, le
- * plafond est vérifié pour **toutes** les séances avant la première création — un lot où la douzième
- * séance déborderait n'a rien écrit sur les onze premières. Le lot est plafonné à `SELECTION_MAX`,
- * dédoublonné (une séance cochée deux fois ne reçoit pas deux cours).
+ * plafond est vérifié pour **toutes** les séances avant la première création. Le lot est plafonné à
+ * `SELECTION_MAX`, dédoublonné (une séance cochée deux fois ne reçoit pas deux éléments).
  *
  * **Le journal** : une entrée par séance, sous la **même action** que l'ajout unitaire
  * (`planning.partie.ajout`), avec `enMasse: true`, après le commit et hors transaction. Rien ne part
  * vers les gens : le planning ne notifie personne.
  */
-export async function ajouterPartiesEnMasse(input: { sessionIds: string[]; estOption?: boolean }): Promise<FormState & { ajoutees?: number }> {
+export async function ajouterPartiesEnMasse(input: {
+  sessionIds: string[];
+  bloc: number;
+  nature: Exclude<NatureElement, "ATELIER">;
+}): Promise<FormState & { ajoutees?: number }> {
   const user = await assertPermission("planning.edit");
   const parsed = partiesEnMasseSchema.safeParse(input);
   if (!parsed.success) return { erreur: "Sélection invalide : coche des séances, puis choisis le geste. Rien n'a été ajouté." };
-  const { sessionIds, estOption } = parsed.data;
+  const { sessionIds, bloc, nature } = parsed.data;
 
   // **Toutes les gardes avant la première écriture** : la garde du geste unitaire, séance par séance.
   const seances: Array<{ id: string; date: string }> = [];
@@ -714,68 +785,52 @@ export async function ajouterPartiesEnMasse(input: { sessionIds: string[]; estOp
       const existantes = await tx.sessionPartie.findMany({ where: { sessionId: s.id }, select: { id: true } });
       if (existantes.length >= PARTIES_PAR_SEANCE_MAX) return { pleine: s, creees: [] };
     }
-    const creees: Array<{ seance: { id: string; date: string }; libelle: string }> = [];
+    const creees: Array<{ seance: { id: string; date: string }; libelle: string; bloc: number }> = [];
     for (const s of seances) {
-      const creee = await creerPartie(tx, s.id, estOption, user.id);
+      const creee = await creerPartie(tx, s.id, { bloc, nature }, user.id);
       // Impossible après la vérification ci-dessus, sauf écriture concurrente : on annule la transaction.
       if (!creee) throw new Error(`Séance pleine : ${s.id}`);
-      creees.push({ seance: s, libelle: creee.libelle });
+      creees.push({ seance: s, libelle: creee.libelle, bloc: creee.bloc });
     }
     return { pleine: null, creees };
   });
   if (issue.pleine)
     return {
-      erreur: `La séance du ${minuscule(formatDateSansAnnee(issue.pleine.date))} porte déjà ${PARTIES_PAR_SEANCE_MAX} parties, le plafond d'une séance. Rien n'a été ajouté.`,
+      erreur: `La séance du ${minuscule(formatDateSansAnnee(issue.pleine.date))} porte déjà ${PARTIES_PAR_SEANCE_MAX} éléments, le plafond d'une séance. Rien n'a été ajouté.`,
     };
 
   for (const { seance } of issue.creees) await synchroniserSeance(seance.id);
-  for (const { seance, libelle } of issue.creees) {
-    await audit(user, "planning.partie.ajout", seance.id, { date: seance.date, partie: libelle, option: estOption, enMasse: true });
+  for (const { seance, libelle, bloc: place } of issue.creees) {
+    await audit(user, "planning.partie.ajout", seance.id, { date: seance.date, partie: libelle, bloc: place, nature, enMasse: true });
   }
   for (const { seance } of issue.creees) rafraichir(seance.id);
   const n = issue.creees.length;
-  const quoi = estOption ? "Option ajoutée" : "Cours ajouté";
+  const quoi = AJOUTEE[nature];
   return { succes: n === 1 ? `${quoi} à 1 séance.` : `${quoi} à ${n} séances.`, ajoutees: n };
 }
 
 /**
- * **Aucun écran n'appelle plus cette action** : la nature d'une partie se choisit **à l'ajout**, et
- * ne se change plus après coup — on retire la partie et on ajoute l'autre.
+ * **Changer la nature d'un élément** : échauffement, cours ou option (le menu de
+ * l'élément le propose).
  *
- * Elle est gardée, avec ses verrous et ses quinze tests, pour deux raisons : la règle qu'elle porte
- * (une bascule renumérote les deux séries, refuse une période close et refuse une partie occupée par
- * un atelier) est celle du rangement lui-même, et la nature d'une partie a changé de forme **quatre
- * fois en trois jours** — case à cocher, deux boutons, curseur, deux boutons. Si un écran la
- * rappelle, elle est prête ; si l'on décide qu'elle ne reviendra pas, c'est elle **et** ses tests qui
- * partent ensemble, pas l'un sans l'autre.
- */
-/**
- * **Changer la nature d'une partie** : un cours devient une option, ou l'inverse.
+ * L'élément reste dans **sa partie** et passe en queue de sa nouvelle nature ; `rangerParties`
+ * recale sa place de lecture et les noms des voisins (le second cours qui devient une option fait
+ * du premier « Cours » tout court) — **sans** toucher leur `updatedAt`. L'élément dont on change la
+ * nature, lui, est horodaté : ce clic-là porte sur lui.
  *
- * C'est tout ce qui reste de l'ancien « renommer » : le libellé ne se saisit plus, donc il n'y a
- * plus de nom à recevoir — seulement un drapeau. Et comme le nom se déduit du rang **dans la
- * nature**, changer la nature d'une partie décale les deux séries d'un coup : la 2e option devient
- * la 1ère, le 2e cours devient le 3e. `rangerParties` réécrit donc les libellés de toute la séance
- * — et il ne touche **jamais** `updatedAt` : sans cela, la bulle « Modifié par … le … » des
- * **voisines** dont le nom glisse porterait l'heure de ce clic sous le nom de quelqu'un d'autre. La
- * partie dont on change la nature, elle, est bien horodatée ici : ce clic-là porte sur elle, et
- * c'est le seul de la séance qui la modifie.
- *
- * **Refusé tant qu'un atelier occupe la partie**, comme le refusent déjà ses deux voisines
- * (`enregistrerCase`, `retirerPartie`). Rien ne le testait : un clic sur « Cours » faisait atterrir
- * l'atelier dans « Cours 3 » avec `estOption = false`, et il était **publié tel quel** par l'API
- * publique et les pages de partage, alors que tout le modèle dit qu'un atelier occupe une option. On
- * le déprogramme depuis la gestion des ateliers — ce qui **vide** la case —, et la partie redevient
- * une partie ordinaire, de la nature qu'on veut.
+ * **Refusé tant qu'un atelier occupe l'élément** (ses réglages, eux, s'enregistrent par
+ * `enregistrerCase`, thème figé) : un atelier se retire depuis la gestion des ateliers ou en
+ * retirant l'élément.
+ * Un élément Atelier **vide**, lui, peut redevenir un cours ou une option.
  */
 export async function changerNaturePartie(input: {
   partieId: string;
-  estOption: boolean;
+  nature: Exclude<NatureElement, "ATELIER">;
 }): Promise<FormState> {
   const user = await assertPermission("planning.edit");
   const parsed = naturePartieSchema.safeParse(input);
   if (!parsed.success) return zodToFormState(parsed.error);
-  const { partieId, estOption } = parsed.data;
+  const { partieId, nature } = parsed.data;
 
   const ctx = await partiePourEcriture(partieId);
   if ("erreur" in ctx) return ctx;
@@ -783,45 +838,30 @@ export async function changerNaturePartie(input: {
   if (avant.atelierId)
     return {
       erreur:
-        "Un atelier occupe cette partie : déprogramme-le d'abord depuis la gestion des ateliers.",
+        "Un atelier occupe cet élément : déprogramme-le d'abord depuis la gestion des ateliers.",
     };
-  if (avant.estOption === estOption) return { succes: "Rien à changer." };
+  if (avant.nature === nature) return { succes: "Rien à changer." };
 
   const maintenant = new Date();
-  const toutes = await db.sessionPartie.findMany({
-    where: { sessionId: avant.sessionId },
-    select: {
-      id: true,
-      ordre: true,
-      estOption: true,
-      libelle: true,
-      updatedAt: true,
-    },
-  });
+  const toutes = await elementsARanger(db, avant.sessionId);
   await db.$transaction([
     db.sessionPartie.update({
       where: { id: partieId },
-      data: { estOption, modifieParId: user.id },
+      data: { nature, modifieParId: user.id },
     }),
     /*
-     * La partie bascule **dans la liste** avant le rangement : sans cela, les rangs seraient comptés
-     * sur son ancienne nature et les libellés sortiraient d'un cran faux.
-     *
-     * Et elle y entre avec un horodatage **neuf** : le rangement va très probablement réécrire son
-     * libellé, donc l'écrire une seconde fois après la ligne ci-dessus — en lui rendant son ancien
-     * `updatedAt`, il défairait la seule trace de ce clic et la case annoncerait « Modifié par
-     * <celui qui clique> » à la date où quelqu'un d'autre l'avait remplie.
+     * L'élément change de nature **dans la liste** avant le rangement, en queue de sa nouvelle série
+     * (`ordre` au-delà de tout), et avec un horodatage **neuf** : le rangement réécrit sa place et son
+     * nom, donc l'écrit une seconde fois après la ligne ci-dessus — en lui rendant son ancien
+     * `updatedAt`, il défairait la seule trace de ce clic.
      */
     ...rangerParties(
       toutes.map((p) =>
-        p.id === partieId ? { ...p, estOption, updatedAt: maintenant } : p,
+        p.id === partieId ? { ...p, nature, ordre: Number.MAX_SAFE_INTEGER, updatedAt: maintenant } : p,
       ),
       db,
     ),
   ]);
-  // Rien de ce que la séance recopie ne dépend de la nature d'une partie — mais les cinq actions
-  // repassent toutes par là, sans exception à retenir : le jour où `disciplines` portera autre chose,
-  // aucune ne sera à rattraper.
   await synchroniserSeance(avant.sessionId);
   const apres = await db.sessionPartie.findUnique({
     where: { id: partieId },
@@ -829,20 +869,25 @@ export async function changerNaturePartie(input: {
   });
   await audit(user, "planning.partie.nature", avant.sessionId, {
     date: avant.session.date,
-    avant: { partie: avant.libelle, option: avant.estOption },
-    apres: { partie: apres?.libelle ?? avant.libelle, option: estOption },
+    bloc: avant.bloc,
+    avant: { partie: avant.libelle, nature: avant.nature },
+    apres: { partie: apres?.libelle ?? avant.libelle, nature },
   });
   rafraichir(avant.sessionId);
-  return {
-    succes: estOption ? "Partie passée en option." : "Partie passée en cours.",
-  };
+  return { succes: `Passé en ${NOMS_NATURE[nature].toLocaleLowerCase("fr")}.` };
 }
 
 /**
- * **Retirer une partie.** Refusé tant qu'un atelier l'occupe : l'atelier a été validé par l'équipe
- * et annoncé à son proposant — le faire disparaître par la bande, en supprimant la ligne qui le
- * porte, laisserait un atelier « planifié » qui n'est nulle part. On le déprogramme d'abord, depuis
- * la gestion des ateliers, ce qui **vide** la case ; ensuite seulement on retire la ligne.
+ * **Retirer un élément.** Retirer le dernier élément d'une partie fait disparaître la partie, et les
+ * suivantes se renumérotent (`rangerParties`).
+ *
+ * **Un élément qui porte un atelier** : l'atelier **revient en attente** (PROPOSE, plus de séance —
+ * exactement ce que fait `libererAteliersDesSeances` à une séance annulée), journalisé
+ * `atelier.decision` avec `depuis: "planning"`, puis l'élément est retiré. Il était refusé tant que
+ * l'atelier l'occupait ; le menu de la partie propose désormais « retirer » sur un atelier comme sur
+ * le reste, et l'atelier n'est pas perdu : il retourne dans la file, prêt à être placé ailleurs. Ce
+ * geste touche à la décision d'un atelier : il demande donc aussi `ateliers.moderate`. Aucun email au
+ * membre — la reprogrammation, elle, le préviendra.
  */
 export async function retirerPartie(input: {
   partieId: string;
@@ -854,155 +899,122 @@ export async function retirerPartie(input: {
   const ctx = await partiePourEcriture(parsed.data.partieId);
   if ("erreur" in ctx) return ctx;
   const partie = ctx.partie;
-  if (partie.atelierId)
-    return {
-      erreur:
-        "Un atelier occupe cette partie : déprogramme-le d'abord depuis la gestion des ateliers.",
-    };
+  const atelier = partie.atelierId
+    ? await db.atelier.findUnique({ where: { id: partie.atelierId }, select: { id: true, titre: true, statut: true } })
+    : null;
+  if (atelier && !can(user, "ateliers.moderate"))
+    return { erreur: "Un atelier occupe cet élément : seule l'équipe qui modère les ateliers peut le retirer." };
 
-  const restantes = (
-    await db.sessionPartie.findMany({
-      where: { sessionId: partie.sessionId },
-      select: {
-        id: true,
-        ordre: true,
-        estOption: true,
-        libelle: true,
-        updatedAt: true,
-      },
-    })
-  ).filter((p) => p.id !== partie.id);
-  // Retirer « Cours 1 » fait du second cours le premier : les libellés se recalent avec les rangs,
-  // dans la même transaction que la suppression.
+  const restantes = (await elementsARanger(db, partie.sessionId)).filter((p) => p.id !== partie.id);
+  // Retirer un élément recale les noms des voisins (« Cours 2 » redevient « Cours ») et, s'il était
+  // seul dans sa partie, les numéros des parties suivantes — dans la même transaction.
   await db.$transaction([
+    ...(atelier
+      ? [
+          db.atelier.updateMany({ where: { id: atelier.id, statut: "PLANIFIE" }, data: { statut: "PROPOSE", sessionId: null } }),
+          db.atelier.updateMany({ where: { id: atelier.id }, data: { sessionId: null } }),
+        ]
+      : []),
     db.sessionPartie.delete({ where: { id: partie.id } }),
     ...rangerParties(restantes, db),
   ]);
   await synchroniserSeance(partie.sessionId);
+  if (atelier) {
+    await audit(user, "atelier.decision", atelier.id, {
+      statut: atelier.statut === "PLANIFIE" ? "PROPOSE" : atelier.statut,
+      sessionId: null,
+      partie: partie.libelle,
+      depuis: "planning",
+    });
+  }
   await audit(user, "planning.partie.retrait", partie.sessionId, {
     date: partie.session.date,
     partie: partie.libelle,
+    bloc: partie.bloc,
+    nature: partie.nature,
     /*
-     * **Tout ce que la ligne portait au moment du retrait.** Sans cela, le journal dirait qu'on a
-     * retiré « Option 2 » sans dire qu'on effaçait un cours de Messer confié à quelqu'un.
-     *
-     * La règle était écrite avant que la description, le niveau et le second instructeur n'existent :
-     * il n'en gardait que le thème et l'instructeur. Or l'écran promet exactement le contraire
-     * (« Son instructeur, son thème et sa description seront perdus », `ListeParties`), le geste est
-     * irréversible, et le journal est la seule chose qui reste après lui. Les cinq champs y sont
-     * maintenant, dans les mêmes mots que `planning.case` : un seul filtre du journal raconte donc
-     * toute la vie d'une case, de son premier remplissage à son retrait.
+     * **Tout ce que la ligne portait au moment du retrait**, dans les mêmes mots que
+     * `planning.case` : un seul filtre du journal raconte donc toute la vie d'une case, de son
+     * premier remplissage à son retrait. Le geste est irréversible, et le journal est la seule chose
+     * qui reste après lui.
      */
     theme: partie.theme,
     instructeur: nomDe(partie.instructeur),
     instructeurSecond: nomDe(partie.instructeurSecond),
     description: partie.description,
     niveau: libelleNiveau(partie.niveau),
+    ...(atelier ? { atelier: atelier.titre } : {}),
   });
   rafraichir(partie.sessionId);
-  return { succes: "Partie retirée." };
+  if (atelier) revalidatePath("/ateliers");
+  return { succes: atelier ? "Élément retiré — l'atelier est de retour en attente." : "Élément retiré." };
 }
 
 /**
- * **Déplacer une partie** vers un rang donné (l'écran n'en propose que deux : un cran plus haut, un
- * cran plus bas). Le rang visé est ramené dans les limites de la séance plutôt que refusé : un
- * « monter » sur la première ligne ne doit pas afficher d'erreur, il ne doit rien faire.
+ * **Changer un élément de partie** : `versBloc` ∈ [1, nbParties + 1] — le bouton ↑ vise la partie
+ * précédente, ↓ la suivante (ou une partie nouvelle, à la fin). Le numéro visé est ramené dans les
+ * limites de la séance plutôt que refusé : un « monter » dans la partie 1 ne doit pas afficher
+ * d'erreur, il ne doit rien faire.
+ *
+ * L'élément arrive **en queue de sa nature** dans la partie visée ; le rangement le pose à sa place
+ * de lecture, recale les noms et — si l'élément était seul dans sa partie — fait disparaître celle-ci
+ * en renumérotant les suivantes. **Sans toucher `updatedAt`** de personne : la place a changé, pas le
+ * contenu ; le geste se lit au journal (`planning.partie.ordre`, qui dit d'où à où).
+ *
+ * **« Rien à changer » se mesure sur le résultat rangé**, pas sur le numéro demandé : l'élément seul
+ * de la dernière partie qu'on « descend » vers une partie nouvelle retombe, rangé, exactement où il
+ * était — l'écran ne doit pas annoncer un déplacement qui n'a pas eu lieu.
  */
 export async function deplacerPartie(input: {
   partieId: string;
-  versOrdre: number;
+  versBloc: number;
 }): Promise<FormState> {
   const user = await assertPermission("planning.edit");
   const parsed = deplacerPartieSchema.safeParse(input);
   if (!parsed.success) return zodToFormState(parsed.error);
-  const { partieId, versOrdre } = parsed.data;
+  const { partieId, versBloc } = parsed.data;
 
   const ctx = await partiePourEcriture(partieId);
   if ("erreur" in ctx) return ctx;
   const partie = ctx.partie;
 
-  const toutes = (
-    await db.sessionPartie.findMany({
-      where: { sessionId: partie.sessionId },
-      select: {
-        id: true,
-        ordre: true,
-        estOption: true,
-        libelle: true,
-        updatedAt: true,
-      },
-    })
-  ).sort((a, b) => a.ordre - b.ordre);
-  const depuis = toutes.findIndex((p) => p.id === partieId);
-  const vers = Math.min(Math.max(versOrdre, 0), toutes.length - 1);
-  if (depuis === vers) return { succes: "Rien à changer." };
+  const toutes = await elementsARanger(db, partie.sessionId);
+  const vers = Math.min(Math.max(versBloc, 1), nombreDeParties(toutes) + 1);
+  if (vers === partie.bloc) return { succes: "Rien à changer." };
+  const voulues = toutes.map((p) => (p.id === partieId ? { ...p, bloc: vers, ordre: Number.MAX_SAFE_INTEGER } : p));
+  const avantRangement = placesApresRangement(toutes);
+  const apresRangement = placesApresRangement(voulues);
+  if ([...avantRangement].every(([id, place]) => apresRangement.get(id) === place)) return { succes: "Rien à changer." };
 
-  /*
-   * **On n'écrit que les lignes dont le rang change vraiment — et sans jamais toucher `updatedAt`.**
-   *
-   * La transaction réécrivait `ordre` sur **toutes** les parties de la séance, celles déjà au bon
-   * rang comprises. Or la ligne porte `@updatedAt` : chaque « monter » ou « descendre » repoussait
-   * donc l'horodatage de toute la séance, et `chargerPlanning` recopie ce champ (`modifieLe`) dans la
-   * bulle « Modifié par … le … » de chaque case — avec `modifieParId`, lui, inchangé. Quelqu'un
-   * remplit « Cours n°1 » le 12 septembre ; le 30 à 20h14 une autre personne descend « 2e option »
-   * d'un cran ; la case de « Cours n°1 » annonce « Modifié par <la première> le 30 septembre à
-   * 20:14 ». Elle n'a rien fait ce soir-là, et c'est la seule trace que la grille montre.
-   *
-   * `rangerParties` fait déjà exactement ce calcul **et** exactement ce filtre (il saute les lignes
-   * déjà au bon rang et au bon nom) — c'est la même règle que les migrations qui réparent des rangs
-   * sans toucher à `updatedAt` : ranger une séance n'est pas une modification du programme par
-   * quelqu'un. Il trie par `ordre`, donc on lui donne la place voulue sous la forme d'un **rang
-   * intercalaire** (`vers ± 0,5`) plutôt que d'un tableau déjà réordonné : trié, il place la partie
-   * juste avant (montée) ou juste après (descente) celle qui occupe le rang visé, et tasse le reste à
-   * partir de zéro.
-   *
-   * Et il recale les **libellés** au passage : descendre « Cours 1 » sous « Cours 2 » échange leurs
-   * rangs, donc leurs noms — le nom suit la place, c'est tout l'objet de la décision. C'est
-   * précisément ce qui faisait revenir le mensonge par la fenêtre : le nom d'une **voisine** change
-   * pour de bon, donc sa ligne est réécrite, donc son `updatedAt` bougeait. `rangerParties` rend
-   * désormais à chaque ligne l'horodatage qu'elle portait ; le déplacement, lui, se lit dans le
-   * journal d'audit (`planning.partie.ordre`), qui dit **qui** a déplacé **quoi**, d'où à où. La
-   * case déplacée ne repeint donc pas sa bulle non plus : sa place a changé, pas son contenu.
-   */
-  const rangIntercalaire = vers < depuis ? vers - 0.5 : vers + 0.5;
-  const voulues = toutes.map((p) =>
-    p.id === partieId ? { ...p, ordre: rangIntercalaire } : p,
-  );
-  /*
-   * **« Rien à changer » se mesure sur la séquence, pas sur les index de départ ni sur les écritures.**
-   *
-   * La comparaison `depuis === vers` ne suffit plus depuis que les cours passent devant les
-   * options : une option qu'on monte « tout en haut » vise un rang situé avant le premier cours,
-   * donc un index différent du sien — et le tri la repose exactement où elle était, parce qu'elle
-   * est déjà en tête de **sa** série. L'écran annonçait alors « Partie déplacée. » sans que rien
-   * n'ait bougé, et le journal gardait un déplacement qui n'a pas eu lieu.
-   *
-   * Et compter les écritures ne répondrait pas non plus : le rang intercalaire (`-0,5`) n'est jamais
-   * un rang valable, il est donc **toujours** réécrit en entier, même quand la partie retombe à sa
-   * place. On compare donc les deux séquences d'identifiants, avant et après.
-   */
-  if (sequenceRangee(voulues).join() === sequenceRangee(toutes).join())
-    return { succes: "Rien à changer." };
-  await db.$transaction(rangerParties(voulues, db));
-  // Indispensable ici : `disciplines` est la liste des thèmes **dans l'ordre des parties**, et c'est
-  // elle qu'on lit dans l'objet de l'email du soir. Déplacer une partie change donc ce qui part.
+  await db.$transaction([
+    // Le changement de partie lui-même : `rangerParties` compare à la liste qu'on lui donne, où
+    // l'élément est **déjà** dans sa nouvelle partie — il n'écrirait donc pas ce `bloc`-là. Son
+    // horodatage est rendu tel quel : c'est sa place qui change, pas son contenu. Le rangement qui
+    // suit, dans la même transaction, peut encore renuméroter la partie : la dernière écriture gagne.
+    db.sessionPartie.update({ where: { id: partieId }, data: { bloc: vers, updatedAt: partie.updatedAt } }),
+    ...rangerParties(voulues, db),
+  ]);
+  // Indispensable ici : `disciplines` est la liste des thèmes **dans l'ordre des éléments**, et c'est
+  // elle qu'on lit dans l'objet de l'email du soir. Déplacer un élément change donc ce qui part.
   await synchroniserSeance(partie.sessionId);
   await audit(user, "planning.partie.ordre", partie.sessionId, {
     date: partie.session.date,
     partie: partie.libelle,
-    de: depuis,
-    vers,
+    bloc: partie.bloc,
+    nature: partie.nature,
+    de: partie.bloc,
+    vers: Number(apresRangement.get(partieId)?.split(":")[0] ?? vers),
   });
   rafraichir(partie.sessionId);
-  return { succes: "Partie déplacée." };
+  return { succes: "Élément déplacé." };
 }
 
 /**
  * Programme un atelier validé directement depuis une case du planning (équipe).
  *
  * **Seulement dans une case vide**. Le seul garde-fou était « pas d'autre atelier ici », et
- * `placerAtelier` **remplace** tout le contenu de la case : l'instructeur devient le proposant, le
- * second est mis à `null`, le thème devient le titre de l'atelier, la description repart à vide et
+ * `placerAtelier` **remplace** tout le contenu de la case : l'instructeur et le second deviennent les animateurs de la proposition (à défaut le proposant),
+ * le thème devient le titre de l'atelier, la description repart à vide et
  * le niveau à *indifférent*. Le groupe « Programmer un atelier en attente » vivant au bas de la
  * liste **Thème**, un clic un peu bas en cherchant à corriger un mot effaçait cinq champs d'un coup
  * — sans confirmation, et l'audit d'alors ne gardait rien de ce qui partait.
@@ -1075,7 +1087,8 @@ export async function programmerAtelierDansCase(input: {
     where: { id: atelierId },
     data: { statut: "PLANIFIE", sessionId: partie.sessionId },
   });
-  await placerAtelier(atelierId, partie.sessionId, user.id, partieId);
+  // L'élément passe en nature Atelier : son nom change, c'est le nouveau que le journal retient.
+  const posee = await placerAtelier(atelierId, partie.sessionId, user.id, partieId);
   // Exactement la même réponse que depuis la file des propositions (`src/actions/ateliers.ts`), et
   // par le même chemin : c'est le même événement pour le membre, il n'a pas à dépendre de l'écran par
   // lequel l'équipe est passée pour placer l'atelier.
@@ -1089,7 +1102,9 @@ export async function programmerAtelierDansCase(input: {
   await audit(user, "atelier.decision", atelierId, {
     statut: "PLANIFIE",
     sessionId: partie.sessionId,
-    partie: partie.libelle,
+    partie: posee?.libelle ?? partie.libelle,
+    bloc: partie.bloc,
+    nature: "ATELIER",
     depuis: "planning",
   });
   rafraichir(partie.sessionId);
@@ -1100,7 +1115,11 @@ export async function programmerAtelierDansCase(input: {
   };
 }
 
-/** Liste des thèmes du planning (une ligne par thème) : elle vaut pour tout le club, donc bureau seul (`themes.manage`). */
+/**
+ * Liste des **thèmes de cours et options** (une ligne par thème ; la clé `themes`, ex-« Thèmes du
+ * planning ») : elle vaut pour tout le club, donc bureau seul (`themes.manage`). Sa jumelle des
+ * échauffements est `enregistrerThemesEchauffement`.
+ */
 export async function enregistrerThemes(
   _prev: FormState,
   fd: FormData,
@@ -1125,6 +1144,36 @@ export async function enregistrerThemes(
   revalidatePath("/admin/themes");
   return {
     succes: `${themes.length} thème${themes.length > 1 ? "s" : ""} enregistré${themes.length > 1 ? "s" : ""}.`,
+  };
+}
+
+/**
+ * **Les thèmes d'échauffement** : jumelle d'`enregistrerThemes` — même porte
+ * (`themes.manage`, donc bureau et élévation), même schéma, même nettoyage, même écran à rafraîchir —
+ * avec son propre geste au journal (`themes_echauffement.modifies`), pour qu'on lise laquelle des deux
+ * listes a bougé.
+ *
+ * **Une différence, voulue : la liste vide est acceptée.** C'est l'état de départ (aucun défaut, voir
+ * `getThemesEchauffement`), et un club qui ne nomme pas ses échauffements doit pouvoir y revenir ;
+ * la case garde alors la saisie libre. Les cours, eux, ont toujours au moins un thème.
+ */
+export async function enregistrerThemesEchauffement(
+  _prev: FormState,
+  fd: FormData,
+): Promise<FormState> {
+  const user = await assertPermission("themes.manage");
+  const parsed = themesSchema.safeParse({ texte: champ(fd, "texte") });
+  if (!parsed.success) return zodToFormState(parsed.error);
+  const themes = nettoyerThemes(parsed.data.texte);
+  await setThemesEchauffement(themes);
+  await audit(user, "themes_echauffement.modifies", null, { nombre: themes.length });
+  revalidatePath("/planning");
+  revalidatePath("/gestion/ateliers");
+  revalidatePath("/admin/themes");
+  if (themes.length === 0)
+    return { succes: "Aucun thème d'échauffement : il se saisira librement dans chaque case." };
+  return {
+    succes: `${themes.length} thème${themes.length > 1 ? "s" : ""} d'échauffement enregistré${themes.length > 1 ? "s" : ""}.`,
   };
 }
 

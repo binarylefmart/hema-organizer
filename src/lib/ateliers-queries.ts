@@ -21,3 +21,25 @@ export async function seancesAVenir(user?: (UserLike & { id: string }) | null) {
     take: 40,
   });
 }
+
+/**
+ * **Qui peut animer un atelier** : tous les comptes actifs du club — membres et instructeurs,
+ * bureau compris —, jamais le compte de service du portail. Un atelier se propose « par les membres
+ * et instructeurs » : la liste n'est pas celle, plus courte, des instructeurs
+ * du planning.
+ *
+ * `retenus` : les animateurs déjà enregistrés sur la proposition qu'on modifie. Une personne
+ * désactivée depuis reste dans la liste, sinon le champ retomberait sur une autre valeur et le
+ * premier enregistrement effacerait son nom sans que personne l'ait demandé (même règle que les
+ * instructeurs du planning).
+ *
+ * Triés par prénom, puis par nom.
+ */
+export async function animateursPossibles(retenus: readonly (string | null | undefined)[] = []) {
+  const ids = retenus.filter((id): id is string => !!id);
+  return db.user.findMany({
+    where: { service: false, OR: [{ actif: true }, ...(ids.length ? [{ id: { in: ids } }] : [])] },
+    orderBy: [{ prenom: "asc" }, { nom: "asc" }],
+    select: { id: true, prenom: true, nom: true },
+  });
+}

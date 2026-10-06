@@ -1,4 +1,17 @@
-import { niveauAffiche, NIVEAU_DEFAUT, NIVEAU_LABELS, parseDisciplines, type Niveau } from "@/lib/constants";
+import { placesDansPartie } from "@/components/planning/rangement";
+import {
+  estNatureElement,
+  niveauAffiche,
+  NIVEAU_DEFAUT,
+  NIVEAU_LABELS,
+  nomElement,
+  nomPartie,
+  partiesNommees,
+  parseDisciplines,
+  rangNature,
+  type NatureElement,
+  type Niveau,
+} from "@/lib/constants";
 import { formatDateLongue, formatHoraire } from "@/lib/dates";
 import { baseUrl } from "@/lib/env";
 import { calculerTaux, effectifAttendu, palierEffectif, PALIER_LABELS, type Compteurs } from "@/lib/presences";
@@ -37,7 +50,17 @@ export type SeanceResume = {
  * autre forme (celui du planning, instructeurs compris). Deux formes sous le même nom finiraient
  * par se confondre — et c'est justement celle qui porte des noms qu'on ne veut pas voir ici.
  */
-export type CaseProgramme = { label: string; theme: string; niveau: Niveau; atelier: boolean };
+export type CaseProgramme = {
+  /** « Partie 1 — Échauffement », « Partie 2 — Cours 2 » : la partie, puis l'élément dans la partie ;
+   * « Cours », « Échauffement » tout court quand une seule partie a quelque chose à annoncer */
+  label: string;
+  /** Numéro de la partie, contigu à partir de 1 dans la séance */
+  bloc: number;
+  nature: NatureElement;
+  theme: string;
+  niveau: Niveau;
+  atelier: boolean;
+};
 
 export type ChiffresSeance = { presents: number; invites: number };
 
@@ -48,9 +71,31 @@ export type ChiffresSeance = { presents: number; invites: number };
  */
 export type RepartitionSeance = Compteurs;
 
+/** Ce qu'il faut d'un élément pour le placer dans sa partie — la forme commune des requêtes publiques. */
+type ElementARanger = { ordre?: number; bloc: number; nature: string };
+
 /**
- * Programme d'une séance, dans l'ordre du planning, cases vides écartées ; le titre d'un atelier
- * remplace le thème de la case.
+ * **Les éléments d'une séance dans l'ordre de lecture, chacun avec sa place dans sa partie** — partie,
+ * puis nature (`NATURES_ELEMENT` : l'échauffement d'abord), puis `ordre`. C'est l'ordre que
+ * `rangerParties` écrit en base ; on le redit ici parce que c'est cette fonction, et non la requête,
+ * qui le promet à ses lecteurs (récap Discord, pages de partage, API publique).
+ *
+ * **Le rang et le nombre se comptent sur la séance entière, avant tout filtre** : les appelants
+ * écartent ensuite les éléments sans titre, et compter sur ce qui reste appellerait « Cours » le
+ * second cours d'une partie dont le premier est vide, quand le planning dit « Cours 2 ».
+ *
+ * Une nature inconnue (donnée ancienne) se lit comme un cours plutôt que de faire tomber le message.
+ */
+export function elementsRanges<T extends ElementARanger>(parties: ReadonlyArray<T>): Array<T & { nature: NatureElement; rang: number; nombre: number; nom: string }> {
+  const typees = parties.map((p) => ({ ...p, nature: estNatureElement(p.nature) ? p.nature : ("COURS" as NatureElement) }));
+  const triees = typees.sort((a, b) => a.bloc - b.bloc || rangNature(a.nature) - rangNature(b.nature) || (a.ordre ?? 0) - (b.ordre ?? 0));
+  const places = placesDansPartie(triees);
+  return triees.map((p, i) => ({ ...p, rang: places[i].rang, nombre: places[i].nombre, nom: nomElement(p.nature, places[i].rang, places[i].nombre) }));
+}
+
+/**
+ * Programme d'une séance, partie par partie, cases vides écartées ; le titre d'un atelier remplace le
+ * thème de la case.
  *
  * Écrit ici plutôt que réutilisé depuis `src/lib/partage.ts` : ce module-là est celui des pages
  * publiques et tire des modules d'interface (icônes, libellés d'événements) qui n'ont rien à faire
@@ -58,15 +103,28 @@ export type RepartitionSeance = Compteurs;
  * par la requête (`invites.ts`), pas par cette mise en forme.
  */
 export function programmeSeance(
-  // `ordre` facultatif : les parties arrivent déjà triées par la requête (`orderBy: { ordre }`), et
-  // ce module ne voit que des **libellés** — jamais un identifiant de partie, jamais un nom.
-  parties: ReadonlyArray<{ libelle: string; ordre?: number; theme: string; niveau?: string | null; atelier: { titre: string } | null }>,
+  // `ordre` facultatif : les parties arrivent déjà triées par la requête, et ce module ne voit que
+  // des **numéros et natures** — jamais un identifiant de partie, jamais un nom.
+  parties: ReadonlyArray<{ ordre?: number; bloc: number; nature: string; theme: string; niveau?: string | null; atelier: { titre: string } | null }>,
 ): CaseProgramme[] {
-  const cases: CaseProgramme[] = [];
-  for (const c of [...parties].sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0))) {
+  const retenus = elementsRanges(parties).flatMap((c) => {
     const titre = (c.atelier?.titre ?? "").trim() || c.theme.trim();
-    if (!titre) continue;
-    cases.push({ label: c.libelle, theme: titre, niveau: niveauAffiche(c.niveau) ?? NIVEAU_DEFAUT, atelier: Boolean(c.atelier) });
+    return titre ? [{ ...c, titre }] : [];
+  });
+  // « Partie N — » seulement si **plusieurs parties ont un élément affiché** (`partiesNommees`) : on
+  // compte après le filtre des cases vides, pas sur les parties réelles de la séance.
+  const nommees = partiesNommees(new Set(retenus.map((c) => c.bloc)).size);
+  const cases: CaseProgramme[] = [];
+  for (const c of retenus) {
+    const titre = c.titre;
+    cases.push({
+      label: nommees ? `${nomPartie(c.bloc)} — ${c.nom}` : c.nom,
+      bloc: c.bloc,
+      nature: c.nature,
+      theme: titre,
+      niveau: niveauAffiche(c.niveau) ?? NIVEAU_DEFAUT,
+      atelier: Boolean(c.atelier),
+    });
   }
   return cases;
 }
@@ -209,19 +267,19 @@ export function ligneEffectif(c: RepartitionSeance, partEffectifMin: number): st
 }
 
 /**
- * "• Cours n°1 — Messer (Débutant)" — le libellé est celui que porte la partie, donc celui que
- * l'équipe voit dans le planning ; un atelier est annoncé comme tel (son titre, jamais son
- * animateur), et le niveau ne paraît que s'il dit quelque chose — « indifférent » se tait ici comme
- * partout ailleurs (`niveauAffiche`).
+ * « • Partie 1 — Échauffement : Messer (Débutant) » — la partie puis l'élément, calculés comme sur le
+ * planning (« • Échauffement : … » quand une seule partie est annoncée, voir `programmeSeance`) ; un atelier est annoncé comme tel (son titre, jamais son animateur), et le niveau ne paraît
+ * que s'il dit quelque chose — « indifférent » se tait ici comme partout ailleurs (`niveauAffiche`).
  *
  * Les deux précisions partagent une seule parenthèse : « Nœuds de corde (Avancé) (atelier) » se lit
- * comme deux commentaires collés l'un à l'autre.
+ * comme deux commentaires collés l'un à l'autre. Et « (atelier) » se tait quand l'élément s'appelle
+ * déjà « Atelier » : « Atelier : Nœuds de corde (atelier) » le dirait deux fois.
  */
 export function lignesProgramme(programme: readonly CaseProgramme[]): string[] {
   return programme.map((c) => {
     const niveau = niveauAffiche(c.niveau);
-    const precisions = [niveau ? NIVEAU_LABELS[niveau] : null, c.atelier ? "atelier" : null].filter(Boolean);
-    return `• ${c.label} — ${c.theme}${precisions.length > 0 ? ` (${precisions.join(", ")})` : ""}`;
+    const precisions = [niveau ? NIVEAU_LABELS[niveau] : null, c.atelier && c.nature !== "ATELIER" ? "atelier" : null].filter(Boolean);
+    return `• ${c.label} : ${c.theme}${precisions.length > 0 ? ` (${precisions.join(", ")})` : ""}`;
   });
 }
 

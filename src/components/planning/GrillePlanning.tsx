@@ -152,7 +152,8 @@ function lignePlanning(c: ColonnePlanning): LignePlanning | null {
     parties: c.parties.map((p) => ({
       id: p.id,
       libelle: p.libelle,
-      estOption: p.estOption,
+      bloc: p.bloc,
+      nature: p.nature,
       rang: p.rang,
       atelier: p.atelier !== null,
       serveur: {

@@ -16,9 +16,9 @@
  * | `notifications` | `NotificationLog` écrit deux fois par un check-then-act (même jour)       | la ligne en trop est supprimée    |
  * | `liens`         | plusieurs `Invitation` vivantes pour la même personne sur la même période | les plus anciennes sont révoquées |
  * | `parties`       | case de planning pointant vers un atelier qui n'y est plus                | la case est détachée              |
- * | `rangs`         | `ordre` troué ou `libelle` qui ne dit plus le rang dans sa nature         | rang et nom remis d'accord         |
+ * | `rangs`         | partie (`bloc`) trouée, `ordre` troué, ou `libelle` qui ne dit plus sa place | partie, rang et nom remis d'accord |
  * | `creneaux`      | `dedupKey` de récap ou de rappel d'avant l'empreinte du créneau           | la clé est **renommée**           |
- * | `vides`         | partie **vide en trop** : au-delà des deux cours du modèle                | la partie est supprimée, rangs refaits |
+ * | `vides`         | élément **vide en trop** : au-delà des cours du modèle, jamais touché     | l'élément est supprimé, rangs refaits |
  *
  * Un neuvième relevé, **purement informatif** et jamais réparé, liste les lignes dont la clé
  * étrangère pointe vers un parent disparu (`PRAGMA foreign_key_check`). Une base saine n'en a
@@ -46,12 +46,12 @@ import { empreinteCreneau } from "../src/lib/notifications/planification";
 // avec eux) ne se calculent qu'à un seul endroit — celui que l'application appelle à chaque écriture.
 // Le module est **sans Prisma**, ce qui permet de garder la règle du fichier : aucun contrôle n'ouvre
 // de base.
-import { rangementsParties, type RangementPartie } from "../src/components/planning/rangement";
+import { rangementsParties, type PartieARanger, type RangementPartie } from "../src/components/planning/rangement";
 // Même exigence encore : « vide » n'a **qu'une** définition dans le dépôt (`reglagesVides`), celle que
 // l'écran de saisie et le serveur partagent déjà. Un contrôle qui la recopierait finirait par
 // supprimer ce que l'application considère comme rempli. Les deux modules sont purs.
 import { reglagesVides } from "../src/components/planning/options";
-import { PARTIES_MODELE } from "../src/lib/constants";
+import { estNatureElement, PARTIES_MODELE } from "../src/lib/constants";
 
 /* ────────────────────────────── Ce que le script sait détecter ──────────────────────────────
  *
@@ -99,11 +99,23 @@ export type LigneInvitation = {
 
 export type LignePartie = { id: string; sessionId: string; libelle: string; atelierId: string | null };
 
-/** Ce qu'il faut d'une partie pour juger son rang et son nom — exactement l'entrée de `rangementsParties`. */
-export type LignePartieRang = { id: string; sessionId: string; libelle: string; ordre: number; estOption: boolean; updatedAt: Date };
+/**
+ * Ce qu'il faut d'un élément pour juger sa partie, son rang et son nom — l'entrée de
+ * `rangementsParties`, la nature telle que la base la stocke (un texte).
+ */
+export type LignePartieRang = { id: string; sessionId: string; libelle: string; ordre: number; bloc: number; nature: string; updatedAt: Date };
+
+/**
+ * La ligne lue, prête pour `rangementsParties`. Une nature inconnue se range comme un cours — la
+ * nature par défaut de la colonne, et la lecture que l'application en fait (`natureLue`,
+ * src/lib/planning.ts, que ce script ne peut pas importer : il ouvre le client).
+ */
+function aRanger<T extends LignePartieRang>(p: T): T & PartieARanger {
+  return { ...p, nature: estNatureElement(p.nature) ? p.nature : "COURS" };
+}
 
 /** Une partie à ranger : ce qu'elle porte aujourd'hui, et ce qu'elle doit porter (`updatedAt` compris, inchangé). */
-export type RangAReparer = { id: string; sessionId: string; libelle: string; ordre: number; data: RangementPartie["data"] };
+export type RangAReparer = { id: string; sessionId: string; libelle: string; ordre: number; bloc: number; data: RangementPartie["data"] };
 
 /** Un groupe de lignes identiques : une seule est gardée, les autres sont en trop. */
 export type GroupeDoublons<T> = { gardee: T; enTrop: T[] };
@@ -313,9 +325,10 @@ export function detecterPartiesDetachees(
 }
 
 /**
- * 6. **Rangs et noms des parties d'une séance.** Les deux invariants que `rangerParties` tient — et
- *    qu'elle est **seule** à tenir : `ordre` contigu à partir de 0, et `libelle` qui redit le rang de
- *    la partie **dans sa nature** (« Cours 1 », « Option 2 »…).
+ * 6. **Parties, rangs et noms des éléments d'une séance.** Les trois invariants que `rangerParties`
+ *    tient — et qu'elle est **seule** à tenir : `bloc` (le numéro de partie) contigu à partir de 1,
+ *    `ordre` contigu à partir de 0 dans l'ordre de lecture, et `libelle` qui redit la partie et le
+ *    rang dans la nature (« Partie 1 · Cours », « Partie 2 · Option 2 »…, ou « Cours » seul quand la séance n'a qu'une partie).
  *
  * **Pourquoi ce contrôle existe.** Les cinq gestes du planning passent par cette fonction, mais
  * rien ne relisait la base pour dire si elle y est d'accord. Or les deux invariants ont déjà été
@@ -346,19 +359,23 @@ export function detecterRangsIncoherents(parties: readonly LignePartieRang[]): R
   const aReparer: RangAReparer[] = [];
   for (const [sessionId, liste] of parSeance) {
     const parId = new Map(liste.map((p) => [p.id, p]));
-    for (const r of rangementsParties(liste)) {
+    for (const r of rangementsParties(liste.map(aRanger))) {
       const avant = parId.get(r.id)!;
-      aReparer.push({ id: r.id, sessionId, libelle: avant.libelle, ordre: avant.ordre, data: r.data });
+      aReparer.push({ id: r.id, sessionId, libelle: avant.libelle, ordre: avant.ordre, bloc: avant.bloc, data: r.data });
     }
   }
   return aReparer;
 }
 
-/** Ce que dit une ligne à réparer, en français, pour le rapport : « séance …, "Cours 2" (rang 3) → "Cours 3" (rang 2) ». */
+/**
+ * Ce que dit une ligne à réparer, en français, pour le rapport : « séance …, « Partie 3 · Cours » →
+ * « Partie 2 · Cours » (partie 3 → 2, rang 4 → 2) ».
+ */
 export function decrireRang(r: RangAReparer): string {
   const nom = r.data.libelle === undefined ? `« ${r.libelle} »` : `« ${r.libelle} » → « ${r.data.libelle} »`;
   const rang = r.data.ordre === undefined ? `rang ${r.ordre}` : `rang ${r.ordre} → ${r.data.ordre}`;
-  return `séance ${r.sessionId}, ${nom} (${rang})`;
+  const partie = r.data.bloc === undefined ? "" : `partie ${r.bloc} → ${r.data.bloc}, `;
+  return `séance ${r.sessionId}, ${nom} (${partie}${rang})`;
 }
 
 /** Une partie, avec tout ce qu'il faut pour dire si elle est vide **et** où elle se range. */
@@ -400,19 +417,21 @@ export type SurnumerairesAReparer = {
  * 8. **Les parties vides en trop.** Demande de Delta, : « de base je veux dans le planning de base
  *    uniquement cours 1 et cours 2 par séance, le reste en ajout si voulu ».
  *
- * **Le code le fait déjà, et** : `PARTIES_MODELE` ne porte plus que deux cours, donc toute séance
- * **créée depuis** naît avec deux cours et rien d'autre. Ce contrôle existe pour les séances
+ * **Le code le fait déjà** : `PARTIES_MODELE` ne porte qu'**un** cours, dans une seule partie
+ * (« par défaut 1 seule partie par séance »), donc toute séance **créée depuis**
+ * naît avec ce cours et rien d'autre. Ce contrôle existe pour les séances
  * d'**avant** : le modèle en portait quatre — deux cours, deux options —, héritage des quatre cases
  * figées de la grille d'. Un trimestre entier a donc été engendré avec **deux options vides par
  * séance**, que personne n'a remplies et que le code neuf ne réécrit pas. Une case vide ne dit rien
  * d'autre que « il manque quelque chose » : sur seize séances, c'est trente-deux lignes qui
  * mentent, dans le planning, dans la fiche de chaque séance, et dans l'objet des emails du soir.
  *
- * **Ce qui est retiré, et rien d'autre** : une partie qui est à la fois (1) au-delà des deux cours du
+ * **Ce qui est retiré, et rien d'autre** : un élément qui est à la fois (1) au-delà des cours du
  * modèle, (2) **vide** au sens unique du dépôt (`reglagesVides` : ni instructeur, ni second, ni thème,
- * ni description, ni niveau affiché) et (3) sans atelier retenu. Les **deux premiers cours sont
- * protégés même vides** — ils sont le modèle, pas un ajout —, et une option remplie ne bouge pas, où
- * qu'elle soit.
+ * ni description, ni niveau affiché) et (3) sans atelier retenu. Le **premier cours de la séance
+ * (autant de cours que le modèle en porte : un seul) est protégé même vide** — il est le modèle, pas
+ * un ajout —, un deuxième cours vide et jamais touché est un ajout laissé en blanc, et une option
+ * remplie ne bouge pas, où qu'elle soit.
  *
  * **Le rangement suit dans le même geste.** Retirer une ligne troue les rangs et décale les noms de sa
  * série : la liste des survivantes repasse donc par `rangementsParties`, la fonction que l'application
@@ -433,11 +452,11 @@ export function detecterPartiesSurnumeraires(parties: readonly LignePartieComple
   for (const [sessionId, brut] of parSeance) {
     // L'ordre affiché, et `id` pour trancher deux rangs identiques — une base trouée en a déjà eu.
     const liste = [...brut].sort((x, y) => x.ordre - y.ordre || x.id.localeCompare(y.id));
-    // Le modèle d'une séance neuve : ses premiers cours, protégés même vides.
+    // Le modèle d'une séance neuve : son premier cours (dans l'ordre de lecture), protégé même vide.
     const protegees = new Set<string>();
-    const coursDuModele = PARTIES_MODELE.filter((m) => !m.estOption).length;
+    const coursDuModele = PARTIES_MODELE.filter((m) => m.nature === "COURS").length;
     for (const p of liste) {
-      if (!p.estOption && protegees.size < coursDuModele) protegees.add(p.id);
+      if (p.nature === "COURS" && protegees.size < coursDuModele) protegees.add(p.id);
     }
     const enTrop = liste.filter(
       (p) =>
@@ -467,9 +486,9 @@ export function detecterPartiesSurnumeraires(parties: readonly LignePartieComple
     const restantes = liste.filter((p) => !retires.has(p.id));
     if (restantes.length === 0) seancesVidees.push(`séance du ${dateFr(liste[0].date)}`);
     const parId = new Map(restantes.map((p) => [p.id, p]));
-    for (const r of rangementsParties(restantes)) {
+    for (const r of rangementsParties(restantes.map(aRanger))) {
       const avant = parId.get(r.id)!;
-      rangs.push({ id: r.id, sessionId, libelle: avant.libelle, ordre: avant.ordre, data: r.data });
+      rangs.push({ id: r.id, sessionId, libelle: avant.libelle, ordre: avant.ordre, bloc: avant.bloc, data: r.data });
     }
   }
   return { aSupprimer, rangs, seancesVidees };
@@ -752,7 +771,8 @@ async function relever(db: Base, controles: ReadonlySet<Controle>): Promise<Rele
         sessionId: true,
         libelle: true,
         ordre: true,
-        estOption: true,
+        bloc: true,
+        nature: true,
         updatedAt: true,
         atelierId: true,
         modifieParId: true,
@@ -929,7 +949,7 @@ function afficherReleve(releve: Releve, controles: ReadonlySet<Controle>, tout: 
         ligne(`  Rien de plus : ${pluriel(releve.vides.rangs.length, "partie")} sur ${pluriel(reprises.size, "séance")} ${releve.vides.rangs.length > 1 ? "seront rangées" : "sera rangée"}`);
         ligne("  par le contrôle « vides » (section 8), qui les retasse après ses suppressions.");
       } else {
-        ligne("  Aucun. Les rangs sont contigus et chaque nom dit le rang de sa partie.");
+        ligne("  Aucun. Parties et rangs sont contigus, et chaque nom dit la place de son élément.");
       }
     }
     else {
@@ -974,7 +994,7 @@ function afficherReleve(releve: Releve, controles: ReadonlySet<Controle>, tout: 
   }
 
   if (controles.has("vides")) {
-    titre("8. Parties vides en trop (au-delà des deux cours du modèle)");
+    titre("8. Éléments vides en trop (au-delà des cours du modèle)");
     const { aSupprimer, rangs } = releve.vides;
     if (aSupprimer.length === 0) ligne("  Aucune. Chaque séance ne porte que son modèle et ce qu'on y a ajouté.");
     else {
@@ -1121,7 +1141,7 @@ async function reparer(db: Base, releve: Releve, controles: ReadonlySet<Controle
         await tx.sessionPartie.update({ where: { id: r.id }, data: r.data });
       }
       const n = releve.rangs.length;
-      faits.push(`${pluriel(n, "partie")} rangée${n > 1 ? "s" : ""} (rang contigu, nom d'accord avec lui)`);
+      faits.push(`${pluriel(n, "élément")} rangé${n > 1 ? "s" : ""} (partie et rang contigus, nom d'accord avec eux)`);
     }
 
     if (controles.has("vides") && releve.vides.aSupprimer.length > 0) {
@@ -1185,10 +1205,10 @@ async function reparer(db: Base, releve: Releve, controles: ReadonlySet<Controle
       if (seancesTouchees.length > 0) {
         const survivantes = await tx.sessionPartie.findMany({
           where: { sessionId: { in: seancesTouchees } },
-          select: { id: true, sessionId: true, libelle: true, ordre: true, estOption: true, updatedAt: true },
+          select: { id: true, sessionId: true, libelle: true, ordre: true, bloc: true, nature: true, updatedAt: true },
         });
         for (const sessionId of seancesTouchees) {
-          for (const r of rangementsParties(survivantes.filter((p) => p.sessionId === sessionId))) {
+          for (const r of rangementsParties(survivantes.filter((p) => p.sessionId === sessionId).map(aRanger))) {
             await tx.sessionPartie.update({ where: { id: r.id }, data: r.data });
             ranges += 1;
           }

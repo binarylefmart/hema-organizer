@@ -1,4 +1,4 @@
-import { niveauAffiche, NIVEAU_LABELS } from "@/lib/constants";
+import { niveauAffiche, NIVEAU_LABELS, type NatureElement } from "@/lib/constants";
 import type { Personne, Planning } from "@/lib/planning";
 
 /**
@@ -10,7 +10,10 @@ import type { Personne, Planning } from "@/lib/planning";
  */
 export type OptionsCase = {
   personnes: Personne[];
+  /** Thèmes proposés aux **cours et options** (réglage « Thèmes de cours et options ») */
   themes: string[];
+  /** Thèmes proposés aux **échauffements** (réglage « Thèmes d'échauffement ») */
+  themesEchauffement: string[];
   ateliersDisponibles: Array<{ id: string; titre: string; proposePar: string; sessionId: string | null }>;
   modifiable: boolean;
   peutProgrammer: boolean;
@@ -29,10 +32,22 @@ export function optionsDepuis(p: Planning): OptionsCase {
   return {
     personnes: peutEcrire ? p.personnes : [],
     themes: p.themes,
+    // Les thèmes ne nomment personne : comme l'autre liste, ils passent pour tout le monde
+    themesEchauffement: p.themesEchauffement,
     ateliersDisponibles: peutEcrire ? p.ateliersDisponibles : [],
     modifiable: p.modifiable,
     peutProgrammer: p.peutProgrammer,
   };
+}
+
+/**
+ * **La liste de thèmes d'un élément suit sa nature** (avenant 4, demande de Delta) :
+ * un échauffement puise dans « Thèmes d'échauffement », un cours, une option — et un atelier, qui
+ * de toute façon garde son titre pour thème — dans « Thèmes de cours et options ». Une seule
+ * écriture de la règle, pour la case comme pour le réglage en masse.
+ */
+export function themesDeNature(o: Pick<OptionsCase, "themes" | "themesEchauffement">, nature: NatureElement): string[] {
+  return nature === "ECHAUFFEMENT" ? o.themesEchauffement : o.themes;
 }
 
 /** Une valeur d'une case, avec le mot qui dit ce qu'elle est. */

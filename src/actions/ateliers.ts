@@ -28,7 +28,35 @@ function lireAtelier(fd: FormData) {
     description: champ(fd, "description"),
     materiel: champ(fd, "materiel"),
     sessionId: champ(fd, "sessionId"),
+    animateurId: champ(fd, "animateurId"),
+    animateurSecondId: champ(fd, "animateurSecondId"),
   });
+}
+
+/**
+ * **Les deux animateurs doivent être des comptes actifs du club** — membres et instructeurs, bureau
+ * compris, jamais le compte de service du portail : la liste du formulaire (`animateursPossibles`)
+ * n'en propose pas d'autres, une requête forgée ne doit pas en écrire d'autres. `retenus` : ceux déjà
+ * enregistrés sur la proposition modifiée, gardés même désactivés depuis (la liste les montre).
+ *
+ * Le schéma a déjà refusé « second sans animateur » et « second = animateur ».
+ */
+async function animateursRefuses(
+  animateurId: string,
+  animateurSecondId: string | null,
+  retenus: readonly (string | null)[] = [],
+): Promise<FormState | null> {
+  const ids = [animateurId, animateurSecondId].filter((id): id is string => !!id);
+  const gardes = retenus.filter((id): id is string => !!id);
+  const trouves = await db.user.findMany({
+    where: { id: { in: ids }, service: false, OR: [{ actif: true }, ...(gardes.length ? [{ id: { in: gardes } }] : [])] },
+    select: { id: true },
+  });
+  const connus = new Set(trouves.map((u) => u.id));
+  const erreurs: Record<string, string> = {};
+  if (!connus.has(animateurId)) erreurs.animateurId = "Choisis un membre actif du club.";
+  if (animateurSecondId && !connus.has(animateurSecondId)) erreurs.animateurSecondId = "Choisis un membre actif du club.";
+  return Object.keys(erreurs).length ? { erreur: "Vérifie les champs en rouge.", erreurs } : null;
 }
 
 /** Sans titre, on prend le début de la description (ou « Atelier de Prénom »). */
@@ -67,8 +95,21 @@ export async function proposerAtelier(_prev: FormState, fd: FormData): Promise<F
   const parsed = lireAtelier(fd);
   if (!parsed.success) return zodToFormState(parsed.error);
   const { sessionId, titre, description, materiel } = parsed.data;
+  // Qui anime : la personne qui propose, à moins d'en avoir choisi une autre.
+  const animateurId = parsed.data.animateurId ?? user.id;
+  const animateurSecondId = parsed.data.animateurSecondId ?? null;
+  const refus = await animateursRefuses(animateurId, animateurSecondId);
+  if (refus) return refus;
   const atelier = await db.atelier.create({
-    data: { titre: titreParDefaut(titre, description, user.prenom), description, materiel: materiel || null, proposeParId: user.id, sessionId: await seanceValide(sessionId) },
+    data: {
+      titre: titreParDefaut(titre, description, user.prenom),
+      description,
+      materiel: materiel || null,
+      proposeParId: user.id,
+      animateurId,
+      animateurSecondId,
+      sessionId: await seanceValide(sessionId),
+    },
   });
   await audit(user, "atelier.propose", atelier.id, { titre: atelier.titre });
   rafraichir();
@@ -84,9 +125,20 @@ export async function modifierAtelier(atelierId: string, _prev: FormState, fd: F
   const parsed = lireAtelier(fd);
   if (!parsed.success) return zodToFormState(parsed.error);
   const { sessionId, titre, description, materiel } = parsed.data;
+  const animateurId = parsed.data.animateurId ?? atelier.proposeParId;
+  const animateurSecondId = parsed.data.animateurSecondId ?? null;
+  const refus = await animateursRefuses(animateurId, animateurSecondId, [atelier.animateurId, atelier.animateurSecondId]);
+  if (refus) return refus;
   const modifie = await db.atelier.update({
     where: { id: atelierId },
-    data: { titre: titreParDefaut(titre, description, user.prenom), description, materiel: materiel || null, sessionId: await seanceValide(sessionId) },
+    data: {
+      titre: titreParDefaut(titre, description, user.prenom),
+      description,
+      materiel: materiel || null,
+      animateurId,
+      animateurSecondId,
+      sessionId: await seanceValide(sessionId),
+    },
   });
   // Écriture de contenu comme les autres : la proposition et la décision laissent une trace, la
   // retouche aussi — sinon un titre change entre deux lectures sans que rien ne dise quand.
@@ -172,9 +224,9 @@ export async function deciderAtelier(_prev: FormState, fd: FormData): Promise<Fo
     }
     seance = await db.session.findUniqueOrThrow({ where: { id }, select: { date: true, heureDebut: true, lieu: true } });
     decide = await db.atelier.update({ where: { id: atelierId }, data: { statut, sessionId: id, commentaireInstructeur: commentaire || atelier.commentaireInstructeur } });
-    // L'atelier prend la première **option** libre de la séance — et si aucune ne l'est, une option
-    // de plus est créée à la fin (voir `placerAtelier`) : un atelier que l'équipe vient d'accepter
-    // ne doit pas rester invisible parce que les cases étaient prises.
+    // L'atelier prend un élément Atelier vide, sinon la première **option** libre de la séance — et
+    // si rien n'est libre, un élément Atelier naît dans la dernière partie (voir `placerAtelier`) :
+    // un atelier que l'équipe vient d'accepter ne doit pas rester invisible faute de case libre.
     await placerAtelier(atelierId, id, user.id);
   } else {
     decide = await db.atelier.update({

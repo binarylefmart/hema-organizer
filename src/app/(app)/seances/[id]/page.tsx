@@ -156,7 +156,7 @@ export default async function PageSeance({ params, searchParams }: Props) {
                 // Les parties de cette séance, déjà triées : la carte du planning et cet écran
                 // montrent exactement la même liste, par le même composant.
                 parties={colonne.parties}
-                options={{ personnes: planning.personnes, themes: planning.themes, ateliersDisponibles: planning.ateliersDisponibles, modifiable: false, peutProgrammer: false }}
+                options={{ personnes: planning.personnes, themes: planning.themes, themesEchauffement: planning.themesEchauffement, ateliersDisponibles: planning.ateliersDisponibles, modifiable: false, peutProgrammer: false }}
               />
             ) : (
               <p className="text-texte-secondaire">Programme indisponible.</p>

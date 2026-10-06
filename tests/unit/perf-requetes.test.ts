@@ -179,8 +179,8 @@ describe("planning d'une période", () => {
     const parties = (args.select as Record<string, { select: Record<string, { select: Record<string, unknown> }> }>).sessions.select.parties.select;
     expect(Object.keys(parties).sort()).toEqual([
       "atelier",
+      "bloc",
       "description",
-      "estOption",
       "id",
       "instructeur",
       "instructeurId",
@@ -188,6 +188,7 @@ describe("planning d'une période", () => {
       "instructeurSecondId",
       "libelle",
       "modifiePar",
+      "nature",
       "niveau",
       "ordre",
       "theme",

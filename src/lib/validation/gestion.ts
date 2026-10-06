@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { joursAvant } from "@/lib/dates";
-import { ATELIER_STATUTS, FORME_WEBHOOK_DISCORD, NIVEAU_DEFAUT, NIVEAUX, PARTIE_DESCRIPTION_MAX, ROLES, THEME_MAX } from "@/lib/constants";
+import { ATELIER_STATUTS, FORME_WEBHOOK_DISCORD, NATURES_ELEMENT, NIVEAU_DEFAUT, NIVEAUX, PARTIE_DESCRIPTION_MAX, ROLES, THEME_MAX } from "@/lib/constants";
 import { dateDepuisSaison, saisonsProposees } from "@/lib/blasons";
 import { isHHMM, isIsoDate } from "@/lib/dates";
 import { emailSchema } from "./auth";
@@ -86,17 +86,17 @@ export const retraitSeancesSchema = z.object({
 export const partieIdSchema = z.string().min(1).max(64);
 
 /**
- * **Combien de parties une séance peut porter, au plus.**
+ * **Combien d'éléments une séance peut porter, au plus** (toutes parties confondues).
  *
  * Rien ne bornait l'ajout : `ajouterPartie` est une action serveur, donc une route ouverte, et une
  * boucle pouvait empiler des lignes jusqu'à faire déborder ce qui les recopie — l'objet de l'email
  * du soir, l'embed Discord, la fiche d'accueil. Un plafond ici règle la question à la source, une
  * fois, au lieu de la rattraper dans chaque message.
  *
- * Trente : le modèle du club en pose quatre, une séance très chargée en ateliers en atteint dix ;
+ * Trente : le modèle du club en pose trois, une séance très chargée en ateliers en atteint dix ;
  * trente laisse une marge que personne n'atteindra en rangeant son programme, et refuse net ce qui
- * n'est plus du rangement. C'est aussi la borne que `deplacerPartieSchema` applique au rang visé —
- * une seule valeur, pour qu'elles ne puissent pas se désaccorder.
+ * n'est plus du rangement. C'est aussi (+ 1) la borne du numéro de partie visé à l'ajout et au
+ * déplacement — une seule valeur, pour qu'elles ne puissent pas se désaccorder.
  */
 export const PARTIES_PAR_SEANCE_MAX = 30;
 
@@ -105,13 +105,6 @@ export const PARTIES_PAR_SEANCE_MAX = 30;
  * mène et celui qui assiste — deux champs de même nature ne doivent pas se valider différemment.
  */
 const instructeurFacultatif = z.string().trim().max(40).transform((v) => v || null);
-
-/**
- * Une case à cocher, reçue d'un objet (booléen) **ou** d'un formulaire (`"on"`, `"true"`, `"1"`,
- * ou rien du tout). Surtout pas `z.coerce.boolean()` : il rend `true` pour la chaîne `"false"`, et
- * une option cochée par erreur ne se voit qu'une fois la partie créée.
- */
-const drapeau = z.preprocess((v) => (typeof v === "string" ? ["on", "true", "1"].includes(v.trim().toLowerCase()) : v ?? false), z.boolean());
 
 export const casePlanningSchema = z.object({
   partieId: partieIdSchema,
@@ -144,46 +137,48 @@ export const casePlanningSchema = z.object({
 });
 
 /**
- * **Les quatre gestes qui font vivre les parties d'une séance** : ajouter, retirer, déplacer,
- * changer de nature.
+ * **Les gestes sur les éléments d'une séance** (« une gestion par partie, partie 1, 2,
+ * 3 »). Un élément se pose dans une **partie** (`bloc`, contigu à partir de 1) avec une **nature**
+ * (`NATURES_ELEMENT`) ; `nbParties + 1` désigne une partie nouvelle, à la fin. L'action ramène le
+ * numéro dans les limites réelles de la séance : le schéma ne borne qu'au plafond d'une séance.
  *
  * Ajouter et retirer sont deux gestes distincts de « remplir » et « vider » : vider une case ne
- * fait plus jamais disparaître sa ligne. Réordonner se fait par `versOrdre` — l'écran ne connaît
- * que « monter » et « descendre », mais l'action reçoit le rang visé, ce qui la rend juste quelle
- * que soit la façon dont l'écran l'appelle.
+ * fait jamais disparaître sa ligne.
  *
- * **Aucun des quatre ne porte de libellé** : le nom d'une partie se calcule depuis son rang dans sa
- * nature, il n'arrive donc plus du réseau. `libellePartieSchema` a disparu avec le champ texte — un
- * schéma qui valide une saisie qui n'existe plus est une porte ouverte sur rien.
+ * **Aucun ne porte de libellé** : le nom d'un élément se calcule depuis sa partie et son rang dans
+ * sa nature, il n'arrive donc plus du réseau.
  */
-export const nouvellePartieSchema = z.object({
-  sessionId: z.string().min(1),
-  // Le drapeau se règle **à l'ajout** : c'est là qu'on sait si la partie est un cours ou une option,
-  // et c'est lui — avec le rang — qui décide du nom.
-  estOption: drapeau.default(false),
-});
+const natureElement = z.enum(NATURES_ELEMENT);
+/** Ce qu'on choisit à la main : un atelier, lui, ne naît que d'un atelier en attente. */
+const natureSansAtelier = z.enum(["ECHAUFFEMENT", "COURS", "OPTION"]);
+/** Un numéro de partie : de 1 au plafond d'une séance (+ 1, la partie nouvelle). */
+const blocSchema = z.coerce.number().int().min(1).max(PARTIES_PAR_SEANCE_MAX + 1);
 
-/** Changer la nature d'une partie : cours ↔ option. Les deux séries se renumérotent ensuite. */
+export const nouvellePartieSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    bloc: blocSchema,
+    nature: natureElement,
+    atelierId: z.string().trim().max(64).optional().transform((v) => v || undefined),
+  })
+  .refine((v) => v.nature !== "ATELIER" || Boolean(v.atelierId), { message: "Choisis l'atelier à placer.", path: ["atelierId"] });
+
+/** Changer la nature d'un élément : échauffement, cours ou option (un atelier ne se choisit pas ainsi). */
 export const naturePartieSchema = z.object({
   partieId: partieIdSchema,
-  estOption: drapeau,
+  nature: natureSansAtelier,
 });
 
 export const retirerPartieSchema = z.object({ partieId: partieIdSchema });
 
+/**
+ * Changer un élément de partie : `versBloc` ∈ [1, nbParties + 1], ramené aux limites par l'action.
+ * **Zéro est accepté** : c'est ce que vaut « monter » depuis la partie 1, et ce geste-là ne doit pas
+ * afficher d'erreur, il ne doit rien faire. Au-delà, ce n'est plus un déplacement.
+ */
 export const deplacerPartieSchema = z.object({
   partieId: partieIdSchema,
-  /*
-   * Borné par le plafond d'une séance, **des deux côtés de zéro** : l'action ramène de toute façon le
-   * rang dans les limites réelles (`Math.min(Math.max(versOrdre, 0), …)`) et promet de le faire —
-   * « le rang visé est ramené dans les limites de la séance plutôt que refusé : un "monter" sur la
-   * première ligne ne doit pas afficher d'erreur, il ne doit rien faire ». Un `min(0)` contredisait
-   * cette promesse : « monter la première ligne » vaut `-1`, et Zod le **refusait** avant que
-   * l'action n'ait la main — un message d'erreur rouge pour un geste qui devait être sans effet.
-   * Au-delà d'une séance entière, dans un sens comme dans l'autre, ce n'est plus un déplacement : là,
-   * le refus est juste.
-   */
-  versOrdre: z.coerce.number().int().min(-PARTIES_PAR_SEANCE_MAX).max(PARTIES_PAR_SEANCE_MAX),
+  versBloc: z.coerce.number().int().min(0).max(PARTIES_PAR_SEANCE_MAX + 1),
 });
 
 export const themesSchema = z.object({
@@ -214,8 +209,9 @@ export const annulationSchema = z.object({
 });
 
 /**
- * **Ajouter un cours ou une option à plusieurs séances** (`ajouterPartiesEnMasse`), depuis la sélection
- * multiple du planning. Le drapeau est celui de l'ajout unitaire (`nouvellePartieSchema`) ; le lot suit
+ * **Ajouter un élément à plusieurs séances** (`ajouterPartiesEnMasse`), depuis la sélection
+ * multiple du planning. Partie et nature comme à l'ajout unitaire (sans atelier : un atelier se place un
+ * à un, depuis sa proposition) ; le lot suit
  * la règle de tous les gestes de masse : identifiants bien formés, `SELECTION_MAX` au plus, doublons
  * écartés — une séance cochée deux fois ne reçoit pas deux cours.
  */
@@ -225,7 +221,8 @@ export const partiesEnMasseSchema = z.object({
     .min(1, "Coche au moins une séance.")
     .max(SELECTION_MAX, "Sélection trop grande.")
     .transform((ids) => [...new Set(ids)]),
-  estOption: nouvellePartieSchema.shape.estOption,
+  bloc: blocSchema,
+  nature: natureSansAtelier,
 });
 
 /**
@@ -320,8 +317,19 @@ export const atelierSchema = z
     description: z.string().trim().max(1500, "1500 caractères maximum."),
     materiel: texteCourt(300),
     sessionId: z.string().max(64).optional().or(z.literal("").transform(() => undefined)),
+    /** Qui anime : un compte actif du club (vérifié par l'action) ; vide = la personne qui propose. */
+    // La chaîne vide (aucun choix, `----------`) devient `undefined` : `z.literal("")` placé après
+    // `z.string()` dans un `.or()` ne serait jamais atteint, le vide passerait tel quel.
+    animateurId: z.string().trim().max(64).optional().transform((v) => v || undefined),
+    /** Le second animateur, facultatif (`----------` poste la chaîne vide). */
+    animateurSecondId: z.string().trim().max(64).optional().transform((v) => v || undefined),
   })
-  .refine((a) => a.titre || a.description, { path: ["titre"], message: "Écris au moins un titre ou une phrase." });
+  .refine((a) => a.titre || a.description, { path: ["titre"], message: "Écris au moins un titre ou une phrase." })
+  .refine((a) => !a.animateurSecondId || a.animateurId, { path: ["animateurSecondId"], message: "Choisis d'abord qui anime." })
+  .refine((a) => !a.animateurSecondId || a.animateurSecondId !== a.animateurId, {
+    path: ["animateurSecondId"],
+    message: "Le second animateur doit être une autre personne.",
+  });
 
 export const decisionAtelierSchema = z.object({
   atelierId: z.string().min(1),

@@ -3,7 +3,19 @@ import { PrismaClient } from "@prisma/client";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { libellePartie, prochainLibellePartie } from "@/lib/constants";
+
+/**
+ * **La forme des libellés au sortir du 30/09**, recopiée ici : `libellePartie` et
+ * `prochainLibellePartie` ont quitté `src/lib/constants.ts` le 06/10 (les libellés disent désormais
+ * la partie, « Partie 1 · Cours »). Ce fichier juge l'état d'avant cette migration, dans la forme
+ * d'alors — c'est une photo historique, pas une seconde écriture de la règle vivante.
+ */
+function libellePartie(rang: number, estOption: boolean): string {
+  return `${estOption ? "Option" : "Cours"} ${rang}`;
+}
+function prochainLibellePartie(parties: ReadonlyArray<{ estOption: boolean }>, estOption: boolean): string {
+  return libellePartie(parties.filter((p) => p.estOption === estOption).length + 1, estOption);
+}
 
 /**
  * **Le SQL des migrations n'était couvert par aucun test** — et c'est par ce trou qu'est passée la
@@ -59,6 +71,16 @@ const RATTRAPAGE = "20260929230000_libelles_par_rang_dans_la_nature";
  * refuse une colonne en double). Ce qu'on vérifie d'un second passage, ce sont les deux `UPDATE`.
  */
 const CALCULES = "20260930120000_description_partie_et_libelles_calcules";
+
+/**
+ * **La chaîne s'arrête avant « Parties et éléments ».** Cette migration-là change la
+ * forme même de la table — `estOption` disparaît au profit de `bloc` et `nature` — et lit
+ * `Session.date` et `Session.annulee`, que la table de départ fabriquée ici ne porte pas. Ce que ce
+ * fichier juge (des rangs contigus et des libellés « Cours n » / « Option n » au sortir du 30/09) est
+ * précisément l'état d'**entrée** de la suivante, qui a son propre fichier :
+ * `migration-parties-elements.test.ts`, et c'est lui qui reste ouvert vers le haut.
+ */
+const PARTIES_ET_ELEMENTS = "20261006100000_parties_et_elements";
 
 /** L'horodatage d'insertion des lignes fabriquées : aucune migration ne doit le déplacer. */
 const POSE_LE = "2026-09-29T00:00:00Z";
@@ -163,7 +185,7 @@ let dossier: string;
  */
 const aRejouer = fs
   .readdirSync(MIGRATIONS)
-  .filter((d) => d >= PREMIERE && fs.existsSync(path.join(MIGRATIONS, d, "migration.sql")))
+  .filter((d) => d >= PREMIERE && d < PARTIES_ET_ELEMENTS && fs.existsSync(path.join(MIGRATIONS, d, "migration.sql")))
   .filter((d) => fichier(d).includes("SessionPartie"))
   .sort();
 

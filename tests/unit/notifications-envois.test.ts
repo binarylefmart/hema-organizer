@@ -152,7 +152,7 @@ vi.mock("@/lib/email/templates/recap", async (importOriginal) => {
 const { cleRecapDiscord, cleRecapEmail, cleRecapPush, envoyerRecapVeille } = await import("@/lib/notifications/recap");
 const { cleRappel, cleRappelPush, envoyerRappelsSansReponse } = await import("@/lib/notifications/rappels");
 
-type CaseFausse = { libelle: string; ordre: number; theme: string; atelier: { titre: string } | null };
+type CaseFausse = { ordre: number; bloc: number; nature: string; theme: string; atelier: { titre: string } | null };
 
 function seanceFausse(id: string, date: string, membres: MembreFaux[], parties: CaseFausse[] = []): Record<string, unknown> {
   return {
@@ -305,13 +305,13 @@ describe("récap de la veille", () => {
   it("porte le programme du cours, ateliers compris, et jamais le nom de qui l'anime", async () => {
     faux.seances = [
       seanceFausse("s1", "2026-09-24", MEMBRES, [
-        { libelle: "Cours 1", ordre: 0, theme: "Messer — garde haute", atelier: null },
-        { libelle: "Option 2", ordre: 3, theme: "", atelier: { titre: "Nœuds de corde" } },
+        { ordre: 0, bloc: 1, nature: "COURS", theme: "Messer — garde haute", atelier: null },
+        { ordre: 3, bloc: 2, nature: "ATELIER", theme: "", atelier: { titre: "Nœuds de corde" } },
       ]),
     ];
     await envoyerRecapVeille(VEILLE);
     const champs = faux.discord[0].embed.fields as Array<{ name: string; value: string }>;
-    expect(champs.find((c) => c.name === "📖 Programme")?.value).toBe("• Cours 1 — Messer — garde haute\n• Option 2 — Nœuds de corde (atelier)");
+    expect(champs.find((c) => c.name === "📖 Programme")?.value).toBe("• Partie 1 — Cours : Messer — garde haute\n• Partie 2 — Atelier : Nœuds de corde");
     expect(JSON.stringify(faux.discord[0].embed)).not.toContain("Chloé");
   });
 

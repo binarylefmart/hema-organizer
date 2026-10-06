@@ -254,39 +254,91 @@ export const MOT_DE_PASSE_MIN = 10;
 export const PART_EFFECTIF_LIVREE = 20;
 
 /**
- * **Le nom d'une partie se CALCULE, il ne se saisit plus**.
+ * **Une séance se découpe en parties numérotées, et chaque partie porte des éléments.**
  *
- * « Cours 1 », « Cours 2 », « Cours 3 »… pour le cours lui-même ; « Option 1 », « Option 2 »… pour ce
- * qui se tient pendant le cours. **Deux séries, chacune numérotée dans sa nature** : le troisième
- * cours s'appelle « Cours 3 » même s'il est la cinquième ligne de la séance, et c'est ce qui rend le
- * nom prévisible dès qu'on ajoute une partie.
+ * « Partie 1 », « Partie 2 », « Partie 3 »… se suivent dans le temps (`SessionPartie.bloc`, contigu à
+ * partir de 1). Dans une partie, l'encadrement pose autant d'éléments qu'il veut, chacun d'une
+ * **nature** : un échauffement, un cours, une option (qui se tient en parallèle) ou un atelier
+ * proposé par un membre. Plusieurs éléments de même nature dans une partie, c'est permis : deux
+ * cours en parallèle, deux ateliers.
  *
- * Ce qui a disparu ce jour-là, et pourquoi :
- *
- * - **le champ texte.** Le titre était une donnée saisie, plafonnée à quarante signes, avertie d'être
- *   publiée, rattrapée par un module entier quand Échap l'annulait. Or personne n'a rien à écrire
- *   là : ce qui décrit un cours, ce sont ses **informations** — l'instructeur, le thème, le niveau, et
- *   désormais sa `description`. Un champ de saisie qui reçoit toujours la même valeur est un champ qui
- *   coûte un geste, une ligne d'avertissement et une occasion de se tromper pour rien ;
- * - **« Cours n°1 ».** Le « n° » ne disait rien de plus que le chiffre ;
- * - **« 1ère option ».** Une série numérotée n'a pas à écrire son premier rang autrement que les
- *   autres : c'était deux formes à produire, à reconnaître en SQL et à lire à l'écran, pour un seul
- *   objet. « Option 1 » se lit comme « Cours 1 », et les deux séries se ressemblent enfin.
- *
- * `rang` part de 1 (voir `rangsDansNature`). La colonne `SessionPartie.libelle` garde le résultat —
- * l'API publique, les emails et les embeds la lisent —, et `rangerParties` (src/lib/planning.ts) la
- * remet d'accord à chaque écriture.
+ * L'ordre de lecture d'une partie est **celui de cette liste** — l'échauffement d'abord, puis les
+ * cours, les options et les ateliers —, et non l'ordre d'ajout : c'est un invariant de rangement
+ * (`src/components/planning/rangement.ts`), que tous les écrans lisent tel quel.
  */
-export function libellePartie(rang: number, estOption: boolean): string {
-  return `${estOption ? "Option" : "Cours"} ${rang}`;
+export const NATURES_ELEMENT = ["ECHAUFFEMENT", "COURS", "OPTION", "ATELIER"] as const;
+export type NatureElement = (typeof NATURES_ELEMENT)[number];
+
+/** Le mot qui nomme une nature, à l'écran comme dans la colonne `libelle`. */
+export const NOMS_NATURE: Record<NatureElement, string> = {
+  ECHAUFFEMENT: "Échauffement",
+  COURS: "Cours",
+  OPTION: "Option",
+  ATELIER: "Atelier",
+};
+
+/** Ce qu'un menu propose d'ajouter, au singulier indéfini : « un échauffement », « un cours »… */
+export const AJOUT_NATURE: Record<NatureElement, string> = {
+  ECHAUFFEMENT: "un échauffement",
+  COURS: "un cours",
+  OPTION: "une option",
+  ATELIER: "un atelier",
+};
+
+export function estNatureElement(v: unknown): v is NatureElement {
+  return typeof v === "string" && (NATURES_ELEMENT as readonly string[]).includes(v);
+}
+
+/** Rang d'une nature dans l'ordre de lecture d'une partie (0 = échauffement). */
+export function rangNature(n: NatureElement): number {
+  return NATURES_ELEMENT.indexOf(n);
 }
 
 /**
- * Le libellé d'une partie de plus, dans la nature demandée : on compte ce que la séance porte **déjà**
- * de cette nature, et on prend le suivant. C'est un rang, pas une recherche de nom libre.
+ * Un élément **en parallèle** d'un cours : une option ou un atelier. C'est ce que disait l'ancien
+ * drapeau `estOption`, et les écrans s'en servent encore pour le tracé discret d'une case.
  */
-export function prochainLibellePartie(parties: ReadonlyArray<{ estOption: boolean }>, estOption: boolean): string {
-  return libellePartie(parties.filter((p) => p.estOption === estOption).length + 1, estOption);
+export function enParallele(n: NatureElement): boolean {
+  return n === "OPTION" || n === "ATELIER";
+}
+
+/** « Partie 2 ». */
+export function nomPartie(bloc: number): string {
+  return `Partie ${bloc}`;
+}
+
+/**
+ * **Le nom court d'un élément, dans sa partie** : « Cours », ou « Cours 2 » quand la partie en porte
+ * plusieurs. `rang` part de 1 et compte dans la nature **et** dans la partie ; `nombre` est le total
+ * de cette nature dans la partie. Un seul cours ne porte pas de numéro : « Cours 1 » laisserait
+ * chercher le second.
+ */
+export function nomElement(nature: NatureElement, rang: number, nombre: number): string {
+  return nombre > 1 ? `${NOMS_NATURE[nature]} ${rang}` : NOMS_NATURE[nature];
+}
+
+/**
+ * **Les intitulés « Partie 1, 2, 3 » ne se montrent que s'il y a plusieurs parties** (Delta :
+ * « affiche partie 1, 2, 3 que s'il y en a plusieurs, sinon affiche normal »). Une séance
+ * d'une seule partie se lit comme avant — « Cours », « Option » —, sans numéro qui ne distingue rien.
+ * La règle est ici, une fois, pour que le planning, l'accueil, le partage, les récaps et le nom
+ * enregistré (`libelleElement`) basculent ensemble.
+ */
+export function partiesNommees(nbParties: number): boolean {
+  return nbParties > 1;
+}
+
+/**
+ * **Le nom complet d'un élément**, celui que garde `SessionPartie.libelle` : « Partie 1 · Cours »,
+ * « Partie 2 · Option 2 » — et simplement « Cours » quand la séance n'a qu'une partie
+ * (`partiesNommees`). L'API publique, les emails et les embeds lisent cette colonne seule ; elle doit
+ * donc dire la partie **quand il y en a plusieurs**. Calculé, jamais saisi : `rangerParties` la remet
+ * d'accord à chaque écriture — y compris celle qui fait passer la séance d'une à deux parties, et
+ * renomme donc toutes ses lignes.
+ */
+export function libelleElement(bloc: number, nature: NatureElement, rang: number, nombre: number, nbParties: number): string {
+  const nom = nomElement(nature, rang, nombre);
+  return partiesNommees(nbParties) ? `${nomPartie(bloc)} · ${nom}` : nom;
 }
 
 /**
@@ -305,35 +357,15 @@ export function prochainLibellePartie(parties: ReadonlyArray<{ estOption: boolea
 export const PARTIE_DESCRIPTION_MAX = 500;
 
 /**
- * **Les parties d'une séance sont des données, pas une liste figée.**
+ * **Le modèle d'une séance neuve : une seule partie, avec un cours** (Delta : « par défaut
+ * une seule partie par séance, qui n'est pas notifiée partie 1, uniquement à partir de 2 »).
  *
- * Il y avait ici quatre valeurs (`MOITIE_1`, `MOITIE_2`, `OPTION_1`, `OPTION_2`) qui servaient de
- * **clé en base** : le nom de la partie *était* son identifiant (`@@unique([sessionId, partie])`).
- * Une séance ne pouvait donc avoir ni cinq parties, ni trois — et un club qui découpe ses cours
- * autrement n'avait pas d'issue. Chaque séance porte maintenant ses propres parties
- * (`SessionPartie` : `ordre`, `estOption`, et le `libelle` qui s'en déduit), en nombre libre.
- *
- * Ce qui reste ici, c'est **le modèle d'une séance neuve** : ce que le club met le plus souvent, et
- * rien de plus. Une constante du code, volontairement — pas un réglage de club : un club qui range
- * ses séances autrement le fait séance par séance, avec les mêmes gestes (ajouter, monter,
- * descendre, retirer) qu'il utilisera de toute façon ; un écran de réglage de plus se paierait en
- * complexité pour un geste qu'on fait une fois.
+ * Une constante du code, volontairement — pas un réglage de club : une séance qui se déroule
+ * autrement se règle séance par séance, avec les gestes qu'on utilisera de toute façon (ajouter un
+ * élément dans la partie, ajouter une partie). Une seule partie ne porte pas d'intitulé
+ * (`partiesNommees`) : la séance se lit « Cours », comme avant les parties.
  */
-/**
- * **Deux cours, et rien d'autre**.
- *
- * Le modèle en portait quatre — deux cours et deux options —, héritage des quatre cases figées de la
- * grille d'avant le 29/09. Résultat : **toute** séance naissait avec deux options vides que personne
- * ne remplissait, et une case vide ne dit rien d'autre que « il manque quelque chose ».
- *
- * Les options ne disparaissent pas : elles s'**ajoutent** quand il y en a (« Ajouter une option »,
- * `AjouterPartie`), et un atelier retenu s'en crée une au besoin (`placerAtelier`). Le modèle décrit
- * donc ce qu'une séance a **toujours** — deux cours — et non ce qu'elle pourrait avoir.
- */
-export const PARTIES_MODELE = [
-  { libelle: libellePartie(1, false), estOption: false },
-  { libelle: libellePartie(2, false), estOption: false },
-] as const;
+export const PARTIES_MODELE: ReadonlyArray<{ bloc: number; nature: NatureElement }> = [{ bloc: 1, nature: "COURS" }];
 
 /**
  * **`----------` : « rien ici, pas encore ».**

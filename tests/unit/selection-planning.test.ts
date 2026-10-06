@@ -5,10 +5,13 @@ import { LIBELLE_VIDE } from "@/lib/constants";
 import type { Paire } from "@/components/planning/file-envoi";
 import { paireImposee, poserEnMasse, type EtatBrouillon } from "@/components/planning/brouillon";
 import {
+  blocsProposes,
+  confirmationPlanning,
   ENTREES_TETE,
   expliquerGestePlanning,
   gestesPlanningApplicables,
   issueReglage,
+  libelleBlocPropose,
   libelleBoutonPlanning,
   libellePartieProposee,
   libelleToutesSeancesPlanning,
@@ -18,6 +21,7 @@ import {
   phrasesEcarts,
   planReglage,
   reglageVide,
+  seancesSansLaPartie,
   texteSansCasePlanning,
   type LignePlanning,
   type PartieLigne,
@@ -30,32 +34,28 @@ import {
  */
 
 const VIDE: Paire = { instructeurId: "", instructeurSecondId: "", theme: "", description: "", niveau: "INDIFFERENT" };
-const partie = (id: string, libelle: string, x: Partial<PartieLigne> = {}): PartieLigne => ({
-  id,
-  libelle,
-  estOption: libelle.startsWith("Option"),
-  rang: Number(libelle.split(" ")[1]),
-  atelier: false,
-  serveur: { ...VIDE },
-  ...x,
-});
+/** « Partie 1 · Cours », « Partie 2 · Option 2 » : la partie, la nature et le rang se lisent dans le nom. */
+const partie = (id: string, libelle: string, x: Partial<PartieLigne> = {}): PartieLigne => {
+  const [, bloc, mot, rang] = /^Partie (\d+) · (\S+)(?: (\d+))?$/.exec(libelle) ?? [];
+  const nature = mot === "Option" ? "OPTION" : mot === "Échauffement" ? "ECHAUFFEMENT" : mot === "Atelier" ? "ATELIER" : "COURS";
+  return { id, libelle, bloc: Number(bloc), nature, rang: Number(rang ?? 1), atelier: false, serveur: { ...VIDE }, ...x };
+};
 const seance = (id: string, parties: PartieLigne[]): LignePlanning => ({ id, date: "2026-10-06", jour: `jour ${id}`, parties });
 
-const a = seance("a", [partie("a1", "Cours 1"), partie("a2", "Cours 2"), partie("a3", "Option 1")]);
-const b = seance("b", [partie("b1", "Cours 1", { serveur: { ...VIDE, instructeurId: "u-alix", theme: "Épée longue" } }), partie("b2", "Cours 2")]);
-const c = seance("c", [partie("c1", "Cours 1", { atelier: true })]);
+const a = seance("a", [partie("a1", "Partie 1 · Cours"), partie("a2", "Partie 2 · Cours"), partie("a3", "Partie 2 · Option")]);
+const b = seance("b", [partie("b1", "Partie 1 · Cours", { serveur: { ...VIDE, instructeurId: "u-alix", theme: "Épée longue" } }), partie("b2", "Partie 2 · Cours")]);
+const c = seance("c", [partie("c1", "Partie 1 · Cours", { atelier: true })]);
 
 describe("les gestes proposés", () => {
-  it("régler, ajouter un cours, ajouter une option — chacun avec son nombre", () => {
+  it("régler une partie, ajouter dans une partie — chacun avec son nombre", () => {
     expect(gestesPlanningApplicables([a, b, c]).map((g) => [g.geste, g.nombre, g.libelle])).toEqual([
       ["regler", 2, "Régler une partie (2 séances)"],
-      ["ajouterCours", 3, "Ajouter un cours (3 séances)"],
-      ["ajouterOption", 3, "Ajouter une option (3 séances)"],
+      ["ajouter", 3, "Ajouter dans une partie (3 séances)"],
     ]);
   });
 
   it("une séance dont toutes les parties portent un atelier n'a rien à régler", () => {
-    expect(gestesPlanningApplicables([c]).map((g) => g.geste)).toEqual(["ajouterCours", "ajouterOption"]);
+    expect(gestesPlanningApplicables([c]).map((g) => g.geste)).toEqual(["ajouter"]);
   });
 
   it("aucun geste de retrait en masse", () => {
@@ -71,14 +71,44 @@ describe("les gestes proposés", () => {
 });
 
 describe("les parties qu'on peut choisir", () => {
-  it("celles qui existent dans au moins une séance cochée, cours puis options, avec leur nombre", () => {
+  it("celles qui existent dans au moins une séance cochée, partie par partie, avec leur nombre", () => {
     const p = partiesProposees([a, b, c]);
-    expect(p.map(libellePartieProposee)).toEqual(["Cours 1 (3 séances)", "Cours 2 (2 séances)", "Option 1 (1 séance)"]);
+    expect(p.map(libellePartieProposee)).toEqual(["Partie 1 · Cours (3 séances)", "Partie 2 · Cours (2 séances)", "Partie 2 · Option (1 séance)"]);
   });
 
-  it("l'ordre est celui des rangs, pas celui de la première séance cochée", () => {
-    const d = seance("d", [partie("d3", "Option 2"), partie("d1", "Cours 3")]);
-    expect(partiesProposees([d, a]).map((x) => x.libelle)).toEqual(["Cours 1", "Cours 2", "Cours 3", "Option 1", "Option 2"]);
+  it("l'ordre est celui d'une carte — partie, nature, rang —, pas celui de la première séance cochée", () => {
+    const d = seance("d", [partie("d3", "Partie 2 · Option 2"), partie("d1", "Partie 3 · Cours"), partie("d0", "Partie 1 · Échauffement")]);
+    expect(partiesProposees([d, a]).map((x) => x.libelle)).toEqual([
+      "Partie 1 · Échauffement",
+      "Partie 1 · Cours",
+      "Partie 2 · Cours",
+      "Partie 2 · Option",
+      "Partie 2 · Option 2",
+      "Partie 3 · Cours",
+    ]);
+  });
+});
+
+describe("ajouter dans une partie", () => {
+  it("propose les parties de 1 à la plus longue séance du lot, plus une nouvelle", () => {
+    expect(blocsProposes([a, b, c])).toEqual([1, 2, 3]);
+    expect(blocsProposes([c])).toEqual([1, 2]);
+    expect(libelleBlocPropose(2, [a, c])).toBe("Partie 2");
+    expect(libelleBlocPropose(3, [a, c])).toBe("Partie 3 (nouvelle)");
+  });
+
+  it("compte les séances trop courtes, où l'élément ouvre une partie à la fin", () => {
+    expect(seancesSansLaPartie([a, b, c], 2)).toBe(1);
+    expect(seancesSansLaPartie([a, b, c], 3)).toBe(3);
+    const e = expliquerGestePlanning("ajouter", [a, c], null, "", { bloc: 2, nature: "OPTION" });
+    expect(e.titre).toBe("Option s'ajoute dans la partie 2 sur chacune des 2 séances, tout de suite.");
+    expect(e.phrases.join(" ")).toMatch(/1 séance n'a pas encore de partie 2 : l'élément y ouvre une nouvelle partie, à la fin/);
+  });
+
+  it("le bouton et la question nomment la nature et la partie", () => {
+    expect(libelleBoutonPlanning("ajouter", 4, "", { bloc: 1, nature: "ECHAUFFEMENT" })).toBe("Ajouter un échauffement dans la partie 1 à 4 séances");
+    expect(libelleBoutonPlanning("ajouter", 4)).toBe("Ajouter");
+    expect(confirmationPlanning({ bloc: 3, nature: "COURS" }, 2)).toMatch(/^Ajouter un cours dans la partie 3 de 2 séances \? C'est enregistré tout de suite/);
   });
 });
 
@@ -128,7 +158,7 @@ describe("ce qu'un réglage fait d'une case", () => {
 
 describe("le plan d'un réglage sur le lot", () => {
   it("écrit ce qui change, compte ce qui y est déjà et ce qui reste de côté", () => {
-    const plan = planReglage([a, b, c, seance("e", [partie("e2", "Cours 2")])], "Cours 1", { theme: "Épée longue" }, new Map());
+    const plan = planReglage([a, b, c, seance("e", [partie("e2", "Partie 2 · Cours")])], "Partie 1 · Cours", { theme: "Épée longue" }, new Map());
     // « b » porte déjà ce thème : compté, pas réécrit.
     expect(plan.ecritures.map((e) => e.partieId)).toEqual(["a1"]);
     expect(plan.ecritures[0].paire.theme).toBe("Épée longue");
@@ -143,29 +173,29 @@ describe("le plan d'un réglage sur le lot", () => {
   });
 
   it("une case qui porte déjà le réglage n'est pas réécrite", () => {
-    const plan = planReglage([b], "Cours 1", { instructeurId: "u-alix" }, new Map());
+    const plan = planReglage([b], "Partie 1 · Cours", { instructeurId: "u-alix" }, new Map());
     expect(plan.ecritures).toEqual([]);
     expect(plan.deja).toBe(1);
   });
 
   it("part de ce que le brouillon porte déjà : un réglage à la main sur un autre champ n'est pas défait", () => {
     const brouillon = new Map([["a1", { ...VIDE, instructeurId: "u-noe" }]]);
-    const plan = planReglage([a], "Cours 1", { theme: "Dague" }, brouillon);
+    const plan = planReglage([a], "Partie 1 · Cours", { theme: "Dague" }, brouillon);
     expect(plan.ecritures[0].paire).toEqual({ ...VIDE, instructeurId: "u-noe", theme: "Dague" });
   });
 
   it("l'explication dit que rien n'est encore enregistré, et ce qui reste de côté", () => {
-    const plan = planReglage([a, c], "Cours 1", { theme: "Dague" }, new Map());
-    const e = expliquerGestePlanning("regler", [a, c], plan, "Cours 1");
-    expect(e.titre).toBe("« Cours 1 » est réglé sur 1 séance, dans le brouillon.");
+    const plan = planReglage([a, c], "Partie 1 · Cours", { theme: "Dague" }, new Map());
+    const e = expliquerGestePlanning("regler", [a, c], plan, "Partie 1 · Cours");
+    expect(e.titre).toBe("« Partie 1 · Cours » est réglé sur 1 séance, dans le brouillon.");
     expect(e.phrases.join(" ")).toMatch(/Rien n'est encore enregistré/);
     expect(e.phrases.join(" ")).toMatch(/atelier/);
-    expect(libelleBoutonPlanning("regler", 1, "Cours 1")).toBe("Régler « Cours 1 » sur 1 séance");
-    expect(libelleBoutonPlanning("ajouterOption", 4)).toBe("Ajouter une option à 4 séances");
+    expect(libelleBoutonPlanning("regler", 1, "Partie 1 · Cours")).toBe("Régler « Partie 1 · Cours » sur 1 séance");
+    expect(libelleBoutonPlanning("ajouter", 4, "", { bloc: 2, nature: "OPTION" })).toBe("Ajouter une option dans la partie 2 à 4 séances");
   });
 
   it("les ajouts disent qu'ils partent tout de suite, et qu'« Annuler » ne les défait pas", () => {
-    const e = expliquerGestePlanning("ajouterCours", [a, b], null);
+    const e = expliquerGestePlanning("ajouter", [a, b], null, "", { bloc: 1, nature: "COURS" });
     expect(e.titre).toMatch(/tout de suite/);
     expect(e.phrases.join(" ")).toMatch(/« Annuler » ne le défait pas/);
   });

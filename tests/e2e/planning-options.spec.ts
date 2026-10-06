@@ -19,13 +19,14 @@ import { connecter, COMPTES } from "./helpers";
  *
  * **Libellés remis à jour, puis le 30** : le planning n'est plus un tableau à quatre colonnes
  * figées mais une carte par séance, dont les parties portent un nom **calculé** depuis leur rang
- * dans leur nature (`libellePartie`, `PARTIES_MODELE`) — « Cours 1 », « Cours 2 », « Option 1 », «
- * Option 2 ». Il ne se saisit plus du tout : les anciens mots de `PARTIE_LABELS`, puis « 1ère
- * partie », puis « Cours n°1 » et « 1ère option » ont tous disparu.
+ * dans leur nature. Depuis le 06/10, une séance naît avec **une** partie et un cours (`PARTIES_MODELE`) :
+ * elle se lit « Cours » ; le nom ne dit la partie qu'à partir de deux (« Partie 1 · Cours », la séance
+ * du jeu d'essai qui porte un échauffement, une option et un atelier). Il ne se saisit plus du tout : les
+ * anciens mots de `PARTIE_LABELS`, puis « 1ère partie », « Cours n°1 » et « Cours 1 » ont tous disparu.
  *
  * On vise donc le libellé, et jamais un **rang** dans la liste : une partie se déplace, se retire et
  * change de nature. Attention toutefois à ce que ce nom promet désormais — il **suit la place** : ces
- * scénarios ne déplacent aucune partie, sinon « Option 1 » désignerait une autre ligne après coup.
+ * scénarios ne déplacent aucune partie, sinon « Partie 2 · Option » désignerait une autre ligne après coup.
  */
 
 /** Les deux listes d'une même case, et la boîte qui porte l'état d'enregistrement. */
@@ -87,13 +88,13 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Planning de cours" })).toBeVisible();
   // Les listes déroulantes sont complétées en arrière-plan (voir ContexteOptions) : on attend que la
   // liste des thèmes contienne autre chose que « aucun thème » avant de commencer à cliquer.
-  const { theme } = await caseDe(page, "Cours 1");
+  const { theme } = await caseDe(page, "Cours");
   await expect.poll(async () => (await entrees(page, theme)).count()).toBeGreaterThan(3);
   await page.keyboard.press("Escape");
 });
 
 test("une case que l'on vient de remplir reste réglable, et c'est le dernier réglage qui part", async ({ page }) => {
-  const { theme, instructeur } = await caseDe(page, "Cours 1");
+  const { theme, instructeur } = await caseDe(page, "Cours");
 
   const premier = await choisir(page, theme, 1);
   await expect(theme).toContainText(premier);
@@ -113,13 +114,13 @@ test("une case que l'on vient de remplir reste réglable, et c'est le dernier r�
 
   // Et le serveur a reçu le **dernier** réglage, pas les intermédiaires : on le relit du serveur.
   await page.goto("/planning?modifier=1");
-  const apres = await caseDe(page, "Cours 1");
+  const apres = await caseDe(page, "Cours");
   await expect(apres.theme).toContainText(second);
   await expect(apres.instructeur).toContainText(personne);
 });
 
 test("une application qui échoue le dit, sans emporter la page ni le brouillon", async ({ page }) => {
-  const { theme, instructeur } = await caseDe(page, "Cours 2");
+  const { theme, instructeur } = await caseDe(page, "Partie 1 · Cours");
   const choix = await choisir(page, theme, 1);
 
   // Le serveur ne répond plus (coupure, session expirée, redémarrage) — au moment de l'application,
@@ -163,7 +164,7 @@ const fermetureRetenue = (page: Page) =>
   });
 
 test("fermer l'onglet sur des cases pas appliquées pose une question, et pas autrement", async ({ page }) => {
-  const { theme } = await caseDe(page, "Cours 1");
+  const { theme } = await caseDe(page, "Cours");
 
   // Au repos, rien à perdre : la fermeture ne doit surtout pas être retenue, sinon on apprend à
   // cliquer « Quitter » sans lire et l'avertissement ne vaut plus rien le jour où il compte.

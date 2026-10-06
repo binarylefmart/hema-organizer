@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { requirePermission } from "@/lib/auth/current-user";
-import { getLieux, getThemes } from "@/lib/planning";
+import { getLieux, getThemes, getThemesEchauffement } from "@/lib/planning";
 import { lieuxEnTexte } from "@/lib/lieux";
-import { enregistrerLieux, enregistrerThemes } from "@/actions/planning";
+import { enregistrerLieux, enregistrerThemes, enregistrerThemesEchauffement } from "@/actions/planning";
 import { Carte } from "@/components/ui/Carte";
 import { DeuxPiles } from "@/components/ui/DeuxPiles";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
@@ -11,7 +11,11 @@ import { ZoneTexte } from "@/components/ui/ZoneTexte";
 export const metadata: Metadata = { title: "Thèmes et lieux" };
 
 /**
- * **Les thèmes du planning** : la liste déroulante proposée dans chaque case de la grille.
+ * **Les thèmes du planning** : la liste déroulante proposée dans chaque case de la grille — **deux
+ * listes** (Delta : « thèmes échauffements, thèmes cours et options, à la place
+ * de l'ancien thème »). Une case d'échauffement lit « Thèmes d'échauffement » (`themesEchauffement`),
+ * un cours ou une option lit « Thèmes de cours et options » (la clé `themes` d'avant, valeurs gardées).
+ * Un atelier n'en lit aucune : son thème est son titre.
  *
  * Elle vivait au pied de la file des ateliers, ouverte à tout l'encadrement ; elle a rejoint
  * l'espace admin. Ce n'est pas un geste d'organisation courante mais le **vocabulaire commun** du
@@ -24,7 +28,7 @@ export const metadata: Metadata = { title: "Thèmes et lieux" };
  */
 export default async function PageThemesAdmin() {
   await requirePermission("themes.manage");
-  const [themes, lieux] = await Promise.all([getThemes(), getLieux()]);
+  const [themesEchauffement, themes, lieux] = await Promise.all([getThemesEchauffement(), getThemes(), getLieux()]);
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-3xl">Thèmes et lieux</h1>
@@ -48,22 +52,46 @@ export default async function PageThemesAdmin() {
         700 px alors qu'elle se replie dans 324. C'est pourquoi rien n'est plafonné ici, et pourquoi
         l'écran n'avait pas de découpe interne à convertir en requête de conteneur.
 
-        **En dessous du palier, l'ordre est exactement celui d'avant** : les thèmes, puis les lieux —
+        **En dessous du palier, l'ordre est exactement celui d'avant** : les thèmes (échauffement, puis
+        cours et options), puis les lieux —
         une seule pile, et sur un téléphone de 390 px pas un pixel ne bouge.
       */}
       <DeuxPiles
         gauche={
-          <Carte titre="Thèmes du planning">
-            <FormulaireAction action={enregistrerThemes} bouton="Enregistrer les thèmes" variante="secondaire">
-              <ZoneTexte
-                label="Thèmes proposés dans les cases du planning (un par ligne)"
-                name="texte"
-                rows={Math.min(16, themes.length + 2)}
-                defaultValue={themes.join("\n")}
-                aide="Épée longue, Messer, Dague… L'ordre est conservé. Un thème déjà choisi sur une séance reste affiché même s'il est retiré de la liste."
-              />
-            </FormulaireAction>
-          </Carte>
+          /* **Les deux listes de thèmes ensemble, à gauche** : elles se saisissent pareil et se
+             relisent l'une contre l'autre (un thème rangé dans la mauvaise liste se voit ici). Les
+             lieux restent seuls à droite — trois cartes, deux piles, à peu près la même hauteur dès
+             que la liste des cours est longue. Deux formulaires : enregistrer l'une ne touche pas
+             l'autre. L'échauffement d'abord, dans l'ordre de lecture d'une partie. */
+          <>
+            <Carte titre="Thèmes d'échauffement">
+              <FormulaireAction
+                action={enregistrerThemesEchauffement}
+                bouton="Enregistrer les thèmes d'échauffement"
+                variante="secondaire"
+              >
+                <ZoneTexte
+                  label="Thèmes proposés dans les échauffements du planning (un par ligne)"
+                  name="texte"
+                  rows={Math.min(12, themesEchauffement.length + 3)}
+                  defaultValue={themesEchauffement.join("\n")}
+                  placeholder={"Mobilité articulaire\nJeu de jambes"}
+                  aide="L'ordre est conservé. Laissée vide, la liste disparaît et l'échauffement se décrit librement. Un thème déjà choisi sur une séance reste affiché même s'il est retiré de la liste."
+                />
+              </FormulaireAction>
+            </Carte>
+            <Carte titre="Thèmes de cours et options">
+              <FormulaireAction action={enregistrerThemes} bouton="Enregistrer les thèmes de cours et options" variante="secondaire">
+                <ZoneTexte
+                  label="Thèmes proposés dans les cours et les options du planning (un par ligne)"
+                  name="texte"
+                  rows={Math.min(16, themes.length + 2)}
+                  defaultValue={themes.join("\n")}
+                  aide="Épée longue, Messer, Dague… L'ordre est conservé. Un thème déjà choisi sur une séance reste affiché même s'il est retiré de la liste."
+                />
+              </FormulaireAction>
+            </Carte>
+          </>
         }
         droite={
           /* **Les salles du club, au même endroit et pour la même raison que les thèmes** : c'est du

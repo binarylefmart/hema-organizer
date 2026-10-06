@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/auth/current-user";
 import { can } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { ATELIER_LABELS } from "@/lib/ateliers";
+import { ATELIER_LABELS, libelleAnimation } from "@/lib/ateliers";
 import { ATELIER_STATUTS, type AtelierStatut } from "@/lib/constants";
 import { formatDateCourte, formatHeure, toIsoDate } from "@/lib/dates";
 import { seancesAVenir } from "@/lib/ateliers-queries";
@@ -46,6 +46,8 @@ export default async function PageGestionAteliers({ searchParams }: Props) {
       orderBy: { createdAt: filtre === "PROPOSE" ? "asc" : "desc" },
       include: {
         proposePar: { select: { prenom: true, nom: true } },
+        animateur: { select: { prenom: true, nom: true } },
+        animateurSecond: { select: { prenom: true, nom: true } },
         session: { select: { date: true, heureDebut: true, lieu: true } },
       },
     }),
@@ -126,6 +128,9 @@ export default async function PageGestionAteliers({ searchParams }: Props) {
               </div>
               {a.description && (
                 <p className="mt-3 whitespace-pre-line">{a.description}</p>
+              )}
+              {libelleAnimation(a.animateur, a.animateurSecond) && (
+                <p className="mt-2 text-sm">{libelleAnimation(a.animateur, a.animateurSecond)}</p>
               )}
               {a.materiel && (
                 <p className="mt-2 text-sm">

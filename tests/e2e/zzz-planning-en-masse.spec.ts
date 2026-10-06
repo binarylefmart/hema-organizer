@@ -12,8 +12,8 @@ import { COMPTES, connecter } from "./helpers";
  *   (« Retirer les … ») les décoche ;
  * - **« Régler une partie » n'écrit rien** : les cases entrent dans le brouillon, chacune dit
  *   « Modifié — pas encore appliqué », la barre du bas les compte, et **« Annuler » les jette** ;
- * - **« Ajouter une option »** part tout de suite ; l'option ajoutée est retirée depuis sa carte pour
- *   rendre le jeu de démonstration tel qu'il était.
+ * - **« Ajouter dans une partie »** (partie 1, option) part tout de suite ; l'option ajoutée est
+ *   retirée depuis sa carte pour rendre le jeu de démonstration tel qu'il était.
  */
 
 const barre = (page: Page) => page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" });
@@ -54,12 +54,12 @@ test("cocher par jour, régler une partie dans le brouillon, puis annuler", asyn
   await expect(barre(page)).toHaveCount(0);
   await choisir(page, "Sélectionner par jour", /^(Tous les \S+s|Le \S+) \(\d+\)$/);
 
-  // Régler « Cours 1 » : un thème libre, rien d'autre.
+  // Régler « Cours » (le cours unique d'une séance au modèle) : un thème libre, rien d'autre.
   await choisir(page, "Que veux-tu faire ?", /^Régler une partie \(/, barre(page));
-  await choisir(page, "Partie à régler", /^Cours 1 \(/, barre(page));
+  await choisir(page, "Partie à régler", /^Cours \(/, barre(page));
   await choisir(page, "Thème", /^Autre…$/, barre(page));
   await barre(page).getByLabel("Thème libre").fill("Thème posé en masse");
-  const regler = barre(page).getByRole("button", { name: /^Régler « Cours 1 » sur \d+ séances?$/ });
+  const regler = barre(page).getByRole("button", { name: /^Régler « Cours » sur \d+ séances?$/ });
   await expect(regler).toBeEnabled();
   const poses = Number(/sur (\d+)/.exec((await regler.textContent())!)![1]);
   await regler.click();
@@ -74,7 +74,7 @@ test("cocher par jour, régler une partie dans le brouillon, puis annuler", asyn
   await expect(page.getByText("Thème posé en masse")).toHaveCount(0);
 });
 
-test("ajouter une option à une séance cochée, puis la retirer", async ({ page }) => {
+test("ajouter une option dans la partie 1 d'une séance cochée, puis la retirer", async ({ page }) => {
   await connecter(page, COMPTES.admin);
   await page.goto("/planning?modifier=1");
   await page.getByRole("switch", { name: /Sélection multiple/ }).check();
@@ -84,23 +84,28 @@ test("ajouter une option à une séance cochée, puis la retirer", async ({ page
   // `.last()` dans chaque carte, et les désignerait toutes).
   const id = await cases.last().evaluate((el) => el.closest("article")?.id ?? "");
   const carte = page.locator(`article#${id}`);
-  const options = carte.getByRole("button", { name: /^Retirer « Option \d+ »$/ });
+  // ↑ ↓ Retirer ne se montrent qu'une fois la structure de la carte ouverte (« Modifier »).
+  await carte.getByRole("button", { name: "Modifier", exact: true }).click();
+  await expect(carte.getByRole("button", { name: "Terminer", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const options = carte.getByRole("button", { name: /^Retirer « (Partie 1 · )?Option( \d+)? »$/ });
   const avant = await options.count();
   await cases.last().check();
 
-  await choisir(page, "Que veux-tu faire ?", /^Ajouter une option \(1 séance\)$/, barre(page));
+  await choisir(page, "Que veux-tu faire ?", /^Ajouter dans une partie \(1 séance\)$/, barre(page));
+  await choisir(page, "Dans quelle partie", /^Partie 1$/, barre(page));
+  await choisir(page, "Ce qu'on ajoute", /^Option$/, barre(page));
   let question = "";
   page.once("dialog", (d) => {
     question = d.message();
     void d.accept();
   });
-  await barre(page).getByRole("button", { name: "Ajouter une option à 1 séance" }).click();
+  await barre(page).getByRole("button", { name: "Ajouter une option dans la partie 1 à 1 séance" }).click();
   await expect(page.getByText("Option ajoutée à 1 séance.")).toBeVisible({ timeout: 30_000 });
   expect(question).toContain("enregistré tout de suite");
-  const apres = page.locator(`article#${id}`).getByRole("button", { name: /^Retirer « Option \d+ »$/ });
+  const apres = page.locator(`article#${id}`).getByRole("button", { name: /^Retirer « (Partie 1 · )?Option( \d+)? »$/ });
   await expect(apres).toHaveCount(avant + 1, { timeout: 20_000 });
 
-  // Remise en état : l'option ajoutée est la dernière de sa série.
+  // Remise en état : l'option ajoutée est la dernière de sa nature dans la partie.
   page.once("dialog", (d) => void d.accept());
   await apres.last().click();
   await expect(apres).toHaveCount(avant, { timeout: 20_000 });

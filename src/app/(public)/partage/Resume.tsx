@@ -1,5 +1,6 @@
 import { boutonClasses } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
+import { couleurNature, grouperParPartie } from "@/components/seances/programme-cours";
 import { PastilleNiveau } from "@/components/ui/Pastille";
 import { lienCarte } from "@/lib/dates";
 import { LIBELLE_ANNULEE, lignesEvenement, lignesResume, type EvenementPartage, type LigneResume, type SeancePartagee } from "@/lib/partage";
@@ -40,30 +41,46 @@ export function ResumeSeance({ seance, compact = false }: { seance: SeancePartag
       </ul>
 
       {seance.programme.length > 0 && !seance.annulee && (
-        <ul className="flex flex-col gap-1.5 border-t border-bordure/50 pt-3" aria-label="Programme">
-          {/* Clé par rang : cette liste est rendue par le serveur et n'est jamais réordonnée à
-              l'écran, le rang est donc une clé stable — et deux parties d'une même séance peuvent
-              parfaitement porter le même nom (deux « Option 1 » restent impossibles, mais ce n'est
-              pas à cette liste de s'y fier). */}
-          {seance.programme.map((c, i) => (
-            <li key={i} className="flex flex-col gap-0.5 text-[0.95rem]">
-              <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                {/* Le nom de la partie — calculé depuis son rang — et rien d'autre : aucun nom de
-                    personne ne sort d'ici, pas même celui de l'instructeur (voir l'en-tête). */}
-                <span className="rounded-md bg-surface-douce px-2 py-0.5 text-xs font-semibold text-texte-secondaire">{c.libelle}</span>
-                <span className="min-w-0">
-                  {c.atelier && <span className="font-semibold text-vert">Atelier · </span>}
-                  <span className="font-semibold">{c.theme}</span>
-                </span>
-                {/* Un niveau n'est pas nominatif : il peut sortir. Indifférent, la pastille ne rend rien */}
-                <PastilleNiveau niveau={c.niveau} compact />
-              </span>
-              {/* **La description, quand il y en a une.** Elle parle du contenu du cours, comme le
-                  thème, et c'est justement ce qu'un lecteur du dehors vient chercher — l'écran où on
-                  l'écrit annonce qu'elle est publiée (voir `CaseEditeur`). Vide, elle ne rend rien du
-                  tout, pas même son intitulé : la même règle que pour les membres. Sur sa propre
-                  ligne, parce que c'est une phrase et non une étiquette. */}
-              {c.description && <span className="text-texte-secondaire">{c.description}</span>}
+        /* **Partie par partie**, comme la fiche d'une séance dans l'application (`grouperParPartie`) :
+           le titre de la partie, puis ses éléments. Clés par numéro de partie et par rang : cette
+           liste est rendue par le serveur et n'est jamais réordonnée à l'écran, et elle ne porte
+           volontairement aucun identifiant de ligne (voir `CasePartage`). */
+        <ul className="flex flex-col gap-3 border-t border-bordure/50 pt-3" aria-label="Programme">
+          {grouperParPartie(seance.programme).map((p) => (
+            <li key={p.bloc} className="flex min-w-0 flex-col gap-1">
+              {/* Une seule partie affichée (`nom: null`) : ni titre ni filet, le programme se lit
+                  comme avant les parties (`partiesNommees`). */}
+              {p.nom && <p className="text-xs font-semibold uppercase tracking-wide text-texte-secondaire">{p.nom}</p>}
+              <ul aria-label={p.nom ?? undefined} className={`flex min-w-0 flex-col gap-1.5 ${p.nom ? "border-l-2 border-bordure/60 pl-3" : ""}`}>
+                {p.elements.map((c, i) => (
+                  <li key={i} className="flex flex-col gap-0.5 text-[0.95rem]">
+                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      {/* Le nom de l'élément — calculé depuis sa nature et son rang — et rien d'autre :
+                          aucun nom de personne ne sort d'ici, pas même celui de l'instructeur (voir
+                          l'en-tête). À la couleur de sa nature (`couleurNature`), comme sur la fiche
+                          d'une séance dans l'application. */}
+                      <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${couleurNature(c.nature)}`}>{c.nom}</span>
+                      {/* **Un atelier se lit comme un cours** (avenant, « ne mets pas les
+                          ateliers en surlignage ») : son titre est le thème de l'élément, écrit comme
+                          tous les thèmes — ni vert ni mise en valeur à lui. Sous l'étiquette « Atelier »
+                          le mot ne se répète pas ; dans un élément d'une autre nature (donnée ancienne),
+                          un simple « Atelier · » dit encore ce que c'est. */}
+                      <span className="min-w-0 font-semibold">
+                        {c.atelier && c.nature !== "ATELIER" && "Atelier · "}
+                        {c.theme}
+                      </span>
+                      {/* Un niveau n'est pas nominatif : il peut sortir. Indifférent, la pastille ne rend rien */}
+                      <PastilleNiveau niveau={c.niveau} compact />
+                    </span>
+                    {/* **La description, quand il y en a une.** Elle parle du contenu du cours, comme le
+                        thème, et c'est justement ce qu'un lecteur du dehors vient chercher — l'écran où
+                        on l'écrit annonce qu'elle est publiée (voir `CaseEditeur`). Vide, elle ne rend
+                        rien du tout, pas même son intitulé : la même règle que pour les membres. Sur sa
+                        propre ligne, parce que c'est une phrase et non une étiquette. */}
+                    {c.description && <span className="text-texte-secondaire">{c.description}</span>}
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ul>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Personne } from "@/lib/planning";
-import { abreger, personnesRendues, reglagesVides, themesRendus } from "@/components/planning/options";
+import { abreger, optionsDepuis, personnesRendues, reglagesVides, themesDeNature, themesRendus } from "@/components/planning/options";
+import type { Planning } from "@/lib/planning";
 
 /**
  * Ce qui part vraiment dans le navigateur pour le planning.
@@ -62,6 +63,25 @@ describe("themesRendus", () => {
  * une case remplie (`CaseEditeur`), et l'affichage la pose pour décider qu'une partie n'a rien à dire
  * (`caseVide`). Deux écritures de la règle, et le serveur refuserait ce que l'écran propose.
  */
+describe("themesDeNature (avenant 4)", () => {
+  const o = { themes: ["Messer", "Épée longue"], themesEchauffement: ["Cardio", "Assouplissements"] };
+  it("donne la liste d'échauffement à un échauffement", () => {
+    expect(themesDeNature(o, "ECHAUFFEMENT")).toEqual(["Cardio", "Assouplissements"]);
+  });
+  it("donne la liste des cours et options au reste", () => {
+    for (const n of ["COURS", "OPTION", "ATELIER"] as const) expect(themesDeNature(o, n)).toEqual(["Messer", "Épée longue"]);
+  });
+});
+
+describe("optionsDepuis : les deux listes de thèmes", () => {
+  it("passe les thèmes d'échauffement, même en lecture seule (ils ne nomment personne)", () => {
+    const p = { personnes: [], themes: ["Messer"], themesEchauffement: ["Cardio"], ateliersDisponibles: [], modifiable: false, peutProgrammer: false } as unknown as Planning;
+    const res = optionsDepuis(p);
+    expect(res.themesEchauffement).toEqual(["Cardio"]);
+    expect(res.themes).toEqual(["Messer"]);
+  });
+});
+
 describe("reglagesVides", () => {
   it("une case sans aucun réglage est vide", () => {
     expect(reglagesVides({})).toBe(true);

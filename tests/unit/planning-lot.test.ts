@@ -14,8 +14,8 @@ import { formatDateSansAnnee, minuscule } from "@/lib/dates";
  * Ce fichier garde ce que le lot promet et que **rien à l'écran ne montrerait** s'il se brisait :
  *
  * 1. **les mêmes verrous que le geste unitaire, par les mêmes fonctions** — `planning.edit`,
- *    `casePlanningSchema`, `partiePourEcriture`, le refus d'une case réservée à un atelier, celui
- *    d'une même personne en instructeur et en second, celui d'un second sans premier. Deux chemins
+ *    `casePlanningSchema`, `partiePourEcriture`, le thème d'une case atelier figé au titre de
+ *    l'atelier (avenant du 06/10 : ses autres réglages s'enregistrent), le refus d'une même personne en instructeur et en second, celui d'un second sans premier. Deux chemins
  *    d'écriture aux règles différentes, c'est une porte dérobée d'un côté ou une fonctionnalité morte
  *    de l'autre ;
  * 2. **tout ou rien**, en nommant la case fautive : un lot à moitié écrit sur un planning est pire
@@ -386,25 +386,52 @@ describe("un lot qui porte sur deux séances", () => {
 /* ------------------------------------------------------------------ */
 
 describe("tout ou rien : une case refusée refuse le lot entier", () => {
-  it("refuse le lot pour une case réservée à un atelier, et la nomme", async () => {
+  it("accepte une case atelier pour instructeur, second, niveau et description, et garde le titre en thème", async () => {
     /*
-     * Un atelier programmé occupe la case : le geste unitaire le refuse déjà, et il faut passer par
-     * la gestion des ateliers. Sans le « tout ou rien », les deux autres cases du lot seraient
-     * écrites et l'écran afficherait un succès partiel que personne ne saurait relire.
+     * Avenant du 06/10 (« pour chaque sous-section les mêmes champs ») : un atelier se règle comme
+     * les autres éléments, sauf son thème — c'est le titre de l'atelier, et la valeur envoyée est
+     * ignorée. Une case atelier dans un lot ne refuse donc plus le lot.
      */
-    faux.parties = faux.parties.map((p) => (p.id === "c3" ? { ...p, atelierId: "a-1" } : p));
-    const erreur = await refuse(
-      enregistrerCases({
-        cases: [
-          reglages("c1", { instructeurId: "u1", theme: "Messer" }),
-          reglages("c3", { theme: "Autre chose" }),
-          reglages("c4", { instructeurId: "u2", theme: "Dague" }),
-        ],
-      }),
-    );
-    expect(erreur).toContain(nomDeCase("Option 1", "2126-10-01"));
-    expect(erreur).toContain("réservée à un atelier programmé");
-    expect(erreur).toContain("Rien n'a été enregistré.");
+    faux.parties = faux.parties.map((p) => (p.id === "c3" ? { ...p, atelierId: "a-1", theme: "Messer à deux mains" } : p));
+    const res = await enregistrerCases({
+      cases: [
+        reglages("c1", { instructeurId: "u1", theme: "Messer" }),
+        reglages("c3", { instructeurId: "u2", instructeurSecondId: "u1", theme: "Autre chose", niveau: "DEBUTANT", description: "Prévoir des gants." }),
+      ],
+    });
+    expect(res.erreur).toBeUndefined();
+    expect(partie("c3")).toMatchObject({
+      atelierId: "a-1",
+      theme: "Messer à deux mains",
+      instructeurId: "u2",
+      instructeurSecondId: "u1",
+      niveau: "DEBUTANT",
+      description: "Prévoir des gants.",
+    });
+  });
+
+  it("garde le niveau et la description d'un atelier même si l'écran n'envoie pas de thème", async () => {
+    // Le thème d'un atelier est toujours rempli (son titre) : « sans thème, ni niveau ni description »
+    // ne doit pas effacer ses détails parce que le brouillon a laissé le champ vide.
+    faux.parties = faux.parties.map((p) => (p.id === "c3" ? { ...p, atelierId: "a-1", theme: "Messer à deux mains" } : p));
+    await enregistrerCase({ partieId: "c3", instructeurId: "u1", theme: "", niveau: "AVANCE", description: "Sparring." });
+    expect(partie("c3")).toMatchObject({ theme: "Messer à deux mains", instructeurId: "u1", niveau: "AVANCE", description: "Sparring." });
+  });
+
+  it("ne voit rien à changer sur une case atelier dont seul le thème envoyé diffère", async () => {
+    faux.parties = faux.parties.map((p) => (p.id === "c3" ? { ...p, atelierId: "a-1", theme: "Messer à deux mains" } : p));
+    const res = await enregistrerCases({ cases: [reglages("c3", { theme: "Rebaptisé" })] });
+    expect(res.succes).toMatch(/Rien à changer/);
+    expect(faux.ecritures).toEqual([]);
+  });
+
+  it("garde sur une case atelier les refus des autres cases (même personne, second sans premier)", async () => {
+    faux.parties = faux.parties.map((p) => (p.id === "c3" ? { ...p, atelierId: "a-1", theme: "Messer à deux mains" } : p));
+    const memePersonne = await refuse(enregistrerCases({ cases: [reglages("c1", { instructeurId: "u1", theme: "Messer" }), reglages("c3", { instructeurId: "u1", instructeurSecondId: "u1" })] }));
+    expect(memePersonne).toContain(nomDeCase("Option 1", "2126-10-01"));
+    expect(memePersonne).toContain("deux personnes différentes");
+    const secondSeul = await refuse(enregistrerCases({ cases: [reglages("c3", { instructeurSecondId: "u2" })] }));
+    expect(secondSeul).toContain("qui mène la partie");
   });
 
   it("refuse le lot si une case met la même personne en instructeur et en second", async () => {
@@ -460,8 +487,8 @@ describe("tout ou rien : une case refusée refuse le lot entier", () => {
      * la **base** en dit (libellé et date de la séance), relu à l'instant. Recopier l'entrée, c'est
      * la première marche de l'injection dans une interface — et ça n'apprend rien à personne.
      */
-    faux.parties = faux.parties.map((p) => (p.id === "c3" ? { ...p, atelierId: "a-1" } : p));
-    const erreur = await refuse(enregistrerCases({ cases: [reglages("c3", { theme: "<script>" })] }));
+    // Une même personne deux fois : refus, et l'identifiant ni la valeur reçue n'y reparaissent.
+    const erreur = await refuse(enregistrerCases({ cases: [reglages("c3", { instructeurId: "u1", instructeurSecondId: "u1", theme: "<script>" })] }));
     expect(erreur).not.toContain("c3");
     expect(erreur).not.toContain("<script>");
   });

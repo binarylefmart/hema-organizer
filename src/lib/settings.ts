@@ -12,7 +12,10 @@ import { chiffrer, dechiffrer } from "./crypto";
  *   dans `discordWebhooks` puis effacée (voir `reprendreAncienSalonEvenements`)
  * - publicApiEnabled : "1" | "0"
  * - vapid : paire de clés du Web Push, chiffrée (créée au premier besoin, jamais changée ensuite)
- * - themes : liste JSON des thèmes proposés dans le planning
+ * - themes : liste JSON des thèmes proposés aux **cours et options** du planning (« Thèmes de cours
+ *   et options » ; la clé garde son nom d'avant la coupure, et les valeurs du club avec elle)
+ * - themesEchauffement : liste JSON des thèmes proposés aux **échauffements** (« Thèmes
+ *   d'échauffement ») — défaut `THEMES_ECHAUFFEMENT_DU_CLUB` tant que rien n'est enregistré
  * - alertesSecurite : "1" | "0" (emails d'alerte aux admins)
  * - auditRetentionJours : rétention du journal d'audit (défaut 365)
  * - notifications : JSON des réglages du panneau Notifications — canaux, matrice notification × canal,
@@ -36,6 +39,7 @@ export const CLES = {
   publicApiEnabled: "publicApiEnabled",
   vapid: "vapid",
   themes: "themes",
+  themesEchauffement: "themesEchauffement",
   alertesSecurite: "alertesSecurite",
   auditRetentionJours: "auditRetentionJours",
   notifications: "notifications",

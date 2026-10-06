@@ -179,11 +179,11 @@ describe("FormulaireAction", () => {
     }
   });
 
-  it("les deux actions de « Thèmes et lieux » invalident leur propre écran", () => {
+  it("les trois actions de « Thèmes et lieux » invalident leur propre écran", () => {
     // C'est le bug qui avait fait poser le refresh global : la zone de texte gardait l'ancienne
     // liste, et un second « Enregistrer » la réécrivait en base. Il se règle à la source.
     const actions = lire("src/actions/planning.ts");
-    for (const nom of ["enregistrerThemes", "enregistrerLieux"]) {
+    for (const nom of ["enregistrerThemes", "enregistrerThemesEchauffement", "enregistrerLieux"]) {
       expect(corpsDeLaFonction(actions, nom)).toContain('revalidatePath("/admin/themes")');
     }
   });

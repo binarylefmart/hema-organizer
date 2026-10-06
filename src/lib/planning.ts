@@ -1,23 +1,21 @@
 import { db } from "./db";
-import { niveauAffiche, NIVEAU_DEFAUT, PARTIES_MODELE, prochainLibellePartie, type Niveau } from "./constants";
-import { THEMES_DU_CLUB } from "./themes-club";
+import { estNatureElement, libelleElement, niveauAffiche, NIVEAU_DEFAUT, PARTIES_MODELE, type NatureElement, type Niveau } from "./constants";
+import { THEMES_DU_CLUB, THEMES_ECHAUFFEMENT_DU_CLUB } from "./themes-club";
 import { addDays, formatDateCourte, isoWeekday, nomMois, seanceCommencee, todayIso } from "./dates";
 import { compterPresences, type Compteurs } from "./presences";
 import { can, isStaff, type UserLike } from "./permissions";
 import { nettoyerLieux, type Lieu } from "./lieux";
 import { LIEUX_DU_CLUB } from "./lieux-club";
 import { CLES, getSetting, setSetting } from "./settings";
-// Module purement calculatoire (ni React, ni base) : la numérotation des parties y vit déjà, avec le
-// repère de couleur qu'elle nourrit. L'importer d'ici évite d'en écrire une seconde version — et
-// c'est bien la même règle qui doit servir aux deux bouts, sinon l'écart revient.
-import { rangsDansNature } from "@/components/seances/programme-cours";
 // Même raison : la définition de « case vide » doit être lisible par le navigateur (`CaseEditeur` ne
 // peut rien importer d'ici) autant que par le serveur. Une seule règle, un seul fichier.
 import { reglagesVides } from "@/components/planning/options";
-// Le calcul des deux invariants d'une séance (rangs contigus, libellés d'accord avec eux) vit dans un
-// module **sans Prisma** : le script de réparation doit pouvoir le relever sans ouvrir de base, et la
-// règle ne doit exister qu'une fois (voir l'en-tête de `rangement.ts`).
-import { rangementsParties, type PartieARanger, type RangementPartie } from "@/components/planning/rangement";
+// Le calcul des invariants d'une séance (parties contiguës, rangs contigus, libellés d'accord avec
+// eux) vit dans un module **sans Prisma** : le script de réparation doit pouvoir le relever sans ouvrir
+// de base, et la règle ne doit exister qu'une fois (voir l'en-tête de `rangement.ts`). La place d'un
+// élément dans sa partie (`placesDansPartie`) en vient aussi : le rang qui décide du nom est celui qui
+// s'affiche à côté.
+import { placesDansPartie, rangementsParties, type PartieARanger, type RangementPartie } from "@/components/planning/rangement";
 
 /**
  * Planning de cours : une colonne par séance, **autant de cases que la séance a de parties**,
@@ -28,9 +26,13 @@ import { rangementsParties, type PartieARanger, type RangementPartie } from "@/c
  * déplacent et changent de nature. L'`id` de la partie a remplacé son nom partout où il fallait la
  * désigner.
  *
- * **Le nom d'une partie n'est plus une donnée saisie** : il se calcule depuis le rang dans sa
- * nature (`libellePartie`) et la colonne `libelle` est tenue à jour par `rangerParties`, au seul
- * endroit où les parties d'une séance se rangent. Ce qui décrit la partie, c'est son contenu.
+ * **Parties et éléments** : chaque ligne `SessionPartie` est un **élément** (échauffement,
+ * cours, option, atelier) rangé dans une **partie** numérotée (`bloc`). Une partie n'existe que par
+ * ses éléments.
+ *
+ * **Le nom d'un élément n'est pas une donnée saisie** : il se calcule depuis sa partie et son rang
+ * dans sa nature (`libelleElement`) et la colonne `libelle` est tenue à jour par `rangerParties`, au
+ * seul endroit où les éléments d'une séance se rangent. Ce qui décrit l'élément, c'est son contenu.
  *
  * Les cases restent la source de vérité du « programme » : après chaque modification,
  * `synchroniserSeance` recopie thèmes et instructeurs dans la séance (cartes, exports, récaps).
@@ -40,23 +42,21 @@ export type Personne = { id: string; prenom: string; nom: string; role: string; 
 
 export type CasePlanning = {
   id: string;
-  /** Rang dans la séance, contigu à partir de 0 (voir `renumeroter`) */
+  /** Rang dans la séance, contigu à partir de 0 (voir `rangerParties`) */
   ordre: number;
+  /** **Numéro de la partie** (« Partie 2 »), contigu à partir de 1 */
+  bloc: number;
+  /** Ce qu'est l'élément dans sa partie : échauffement, cours, option ou atelier */
+  nature: NatureElement;
   /**
-   * Rang **dans sa nature**, à partir de 1 (`rangsDansNature`) : le 2e cours de la séance, la 1ère
-   * option. C'est le nombre que compte le libellé du modèle, donc le seul dont puisse dépendre ce qui
-   * se pose à côté de lui — le repère de couleur (`couleurPartie`). Il est calculé ici, sur la séance
-   * **entière**, comme pour les lignes de programme : recompté après un filtre, il donnerait le rang
-   * 1 au second cours d'une séance dont le premier est vide.
+   * Rang de l'élément **dans sa partie et sa nature**, à partir de 1, et le **nombre** d'éléments de
+   * cette nature dans la partie (`placesDansPartie`) — calculés sur la séance **entière**, jamais
+   * recomptés après un filtre d'affichage. `nomElement(nature, rang, nombre)` en fait le nom court.
    */
   rang: number;
-  /**
-   * Nom affiché de la partie — **calculé** depuis `rang` et `estOption` (`libellePartie`), jamais
-   * saisi. La colonne est tenue à jour par `rangerParties` à chaque écriture.
-   */
+  nombre: number;
+  /** Nom complet calculé (« Partie 1 · Cours »), tenu à jour par `rangerParties` */
   libelle: string;
-  /** **Option** : une partie qui se tient pendant un cours, et qui accueille les ateliers */
-  estOption: boolean;
   instructeurId: string | null;
   instructeur: string | null;
   /** **Celui qui assiste** : un second encadrant, facultatif — jamais publié vers l'extérieur */
@@ -103,7 +103,10 @@ export type Planning = {
    * de la période (`personnesPlanning`). **Vide** pour qui ne peut pas écrire : la liste ne sort pas.
    */
   personnes: Personne[];
+  /** Thèmes proposés aux cours et options (réglage « Thèmes de cours et options ») */
   themes: string[];
+  /** Thèmes proposés aux échauffements (réglage « Thèmes d'échauffement ») */
+  themesEchauffement: string[];
   /** Ateliers en attente (proposables dans une case par l'équipe : un seul geste pour les placer) — vide sinon */
   ateliersDisponibles: Array<{ id: string; titre: string; proposePar: string; sessionId: string | null }>;
   /** L'utilisateur courant peut modifier les cases */
@@ -144,6 +147,31 @@ export async function getThemes(): Promise<string[]> {
 
 export async function setThemes(themes: string[]): Promise<void> {
   await setSetting(CLES.themes, JSON.stringify(themes));
+}
+
+/**
+ * **Les thèmes d'échauffement** (réglage `themesEchauffement`) : la liste que propose
+ * une case de nature ÉCHAUFFEMENT, quand cours et options gardent `getThemes`.
+ *
+ * **Son propre défaut** (`THEMES_ECHAUFFEMENT_DU_CLUB`, src/lib/themes-club.ts) tant que rien n'est
+ * enregistré, ou si le réglage est abîmé — jamais les thèmes de cours. Une liste enregistrée, même
+ * vide, fait foi : la case n'offre alors que la saisie libre (« Autre… »). Publiée telle quelle dans le
+ * dépôt public, comme les thèmes de cours.
+ */
+export async function getThemesEchauffement(): Promise<string[]> {
+  const brut = await getSetting(CLES.themesEchauffement);
+  if (!brut) return [...THEMES_ECHAUFFEMENT_DU_CLUB];
+  try {
+    const liste = JSON.parse(brut);
+    if (Array.isArray(liste) && liste.every((t) => typeof t === "string")) return liste;
+  } catch {
+    /* réglage corrompu : on retombe sur la liste par défaut */
+  }
+  return [...THEMES_ECHAUFFEMENT_DU_CLUB];
+}
+
+export async function setThemesEchauffement(themes: string[]): Promise<void> {
+  await setSetting(CLES.themesEchauffement, JSON.stringify(themes));
 }
 
 /**
@@ -275,6 +303,15 @@ export async function personnesPlanning(dejaPosees: Iterable<string> = []): Prom
   return users.sort((a, b) => a.prenom.localeCompare(b.prenom, "fr") || a.nom.localeCompare(b.nom, "fr"));
 }
 
+/**
+ * **La nature d'un élément lu en base.** La colonne est un texte libre pour SQLite : une valeur
+ * inconnue (écrite à la main, ou par une version future) se lit comme un cours — la nature par
+ * défaut de la colonne — plutôt que de faire tomber l'écran. Le script de réparation la signale.
+ */
+export function natureLue(v: string): NatureElement {
+  return estNatureElement(v) ? v : "COURS";
+}
+
 export async function chargerPlanning(periodId: string, user: UserLike & { id: string }, now = new Date()): Promise<Planning | null> {
   const periode = await db.period.findUnique({
     where: { id: periodId },
@@ -304,7 +341,8 @@ export async function chargerPlanning(periodId: string, user: UserLike & { id: s
               id: true,
               ordre: true,
               libelle: true,
-              estOption: true,
+              bloc: true,
+              nature: true,
               instructeurId: true,
               instructeurSecondId: true,
               theme: true,
@@ -366,9 +404,12 @@ export async function chargerPlanning(periodId: string, user: UserLike & { id: s
   const dejaPosees = periode.sessions.flatMap((s) =>
     s.parties.flatMap((p) => [p.instructeurId, p.instructeurSecondId].filter((id): id is string => Boolean(id))),
   );
-  const [personnes, themes, ateliers] = await Promise.all([
+  // Les deux listes de thèmes sortent pour tout le monde, comme avant la coupure : elles ne nomment
+  // personne, et la lecture s'en sert pour reconnaître un thème connu.
+  const [personnes, themes, themesEchauffement, ateliers] = await Promise.all([
     peutEcrire ? personnesPlanning(dejaPosees) : [],
     getThemes(),
+    getThemesEchauffement(),
     peutEcrire
       ? db.atelier.findMany({
           where: { statut: "PROPOSE", partie: null },
@@ -380,17 +421,20 @@ export async function chargerPlanning(periodId: string, user: UserLike & { id: s
   const nomParId = new Map(periode.membres.map((m) => [m.user.id, `${m.user.prenom} ${m.user.nom}`]));
 
   const colonnes: ColonnePlanning[] = periode.sessions.map((s) => {
-    // Les rangs par nature, comptés sur la séance entière et **avant** tout filtre d'affichage : la
-    // grille cache les parties vides aux membres, et les recompter là donnerait le rang 1 au second
-    // cours (même règle, même fonction que `programmeDepuisParties`). Les parties arrivent déjà
-    // triées par `ordre` (`include` de la requête), donc l'index suffit.
-    const rangs = rangsDansNature(s.parties);
-    const parties: CasePlanning[] = s.parties.map((p, i) => ({
+    // Rang et nombre dans la partie et la nature, comptés sur la séance entière et **avant** tout
+    // filtre d'affichage : la grille cache les cases vides aux membres, et les recompter là donnerait
+    // le rang 1 au second cours (même règle, même fonction que `programmeDepuisParties`). Les
+    // éléments arrivent déjà triés par `ordre`, qui matérialise l'ordre de lecture.
+    const lus = s.parties.map((p) => ({ ...p, nature: natureLue(p.nature) }));
+    const places = placesDansPartie(lus);
+    const parties: CasePlanning[] = lus.map((p, i) => ({
       id: p.id,
       ordre: p.ordre,
-      rang: rangs[i],
+      bloc: p.bloc,
+      nature: p.nature,
+      rang: places[i].rang,
+      nombre: places[i].nombre,
       libelle: p.libelle,
-      estOption: p.estOption,
       instructeurId: p.instructeurId,
       instructeur: p.instructeur ? `${p.instructeur.prenom} ${p.instructeur.nom}` : null,
       instructeurSecondId: p.instructeurSecondId,
@@ -438,6 +482,7 @@ export async function chargerPlanning(periodId: string, user: UserLike & { id: s
     mois,
     personnes,
     themes,
+    themesEchauffement,
     ateliersDisponibles: ateliers.map((a) => ({ id: a.id, titre: a.titre, sessionId: a.sessionId, proposePar: `${a.proposePar.prenom} ${a.proposePar.nom}` })),
     modifiable,
     peutProgrammer,
@@ -465,22 +510,9 @@ export function caseVide(c: Pick<CasePlanning, "instructeur" | "instructeurSecon
 /** Une ligne du programme d'une séance, pour la carte Présences et la page de gestion. */
 export type LigneProgrammeSeance = Pick<
   CasePlanning,
-  "id" | "ordre" | "libelle" | "estOption" | "instructeur" | "instructeurId" | "instructeurSecond" | "instructeurSecondId" | "theme" | "description" | "niveau"
+  "id" | "ordre" | "libelle" | "bloc" | "nature" | "rang" | "nombre" | "instructeur" | "instructeurId" | "instructeurSecond" | "instructeurSecondId" | "theme" | "description" | "niveau"
 > & {
   atelier: { id: string; titre: string } | null;
-  /**
-   * **Rang de la partie parmi celles de même nature** (2e cours, 1ère option), à partir de 1 —
-   * compté sur la séance **entière**, avant que les parties muettes ne soient écartées.
-   *
-   * Il voyage avec la ligne au lieu d'être recalculé à l'affichage, et c'est tout l'objet du
-   * champ : qui le recalcule sur la liste rendue ici compte sur une liste **déjà filtrée** et se
-   * trompe. Le cas se produit à chaque séance neuve : quatre parties naissent avec le modèle,
-   * l'encadrement ne remplit que « Cours n°2 » et « 2e option », les deux premières restent muettes
-   * et disparaissent — l'accueil écrivait alors « 1ʳᵉ » à côté du libellé « Cours n°2 » et « Opt
-   * 1 » à côté de « 2e option ». Deux mentions du même objet, deux nombres différents, lus à la
-   * suite par la synthèse vocale.
-   */
-  rang: number;
 };
 
 export type ProgrammeSeance = LigneProgrammeSeance[];
@@ -489,9 +521,9 @@ export type ProgrammeSeance = LigneProgrammeSeance[];
  * Le programme lisible d'une séance : les parties dans leur ordre, **les muettes écartées**.
  *
  * C'est ce filtre — et lui seul — qui définit « Sans programme » sur l'accueil : une partie qui n'a
- * ni encadrant, ni thème, ni atelier n'apprend rien à personne, et une séance neuve en porte quatre
- * d'office depuis qu'elles naissent avec le modèle. Les afficher toutes remplirait chaque fiche de
- * quatre lignes vides.
+ * ni encadrant, ni thème, ni atelier n'apprend rien à personne, et une séance neuve en porte une
+ * d'office depuis qu'elles naissent avec le modèle — davantage dès qu'on y ajoute des cases. Les afficher toutes remplirait chaque fiche de
+ * lignes vides.
  *
  * Le niveau, lui, ne suffit pas à faire parler une partie : « Débutant » sans thème ni encadrant ne
  * dit rien au lecteur d'une fiche (à la différence d'une case du planning, qu'il ne faut pas
@@ -506,7 +538,8 @@ export function programmeDepuisParties(
     id: string;
     ordre: number;
     libelle: string;
-    estOption: boolean;
+    bloc: number;
+    nature: string;
     theme: string;
     /** Facultatif pour la même raison que `niveau` : une requête écrite avant ce champ ne le porte pas. */
     description?: string | null;
@@ -518,22 +551,25 @@ export function programmeDepuisParties(
     atelier: { id: string; titre: string } | null;
   }>,
 ): ProgrammeSeance {
-  const ordonnees = [...parties].sort((a, b) => a.ordre - b.ordre);
+  const ordonnees = [...parties].sort((a, b) => a.ordre - b.ordre).map((c) => ({ ...c, nature: natureLue(c.nature) }));
   /*
    * **Les rangs se comptent ici, sur la séance entière, et jamais après le filtre.**
    *
-   * C'est la seule place où la séance est encore complète : deux lignes plus bas, les parties
-   * muettes ont disparu, et compter sur ce qui reste donne « 1ʳᵉ » en face de « Cours n°2 ». Le rang
-   * part donc avec la ligne (voir `LigneProgrammeSeance.rang`) au lieu d'être redérivé à l'écran.
+   * C'est la seule place où la séance est encore complète : deux lignes plus bas, les éléments
+   * muets ont disparu, et compter sur ce qui reste ferait dire « Cours » (seul) à côté d'un libellé
+   * « Partie 1 · Cours 2 ». Rang et nombre partent donc avec la ligne au lieu d'être redérivés à
+   * l'écran.
    */
-  const rangs = rangsDansNature(ordonnees);
+  const places = placesDansPartie(ordonnees);
   return ordonnees
     .map((c, i) => ({
       id: c.id,
       ordre: c.ordre,
-      rang: rangs[i],
+      bloc: c.bloc,
+      nature: c.nature,
+      rang: places[i].rang,
+      nombre: places[i].nombre,
       libelle: c.libelle,
-      estOption: c.estOption,
       instructeur: c.instructeur ? `${c.instructeur.prenom} ${c.instructeur.nom}` : null,
       instructeurId: c.instructeurId,
       instructeurSecond: c.instructeurSecond ? `${c.instructeurSecond.prenom} ${c.instructeurSecond.nom}` : null,
@@ -574,89 +610,75 @@ export async function synchroniserSeance(sessionId: string): Promise<void> {
 }
 
 /**
- * **Ranger les parties d'une séance : les rangs contigus, et les noms d'accord avec eux.**
+ * **Ranger les éléments d'une séance : parties contiguës, rangs contigus, noms d'accord avec eux.**
  *
- * Les deux invariants d'une séance tiennent ici, et **nulle part ailleurs** :
+ * Les trois invariants d'une séance tiennent ici, et **nulle part ailleurs** :
  *
- * 1. `ordre` redevient **contigu à partir de 0**. Sans cette renumérotation, les rangs finiraient
- *    troués (0, 1, 3) puis dupliqués, et c'est alors l'ordre d'insertion en base — c'est-à-dire le
- *    hasard — qui déciderait de l'affichage.
- * 2. `libelle` redit le **rang dans sa nature** (`libellePartie`) : « Cours 1 », « Cours 2 »…, «
- *    Option 1 », « Option 2 »… Depuis que le nom ne se saisit plus, il n'a plus de raison d'être vrai
- *    tout seul : ajouter, retirer, déplacer une partie ou changer sa nature décale l'une des deux
- *    séries, et c'est cette fonction qui remet la colonne d'accord.
+ * 1. `bloc` redevient **contigu à partir de 1** : retirer le dernier élément d'une partie la fait
+ *    disparaître, et les suivantes se renumérotent.
+ * 2. `ordre` redevient **contigu à partir de 0**, dans l'ordre de lecture (partie, puis nature dans
+ *    `NATURES_ELEMENT`, puis ordre d'avant, puis id). Sans cette renumérotation, c'est l'ordre
+ *    d'insertion en base — le hasard — qui déciderait de l'affichage.
+ * 3. `libelle` redit la partie — quand la séance en a plusieurs — et le rang dans la nature
+ *    (`libelleElement`) : « Partie 1 · Cours », « Partie 2 · Option 2 », ou « Cours » seul. Passer
+ *    d'une à deux parties renomme donc toutes les lignes, et revenir à une seule retire le préfixe.
+ *    Ajouter, retirer, déplacer un élément ou changer sa nature décale les
+ *    voisins, et c'est cette fonction qui remet la colonne d'accord.
  *
- * **Les deux dans la même fonction, et c'est voulu** : le libellé dépend du rang *final*, celui que
- * la renumérotation vient de décider. Deux fonctions séparées obligeraient la seconde à refaire le
- * calcul de la première — donc à s'en écarter un jour. Et une partie qui change à la fois de rang et
- * de nom ne coûte ainsi **qu'une seule écriture**.
+ * **Tout dans la même fonction, et c'est voulu** : le libellé dépend de la partie et du rang
+ * *finaux*. Un élément qui change à la fois de place et de nom ne coûte ainsi qu'une écriture.
  *
- * **On n'émet une écriture que pour ce qui change vraiment**, champ par champ. C'est la règle
- * commune aux renumérotations et aux migrations de libellés : `SessionPartie.updatedAt` est un
- * `@updatedAt`, et la grille affiche ce champ dans la bulle « Modifié par … le … » de chaque case,
- * avec `modifieParId` inchangé. Réécrire toute la séance ferait donc dire à une case que la personne
- * qui l'a remplie le 12 septembre y est revenue le 30 à 20h14 — elle n'a rien fait ce soir-là.
- * Ranger une séance n'est pas une modification du programme par quelqu'un.
- *
- * **Et ce filtre ne suffisait pas**. Depuis que le nom suit le rang, ranger une séance réécrit
- * vraiment les **voisines** : un « Option » cliqué sur « Cours 1 » renomme « Cours 2 » et « Option
- * 1 », dont l'`updatedAt` passait alors à l'instant du clic — pendant que `modifieParId` continuait
- * de nommer celui qui les avait remplies la semaine d'avant. La bulle de la case de Charlie annonçait
- * « Modifié par Charlie à 20:14 », et Chloé, qui venait de cliquer, n'apparaissait nulle part. Le
- * mensonge avait seulement déménagé : de « toute la séance » vers « les voisines dont le nom
- * glisse ».
- *
- * **Le choix : ranger ne touche plus `updatedAt` du tout.** Chaque écriture émise ici renvoie
- * l'horodatage que la ligne portait déjà — Prisma respecte une valeur explicite, même sur un
- * `@updatedAt`. C'est l'esprit des migrations qui réparent des rangs (« `updatedAt` n'est
- * volontairement pas touché : réparer un rang n'est pas une modification du programme par
- * quelqu'un »), et c'est le seul des deux choix qui tient pour un **voisin** : porter l'auteur à sa
- * place ferait écrire le nom de Chloé sur une case qu'elle n'a jamais remplie, et ferait perdre le
- * seul renseignement que la bulle donne — qui a écrit ce qui y est. Ce qui a vraiment changé (le
- * rang) est un geste sur la **séance**, et il se lit dans le journal d'audit, qui le nomme
- * (`planning.partie.ordre`, `planning.partie.nature`). Conséquence assumée : la case qu'on vient de
- * déplacer ne repeint pas sa bulle non plus — c'est sa place qui a bougé, pas son contenu. La partie
- * dont on change la **nature**, elle, est marquée par `changerNaturePartie` lui-même : ce clic-là
- * porte bien sur cette partie-là.
+ * **On n'émet une écriture que pour ce qui change vraiment, et `updatedAt` n'est jamais touché.**
+ * La grille affiche ce champ dans la bulle « Modifié par … le … » de chaque case, avec `modifieParId`
+ * inchangé : renommer une voisine parce qu'on a retiré l'élément d'à côté ferait dire à sa case que
+ * la personne qui l'a remplie la semaine d'avant y est revenue à l'instant. Chaque écriture émise
+ * ici renvoie l'horodatage que la ligne portait déjà (Prisma respecte une valeur explicite, même sur
+ * un `@updatedAt`). Le geste, lui, se lit dans le journal (`planning.partie.*`). L'élément dont on
+ * change la **nature**, lui, est marqué par `changerNaturePartie` : ce clic-là porte sur lui.
  *
  * La fonction rend les écritures à faire : l'appelant les glisse dans **sa** transaction, pour qu'on
  * ne puisse jamais lire une séance à moitié rangée. Le client est un paramètre parce que les deux
- * formes de transaction Prisma en ont besoin : le tableau d'écritures (`db`, pour le retrait et le
- * déplacement) et la fonction qui reçoit le client (`tx`, pour l'ajout, qui doit relire la séance à
- * l'intérieur de la transaction). Elle vit ici, avec les autres invariants du planning, et non dans
- * les actions : `placerAtelier` en a besoin aussi, et l'importer depuis les actions ferait un cycle.
+ * formes de transaction Prisma en ont besoin (le tableau d'écritures avec `db`, la fonction avec
+ * `tx`). Elle vit ici et non dans les actions : `placerAtelier` en a besoin aussi.
  *
  * Le **calcul**, lui, vit dans `src/components/planning/rangement.ts` — module sans Prisma, pour que
- * le script de réparation puisse relever les deux invariants sans ouvrir de base. Ici, il ne reste
- * que le passage à l'écriture.
- *
- * Le tri est fait **ici** sur `ordre`, ce qui laisse l'appelant exprimer un déplacement par un rang
- * **intercalaire** (`vers ± 0,5`) plutôt que par un tableau déjà réordonné — voir `deplacerPartie`.
+ * le script de réparation puisse relever les invariants sans ouvrir de base. Le tri y est fait :
+ * l'appelant exprime un déplacement en changeant simplement le `bloc` d'un élément.
  */
 export function rangerParties<R>(
-  parties: ReadonlyArray<PartieARanger>,
+  parties: ReadonlyArray<Omit<PartieARanger, "nature"> & { nature: string }>,
   client: { sessionPartie: { update: (args: { where: { id: string }; data: RangementPartie["data"] }) => R } },
 ): R[] {
-  return rangementsParties(parties).map((r) => client.sessionPartie.update({ where: { id: r.id }, data: r.data }));
+  return rangementsParties(parties.map((p) => ({ ...p, nature: natureLue(p.nature) }))).map((r) =>
+    client.sessionPartie.update({ where: { id: r.id }, data: r.data }),
+  );
 }
+
+/** Ce qu'il faut lire d'un élément pour le ranger — la sélection commune de toutes les écritures. */
+export const SELECTION_RANGEMENT = { id: true, ordre: true, bloc: true, nature: true, libelle: true, updatedAt: true } as const;
 
 /**
- * **Les parties d'une séance qui vient de naître** : le modèle du club (`PARTIES_MODELE`), rangé.
- *
- * Une séance naissait sans aucune ligne, et les quatre cases de la grille étaient dessinées par
- * l'écran. Maintenant que les parties sont des données, une séance vide serait une séance **sans
- * rien à remplir** : le modèle est donc posé en base à la création, comme la migration l'a fait
- * pour les séances qui existaient déjà.
+ * **Les éléments d'une séance qui vient de naître** : le modèle du club (`PARTIES_MODELE` — une
+ * seule partie, un cours, nommé « Cours » sans préfixe), avec leur rang et leur nom déjà justes, pour que `rangerParties`
+ * n'ait rien à réécrire dessus.
  */
-export function partiesInitiales(): Array<{ libelle: string; ordre: number; estOption: boolean }> {
-  return PARTIES_MODELE.map((p, ordre) => ({ libelle: p.libelle, ordre, estOption: p.estOption }));
+export function partiesInitiales(): Array<{ libelle: string; ordre: number; bloc: number; nature: NatureElement }> {
+  const places = placesDansPartie(PARTIES_MODELE);
+  const nbParties = new Set(PARTIES_MODELE.map((p) => p.bloc)).size;
+  return PARTIES_MODELE.map((p, ordre) => ({
+    libelle: libelleElement(p.bloc, p.nature, places[ordre].rang, places[ordre].nombre, nbParties),
+    ordre,
+    bloc: p.bloc,
+    nature: p.nature,
+  }));
 }
 
-/** Ce qu'il faut savoir d'une partie pour décider si un atelier peut s'y poser. */
+/** Ce qu'il faut savoir d'un élément pour décider si un atelier peut s'y poser. */
 export type PartiePlacable = {
   id: string;
   ordre: number;
-  estOption: boolean;
+  bloc?: number;
+  nature: string;
   instructeurId: string | null;
   instructeurSecondId?: string | null;
   theme: string;
@@ -666,14 +688,13 @@ export type PartiePlacable = {
 };
 
 /**
- * **Une partie où un atelier peut se poser sans rien effacer** : aucun atelier, et aucun des cinq
+ * **Un élément où un atelier peut se poser sans rien effacer** : aucun atelier, et aucun des cinq
  * réglages renseignés.
  *
  * C'est `caseVide` vue depuis la base — les mêmes champs, sous leur nom de colonne —, et c'est la
- * seule question que doivent poser les **deux** portes qui placent un atelier : le choix
- * automatique de la première option libre (`partieLibrePourAtelier`, ci-dessous) et la case
- * désignée à la main depuis la grille (`programmerAtelierDansCase`). La seconde ne la posait pas,
- * et posait donc un atelier par-dessus le travail de quelqu'un.
+ * seule question que doivent poser les **deux** portes qui placent un atelier : le choix automatique
+ * (`partieLibrePourAtelier`, ci-dessous) et la case désignée à la main depuis la grille
+ * (`programmerAtelierDansCase`).
  */
 export function partieLibre(p: PartiePlacable): boolean {
   return (
@@ -683,90 +704,85 @@ export function partieLibre(p: PartiePlacable): boolean {
 }
 
 /**
- * **La première option libre** d'une séance, ou `null` si aucune ne l'est.
- *
- * L'ancienne règle retombait sur la 2nde partie quand les deux options étaient prises : elle n'a
- * plus de sens — « la 2nde partie » n'existe plus comme repère, et poser un atelier dans le cours
- * principal était de toute façon un choix que personne n'avait fait. Quand cette fonction rend
- * `null`, `placerAtelier` **crée une option de plus à la fin** : une séance a désormais la place.
+ * **Où poser un atelier sans rien effacer**, ou `null` si nulle part :
+ * 1. un élément **Atelier vide** — celui qu'un atelier retiré a laissé, prévu pour en recevoir un ;
+ * 2. sinon une **option** libre — ce qui se tient en parallèle d'un cours, comme un atelier.
+ * Dans chaque groupe, le premier dans l'ordre de lecture. Jamais un cours ni un échauffement : poser
+ * un atelier à la place du cours principal serait un choix que personne n'a fait. Quand cette
+ * fonction rend `null`, `placerAtelier` **crée un élément Atelier** dans la dernière partie.
  */
 export function partieLibrePourAtelier(parties: readonly PartiePlacable[]): string | null {
-  const libre =
-    [...parties]
-      .filter((p) => p.estOption)
-      .sort((a, b) => a.ordre - b.ordre)
-      .find(partieLibre) ?? null;
-  return libre?.id ?? null;
+  const libres = [...parties].sort((a, b) => a.ordre - b.ordre).filter(partieLibre);
+  return (libres.find((p) => p.nature === "ATELIER") ?? libres.find((p) => p.nature === "OPTION"))?.id ?? null;
 }
 
 /**
- * Place un atelier planifié dans le planning de sa séance (option libre, animateur = proposeur,
- * thème = titre). Rend la partie utilisée.
+ * Place un atelier planifié dans le planning de sa séance (instructeur = animateur choisi dans la
+ * proposition, à défaut le proposeur ; second instructeur = second animateur ; thème = titre).
+ * Rend l'élément utilisé, qui passe en nature **ATELIER** (il était peut-être une option libre, ou
+ * l'élément désigné à la main depuis la grille).
  *
- * **Plus jamais `null` faute de place** : quand aucune option n'est libre, on en ajoute une à la fin
- * de la séance. Un atelier validé par l'équipe doit se poser quelque part — le rendre invisible
- * parce que quatre cases étaient prises était un refus silencieux d'une décision déjà prise.
- * (`null` ne subsiste que pour une partie explicitement demandée qui n'existe plus.)
+ * **Plus jamais `null` faute de place** : quand aucun élément n'est libre, un élément Atelier naît
+ * dans la **dernière** partie de la séance (la partie 1 d'une séance qui n'en a aucune). Un atelier
+ * validé par l'équipe doit se poser quelque part — le rendre invisible faute de case libre serait un
+ * refus silencieux d'une décision déjà prise. (`null` ne subsiste que pour un élément explicitement
+ * demandé qui n'existe plus.)
+ *
+ * Pas de plafond ici, à la différence de `ajouterPartie` : cette création n'est pas une boucle
+ * ouverte sur le réseau — il faut une décision de modération pour chaque atelier.
  */
 export async function placerAtelier(atelierId: string, sessionId: string, acteurId: string, partieId?: string): Promise<{ id: string; libelle: string } | null> {
-  const atelier = await db.atelier.findUniqueOrThrow({ where: { id: atelierId }, select: { titre: true, proposeParId: true } });
+  const atelier = await db.atelier.findUniqueOrThrow({ where: { id: atelierId }, select: { titre: true, proposeParId: true, animateurId: true, animateurSecondId: true } });
   const existantes = await db.sessionPartie.findMany({
     where: { sessionId },
-    select: { id: true, ordre: true, estOption: true, instructeurId: true, instructeurSecondId: true, theme: true, description: true, niveau: true, atelierId: true },
+    select: { id: true, ordre: true, bloc: true, nature: true, instructeurId: true, instructeurSecondId: true, theme: true, description: true, niveau: true, atelierId: true },
   });
-  let cible = partieId ?? partieLibrePourAtelier(existantes);
   if (partieId && !existantes.some((p) => p.id === partieId)) return null;
-  if (!cible) {
-    /*
-     * **L'option de secours naît en queue d'une séance dont les rangs sont sains**, dans une seule
-     * transaction. `ordre = existantes.length` était juste tant que les rangs étaient contigus — et
-     * ils ne le sont pas toujours : une séance sortie de la migration pouvait porter 0, 2, 2, et la
-     * nouvelle ligne serait venue s'asseoir sur un rang déjà pris. On renumérote donc l'existant en
-     * même temps qu'on crée, et la relecture se fait **dans** la transaction : deux ateliers
-     * programmés au même instant sur la même séance liraient sinon la même longueur.
-     *
-     * Pas de plafond ici, à la différence de `ajouterPartie` : un atelier validé par l'équipe doit
-     * se poser quelque part, et cette création n'est pas une boucle ouverte sur le réseau — il faut
-     * une décision de modération pour chaque atelier.
-     */
-    cible = await db.$transaction(async (tx) => {
-      const parties = await tx.sessionPartie.findMany({ where: { sessionId }, select: { id: true, ordre: true, estOption: true, libelle: true, updatedAt: true } });
+  const choisie = partieId ?? partieLibrePourAtelier(existantes);
+  /*
+   * **Une seule transaction, séance relue dedans** : créer l'élément au besoin, vider l'ancienne case
+   * de l'atelier, remplir la nouvelle, puis ranger — la nature de la case change (option → atelier),
+   * donc son nom et sa place aussi. Deux ateliers programmés au même instant sur la même séance
+   * liraient sinon la même dernière partie.
+   */
+  const cible = await db.$transaction(async (tx) => {
+    let id = choisie;
+    if (!id) {
+      const parties = await tx.sessionPartie.findMany({ where: { sessionId }, select: { bloc: true, ordre: true } });
+      const derniere = parties.reduce((m, p) => Math.max(m, p.bloc), 0) || 1;
       const creee = await tx.sessionPartie.create({
-        data: {
-          sessionId,
-          // Le nom que la ligne portera de toute façon après rangement (« Option 3 »…) : on le pose
-          // à la création pour que `rangerParties` n'ait rien à réécrire dessus.
-          libelle: prochainLibellePartie(parties, true),
-          ordre: parties.length,
-          estOption: true,
-          modifieParId: acteurId,
-        },
+        // Libellé provisoire : `rangerParties`, juste en dessous, pose le vrai.
+        data: { sessionId, libelle: "", ordre: parties.length, bloc: derniere, nature: "ATELIER", modifieParId: acteurId },
         select: { id: true },
       });
-      for (const ecriture of rangerParties(parties, tx)) await ecriture;
-      return creee.id;
-    });
-  }
-  await db.$transaction([
-    // L'atelier ne peut être que dans une seule case
-    db.sessionPartie.updateMany({ where: { atelierId }, data: { atelierId: null } }),
-    db.sessionPartie.update({
-      where: { id: cible },
+      id = creee.id;
+    }
+    // L'atelier ne peut être que dans une seule case ; l'ancienne reste un élément Atelier vide.
+    await tx.sessionPartie.updateMany({ where: { atelierId, id: { not: id } }, data: { atelierId: null } });
+    await tx.sessionPartie.update({
+      where: { id },
       // Le niveau repart à « indifférent » comme le reste : placer un atelier **remplace** le contenu
       // de la case, et garder le niveau du cours d'avant ferait porter à l'atelier une annonce que
-      // personne n'a faite pour lui. Le second instructeur et la description partent pour la même
-      // raison — une phrase qui décrivait le cours d'avant mentirait sur l'atelier qui prend sa place.
+      // personne n'a faite pour lui. La description part pour la même raison — une phrase qui
+      // décrivait le cours d'avant mentirait sur l'atelier qui prend sa place. Instructeur et second
+      // sont ceux de la proposition (« Qui anime ? », « Second animateur ») ; si le premier a été
+      // effacé depuis, le second mène seul (comme le dit `libelleAnimation`), et sans aucun des deux
+      // la case retombe sur la personne qui a proposé.
       data: {
         atelierId,
-        instructeurId: atelier.proposeParId,
-        instructeurSecondId: null,
+        nature: "ATELIER",
+        instructeurId: atelier.animateurId ?? atelier.animateurSecondId ?? atelier.proposeParId,
+        instructeurSecondId: atelier.animateurId ? atelier.animateurSecondId : null,
         theme: atelier.titre,
         description: "",
         niveau: NIVEAU_DEFAUT,
         modifieParId: acteurId,
       },
-    }),
-  ]);
+    });
+    const parties = await tx.sessionPartie.findMany({ where: { sessionId }, select: SELECTION_RANGEMENT });
+    for (const ecriture of rangerParties(parties, tx)) await ecriture;
+    return id;
+  });
   await synchroniserSeance(sessionId);
   const posee = await db.sessionPartie.findUnique({ where: { id: cible }, select: { id: true, libelle: true } });
   return posee;
@@ -775,10 +791,10 @@ export async function placerAtelier(atelierId: string, sessionId: string, acteur
 /**
  * Retire un atelier du planning (déprogrammation, refus) : **la case est vidée, pas supprimée**.
  *
- * Elle était effacée — et la partie disparaissait de la séance avec elle. Depuis que les parties
- * sont des données que l'équipe range elle-même, un refus d'atelier n'a aucune raison de défaire le
- * programme : la ligne reste, vide, prête à recevoir autre chose. Retirer une partie est un autre
- * geste, qui se demande (`retirerPartie`).
+ * Un refus d'atelier n'a aucune raison de défaire le programme : l'élément reste, **de nature
+ * Atelier et vide**, prêt à recevoir le prochain atelier placé (`partieLibrePourAtelier` le choisit
+ * en premier). Sa nature ne change pas, donc ni son nom ni sa place : rien à ranger. Retirer
+ * l'élément est un autre geste, qui se demande (`retirerPartie`).
  */
 export async function retirerAtelier(atelierId: string): Promise<void> {
   const cases = await db.sessionPartie.findMany({ where: { atelierId }, select: { id: true, sessionId: true } });

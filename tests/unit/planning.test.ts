@@ -13,16 +13,23 @@ describe("nettoyerThemes", () => {
 
 describe("partieLibrePourAtelier", () => {
   const vide = { instructeurId: null, instructeurSecondId: null, theme: "", atelierId: null };
-  const option = (id: string, ordre: number, reste: Partial<PartiePlacable> = {}) => ({ id, ordre, estOption: true, ...vide, ...reste });
+  const element = (id: string, ordre: number, nature: string, reste: Partial<PartiePlacable> = {}) => ({ id, ordre, nature, ...vide, ...reste });
+  const option = (id: string, ordre: number, reste: Partial<PartiePlacable> = {}) => element(id, ordre, "OPTION", reste);
 
   it("prend la première option dans l'ordre de la séance", () => {
     expect(partieLibrePourAtelier([option("o2", 3), option("o1", 2)])).toBe("o1");
   });
 
-  it("ignore les parties qui ne sont pas des options : un atelier ne prend pas le cours principal", () => {
-    // L'ancienne règle retombait sur la Cours 2 quand les options étaient prises. Plus
-    // maintenant : `placerAtelier` crée une option de plus, personne ne perd son cours.
-    expect(partieLibrePourAtelier([{ id: "p1", ordre: 0, estOption: false, ...vide }])).toBeNull();
+  it("préfère un élément **Atelier vide** à une option libre, même placé après", () => {
+    // L'élément qu'un atelier retiré a laissé est fait pour en recevoir un autre.
+    expect(partieLibrePourAtelier([option("o1", 1), element("a1", 4, "ATELIER")])).toBe("a1");
+    // Occupé, il est sauté comme le reste.
+    expect(partieLibrePourAtelier([option("o1", 1), element("a1", 4, "ATELIER", { theme: "Dague" })])).toBe("o1");
+  });
+
+  it("ignore les cours et les échauffements : un atelier ne prend pas le cours principal", () => {
+    // `placerAtelier` crée un élément Atelier de plus : personne ne perd son cours.
+    expect(partieLibrePourAtelier([element("p1", 0, "COURS"), element("e1", 1, "ECHAUFFEMENT")])).toBeNull();
   });
 
   it("saute les options occupées (instructeur, second instructeur, thème, description, atelier ou niveau annoncé)", () => {
@@ -43,32 +50,28 @@ describe("partieLibrePourAtelier", () => {
 
 describe("partiesInitiales", () => {
   /**
-   * **Deux cours, et aucune option**. Le modèle en portait quatre, héritage des quatre cases
-   * figées de la grille d' : **toute** séance du trimestre naissait avec deux options vides que
-   * personne ne remplissait, et une case vide ne dit rien d'autre que « il manque quelque chose ».
-   * Une option s'ajoute maintenant quand il y en a une.
+   * **Une seule partie, un seul cours** (« par défaut 1 seule partie par
+   * séance, qui n'est pas notifiée partie 1, uniquement à partir de 2 »). Cours, échauffements,
+   * options, ateliers et parties s'ajoutent quand il y en a : une case vide ne dit rien d'autre que
+   * « il manque quelque chose ».
    */
-  it("donne les deux cours du modèle, rangés et numérotés à partir de 0", () => {
-    expect(partiesInitiales()).toEqual([
-      { libelle: "Cours 1", ordre: 0, estOption: false },
-      { libelle: "Cours 2", ordre: 1, estOption: false },
-    ]);
+  it("donne la partie unique du modèle, un cours, nommé « Cours » sans préfixe", () => {
+    expect(partiesInitiales()).toEqual([{ libelle: "Cours", ordre: 0, bloc: 1, nature: "COURS" }]);
   });
 });
 
 /**
  * **La même question, posée sur une ligne de base.** `partieLibre` est ce que les **deux** portes
- * qui placent un atelier doivent demander : le choix automatique de la première option libre, et la
- * case désignée à la main depuis la grille — celle-ci ne le demandait pas, et écrasait cinq champs
- * sans confirmation.
+ * qui placent un atelier doivent demander : le choix automatique, et la case désignée à la main
+ * depuis la grille — celle-ci ne le demandait pas, et écrasait cinq champs sans confirmation.
  */
 describe("partieLibre", () => {
-  const libre: PartiePlacable = { id: "p1", ordre: 0, estOption: true, instructeurId: null, instructeurSecondId: null, theme: "", description: "", niveau: "INDIFFERENT", atelierId: null };
+  const libre: PartiePlacable = { id: "p1", ordre: 0, nature: "OPTION", instructeurId: null, instructeurSecondId: null, theme: "", description: "", niveau: "INDIFFERENT", atelierId: null };
 
-  it("une partie sans rien est libre — la nature n'y change rien", () => {
+  it("un élément sans rien est libre — la nature n'y change rien", () => {
     expect(partieLibre(libre)).toBe(true);
     // Un cours vide est libre aussi : c'est l'équipe qui désigne la case depuis la grille.
-    expect(partieLibre({ ...libre, estOption: false })).toBe(true);
+    expect(partieLibre({ ...libre, nature: "COURS" })).toBe(true);
   });
 
   it("chacun des cinq réglages la réserve, et un atelier déjà posé aussi", () => {
@@ -113,8 +116,9 @@ describe("programmeDepuisParties", () => {
   const ligne = (id: string, ordre: number, reste: Record<string, unknown> = {}) => ({
     id,
     ordre,
-    libelle: `Partie ${ordre}`,
-    estOption: false,
+    libelle: `Partie ${ordre + 1} · Cours`,
+    bloc: ordre + 1,
+    nature: "COURS",
     theme: "",
     instructeurId: null,
     instructeur: null,
@@ -140,9 +144,24 @@ describe("programmeDepuisParties", () => {
     expect(prog[0].instructeurSecond).toBe("Charlie M.");
   });
 
-  it("garde le libellé et le drapeau option tels quels", () => {
-    const prog = programmeDepuisParties([ligne("c1", 2, { libelle: "Atelier dague", estOption: true, theme: "Dague" })]);
-    expect(prog[0]).toMatchObject({ libelle: "Atelier dague", estOption: true, ordre: 2 });
+  it("garde le libellé, la partie et la nature tels quels", () => {
+    const prog = programmeDepuisParties([ligne("c1", 2, { libelle: "Partie 2 · Atelier", bloc: 2, nature: "ATELIER", theme: "Dague" })]);
+    expect(prog[0]).toMatchObject({ libelle: "Partie 2 · Atelier", bloc: 2, nature: "ATELIER", ordre: 2 });
+  });
+
+  it("compte rang et nombre sur la séance **entière**, avant d'écarter les muets", () => {
+    // Deux cours dans la partie 1, le premier muet : le second reste « Cours 2 sur 2 », pas « Cours ».
+    const prog = programmeDepuisParties([
+      ligne("c1", 0, { bloc: 1, libelle: "Partie 1 · Cours 1" }),
+      ligne("c2", 1, { bloc: 1, libelle: "Partie 1 · Cours 2", theme: "Dague" }),
+    ]);
+    expect(prog).toHaveLength(1);
+    expect(prog[0]).toMatchObject({ id: "c2", rang: 2, nombre: 2 });
+  });
+
+  it("lit une nature inconnue comme un cours, plutôt que de faire tomber l'écran", () => {
+    const prog = programmeDepuisParties([ligne("c1", 0, { nature: "SPARRING", theme: "Libre" })]);
+    expect(prog[0].nature).toBe("COURS");
   });
 });
 

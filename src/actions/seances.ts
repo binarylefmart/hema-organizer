@@ -143,10 +143,11 @@ export async function creerSeance(_prev: FormState, fd: FormData): Promise<FormS
   // dessinées par la grille, faute de lignes en base. Maintenant que les parties sont des données,
   // une séance sans ligne serait une séance sans rien à remplir.
   //
-  // **Le modèle n'en porte plus que deux — deux cours** : il décrit ce qu'une séance a toujours,
-  // pas ce qu'elle pourrait avoir. Les deux options qu'il posait d'office naissaient vides sur
-  // chaque séance du trimestre, et une case vide ne dit rien d'autre que « il manque quelque
-  // chose ». On les ajoute maintenant quand il y en a.
+  // **Le modèle : une seule partie, un cours** (« par défaut 1 seule partie par
+  // séance, qui n'est pas notifiée partie 1, uniquement à partir de 2 ») — ce qu'une séance a
+  // toujours, pas ce qu'elle pourrait avoir. Cours, échauffements, options, ateliers — autant qu'on
+  // veut par partie — et parties s'ajoutent quand il y en a : une case vide ne dit rien d'autre que
+  // « il manque quelque chose ».
   const session = await db.session.create({ data: { ...data, parties: { create: partiesInitiales() } } });
   await audit(user, "seance.creee", session.id, { date: data.date, heureDebut: data.heureDebut });
   rafraichir();

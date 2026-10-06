@@ -1,9 +1,10 @@
 import { libelleDuree } from "@/components/evenements/libelles";
+import { enParallele, type NatureElement, type Niveau } from "./constants";
 import { addDays, formatDateLongue, formatHoraire, todayIso } from "./dates";
 import { separerPictogramme, TITRE_ANNULATION, TITRE_EVENEMENT, TITRE_RECAP } from "./notifications/contenu";
 import { dateRecap } from "./notifications/planification";
 import { CANAUX_PAR_NOTIFICATION, TYPES_NOTIFICATION, type TypeNotification } from "./notifications/preferences";
-import { dateEvenement, horaireEvenement, lienExterneSur, themeAffiche, type CasePartage, type SeancePartagee } from "./partage";
+import { dateEvenement, horaireEvenement, lienExterneSur, themeAffiche, type SeancePartagee } from "./partage";
 import { calculerTaux } from "./presences";
 
 /**
@@ -59,9 +60,15 @@ export type SeancePublique = {
   /** L'alternative seule, pour qui veut la mettre en forme autrement */
   alternative: string;
   /**
-   * Le programme, partie par partie, dans l'ordre de la séance : `libelle` (« Cours 1 », « Option 2 »
-   * — calculé depuis le rang, plus saisi par personne), `ordre`, `estOption`, le titre, le niveau
-   * annoncé et la **description** — **jamais l'animateur**, ni le premier ni le second.
+   * Le programme, élément par élément, dans l'ordre de lecture de la séance (partie, puis nature, puis
+   * rang) : `ordre`, `partie` (le numéro, 1, 2, 3…), `nature` (`ECHAUFFEMENT` | `COURS` | `OPTION` |
+   * `ATELIER`), `libelle` (« Partie 1 · Cours », « Partie 2 · Option 2 » — calculé, jamais saisi), le
+   * titre, le niveau annoncé et la **description** — **jamais l'animateur**, ni le premier ni le second.
+   *
+   * **`estOption` reste publié**, alors que la colonne a disparu de la base : il vaut
+   * `enParallele(nature)` — vrai pour une option ou un atelier, ce qu'il disait déjà. Un site qui le lit
+   * (le plugin `hema-prochains-cours` livré, ou une intégration écrite par le club) continue de marcher
+   * sans retouche ; `partie` et `nature` s'ajoutent, rien ne disparaît.
    *
    * Chaque case portait un **code** de partie (`MOITIE_1`…) pris dans une liste figée ; les séances
    * ayant désormais leurs propres parties, il n'y a plus de code à publier, seulement le libellé
@@ -72,12 +79,27 @@ export type SeancePublique = {
    * club n'a pas coché la case. L'écran où elle se saisit l'annonce (`CaseEditeur`), ce que la
    * règle du dossier exige de tout champ publié.
    */
-  programme: CasePartage[];
+  programme: CasePublique[];
   /** Taux de participation en pourcentage (0 si personne n'a encore répondu) */
   taux: number;
   annulee: boolean;
   /** Motif d'annulation, "" si la séance n'est pas annulée */
   motif: string;
+};
+
+/** Un élément du programme tel que l'API le publie — la liste blanche de `versSeancePublique`. */
+export type CasePublique = {
+  ordre: number;
+  /** Numéro de la partie, contigu à partir de 1 */
+  partie: number;
+  nature: NatureElement;
+  libelle: string;
+  /** Option ou atelier (`enParallele`) — gardé pour les sites qui le lisaient avant `nature` */
+  estOption: boolean;
+  theme: string;
+  description: string;
+  niveau: Niveau;
+  atelier: boolean;
 };
 
 export type ReponseApiPublique = {
@@ -124,8 +146,10 @@ export function versSeancePublique(s: SeancePartagee): SeancePublique {
      */
     programme: s.programme.map((c) => ({
       ordre: c.ordre,
+      partie: c.bloc,
+      nature: c.nature,
       libelle: c.libelle,
-      estOption: c.estOption,
+      estOption: enParallele(c.nature),
       theme: c.theme,
       description: c.description,
       niveau: c.niveau,

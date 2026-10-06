@@ -191,11 +191,11 @@ describe("ce que la sélection annonce est dit, y compris la première fois", ()
   it("les erreurs de l'ajout d'une partie sont annoncées, comme celle d'une ligne", () => {
     const code = source(PARTIES);
     /*
-     * **Deux** messages d'erreur dans le fichier, donc deux régions vivantes : celui de la ligne
-     * d'une partie et celui des deux boutons d'ajout. Il y en avait trois tant que l'ajout passait
-     * par un formulaire — celui-ci a disparu avec le champ du nom, qu'il était seul à porter.
+     * **Trois** messages d'erreur dans le fichier, donc trois régions vivantes : celui de la ligne
+     * d'un élément, celui du menu « Ajouter dans la partie N… » et celui du bouton « Ajouter une
+     * partie » (parties et éléments).
      */
-    expect(code.match(/font-semibold text-rouge empty:hidden" aria-live="polite"/g) ?? []).toHaveLength(2);
+    expect(code.match(/font-semibold text-rouge empty:hidden" aria-live="polite"/g) ?? []).toHaveLength(3);
     // L'ancien rendu conditionnel, qui créait le paragraphe en même temps que son texte.
     expect(code).not.toMatch(/\{erreur && <p/);
   });
@@ -229,13 +229,14 @@ describe("le focus ne tombe pas dans le vide quand une barre ou un formulaire di
    *
    * On garde le contrôle, à l'envers : ni ancre, ni effet, ni formulaire à refermer.
    */
-  it("les deux boutons d'ajout d'une partie restent en place : aucun focus à rendre", () => {
+  it("le menu et le bouton d'ajout restent en place : aucun focus à rendre", () => {
     const code = source(PARTIES);
     expect(code).not.toMatch(/boutonAjout/);
     expect(code).not.toMatch(/rendreLeFocus/);
-    // Un clic déclenche l'action, il n'ouvre rien — donc rien ne se démonte sous le doigt. La
-    // nature voyage avec l'appel : deux boutons, un par nature.
-    expect(code).toMatch(/onClick=\{\(\) => start\(\(\) => ajouterPartie\(\{ sessionId, estOption \}\)\)\}/);
+    // Un choix ou un clic déclenche l'action, il n'ouvre rien — donc rien ne se démonte sous le
+    // doigt. La nature et la partie voyagent avec l'appel.
+    expect(code).toMatch(/onClick=\{\(\) => start\(\(\) => ajouterPartie\(\{ sessionId, bloc, nature: "COURS" \}\)\)\}/);
+    expect(code).toContain("start(() => ajouterPartie({ sessionId, bloc, ...ajout }))");
   });
 });
 

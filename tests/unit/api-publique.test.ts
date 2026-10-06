@@ -83,8 +83,10 @@ const SEANCE: SeancePartagee = {
   programme: [
     {
       ordre: 0,
-      libelle: "Cours 1",
-      estOption: false,
+      bloc: 1,
+      nature: "COURS",
+      nom: "Cours",
+      libelle: "Partie 1 · Cours",
       theme: "Messer",
       description: "Garde haute, puis trois passes lentes en binôme.",
       niveau: "INDIFFERENT",
@@ -154,7 +156,32 @@ describe("séance publiée", () => {
     const avecId = { ...SEANCE, programme: [{ ...SEANCE.programme[0], id: "cm2xk9f0000abcde" }] } as unknown as SeancePartagee;
     const publiee = versSeancePublique(avecId);
     expect(JSON.stringify(publiee)).not.toContain("cm2xk9f0000abcde");
-    expect(Object.keys(publiee.programme[0])).toEqual(["ordre", "libelle", "estOption", "theme", "description", "niveau", "atelier"]);
+    expect(Object.keys(publiee.programme[0])).toEqual(["ordre", "partie", "nature", "libelle", "estOption", "theme", "description", "niveau", "atelier"]);
+  });
+
+  /**
+   * **Parties et éléments** : chaque ligne gagne `partie` (le numéro) et `nature`, et
+   * **garde `estOption`** — la colonne a disparu de la base, mais un site qui la lisait (le plugin
+   * `hema-prochains-cours`, ou une intégration du club) ne doit pas casser : elle vaut
+   * `enParallele(nature)`, vrai pour une option ou un atelier.
+   */
+  it("publie la partie et la nature de chaque élément, et garde estOption pour les sites qui le lisent", () => {
+    const programme = (["ECHAUFFEMENT", "COURS", "OPTION", "ATELIER"] as const).map((nature, ordre) => ({
+      ...SEANCE.programme[0],
+      ordre,
+      bloc: 2,
+      nature,
+    }));
+    const publiee = versSeancePublique({ ...SEANCE, programme });
+    expect(publiee.programme.map((c) => [c.partie, c.nature, c.estOption])).toEqual([
+      [2, "ECHAUFFEMENT", false],
+      [2, "COURS", false],
+      [2, "OPTION", true],
+      [2, "ATELIER", true],
+    ]);
+    // Le nom court (« Cours ») est une affaire d'affichage des pages de partage : la liste blanche ne le recopie pas.
+    expect(Object.keys(publiee.programme[0])).not.toContain("nom");
+    expect(Object.keys(publiee.programme[0])).not.toContain("bloc");
   });
 
   /**
@@ -199,7 +226,19 @@ describe("séance publiée", () => {
       adresse: "Salle des fêtes, 00000 Villebourg",
       theme: "Messer (ou Dague)",
       alternative: "Dague",
-      programme: [...SEANCE.programme],
+      programme: [
+        {
+          ordre: 0,
+          partie: 1,
+          nature: "COURS",
+          libelle: "Partie 1 · Cours",
+          estOption: false,
+          theme: "Messer",
+          description: "Garde haute, puis trois passes lentes en binôme.",
+          niveau: "INDIFFERENT",
+          atelier: false,
+        },
+      ],
       taux: 72,
       annulee: false,
       motif: "",

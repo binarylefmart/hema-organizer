@@ -129,18 +129,51 @@ describe("statut de la séance sur le salon Discord", () => {
 
   it("reprend l'ordre du planning et le titre de l'atelier, cases vides écartées", () => {
     const cases = programmeSeance([
-      { libelle: "Option 1", ordre: 2, theme: "ignoré", atelier: { titre: "Nœuds de corde" } },
-      { libelle: "Cours 1", ordre: 0, theme: "Messer", atelier: null },
-      { libelle: "Cours 2", ordre: 1, theme: "   ", atelier: null },
+      { ordre: 2, bloc: 1, nature: "ATELIER", theme: "ignoré", atelier: { titre: "Nœuds de corde" } },
+      { ordre: 0, bloc: 1, nature: "COURS", theme: "Messer", atelier: null },
+      { ordre: 1, bloc: 1, nature: "COURS", theme: "   ", atelier: null },
     ]);
-    expect(lignesProgramme(cases)).toEqual(["• Cours 1 — Messer", "• Option 1 — Nœuds de corde (atelier)"]);
+    // « Cours 1 » et non « Cours » : la partie porte deux cours, le second vide — le nombre se compte avant le filtre.
+    // Une seule partie annoncée : pas de « Partie 1 — » (avenant, `partiesNommees`).
+    expect(lignesProgramme(cases)).toEqual(["• Cours 1 : Messer", "• Atelier : Nœuds de corde"]);
+  });
+
+  it("tait la partie quand plusieurs existent mais qu'une seule a quelque chose à annoncer", () => {
+    const cases = programmeSeance([
+      { ordre: 0, bloc: 1, nature: "COURS", theme: "", atelier: null },
+      { ordre: 1, bloc: 2, nature: "ECHAUFFEMENT", theme: "Mobilité", atelier: null },
+      { ordre: 2, bloc: 2, nature: "COURS", theme: "Messer", atelier: null },
+      { ordre: 3, bloc: 3, nature: "COURS", theme: "  ", atelier: null },
+    ]);
+    expect(cases.map((c) => c.bloc)).toEqual([2, 2]);
+    expect(lignesProgramme(cases)).toEqual(["• Échauffement : Mobilité", "• Cours : Messer"]);
+  });
+
+  /**
+   * **Partie par partie** : « Partie 1 — Échauffement : … », dans l'ordre de lecture —
+   * la partie, puis la nature (l'échauffement d'abord), puis le rang —, quel que soit l'ordre d'arrivée.
+   */
+  it("écrit la partie puis l'élément, dans l'ordre de lecture", () => {
+    const cases = programmeSeance([
+      { ordre: 2, bloc: 2, nature: "OPTION", theme: "Lutte", niveau: "AVANCE", atelier: null },
+      { ordre: 1, bloc: 1, nature: "COURS", theme: "Messer", atelier: null },
+      { ordre: 0, bloc: 1, nature: "ECHAUFFEMENT", theme: "Mobilité", atelier: null },
+      { ordre: 3, bloc: 2, nature: "OPTION", theme: "Dague", atelier: { titre: "Dague" } },
+    ]);
+    expect(lignesProgramme(cases)).toEqual([
+      "• Partie 1 — Échauffement : Mobilité",
+      "• Partie 1 — Cours : Messer",
+      "• Partie 2 — Option 1 : Lutte (Avancé)",
+      // Un atelier resté dans un élément d'une autre nature le dit encore entre parenthèses.
+      "• Partie 2 — Option 2 : Dague (atelier)",
+    ]);
   });
 
   it("met la répartition, l'effectif et le programme dans les champs de l'embed, sans toucher au texte commun", () => {
-    const programme = programmeSeance([{ libelle: "Cours 1", ordre: 0, theme: "Messer", atelier: null }]);
+    const programme = programmeSeance([{ ordre: 0, bloc: 1, nature: "COURS", theme: "Messer", atelier: null }]);
     const embed = embedSeance(SEANCE, REPARTITION, NOM_CLUB, PART, { programme });
     expect(embed.fields?.map((c) => c.name)).toEqual(["Réponses", "Effectif attendu", "📖 Programme"]);
-    expect(embed.fields?.[2].value).toBe("• Cours 1 — Messer");
+    expect(embed.fields?.[2].value).toBe("• Cours : Messer");
     // Le contenu commun, lui, est mot pour mot celui des emails et des pages de partage.
     expect(embed.description?.startsWith(lignesSeance(SEANCE, REPARTITION).join("\n"))).toBe(true);
     expect(JSON.stringify(embed)).not.toContain("Chloé");

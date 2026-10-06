@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { enregistrerCase, programmerAtelierDansCase } from "@/actions/planning";
-import { libelleChoixNiveau, LIBELLE_VIDE, NIVEAU_DEFAUT, NIVEAUX, PARTIE_DESCRIPTION_MAX, THEME_MAX, type Niveau } from "@/lib/constants";
+import { libelleChoixNiveau, LIBELLE_VIDE, NIVEAU_DEFAUT, NIVEAUX, NOMS_NATURE, PARTIE_DESCRIPTION_MAX, THEME_MAX, type Niveau } from "@/lib/constants";
 import { formatDateHeure } from "@/lib/dates";
 import type { CasePlanning } from "@/lib/planning";
 import { Icone } from "@/components/ui/Icone";
@@ -12,7 +12,7 @@ import { ListeDeroulante } from "@/components/ui/ListeDeroulante";
 import type { EntreeListe } from "@/components/ui/liste-deroulante";
 import { useListesCompletes, useOptionsCase } from "./ContexteOptions";
 import { useBrouillon } from "./ContexteBrouillon";
-import { abreger, AUTRE, champsLus, personnesRendues, reglagesVides, themesRendus } from "./options";
+import { AUTRE, champsLus, personnesRendues, reglagesVides, themesDeNature, themesRendus } from "./options";
 import { auRepos, fileInitiale, pairesEgales, poser, retour, suivreServeur, type Envoi, type FileEnvoi, type Paire } from "./file-envoi";
 import { brancherGardeFermeture, marquerEnAttente } from "./garde-fermeture";
 import { paireImposee } from "./brouillon";
@@ -64,7 +64,7 @@ const paireServeur = (v: CasePlanning): Paire => ({
 
 /**
  * Une case du planning : instructeur, second instructeur, thème et niveau en listes déroulantes, plus
- * une **description** libre et facultative sous la rangée ; enregistrement immédiat. Une case occupée par un atelier programmé est affichée en lecture seule.
+ * une **description** libre et facultative sous la rangée ; enregistrement immédiat. Une case occupée par un atelier programmé se lit comme les autres, sans surlignage : son titre tient lieu de thème (il ne se règle pas), le reste — instructeurs, niveau, description — se règle.
  * `compact` = affichage resserré (fiche de séance) ; sinon la densité ordinaire du planning.
  *
  * **Elle ne connaît que sa partie.** Depuis que chaque séance porte ses propres parties, la case est
@@ -110,6 +110,12 @@ export function CaseEditeur({
   discret?: boolean;
 }) {
   const options = useOptionsCase();
+  /*
+   * **La liste de thèmes de cette case** : celle des échauffements pour un échauffement, celle des
+   * cours et options sinon (avenant 4). Recalculée à chaque rendu : un élément dont
+   * la nature change change de liste avec elle.
+   */
+  const themesListe = themesDeNature(options, valeur.nature);
   // Monté par la grille en mode modification : la case accumule au lieu d'envoyer (voir `ContexteBrouillon`).
   const brouillon = useBrouillon();
   // Listes complétées en arrière-plan une fois la page prête (voir ContexteOptions)
@@ -131,7 +137,7 @@ export function CaseEditeur({
    */
   const [descriptionEnSaisie, setDescriptionEnSaisie] = useState(false);
   const [niveau, setNiveau] = useState<Niveau>(depart.niveau);
-  const [autre, setAutre] = useState(!depart.theme ? false : !options.themes.includes(depart.theme));
+  const [autre, setAutre] = useState(!depart.theme ? false : !themesListe.includes(depart.theme));
   /**
    * « Autre… » vient-il d'être choisi **ici** ? La saisie libre ne prend le curseur que dans ce
    * cas-là. Un thème libre déjà enregistré (les ateliers du planning en portent) ouvre la même
@@ -180,10 +186,9 @@ export function CaseEditeur({
   }, [cle]);
   const texte = compact ? "text-sm" : "text-base";
   const hauteur = compact ? "min-h-9" : "min-h-12";
-  // Emplacement d'en-tête (« Cours » / « Atelier », vide sinon), puis le contenu : toutes les parties
+  // Emplacement d'en-tête (la nature de l'élément / « Atelier », vide sinon), puis le contenu : toutes les parties
   // d'une même carte partagent la même ossature, elles se lisent donc en colonne sans décalage.
   const hauteurEntete = compact ? "min-h-5 text-xs" : "min-h-6 text-sm";
-  const hauteurContenu = options.modifiable ? hauteur : compact ? "min-h-6" : "min-h-7";
   const boite = `flex flex-col gap-1 rounded-lg px-1.5 ${compact ? "py-1" : "py-1.5"}`;
   // Une option est volontairement plus discrète que le cours : bordure pointillée, pas d'ombre
   const classeChamp = `${hauteur} w-full rounded-lg border px-2 ${texte} text-texte focus:border-primaire ${
@@ -201,8 +206,12 @@ export function CaseEditeur({
    * précisent ce qu'on travaille, et sans thème ils ne précisent rien. Même retrait visuel que le
    * second (`classeChampSecond`). Une case qui porte déjà l'un des deux sans thème les montre
    * quand même : une valeur cachée qu'on ne pourrait plus relire serait pire qu'un champ en trop.
+   *
+   * **Un atelier a toujours son thème** : c'est son titre (le serveur le garde, quoi qu'on envoie).
+   * Ses niveau et description sont donc toujours réglables (avenant 2).
    */
-  const detailsVisibles = theme.trim() !== "" || description.trim() !== "" || niveau !== NIVEAU_DEFAUT;
+  const estAtelier = valeur.atelier !== null;
+  const detailsVisibles = estAtelier || theme.trim() !== "" || description.trim() !== "" || niveau !== NIVEAU_DEFAUT;
 
   /**
    * La case suit le serveur quand il dit autre chose qu'elle — atelier programmé entre-temps,
@@ -222,7 +231,7 @@ export function CaseEditeur({
       // pendant qu'on écrit dans celle-ci (même règle que les quatre autres champs).
       setDescription(duServeur.description);
       setNiveau(duServeur.niveau);
-      setAutre(!duServeur.theme ? false : !options.themes.includes(duServeur.theme));
+      setAutre(!duServeur.theme ? false : !themesListe.includes(duServeur.theme));
     }
   }
 
@@ -245,7 +254,7 @@ export function CaseEditeur({
     setTheme(aReprendre.theme);
     setDescription(aReprendre.description);
     setNiveau(aReprendre.niveau);
-    setAutre(!aReprendre.theme ? false : !options.themes.includes(aReprendre.theme));
+    setAutre(!aReprendre.theme ? false : !themesListe.includes(aReprendre.theme));
     setAutreDemande(false);
   }
 
@@ -373,33 +382,6 @@ export function CaseEditeur({
     sauver({ instructeurId, instructeurSecondId, theme: t, description: d, niveau: n });
   };
 
-  if (valeur.atelier) {
-    return (
-      <div
-        className={`${boite} bg-vert-doux ${texte}`}
-        title={`Atelier « ${valeur.atelier.titre} »${valeur.instructeur ? ` — ${valeur.instructeur}` : ""}${valeur.atelier.materiel ? ` · équipement : ${valeur.atelier.materiel}` : ""}`}
-      >
-        <span className={`flex min-w-0 items-center gap-1 font-semibold text-vert ${hauteurEntete}`}>
-          <Icone nom="outil" taille={compact ? 14 : 16} />
-          Atelier
-        </span>
-        {/* Hors affichage resserré, le titre se met à la ligne : un atelier ne doit jamais être lu à moitié */}
-        <span className={`flex items-center font-semibold ${hauteurContenu} ${compact ? "truncate" : ""}`}>{valeur.atelier.titre}</span>
-        <span className={`flex min-w-0 flex-wrap items-center gap-1 ${hauteurContenu}`}>
-          {valeur.instructeur && (
-            <>
-              {/* Même règle que les cases ordinaires (`champsLus`) : la valeur porte son intitulé */}
-              <span className="shrink-0 text-[0.85em] text-texte-secondaire">Instructeur</span>
-              {valeur.instructeurId && <PastillePersonne id={valeur.instructeurId} taille={8} />}
-              <span className={compact ? "truncate" : "break-words"}>{compact ? abreger(valeur.instructeur) : valeur.instructeur}</span>
-              {valeur.instructeurSecond && <Second nom={valeur.instructeurSecond} id={valeur.instructeurSecondId} compact={compact} />}
-            </>
-          )}
-        </span>
-      </div>
-    );
-  }
-
   /**
    * **La case telle qu'un membre la lit** : les valeurs renseignées, chacune sous son nom, et rien
    * d'autre.
@@ -416,7 +398,13 @@ export function CaseEditeur({
    * pleine largeur est venue offrir.
    */
   if (!options.modifiable) {
-    const champs = champsLus(valeur);
+    /*
+     * **Un atelier se lit comme les autres éléments** (avenant 4 : « ne mets pas les
+     * ateliers en surlignage ») : sous son étiquette « Atelier » (`couleurNature`, posée par
+     * `ListeParties`), son titre se lit comme un thème ordinaire, puis qui l'encadre, le niveau et
+     * la description. Plus de fond vert ni de gras propre ; l'équipement reste dans l'infobulle.
+     */
+    const champs = champsLus(valeur.atelier ? { ...valeur, theme: valeur.atelier.titre } : valeur);
     // Une case qui n'a plus rien à dire ne rend rien : les parties vides sont déjà écartées en
     // amont (`partiesVisibles`), mais une case peut se vider pendant qu'on la regarde.
     if (champs.length === 0) return null;
@@ -424,7 +412,7 @@ export function CaseEditeur({
     // nomment une en portent une.
     const pastille: Record<string, string | null> = { Instructeur: valeur.instructeurId, "Second instructeur": valeur.instructeurSecondId };
     return (
-      <div className={`${boite} ${texte}`}>
+      <div className={`${boite} ${texte}`} title={valeur.atelier?.materiel ? `Équipement : ${valeur.atelier.materiel}` : undefined}>
         <dl className="flex flex-wrap gap-x-6 gap-y-0.5">
           {champs.map((c) => (
             /* La description prend sa propre ligne (`basis-full`) : c'est une phrase, et la mêler aux
@@ -442,7 +430,7 @@ export function CaseEditeur({
     );
   }
 
-  const themeConnu = options.themes.includes(theme);
+  const themeConnu = themesListe.includes(theme);
   const modif = valeur.modifiePar && valeur.modifieLe ? `Modifié par ${valeur.modifiePar} le ${formatDateHeure(new Date(valeur.modifieLe))}` : undefined;
   // Le premier contact précède l'ouverture du panneau (pointeur) comme la navigation au clavier (focus) :
   // les entrées sont en place avant d'être regardées. L'appui qui ouvre la liste arrive après le
@@ -482,7 +470,7 @@ export function CaseEditeur({
   ];
   const entreesTheme: EntreeListe[] = [
     { valeur: "", libelle: LIBELLE_VIDE },
-    ...themesRendus(options.themes, deployee.themes, theme, autre).map((t) => ({ valeur: t, libelle: t })),
+    ...themesRendus(themesListe, deployee.themes, theme, autre).map((t) => ({ valeur: t, libelle: t })),
     // Un thème libre déjà enregistré : il n'est dans aucune liste commune, il se rend à part
     ...(!autre && theme && !themeConnu ? [{ valeur: theme, libelle: theme }] : []),
     ...(deployee.themes || autre ? [{ valeur: AUTRE, libelle: "Autre…" }] : []),
@@ -518,17 +506,20 @@ export function CaseEditeur({
    */
   const entreesNiveau: EntreeListe[] = (deployee.niveaux ? NIVEAUX : [niveau]).map((n) => ({ valeur: n, libelle: libelleChoixNiveau(n) }));
 
-  // Une case remplie se lit comme un bloc « Cours » (rouille), pendant qu'un atelier se lit en vert : même mise en forme
-  const remplie = !!instructeurId || !!theme;
+  // Une case remplie se lit comme un bloc à l'en-tête de sa nature (« Cours », « Échauffement »…).
+  // Un atelier l'est toujours (son titre tient lieu de thème) : même fond que les autres, sans vert.
+  const remplie = estAtelier || !!instructeurId || !!theme;
   return (
     // `data-enregistrement` ne se voit pas : c'est la prise des tests e2e, qui ont besoin de savoir
     // que le serveur a répondu là où l'écran, lui, ne dit plus rien.
     <div className={`${boite} ${remplie ? "bg-primaire-doux/50" : ""}`} title={modif} data-enregistrement={etat}>
+      {/* L'en-tête de nature. Pour un atelier, il reste vide : l'étiquette « Atelier » de la ligne
+          (`couleurNature`) le dit déjà, et un second « Atelier » vert le surlignait (avenant 4). */}
       <span className={`flex items-center gap-1 font-semibold text-primaire ${hauteurEntete}`}>
-        {remplie && (
+        {remplie && !estAtelier && (
           <>
             <Icone nom="epee" taille={compact ? 14 : 16} />
-            Cours
+            {NOMS_NATURE[valeur.nature]}
           </>
         )}
       </span>
@@ -593,42 +584,54 @@ export function CaseEditeur({
             </>
           )}
         </div>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label className="sr-only" id={`${partieId}-theme-libelle`} htmlFor={`${partieId}-theme`}>
-            Thème — {label}
-          </label>
-          <Intitule>Thème</Intitule>
-          <ListeDeroulante
-            id={`${partieId}-theme`}
-            libelleId={`${partieId}-theme-libelle`}
-            libelle={`Thème — ${label}`}
-            className={classeChamp}
-            valeur={autre ? AUTRE : theme}
-            entrees={entreesTheme}
-            {...deplier("themes")}
-            onChoisir={choisirTheme}
-          />
-          {autre && (
-            <input
-              type="text"
-              aria-label={`Thème libre — ${label}`}
+        {/* **Le thème d'un atelier, c'est son titre** : il se lit à la place de la liste, sans se
+            régler (le serveur le garde quoi qu'on envoie), avec l'équipement dessous s'il y en a. */}
+        {valeur.atelier && (
+          <div className="flex min-w-0 flex-col gap-1.5">
+            {/* Pas de liste ici pour porter le nom : l'intitulé reste lisible aux lecteurs d'écran (pas d'`Intitule`, masqué) */}
+            <span className="text-[0.85em] font-semibold leading-tight text-texte-secondaire">Thème</span>
+            <span className={`flex items-center break-words ${hauteur} ${texte}`}>{valeur.atelier.titre}</span>
+            {valeur.atelier.materiel && <span className={`break-words ${texte} text-texte-secondaire`}>Équipement : {valeur.atelier.materiel}</span>}
+          </div>
+        )}
+        {!estAtelier && (
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label className="sr-only" id={`${partieId}-theme-libelle`} htmlFor={`${partieId}-theme`}>
+              Thème — {label}
+            </label>
+            <Intitule>Thème</Intitule>
+            <ListeDeroulante
+              id={`${partieId}-theme`}
+              libelleId={`${partieId}-theme-libelle`}
+              libelle={`Thème — ${label}`}
               className={classeChamp}
-              value={theme}
-              maxLength={THEME_MAX}
-              placeholder="Thème libre"
-              autoFocus={autreDemande}
-              onChange={(e) => setTheme(e.target.value)}
-              onBlur={() => {
-                const t = theme.trim();
-                if (t !== theme) setTheme(t);
-                sauverTheme(t);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              }}
+              valeur={autre ? AUTRE : theme}
+              entrees={entreesTheme}
+              {...deplier("themes")}
+              onChoisir={choisirTheme}
             />
-          )}
-        </div>
+            {autre && (
+              <input
+                type="text"
+                aria-label={`Thème libre — ${label}`}
+                className={classeChamp}
+                value={theme}
+                maxLength={THEME_MAX}
+                placeholder="Thème libre"
+                autoFocus={autreDemande}
+                onChange={(e) => setTheme(e.target.value)}
+                onBlur={() => {
+                  const t = theme.trim();
+                  if (t !== theme) setTheme(t);
+                  sauverTheme(t);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+              />
+            )}
+          </div>
+        )}
         {/* Le niveau vient en dernier : on choisit qui encadre et ce qu'on travaille avant de dire à qui ça s'adresse */}
         <div className="flex min-w-0 flex-col gap-1.5 empty:hidden">
           {detailsVisibles && (
@@ -723,17 +726,3 @@ export function CaseEditeur({
   );
 }
 
-/**
- * Celui qui **assiste**, en lecture : jamais seul, jamais sur sa propre ligne, toujours introduit
- * par « avec ». C'est ce petit mot qui dit lequel des deux mène — une virgule entre deux noms les
- * mettrait à égalité, ce qu'ils ne sont pas.
- */
-function Second({ nom, id, compact }: { nom: string; id: string | null; compact: boolean }) {
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1 text-texte-secondaire">
-      <span className="text-[0.85em] font-normal">avec</span>
-      {id && <PastillePersonne id={id} taille={6} />}
-      <span className={`text-[0.9em] font-normal ${compact ? "truncate" : ""}`}>{compact ? abreger(nom) : nom}</span>
-    </span>
-  );
-}

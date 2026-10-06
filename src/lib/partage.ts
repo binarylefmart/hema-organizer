@@ -1,10 +1,11 @@
 import type { NomIcone } from "@/components/ui/Icone";
 import { libelleDuree, libellePrix } from "@/components/evenements/libelles";
-import { niveauAffiche, NIVEAU_DEFAUT, type Niveau } from "./constants";
+import { niveauAffiche, NIVEAU_DEFAUT, type NatureElement, type Niveau } from "./constants";
 import { formatDateLongue, formatHeure, formatHoraire, todayIso } from "./dates";
 import { db } from "./db";
 import { evenementParId, evenementTermine } from "./evenements";
 import {
+  elementsRanges,
   ligneChiffres,
   lignesSeance,
   separerPictogramme,
@@ -46,8 +47,23 @@ import { minuscule } from "@/lib/dates";
  * la phrase qui dit ce qu'on y fera reviendrait à couper l'annonce en deux. Le code n'y ajoute
  * **aucun nom** : ni celui qui mène, ni celui qui assiste, ni personne — et l'écran de saisie
  * annonce la publication à qui écrit (`CaseEditeur`), comme la règle du dossier l'exige.
+ *
+ * **Rangée dans sa partie** : `bloc` est le numéro de la partie, `nature` ce qu'est
+ * l'élément, `nom` son nom court dans la partie (« Échauffement », « Cours 2 ») — calculés, jamais
+ * saisis, comme `libelle` (« Partie 1 · Cours »), que l'API publique continue de publier.
  */
-export type CasePartage = { ordre: number; libelle: string; estOption: boolean; theme: string; description: string; niveau: Niveau; atelier: boolean };
+export type CasePartage = {
+  ordre: number;
+  bloc: number;
+  nature: NatureElement;
+  nom: string;
+  libelle: string;
+  theme: string;
+  description: string;
+  niveau: Niveau;
+  atelier: boolean;
+};
+
 
 export type SeancePartagee = SeanceResume & {
   id: string;
@@ -186,7 +202,7 @@ const SELECT_PARTAGE = {
   periodId: true,
   period: { select: { id: true, nom: true, statut: true } },
   parties: {
-    select: { id: true, libelle: true, ordre: true, estOption: true, theme: true, description: true, niveau: true, atelier: { select: { titre: true } } },
+    select: { id: true, libelle: true, ordre: true, bloc: true, nature: true, theme: true, description: true, niveau: true, atelier: { select: { titre: true } } },
     orderBy: { ordre: "asc" },
   },
 } as const;
@@ -205,7 +221,7 @@ type SeanceBrute = {
   annulee: boolean;
   motifAnnulation: string | null;
   period: { id: string; nom: string; statut: string };
-  parties: Array<{ id: string; libelle: string; ordre: number; estOption: boolean; theme: string; description: string; niveau: string; atelier: { titre: string } | null }>;
+  parties: Array<{ id: string; libelle: string; ordre: number; bloc: number; nature: string; theme: string; description: string; niveau: string; atelier: { titre: string } | null }>;
 };
 
 /**
@@ -215,12 +231,13 @@ type SeanceBrute = {
  * dehors, même si quelqu'un y a écrit une description — celle-ci précise un cours, elle ne le
  * remplace pas, et une ligne qui n'aurait qu'elle se lirait comme un commentaire sans objet.
  *
- * Les parties arrivent déjà triées (`orderBy: { ordre }`) ; on retrie quand même, parce que c'est
- * cette fonction — et non la requête — qui promet l'ordre à qui lit `CasePartage[]`.
+ * Les parties arrivent déjà triées (`orderBy: { ordre }`) ; on retrie quand même (`elementsRanges` :
+ * partie, nature, ordre), parce que c'est cette fonction — et non la requête — qui promet l'ordre à
+ * qui lit `CasePartage[]`. Le rang et le nombre de chaque élément s'y comptent **avant** le filtre.
  */
 function programme(parties: SeanceBrute["parties"]): CasePartage[] {
   const cases: CasePartage[] = [];
-  for (const c of [...parties].sort((a, b) => a.ordre - b.ordre)) {
+  for (const c of elementsRanges(parties)) {
     const titre = (c.atelier?.titre ?? "").trim() || c.theme.trim();
     if (!titre) continue;
     cases.push({
@@ -232,8 +249,10 @@ function programme(parties: SeanceBrute["parties"]): CasePartage[] {
       // n'en avait besoin — la liste du programme est rendue par le serveur et prend son rang pour
       // clé.
       ordre: c.ordre,
+      bloc: c.bloc,
+      nature: c.nature,
+      nom: c.nom,
       libelle: c.libelle,
-      estOption: c.estOption,
       theme: titre,
       description: c.description.trim(),
       niveau: niveauAffiche(c.niveau) ?? NIVEAU_DEFAUT,

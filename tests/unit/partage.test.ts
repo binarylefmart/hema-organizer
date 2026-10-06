@@ -85,7 +85,7 @@ const SEANCE: SeancePartagee = {
   annulee: false,
   motifAnnulation: null,
   compteurs: compterPresences([...Array(13).fill("PRESENT"), ...Array(3).fill("ABSENT")], 18),
-  programme: [{ ordre: 0, libelle: "Cours 1", estOption: false, theme: "Messer", description: "", niveau: "INDIFFERENT", atelier: false }],
+  programme: [{ ordre: 0, bloc: 1, nature: "COURS", nom: "Cours", libelle: "Partie 1 · Cours", theme: "Messer", description: "", niveau: "INDIFFERENT", atelier: false }],
   periode: PERIODE,
 };
 
@@ -192,7 +192,7 @@ const LIGNE_SEANCE = {
   motifAnnulation: null,
   periodId: PERIODE.id,
   period: PERIODE,
-  parties: [{ id: "c1", libelle: "Cours 1", ordre: 0, estOption: false, theme: "Messer", description: "Garde haute.", niveau: "INDIFFERENT", atelier: null }],
+  parties: [{ id: "c1", libelle: "Partie 1 · Cours", ordre: 0, bloc: 1, nature: "COURS", theme: "Messer", description: "Garde haute.", niveau: "INDIFFERENT", atelier: null }],
 };
 
 /**
@@ -231,9 +231,9 @@ describe("lecture d'une séance partagée", () => {
     expect(select).not.toContain("attendances");
     expect(appelDe("attendance", "groupBy")?.args.by).toEqual(["sessionId", "statut"]);
     // Une case du planning ne donne que son thème, son niveau et le titre de son atelier — jamais qui encadre
-    // `id`, `libelle`, `ordre` et `estOption` ont remplacé le code de partie : ce sont des données
+    // `id`, `libelle`, `ordre`, `bloc` et `nature` ont remplacé le code de partie : ce sont des données
     // de la séance, pas des données de personne. Aucun identifiant d'encadrant ne figure ici.
-    expect(colonnes(appelDe("session", "findUnique")?.args.select, ["parties"])).toEqual(["id", "libelle", "ordre", "estOption", "theme", "description", "niveau"]);
+    expect(colonnes(appelDe("session", "findUnique")?.args.select, ["parties"])).toEqual(["id", "libelle", "ordre", "bloc", "nature", "theme", "description", "niveau"]);
     expect(colonnes(appelDe("session", "findUnique")?.args.select, ["parties", "atelier"])).toEqual(["titre"]);
   });
 
@@ -242,6 +242,37 @@ describe("lecture d'une séance partagée", () => {
     const s = await seancePartagee("s1");
     expect(appelDe("periodMember", "count")?.args.where).toEqual({ periodId: "p1", user: { service: false } });
     expect(s?.compteurs).toMatchObject({ presents: 1, invites: 18, pourcentage: 6 });
+  });
+
+  it("range le programme partie par partie et nomme chaque élément dans sa partie, sans élément muet", async () => {
+    const partie = (id: string, ordre: number, bloc: number, nature: string, theme: string) => ({
+      id,
+      libelle: "",
+      ordre,
+      bloc,
+      nature,
+      theme,
+      description: "",
+      niveau: "INDIFFERENT",
+      atelier: null,
+    });
+    reponses.set("session.findUnique", {
+      ...LIGNE_SEANCE,
+      parties: [
+        partie("c3", 3, 2, "OPTION", "Lutte"),
+        partie("c1", 1, 1, "COURS", ""),
+        partie("c2", 2, 1, "COURS", "Messer"),
+        partie("c0", 0, 1, "ECHAUFFEMENT", "Mobilité"),
+      ],
+    });
+    const { seancePartagee } = await import("@/lib/partage");
+    const { grouperParPartie } = await import("@/components/seances/programme-cours");
+    const s = await seancePartagee("s1");
+    const parties = grouperParPartie(s?.programme ?? []);
+    expect(parties.map((p) => [p.nom, p.elements.map((c) => c.nom)])).toEqual([
+      ["Partie 1", ["Échauffement", "Cours 2"]],
+      ["Partie 2", ["Option"]],
+    ]);
   });
 
   it("reste consultable quand la période est close", async () => {

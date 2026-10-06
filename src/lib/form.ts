@@ -37,6 +37,9 @@ const LIBELLES: Record<string, string> = {
   // Les deux cases de « Au club depuis » : sans ces libellés, la liste d'erreurs sous la fiche
   // afficherait « saisonArrivee », qui ne veut rien dire pour qui remplit un annuaire.
   saisonArrivee: "Arrivé(e) au club la saison",
+  // Les deux animateurs d'une proposition d'atelier.
+  animateurId: "Qui anime ?",
+  animateurSecondId: "Second animateur",
 };
 
 export function libelleChamp(nom: string): string {

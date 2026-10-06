@@ -2,6 +2,25 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.71.0
+
+### Nouveautés
+
+- atelier sans surlignage, thèmes d'échauffement, animateurs d'atelier
+- **planning** : une seule partie par défaut, migration tout en partie 1
+- **planning** : « Partie N » seulement à partir de deux parties, pied de carte Modifier / Ajouter une partie, case atelier réglable
+- **planning** : parties numérotées et éléments (échauffement, cours, option, atelier)
+
+### Corrections
+
+- **suivi** : les captures se comptent sur la passe en cours, et le verdict « à jour » se lit
+
+### Autres changements
+
+- **etat** : v0.71.0, consignes de déploiement
+- parties et éléments dans CLAUDE.md et l'état de reprise
+- **etat** : reprise au 06/10, v0.70.3
+
 ## 0.70.3
 
 ### Autres changements

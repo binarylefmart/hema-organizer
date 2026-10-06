@@ -588,6 +588,49 @@ function toutesLesScenes(): Scene[] {
     // recale sur la semaine en cours, voir `ANCRAGE_DEMO`). Écrite en dur, elle désignait un jour
     // sans cours dès le premier recalage, et ces deux scènes montraient le message « aucune séance
     // à cette date » — un écran vide qui ressemble à une capture réussie.
+    {
+      nom: "planning-parties",
+      description: "Planning en modification : une séance découpée en parties — échauffement et cours en partie 1, option en partie 2, atelier en partie 3 — structure repliée (« Modifier » fermé)",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      // La séance du jeu d'essai qui porte un échauffement : visée par **l'étiquette** de l'élément
+      // (le mot figure aussi, caché, dans le menu d'ajout de chaque carte).
+      avant: async (page) => {
+        const carte = page.locator("article", { has: page.locator("span", { hasText: /^Échauffement$/ }) }).first();
+        await carte.waitFor();
+        await carte.evaluate((el) => el.scrollIntoView({ block: "start" }));
+        await page.evaluate(() => window.scrollBy(0, -90));
+      },
+    },
+    {
+      nom: "planning-pied",
+      description: "Planning en modification : le pied d'une carte — « Modifier » (la structure : menus d'ajout, flèches, retrait) et « Ajouter une partie »",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        const carte = page.locator("article", { has: page.locator("span", { hasText: /^Échauffement$/ }) }).first();
+        await carte.waitFor();
+        const ajout = carte.getByRole("button", { name: "Ajouter une partie" });
+        await ajout.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      },
+    },
+    {
+      nom: "planning-ajout",
+      description: "Planning en modification : le menu « Ajouter dans la partie 1… » ouvert — échauffement, cours, option, et les ateliers en attente",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        const carte = page.locator("article", { has: page.locator("span", { hasText: /^Échauffement$/ }) }).first();
+        await carte.waitFor();
+        // Les menus d'ajout et les flèches ne se montrent qu'une fois « Modifier » ouvert sur la carte.
+        await carte.getByRole("button", { name: "Modifier", exact: true }).click();
+        const menu = carte.getByRole("combobox", { name: "Ajouter dans la partie 1" });
+        await menu.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await page.evaluate(() => window.scrollBy(0, 220));
+        await menu.click();
+        await page.getByRole("listbox").waitFor();
+      },
+    },
     { nom: "seances-date", description: "Séances : le cours d'une date précise, trouvé sans changer de trimestre ni de fenêtre", connexion: COMPTES.membre, chemin: `/seances?date=${SEANCE_PASSEE_DEMO}`, pleinePage: true },
     { nom: "planning-date", description: "Planning : la date cherchée, et le trimestre qui la contient ouvert tout seul", connexion: COMPTES.instructeur, chemin: `/planning?date=${SEANCE_PASSEE_DEMO}` },
     // Le planning tel que l'encadrement le **trouve** : en lecture seule, comme un membre, avec le
@@ -1214,8 +1257,9 @@ function toutesLesScenes(): Scene[] {
         [
           embedSeance(SEANCE_NOTIF, CHIFFRES_NOTIF, CLUB.nomClub, CLUB.partEffectifMin, {
             programme: [
-              { label: "1re partie", theme: "Messer — garde haute", niveau: "DEBUTANT", atelier: false },
-              { label: "2de partie", theme: "Jeu de la hache", niveau: "INDIFFERENT", atelier: true },
+              { label: "Partie 1 — Échauffement", bloc: 1, nature: "ECHAUFFEMENT", theme: "Mobilité des épaules", niveau: "INDIFFERENT", atelier: false },
+              { label: "Partie 1 — Cours", bloc: 1, nature: "COURS", theme: "Messer — garde haute", niveau: "DEBUTANT", atelier: false },
+              { label: "Partie 2 — Atelier", bloc: 2, nature: "ATELIER", theme: "Jeu de la hache", niveau: "INDIFFERENT", atelier: true },
             ],
           }),
         ],

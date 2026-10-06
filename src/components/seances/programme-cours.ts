@@ -1,4 +1,4 @@
-import { niveauAffiche, type Niveau } from "@/lib/constants";
+import { niveauAffiche, nomElement, nomPartie, partiesNommees, type NatureElement, type Niveau } from "@/lib/constants";
 import type { ProgrammeSeance } from "@/lib/planning";
 
 /**
@@ -12,33 +12,36 @@ import type { ProgrammeSeance } from "@/lib/planning";
  * trois cas se lisait comme un tiret ou un blanc dans la grille ; ici on décide une fois pour
  * toutes ce que chacun donne à lire, et le composant ne fait plus que le mettre en forme.
  *
- * **Depuis les parties libres par séance**, ce module porte aussi le repère de couleur d'une partie :
- * il ne peut plus venir d'une table figée à quatre entrées (`PARTIE_LABELS`), puisqu'une séance a
- * désormais autant de parties qu'on lui en ajoute. Le planning l'**importe d'ici** (`ListeParties`) —
- * la copie de `COULEUR_PARTIE` qui vivait dans les deux fichiers, et le test qui la surveillait, n'ont
- * plus lieu d'être. `rangsDansNature`, qui le nourrit, sert aussi à calculer le **nom** des parties
- * (`rangerParties`, src/lib/planning.ts) : une seule numérotation pour la teinte et pour le mot.
+ * **Depuis les parties et éléments**, une séance se lit **partie par partie** —
+ * « Partie 1 », puis ce qu'elle porte : « Échauffement », « Cours 2 », « Atelier »… —, et ce module
+ * porte aussi le repère de couleur d'un élément, qui ne dépend plus que de sa **nature**
+ * (`couleurNature`). Le planning l'**importe d'ici** : une seule table pour les deux écrans.
  */
 
 /** Ce qu'une case renseignée donne à lire, une fois nettoyée. */
 export type LigneProgramme = {
-  /** Identifiant de la partie : c'est lui la clé de liste, les libellés n'étant plus uniques */
+  /** Identifiant de l'élément : c'est lui la clé de liste, les noms n'étant uniques que dans leur partie */
   id: string;
-  /** Rang de la partie dans sa séance, à partir de 0 — l'ordre voulu, pas celui de la base */
+  /** Rang de l'élément dans sa séance, à partir de 0 — l'ordre de lecture, pas celui de la base */
   ordre: number;
+  /** **Numéro de la partie** (« Partie 2 »), contigu à partir de 1 dans la séance entière */
+  bloc: number;
+  /** Ce qu'est l'élément dans sa partie : échauffement, cours, option ou atelier */
+  nature: NatureElement;
   /**
-   * Rang de la partie **parmi celles de même nature**, à partir de 1 : le 2e cours de la séance, la
-   * 1ère option. C'est ce que compte son libellé (« Cours 2 », « Option 1 »), donc ce que doit compter
-   * tout repère posé à côté de lui — la teinte comprise (voir `couleurPartie`).
+   * Rang de l'élément **dans sa partie et sa nature**, à partir de 1, et le **nombre** d'éléments de
+   * cette nature dans la partie. C'est ce que compte son nom (« Cours 2 »).
    *
-   * **Recopié de la partie, jamais recompté ici** : la liste reçue est déjà filtrée des parties
-   * muettes, et la recompter donnerait le rang 1 au second cours (voir `lignesProgramme`).
+   * **Recopiés de la ligne reçue, jamais recomptés ici** : la liste est déjà filtrée des éléments
+   * muets, et la recompter donnerait « Cours » tout court au second cours d'une partie dont le
+   * premier est resté vide — alors que le planning, lui, l'appelle « Cours 2 ».
    */
   rang: number;
-  /** Nom de la partie (« Cours 1 », « Option 2 »…), **calculé** depuis le rang — publié tel quel */
+  nombre: number;
+  /** Nom court de l'élément dans sa partie (« Échauffement », « Cours 2 »), via `nomElement` */
+  nom: string;
+  /** Nom complet calculé (« Partie 1 · Cours »), tel que la base le garde */
   libelle: string;
-  /** **Option** : une partie qui se tient pendant le cours, et qui accueille les ateliers */
-  estOption: boolean;
   /** Thème de la case, vide quand elle n'en porte pas encore */
   theme: string;
   /**
@@ -53,8 +56,10 @@ export type LigneProgramme = {
    */
   niveau: Niveau | null;
   /**
-   * Titre de l'atelier placé dans la case. Il s'annonce comme tel plutôt que de se fondre dans le
-   * thème : c'est le retour visible du membre qui l'a proposé, et il tient à s'y reconnaître.
+   * Titre de l'atelier placé dans la case. **Il se lit comme un thème** (avenant, « ne
+   * mets pas les ateliers en surlignage ») : c'est l'étiquette « Atelier » qui dit ce que c'est, pas
+   * une mise en valeur à lui. Gardé à part du thème pour que l'écran le place en tête et qu'un
+   * élément d'une autre nature (donnée ancienne) puisse encore le préfixer d'« Atelier : ».
    */
   atelier: string | null;
   instructeur: string | null;
@@ -75,12 +80,12 @@ const nettoyer = (valeur: string | null | undefined): string => (valeur ?? "").t
  * Le filtre final double celui de `programmeDepuisParties` : une case dont le thème n'est qu'une
  * espace passe le sien, et occuperait ici une ligne entière pour ne rien dire.
  *
- * **Le rang n'est pas recalculé ici**, il est recopié de la ligne reçue (`c.rang`). La liste qui
- * arrive est déjà filtrée — `programmeDepuisParties` a écarté les parties muettes — et la compter
- * donnerait le rang dans ce qui reste, pas le rang dans la séance. Une séance neuve dont
- * l'encadrement ne remplit que « Cours n°2 » et « 2e option » aurait ainsi donné le rang 1 au second
- * cours, donc la teinte du premier. Ce rang-là ne peut se compter qu'à l'endroit où la séance est
- * encore entière, et c'est pour cela qu'il voyage avec la ligne.
+ * **Ni le rang ni le nombre ne sont recalculés ici**, ils sont recopiés de la ligne reçue. La liste
+ * qui arrive est déjà filtrée — `programmeDepuisParties` a écarté les éléments muets — et la compter
+ * donnerait le rang dans ce qui reste, pas le rang dans la partie : une partie à deux cours dont seul
+ * le second est rempli l'aurait appelé « Cours », quand le planning dit « Cours 2 ». Ces nombres ne
+ * peuvent se compter qu'à l'endroit où la séance est encore entière, et c'est pour cela qu'ils
+ * voyagent avec la ligne.
  */
 export function lignesProgramme(programme: ProgrammeSeance): LigneProgramme[] {
   return programme
@@ -90,8 +95,8 @@ export function lignesProgramme(programme: ProgrammeSeance): LigneProgramme[] {
        * Placer un atelier recopie son titre dans le thème de la case (`programmerAtelierDansCase`).
        * Sans ce garde-fou, la ligne le disait deux fois de suite — « Échauffement à la corde »,
        * puis « Atelier : Échauffement à la corde » —, ce qui se lit comme deux activités
-       * différentes. L'annonce « Atelier » gagne : elle porte la même information **et** dit de qui
-       * vient la proposition.
+       * différentes. Le titre de l'atelier gagne : il porte la même information, et c'est lui qui
+       * tient lieu de thème à l'élément.
        */
       const themeBrut = nettoyer(c.theme);
       const theme = atelier && themeBrut.toLowerCase() === atelier.toLowerCase() ? "" : themeBrut;
@@ -99,9 +104,12 @@ export function lignesProgramme(programme: ProgrammeSeance): LigneProgramme[] {
       return {
         id: c.id,
         ordre: c.ordre,
+        bloc: c.bloc,
+        nature: c.nature,
         rang: c.rang,
+        nombre: c.nombre,
+        nom: nomElement(c.nature, c.rang, c.nombre),
         libelle: nettoyer(c.libelle),
-        estOption: c.estOption,
         theme,
         description: nettoyer(c.description),
         niveau: niveauAffiche(c.niveau),
@@ -135,96 +143,80 @@ export function programmeMuet(lignes: LigneProgramme[], ...champsLibres: Array<s
   return lignes.length === 0 && champsLibres.every((c) => !c);
 }
 
-/**
- * Ce dont dépend le repère de couleur d'une partie : **son rang dans sa nature et cette nature**,
- * rien d'autre. Une case du planning (`CasePlanning`) comme une ligne de programme le portent :
- * `couleurPartie` se contente donc de cette forme, et sert les deux écrans sans conversion.
- *
- * **`ordre` n'y figure pas, et c'est le correctif.** La teinte se tirait de la place dans la séance
- * pendant que tout le reste — le libellé du modèle, le rang porté par la ligne — comptait dans la
- * nature : deux numérotations sur un seul objet.
- */
-export type RangPartie = { rang: number; estOption: boolean };
 
 /**
- * **Le rang de chaque partie dans sa propre série**, à partir de 1 : les cours d'un côté, ce qui se
- * est l'option de l'autre.
- *
- * C'est la numérotation que porte le libellé (`libellePartie`) — « Cours 1 », « Cours 2 », « Option
- * 1 » —, et c'est donc la seule dont puisse dépendre ce qui se pose à côté de lui. Compter les
- * parties de la séance donnait l'étiquette « Opt 3 » en face du libellé « 1ère option » : deux
- * mentions, deux nombres, un seul objet. L'étiquette a disparu depuis — une partie ne se nomme
- * qu'une fois, par son libellé — et ce rang sert au repère de couleur (`couleurPartie`) **et au
- * libellé lui-même**, qui s'en calcule.
+ * Une partie du programme telle qu'elle se lit : son nom, puis ses éléments dans l'ordre. `nom` vaut
+ * `null` quand une seule partie a quelque chose à montrer : pas d'intitulé « Partie N » alors
+ * (`partiesNommees`, avenant), le programme se lit comme avant les parties.
  */
-/* Appelée par `programmeDepuisParties` — donc sur la **séance entière**, avant que les parties
- * muettes ne soient écartées. C'est la seule place où le compte est juste : appliquée à la liste
- * déjà filtrée, la même fonction rend « 1 » pour « Cours n°2 » d'une séance dont le premier cours
- * est resté vide. Le rang voyage ensuite avec la ligne. */
-export function rangsDansNature(parties: ReadonlyArray<{ estOption: boolean }>): number[] {
-  let cours = 0;
-  let options = 0;
-  return parties.map((p) => (p.estOption ? ++options : ++cours));
+export type PartieLue<T> = { bloc: number; nom: string | null; elements: T[] };
+export type PartieProgramme = PartieLue<LigneProgramme>;
+
+/**
+ * **Des éléments groupés par partie** : « Partie 1 » et ses éléments, puis « Partie 2 »… La même
+ * lecture pour la fiche d'une séance (`partiesProgramme`) et pour les pages de partage, qui la
+ * reprennent sur leurs propres cases (`CasePartage`, sans aucun nom).
+ *
+ * Les éléments arrivent déjà dans l'ordre de lecture (partie, nature, ordre — `rangerParties`) et déjà
+ * filtrés : une partie dont aucun élément ne parle **n'apparaît pas**, faute d'élément pour la
+ * porter. Les numéros, eux, restent ceux de la séance — une séance dont les parties 1 et 3 sont
+ * remplies affiche « Partie 1 » et « Partie 3 », comme le planning, et non « Partie 1 » et
+ * « Partie 2 » : c'est le même cours, il doit porter le même nom sur les deux écrans.
+ *
+ * **Une seule partie affichée → aucun titre** (`nom: null`) : on compte les parties qui ont *ici* au
+ * moins un élément, après le filtre des muets — pas les parties réelles de la séance. Une séance à
+ * trois parties dont seule la troisième est remplie se lit donc « Cours », sans « Partie 3 » ;
+ * dès que deux parties parlent, chacune reprend son numéro de séance.
+ *
+ * On regroupe par **numéro**, pas par voisinage : une liste qui arriverait mal triée ne couperait pas
+ * une partie en deux titres identiques.
+ */
+export function grouperParPartie<T extends { bloc: number }>(elements: readonly T[]): PartieLue<T>[] {
+  const parBloc = new Map<number, T[]>();
+  for (const e of elements) {
+    const liste = parBloc.get(e.bloc);
+    if (liste) liste.push(e);
+    else parBloc.set(e.bloc, [e]);
+  }
+  const nommees = partiesNommees(parBloc.size);
+  return [...parBloc.entries()].sort(([a], [b]) => a - b).map(([bloc, liste]) => ({ bloc, nom: nommees ? nomPartie(bloc) : null, elements: liste }));
 }
 
-/**
- * Repère de couleur d'une partie — les mêmes classes qu'avant la refonte, dérivées cette fois du
- * rang et de la nature au lieu d'une table à quatre entrées : les deux moitiés du cours sont pleines
- * (c'est le cours lui-même), l'option est en contour, plus discret. Les rangs
- * alternent ocre et vert, si bien qu'une séance à quatre parties garde exactement l'aspect connu
- * (Cours 1 ↔ ocre plein, Cours 2 ↔ vert plein, Option 1 ↔ ocre contour, Option 2 ↔ vert contour).
- *
- * **Le nombre compté est celui du libellé** (`rang`, dans la nature), et non la place dans la
- * séance (`ordre`) : c'est le correctif. La teinte se tirait de `ordre` pendant que le libellé et
- * le rang de la ligne comptaient par nature, et la propriété annoncée juste en dessous tombait dès
- * que les deux séries s'entremêlaient — un clic sur « Option » pour « Cours 1 » donnait la même
- * teinte à « Option 1 » et à « Option 2 », qui se suivent à l'écran.
- *
- * **Une couleur par rang, et six avant que la série ne recommence**. Les deux teintes d'avant
- * alternaient : « Cours 3 » reprenait donc exactement le repère de « Cours 1 », et sur une séance à
- * cinq parties deux lignes voisines pouvaient porter la même couleur — ce que ce repère existe pour
- * éviter.
- *
- * **Le rang et la nature, rien d'autre** : « Cours 2 » et « Option 2 » partagent la **teinte** du rang
- * 2 et se distinguent par la **forme** (le cours en aplat, l'option en contour, plus discrète). C'est
- * ce que la demande décrit — « cours/option 2 couleur 2 » —, et c'est ce que l'écran montrait déjà des
- * deux premiers rangs.
- *
- * Les couleurs vivent dans `globals.css` (`--partie-1` … `--partie-6`) et **ne viennent pas du
- * thème** : ambre, vert, bleu, rouge, violet, sarcelle, posées une fois pour le mode clair et une fois
- * pour le sombre. Un premier essai les avait **dérivées** du thème et n'avait donné que deux familles
- * en deux luminosités — un thème ne garantit que deux couleurs lisibles comme *texte* (le contour
- * d'une option écrit de la couleur de sa teinte), et leurs mélanges retombent tous dans l'olive.
- * Delta, devant le résultat : « tu n'as mis que des nuances, je veux de vraies autres couleurs rouge
- * bleu etc ». Une palette de **repères** ne dit pas la marque du club, elle **distingue** des lignes
- * voisines : c'est exactement pour cela qu'elle reste la même d'un thème à l'autre. **Au-delà de six,
- * la série recommence** : une couleur sépare deux voisines d'un coup d'œil, elle ne nomme pas la
- * partie — c'est le libellé qui le fait, et il est écrit juste à côté.
+/** Le programme d'une fiche, groupé par partie (voir `grouperParPartie`). */
+export function partiesProgramme(lignes: readonly LigneProgramme[]): PartieProgramme[] {
+  return grouperParPartie(lignes);
+}
+
+/*
+ * Les classes sont écrites **en entier**, jamais composées (`bg-partie-${n}`) : Tailwind lit les
+ * sources pour savoir quelles classes engendrer, et une classe calculée à l'exécution n'existerait
+ * dans aucune feuille de style — l'étiquette sortirait sans couleur.
  */
-export function couleurPartie(l: RangPartie): string {
-  /*
-   * Les classes sont écrites **en entier**, jamais composées (`bg-partie-${n}`) : Tailwind lit les
-   * sources pour savoir quelles classes engendrer, et une classe calculée à l'exécution n'existerait
-   * dans aucune feuille de style — l'étiquette sortirait sans couleur.
-   */
-  const APLATS = [
-    "bg-partie-1 text-partie-texte",
-    "bg-partie-2 text-partie-texte",
-    "bg-partie-3 text-partie-texte",
-    "bg-partie-4 text-partie-texte",
-    "bg-partie-5 text-partie-texte",
-    "bg-partie-6 text-partie-texte",
-  ];
-  const CONTOURS = [
-    "border border-partie-1 bg-partie-1-doux/60 text-partie-1",
-    "border border-partie-2 bg-partie-2-doux/60 text-partie-2",
-    "border border-partie-3 bg-partie-3-doux/60 text-partie-3",
-    "border border-partie-4 bg-partie-4-doux/60 text-partie-4",
-    "border border-partie-5 bg-partie-5-doux/60 text-partie-5",
-    "border border-partie-6 bg-partie-6-doux/60 text-partie-6",
-  ];
-  // La numérotation part de 1 (voir `rangsDansNature`), et un rang douteux retombe sur la première
-  // teinte plutôt que sur une classe vide : une étiquette sans couleur se lirait comme un défaut.
-  const i = Number.isFinite(l.rang) && l.rang >= 1 ? (Math.trunc(l.rang) - 1) % APLATS.length : 0;
-  return l.estOption ? CONTOURS[i] : APLATS[i];
+const COULEURS_NATURE: Record<NatureElement, string> = {
+  ECHAUFFEMENT: "bg-partie-1 text-partie-texte",
+  COURS: "bg-partie-3 text-partie-texte",
+  OPTION: "border border-partie-5 bg-partie-5-doux/60 text-partie-5",
+  ATELIER: "border border-partie-2 bg-partie-2-doux/60 text-partie-2",
+};
+
+/**
+ * **Repère de couleur d'un élément : une teinte par nature**, et rien d'autre.
+ *
+ * Tant qu'une séance n'était qu'une suite de cours et d'options, la teinte comptait le rang dans la
+ * série (« Cours 2 » ↔ couleur 2). Depuis que les éléments se rangent dans des parties numérotées,
+ * c'est le **titre de partie** qui sépare les blocs, et la couleur n'a plus qu'une question à
+ * trancher d'un coup d'œil : *qu'est-ce que c'est* — l'échauffement (ambre), le cours (bleu), une
+ * option (violet), un atelier proposé par un membre (sa propre teinte — et c'est **le seul** repère
+ * qui le distingue : son titre, lui, s'écrit comme n'importe quel thème). Deux cours d'une même partie ont donc la même teinte : c'est leur nom
+ * (« Cours 1 », « Cours 2 ») qui les distingue, et il est écrit dessus.
+ *
+ * **La forme double la teinte** : ce qui se mène en parallèle (`enParallele` — option, atelier) est
+ * en contour, plus discret ; l'échauffement et le cours, qui sont le cours lui-même, en aplat. Les
+ * teintes sont les repères `--partie-n` de `globals.css` (une palette fixe, posée pour le clair et
+ * pour le sombre), jamais une couleur en dur.
+ */
+export function couleurNature(nature: NatureElement): string {
+  // Une nature inconnue (donnée ancienne, import) retombe sur le cours plutôt que sur une classe
+  // vide : une étiquette sans couleur se lirait comme un défaut d'affichage.
+  return COULEURS_NATURE[nature] ?? COULEURS_NATURE.COURS;
 }

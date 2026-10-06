@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { ATELIER_LABELS, membrePeutModifier } from "@/lib/ateliers";
+import { ATELIER_LABELS, libelleAnimation, membrePeutModifier } from "@/lib/ateliers";
 import type { AtelierStatut } from "@/lib/constants";
 import { formatDateCourte, formatHeure, toIsoDate } from "@/lib/dates";
-import { seancesAVenir } from "@/lib/ateliers-queries";
+import { animateursPossibles, seancesAVenir } from "@/lib/ateliers-queries";
 import { proposerAtelier, supprimerAtelier } from "@/actions/ateliers";
 import { Alerte } from "@/components/ui/Alerte";
 import { LienBouton } from "@/components/ui/Bouton";
@@ -33,15 +33,18 @@ type Props = { searchParams: Promise<{ propose?: string }> };
 export default async function PageAteliers({ searchParams }: Props) {
   const user = await requireUser();
   const { propose } = await searchParams;
-  const [ateliers, seances] = await Promise.all([
+  const [ateliers, seances, animateurs] = await Promise.all([
     db.atelier.findMany({
       where: { proposeParId: user.id },
       orderBy: { createdAt: "desc" },
       include: {
         session: { select: { date: true, heureDebut: true, lieu: true } },
+        animateur: { select: { prenom: true, nom: true } },
+        animateurSecond: { select: { prenom: true, nom: true } },
       },
     }),
     seancesAVenir(user),
+    animateursPossibles(),
   ]);
   const aDesPropositions = ateliers.length > 0;
   /*
@@ -56,6 +59,8 @@ export default async function PageAteliers({ searchParams }: Props) {
       <FormulaireAtelier
         action={proposerAtelier}
         seances={seances}
+        animateurs={animateurs}
+        animateurParDefaut={user.id}
         bouton="Envoyer ma proposition"
       />
     </Carte>
@@ -109,6 +114,9 @@ export default async function PageAteliers({ searchParams }: Props) {
           </div>
           {a.description && (
             <p className="mt-3 whitespace-pre-line">{a.description}</p>
+          )}
+          {libelleAnimation(a.animateur, a.animateurSecond) && (
+            <p className="mt-2 text-sm">{libelleAnimation(a.animateur, a.animateurSecond)}</p>
           )}
           {a.materiel && (
             <p className="mt-2 text-sm">

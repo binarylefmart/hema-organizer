@@ -98,14 +98,35 @@ e2e_etat() {
   local passes; passes=$(grep -cE '^ *✓ ' "$f" 2>/dev/null)
   printf '%s %s %s %s' "${total:-0}" "$passes" "$echecs" "$(grep -c 'EXIT=' "$f" 2>/dev/null)"
 }
-captures_etat() { # scènes complètes (4 images) / dossiers de scène présents
-  local completes=0 vides=0 partielles=0 total=0 d n
+captures_etat() { # scènes complètes (4 images) / scènes comptées
+  local completes=0 vides=0 partielles=0 total=0 d n liste="" depart=""
+  # **Une passe ciblée se compte sur ses propres scènes.** Le fichier de phase peut nommer la passe en
+  # cours (`captures|scene-a,scene-b,…`) : on ne compte alors que ces scènes-là, et une image ne vaut
+  # que si elle est **plus récente que le début de la passe** (le journal `captures.log`, créé à son
+  # lancement). Sans cette ligne, la barre comptait les ~100 dossiers de `previews/` — anciennes
+  # captures comprises — et affichait « complet » avant même que la passe ait commencé.
+  [ -n "$PHASE" ] && [ -r "$PHASE" ] && liste=$(grep -m1 '^captures|' "$PHASE" | cut -d'|' -f2)
+  [ -r "$LOGS/captures.log" ] && depart="$LOGS/captures.log"
+  if [ -n "$liste" ]; then
+    local nom
+    for nom in ${liste//,/ }; do
+      total=$((total+1)); d="$RACINE/previews/$nom"
+      if [ -n "$depart" ]; then
+        n=$(find "$d" -maxdepth 1 -name '*.jpg' -newer "$depart" 2>/dev/null | wc -l)
+      else
+        n=$(ls "$d" 2>/dev/null | grep -c '\.jpg$')
+      fi
+      if [ "$n" -ge 4 ]; then completes=$((completes+1))
+      elif [ "$n" -eq 0 ]; then vides=$((vides+1))
+      else partielles=$((partielles+1)); fi
+    done
+    printf '%s %s %s %s' "$completes" "$total" "$vides" "$partielles"
+    return
+  fi
   for d in "$RACINE"/previews/*/; do
     [ -d "$d" ] || continue
     # `previews/emails` n'est pas une scène : c'est la boîte aux lettres du développement, où
-    # l'application dépose les emails qu'elle aurait envoyés (le test « mot de passe oublié » y va
-    # chercher son lien). Comptée comme une scène vide, elle plafonnait le tableau à « 99 % — 100/101,
-    # 1 vide » pour toujours — un chiffre rouge permanent finit par ne plus se lire.
+    # l'application dépose les emails qu'elle aurait envoyés.
     [ "$(basename "$d")" = "emails" ] && continue
     total=$((total+1))
     n=$(ls "$d" 2>/dev/null | grep -c '\.jpg$')
@@ -124,7 +145,7 @@ campagne_verdict() {
   local f
   for f in "$LOGS/captures.log" "$LOGS/campagne.log" "$LOGS/apercus.log"; do
     [ -r "$f" ] || continue
-    grep -oE '[0-9]+ scènes? complètes? et du jour sur [0-9]+' "$f" 2>/dev/null | tail -1 && return
+    grep -oE '[0-9]+ scènes? complètes? et (du jour|à jour) sur [0-9]+' "$f" 2>/dev/null | tail -1 && return
   done
 }
 

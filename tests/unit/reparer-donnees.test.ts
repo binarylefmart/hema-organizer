@@ -307,21 +307,22 @@ describe("5. cases de planning réservées à un atelier qui n'y est plus", () =
  */
 describe("rangs et noms des parties", () => {
   const RANGEE_LE = new Date("2026-09-12T18:30:00.000Z");
-  const part = (id: string, sessionId: string, libelle: string, ordre: number, estOption: boolean): LignePartieRang => ({
+  const part = (id: string, sessionId: string, libelle: string, ordre: number, bloc: number, nature: string): LignePartieRang => ({
     id,
     sessionId,
     libelle,
     ordre,
-    estOption,
+    bloc,
+    nature,
     updatedAt: RANGEE_LE,
   });
 
-  /** Une séance saine : quatre parties, rangs contigus, noms d'accord avec leur rang dans leur série. */
+  /** Une séance saine : trois parties, une option dans la première, rangs et noms d'accord. */
   const saine = (): LignePartieRang[] => [
-    part("c0", "s1", "Cours 1", 0, false),
-    part("c1", "s1", "Cours 2", 1, false),
-    part("c2", "s1", "Option 1", 2, true),
-    part("c3", "s1", "Option 2", 3, true),
+    part("c0", "s1", "Partie 1 · Cours", 0, 1, "COURS"),
+    part("c1", "s1", "Partie 1 · Option", 1, 1, "OPTION"),
+    part("c2", "s1", "Partie 2 · Cours", 2, 2, "COURS"),
+    part("c3", "s1", "Partie 3 · Cours", 3, 3, "COURS"),
   ];
 
   it("ne touche à rien sur une séance juste — la règle de rejouabilité", () => {
@@ -332,76 +333,73 @@ describe("rangs et noms des parties", () => {
     expect(detecterRangsIncoherents([])).toEqual([]);
   });
 
-  it("retasse des rangs troués et dupliqués, comme les a laissés la migration du 29/09", () => {
-    // La séance qui n'avait que ses deux options en sortait avec 1 et 1 : aucun rang 0, deux ex æquo.
-    // À rang égal, l'identifiant tranche (l'ordre de naissance), comme dans les migrations.
-    const rangs = detecterRangsIncoherents([part("o2", "s1", "Option 2", 1, true), part("o1", "s1", "Option 1", 1, true)]);
+  it("retasse des rangs troués et dupliqués", () => {
+    // Deux options au même rang 1, aucun rang 0 : à rang égal, l'identifiant tranche (l'ordre de
+    // naissance), comme dans les migrations.
+    // Séance d'une seule partie : les noms ne disent pas « Partie 1 · » (avenant du 06/10).
+    const rangs = detecterRangsIncoherents([part("o2", "s1", "Option 2", 1, 1, "OPTION"), part("o1", "s1", "Option 1", 1, 1, "OPTION")]);
     // Seule la première a besoin d'une écriture : la seconde est déjà au rang 1, sous le bon nom.
     expect(rangs.map((r) => [r.id, r.data.ordre, r.data.libelle])).toEqual([["o1", 0, undefined]]);
   });
 
   it("range de la même façon quel que soit l'ordre dans lequel la base rend les lignes", () => {
-    // Contre-épreuve du départage : deux lectures, deux ordres, un seul résultat.
-    const abimees = [part("o2", "s1", "Option 2", 1, true), part("o1", "s1", "Option 1", 1, true)];
+    const abimees = [part("o2", "s1", "Partie 1 · Option 2", 1, 1, "OPTION"), part("o1", "s1", "Partie 1 · Option 1", 1, 1, "OPTION")];
     expect(detecterRangsIncoherents(abimees)).toEqual(detecterRangsIncoherents([...abimees].reverse()));
   });
 
-  it("recale un nom qui ne dit plus le rang de sa partie dans sa nature", () => {
-    // « Cours 3 » posé en deuxième position du cours : le nom dit 3, le rang dit 2.
-    const rangs = detecterRangsIncoherents([part("c0", "s1", "Cours 1", 0, false), part("c1", "s1", "Cours 3", 1, false)]);
+  it("recale un nom qui ne dit plus la place de l'élément", () => {
+    const rangs = detecterRangsIncoherents([part("c0", "s1", "Partie 1 · Cours", 0, 1, "COURS"), part("c1", "s1", "Partie 2 · Cours 3", 1, 2, "COURS")]);
     expect(rangs).toHaveLength(1);
-    expect(rangs[0]).toMatchObject({ id: "c1", data: { libelle: "Cours 2" } });
+    expect(rangs[0]).toMatchObject({ id: "c1", data: { libelle: "Partie 2 · Cours" } });
     // Le rang, lui, était déjà bon : on ne le réécrit pas pour rien.
     expect(rangs[0].data.ordre).toBeUndefined();
   });
 
-  /**
-   * **Une séance entremêlée est aussi une séance à ranger**.
-   *
-   * Le contrôle relevait jusque-là le seul nom faux ; il relève désormais aussi la place. Les deux
-   * séries se comptent toujours chacune de son côté — c'est ce que le dernier cours vérifie, nommé
-   * « Cours 4 » alors qu'il est le troisième de sa série — mais elles ne s'entremêlent plus : les
-   * cours reprennent les rangs 0 à 2, les options 3 et 4.
-   */
-  it("range les cours devant les options, et compte chaque nature dans sa propre série", () => {
+  it("referme une partie trouée : la partie 3 d'une séance sans partie 2 devient la partie 2", () => {
+    const rangs = detecterRangsIncoherents([part("c0", "s1", "Partie 1 · Cours", 0, 1, "COURS"), part("c1", "s1", "Partie 3 · Cours", 1, 3, "COURS")]);
+    expect(rangs).toHaveLength(1);
+    expect(rangs[0]).toMatchObject({ id: "c1", data: { bloc: 2, libelle: "Partie 2 · Cours" } });
+    expect(rangs[0].data.ordre).toBeUndefined();
+  });
+
+  it("range dans une partie l'échauffement, puis les cours, puis les options", () => {
     const rangs = detecterRangsIncoherents([
-      part("c0", "s1", "Cours 1", 0, false),
-      part("o0", "s1", "Option 1", 1, true),
-      part("o1", "s1", "Option 2", 2, true),
-      part("c1", "s1", "Cours 2", 3, false),
-      part("c2", "s1", "Cours 4", 4, false),
+      part("c0", "s1", "Option", 0, 1, "OPTION"),
+      part("c1", "s1", "Cours", 1, 1, "COURS"),
+      part("e0", "s1", "Échauffement", 2, 1, "ECHAUFFEMENT"),
     ]);
-    // `c0` ne bouge pas : il est déjà premier cours, et son nom est juste.
+    // `c1` est déjà au rang 1 : il ne bouge pas.
     expect(rangs.map((r) => [r.id, r.data.ordre, r.data.libelle])).toEqual([
-      ["c1", 1, undefined],
-      ["c2", 2, "Cours 3"],
-      ["o0", 3, undefined],
-      ["o1", 4, undefined],
+      ["e0", 0, undefined],
+      ["c0", 2, undefined],
     ]);
   });
 
+  it("range une nature inconnue comme un cours, comme l'application la lit", () => {
+    expect(detecterRangsIncoherents([part("x0", "s1", "Cours", 0, 1, "SPARRING")])).toEqual([]);
+  });
+
   it("juge chaque séance sur elle-même, jamais sur le tas", () => {
-    // Deux séances saines mêlées : les rangs repartent de 0 dans chacune, rien à corriger.
     expect(detecterRangsIncoherents([...saine(), ...saine().map((p) => ({ ...p, id: `b${p.id}`, sessionId: "s2" }))])).toEqual([]);
   });
 
   /**
    * **La réparation ne repeint pas la bulle « Modifié par … le … »** : elle rend à chaque ligne
    * l'horodatage qu'elle portait. Réparer un rang n'est pas une modification du programme par
-   * quelqu'un — c'est la règle des trois migrations qui l'ont fait avant, et celle de `rangerParties`.
+   * quelqu'un — c'est la règle des migrations qui l'ont fait avant, et celle de `rangerParties`.
    */
   it("rend l'horodatage de la ligne, jamais l'instant de la réparation", () => {
-    const rangs = detecterRangsIncoherents([part("o1", "s1", "Option 2", 5, true)]);
+    const rangs = detecterRangsIncoherents([part("o1", "s1", "Option 2", 5, 1, "OPTION")]);
     expect(rangs).toHaveLength(1);
     expect(rangs[0].data.updatedAt).toEqual(RANGEE_LE);
   });
 
   it("dit dans le rapport ce qu'elle va changer, et seulement ça", () => {
-    const [rang] = detecterRangsIncoherents([part("o1", "s1", "Option 2", 5, true)]);
-    expect(decrireRang(rang)).toBe('séance s1, « Option 2 » → « Option 1 » (rang 5 → 0)');
+    const [rang] = detecterRangsIncoherents([part("o1", "s1", "Option 2", 5, 2, "OPTION")]);
+    expect(decrireRang(rang)).toBe("séance s1, « Option 2 » → « Option » (partie 2 → 1, rang 5 → 0)");
     // Contre-épreuve : quand seul le nom change, le rapport ne raconte pas un déplacement.
-    const [nom] = detecterRangsIncoherents([part("c0", "s1", "Cours 1", 0, false), part("c1", "s1", "Cours 3", 1, false)]);
-    expect(decrireRang(nom)).toBe('séance s1, « Cours 3 » → « Cours 2 » (rang 1)');
+    const [nom] = detecterRangsIncoherents([part("c0", "s1", "Partie 1 · Cours", 0, 1, "COURS"), part("c1", "s1", "Partie 2 · Cours 3", 1, 2, "COURS")]);
+    expect(decrireRang(nom)).toBe("séance s1, « Partie 2 · Cours 3 » → « Partie 2 · Cours » (rang 1)");
   });
 
   it("est un contrôle qu'on peut demander seul", () => {
@@ -569,7 +567,8 @@ describe("6. clés de déduplication d'avant l'empreinte du créneau", () => {
  *
  * Ce que ces tests gardent, et qui ne se voit pas à la lecture du script :
  *
- * 1. **les deux premiers cours sont protégés, même vides** — ils sont le modèle, pas un ajout ;
+ * 1. **les premiers cours (autant que le modèle en pose) sont protégés, même vides** — ils sont le
+ *    modèle, pas un ajout ;
  * 2. **« vide » n'a qu'une définition** : un seul des cinq réglages suffit à sauver une partie, et
  *    un atelier retenu la sauve aussi ;
  * 3. **le rangement des survivantes part avec la suppression**, calculé sur ce qui reste et non sur
@@ -578,12 +577,13 @@ describe("6. clés de déduplication d'avant l'empreinte du créneau", () => {
  */
 describe("8. parties vides en trop", () => {
   const RANGEE_LE = new Date("2026-09-12T18:30:00.000Z");
-  const partie = (id: string, ordre: number, estOption: boolean, p: Partial<LignePartieComplete> = {}): LignePartieComplete => ({
+  const partie = (id: string, ordre: number, nature: string, p: Partial<LignePartieComplete> = {}): LignePartieComplete => ({
     id,
     sessionId: "s1",
-    libelle: estOption ? `Option ${ordre}` : `Cours ${ordre + 1}`,
+    libelle: `Partie ${ordre + 1} · ${nature === "OPTION" ? "Option" : "Cours"}`,
     ordre,
-    estOption,
+    bloc: ordre + 1,
+    nature,
     updatedAt: RANGEE_LE,
     date: "2026-09-24",
     modifieParId: null,
@@ -598,10 +598,10 @@ describe("8. parties vides en trop", () => {
 
   /** Une séance du trimestre d'avant : deux cours remplis, deux options que personne n'a touchées. */
   const ancienModele = (): LignePartieComplete[] => [
-    partie("c0", 0, false, { libelle: "Cours 1", instructeurId: "u1", theme: "Épée longue" }),
-    partie("c1", 1, false, { libelle: "Cours 2", instructeurId: "u2", theme: "Messer" }),
-    partie("o0", 2, true, { libelle: "Option 1" }),
-    partie("o1", 3, true, { libelle: "Option 2" }),
+    partie("c0", 0, "COURS", { bloc: 1, libelle: "Partie 1 · Cours", instructeurId: "u1", theme: "Épée longue" }),
+    partie("c1", 1, "COURS", { bloc: 2, libelle: "Partie 2 · Cours", instructeurId: "u2", theme: "Messer" }),
+    partie("o0", 2, "OPTION", { bloc: 2, libelle: "Partie 2 · Option 1" }),
+    partie("o1", 3, "OPTION", { bloc: 2, libelle: "Partie 2 · Option 2" }),
   ];
 
   it("retire les deux options vides d'une séance de l'ancien modèle, et ne touche pas aux cours", () => {
@@ -612,9 +612,11 @@ describe("8. parties vides en trop", () => {
   });
 
   it("ne trouve rien sur une séance qui ne porte que son modèle — la règle de rejouabilité", () => {
+    // Le modèle (un cours, vide) et deux cours ajoutés puis remplis : rien n'est en trop.
     const seance = [
-      partie("c0", 0, false, { libelle: "Cours 1", instructeurId: "u1" }),
-      partie("c1", 1, false, { libelle: "Cours 2", theme: "Dague" }),
+      partie("c0", 0, "COURS"),
+      partie("c1", 1, "COURS", { instructeurId: "u1" }),
+      partie("c2", 2, "COURS", { theme: "Dague" }),
     ];
     expect(detecterPartiesSurnumeraires(seance)).toEqual({ aSupprimer: [], rangs: [], seancesVidees: [] });
   });
@@ -623,18 +625,23 @@ describe("8. parties vides en trop", () => {
     expect(detecterPartiesSurnumeraires([])).toEqual({ aSupprimer: [], rangs: [], seancesVidees: [] });
   });
 
-  it("protège les deux premiers cours même entièrement vides : ils sont le modèle", () => {
-    const { aSupprimer } = detecterPartiesSurnumeraires([partie("c0", 0, false), partie("c1", 1, false)]);
+  it("protège le premier cours même entièrement vide : il est le modèle", () => {
+    const { aSupprimer } = detecterPartiesSurnumeraires([partie("c0", 0, "COURS")]);
     expect(aSupprimer).toEqual([]);
   });
 
-  it("retire un troisième cours vide, lui : celui-là a été ajouté puis laissé en blanc", () => {
-    const { aSupprimer } = detecterPartiesSurnumeraires([partie("c0", 0, false), partie("c1", 1, false), partie("c2", 2, false)]);
-    expect(aSupprimer.map((p) => p.id)).toEqual(["c2"]);
+  it("retire un deuxième cours vide, lui : celui-là a été ajouté puis laissé en blanc", () => {
+    const { aSupprimer } = detecterPartiesSurnumeraires([partie("c0", 0, "COURS"), partie("c1", 1, "COURS"), partie("c2", 2, "COURS", { theme: "Dague" })]);
+    expect(aSupprimer.map((p) => p.id)).toEqual(["c1"]);
+  });
+
+  it("protège le premier cours dans l'ordre de lecture, pas le premier venu", () => {
+    const { aSupprimer } = detecterPartiesSurnumeraires([partie("c1", 1, "COURS"), partie("c0", 0, "COURS")]);
+    expect(aSupprimer.map((p) => p.id)).toEqual(["c1"]);
   });
 
   /**
-   * Un seul réglage renseigné suffit à sauver une partie, et c'est la définition partagée avec
+   * Un seul réglage renseigné suffit à sauver un élément, et c'est la définition partagée avec
    * l'écran de saisie (`reglagesVides`) qui tranche — pas une relecture champ par champ écrite ici.
    */
   it.each([
@@ -646,37 +653,37 @@ describe("8. parties vides en trop", () => {
     ["un atelier retenu", { atelierId: "a1" }],
   ])("garde une option qui porte %s", (_quoi, champs) => {
     const { aSupprimer } = detecterPartiesSurnumeraires([
-      partie("c0", 0, false, { instructeurId: "u1" }),
-      partie("c1", 1, false, { instructeurId: "u2" }),
-      partie("o0", 2, true, champs as Partial<LignePartieComplete>),
+      partie("c0", 0, "COURS", { instructeurId: "u1" }),
+      partie("c1", 1, "COURS", { instructeurId: "u2" }),
+      partie("o0", 2, "OPTION", { bloc: 2, ...(champs as Partial<LignePartieComplete>) }),
     ]);
     expect(aSupprimer).toEqual([]);
   });
 
   it("range les survivantes sur ce qui RESTE, pas sur l'instantané d'avant", () => {
-    // « Option 1 » vide part, « Option 2 » remplie reste — et devient « Option 1 », rang 2.
+    // « Option 1 » vide part, « Option 2 » remplie reste — et devient « Option » tout court, rang 2.
     const { aSupprimer, rangs } = detecterPartiesSurnumeraires([
-      partie("c0", 0, false, { instructeurId: "u1" }),
-      partie("c1", 1, false, { instructeurId: "u2" }),
-      partie("o0", 2, true, { libelle: "Option 1" }),
-      partie("o1", 3, true, { libelle: "Option 2", theme: "Sparring" }),
+      partie("c0", 0, "COURS", { bloc: 1, libelle: "Partie 1 · Cours", instructeurId: "u1" }),
+      partie("c1", 1, "COURS", { bloc: 2, libelle: "Partie 2 · Cours", instructeurId: "u2" }),
+      partie("o0", 2, "OPTION", { bloc: 2, libelle: "Partie 2 · Option 1" }),
+      partie("o1", 3, "OPTION", { bloc: 2, libelle: "Partie 2 · Option 2", theme: "Sparring" }),
     ]);
     expect(aSupprimer.map((p) => p.id)).toEqual(["o0"]);
     const survivante = rangs.find((r) => r.id === "o1");
-    expect(survivante?.data).toMatchObject({ ordre: 2, libelle: "Option 1" });
+    expect(survivante?.data).toMatchObject({ ordre: 2, libelle: "Partie 2 · Option" });
     // Et son `updatedAt` est rendu tel quel : retirer la case d'à côté n'est pas une modification
     // du programme par quelqu'un, et la grille lit ce champ dans sa bulle.
     expect(survivante?.data.updatedAt).toEqual(RANGEE_LE);
   });
 
   it("ne mélange pas deux séances", () => {
-    const autre = partie("x0", 0, true, { sessionId: "s2", libelle: "Option 1" });
+    const autre = partie("x0", 0, "OPTION", { sessionId: "s2", libelle: "Partie 1 · Option" });
     const { aSupprimer } = detecterPartiesSurnumeraires([...ancienModele(), autre]);
     expect(aSupprimer.map((p) => `${p.sessionId}:${p.id}`)).toEqual(["s1:o0", "s1:o1", "s2:x0"]);
   });
 
   it("se décrit pour le rapport, sans nommer personne", () => {
-    expect(decrirePartieEnTrop(partie("o1", 3, true, { libelle: "Option 2" }))).toBe("séance du 24/09/2026, « Option 2 » (rang 3)");
+    expect(decrirePartieEnTrop(partie("o1", 3, "OPTION", { libelle: "Partie 2 · Option 2" }))).toBe("séance du 24/09/2026, « Partie 2 · Option 2 » (rang 3)");
   });
 
   it("est bien un contrôle déclaré, donc lançable seul", () => {
@@ -690,12 +697,13 @@ describe("8. parties vides en trop", () => {
  */
 describe("8 bis. le contrôle qui supprime, après relecture adverse", () => {
   const RANGEE_LE = new Date("2026-09-12T18:30:00.000Z");
-  const partie = (id: string, ordre: number, estOption: boolean, p: Partial<LignePartieComplete> = {}): LignePartieComplete => ({
+  const partie = (id: string, ordre: number, nature: string, p: Partial<LignePartieComplete> = {}): LignePartieComplete => ({
     id,
     sessionId: "s1",
-    libelle: estOption ? `Option ${ordre}` : `Cours ${ordre + 1}`,
+    libelle: `Partie ${ordre + 1} · ${nature === "OPTION" ? "Option" : "Cours"}`,
     ordre,
-    estOption,
+    bloc: ordre + 1,
+    nature,
     updatedAt: RANGEE_LE,
     date: "2026-09-24",
     modifieParId: null,
@@ -716,9 +724,9 @@ describe("8 bis. le contrôle qui supprime, après relecture adverse", () => {
    */
   it("garde une partie que quelqu'un a touchée, même vide", () => {
     const { aSupprimer } = detecterPartiesSurnumeraires([
-      partie("c0", 0, false, { instructeurId: "u1" }),
-      partie("c1", 1, false, { instructeurId: "u2" }),
-      partie("o0", 2, true, { modifieParId: "u3" }),
+      partie("c0", 0, "COURS", { instructeurId: "u1" }),
+      partie("c1", 1, "COURS", { instructeurId: "u2" }),
+      partie("o0", 2, "OPTION", { bloc: 2, modifieParId: "u3" }),
     ]);
     expect(aSupprimer).toEqual([]);
   });
@@ -726,8 +734,8 @@ describe("8 bis. le contrôle qui supprime, après relecture adverse", () => {
   /** Une séance qui n'avait que des options vides finit sans aucune partie : le rapport doit le dire. */
   it("annonce les séances qui se retrouveront sans aucune partie", () => {
     const { aSupprimer, seancesVidees } = detecterPartiesSurnumeraires([
-      partie("o0", 0, true, { libelle: "Option 1" }),
-      partie("o1", 1, true, { libelle: "Option 2" }),
+      partie("o0", 0, "OPTION", { bloc: 1, libelle: "Partie 1 · Option 1" }),
+      partie("o1", 1, "OPTION", { bloc: 1, libelle: "Partie 1 · Option 2" }),
     ]);
     expect(aSupprimer).toHaveLength(2);
     expect(seancesVidees).toEqual(["séance du 24/09/2026"]);
@@ -735,9 +743,9 @@ describe("8 bis. le contrôle qui supprime, après relecture adverse", () => {
 
   it("ne signale rien quand il reste quelque chose à la séance", () => {
     const { seancesVidees } = detecterPartiesSurnumeraires([
-      partie("c0", 0, false, { instructeurId: "u1" }),
-      partie("c1", 1, false),
-      partie("o0", 2, true),
+      partie("c0", 0, "COURS", { instructeurId: "u1" }),
+      partie("c1", 1, "COURS"),
+      partie("o0", 2, "OPTION", { bloc: 2 }),
     ]);
     expect(seancesVidees).toEqual([]);
   });

@@ -42,8 +42,9 @@ import { enregistrerIdentite } from "../src/lib/identite";
 import { COMPTES, DEMO_CODES_SECOURS, DEMO_MOT_DE_PASSE, DEMO_TOTP_SECRET, demoLien, EMAIL_ADMINISTRATION } from "./comptes";
 import { exigerBaseDeDemonstration } from "./garde-demonstration";
 import { NOMBRE_COULEURS } from "../src/lib/couleurs";
-import { libellePartie } from "../src/lib/constants";
-import { partiesInitiales, placerAtelier, synchroniserSeance } from "../src/lib/planning";
+import { libelleElement, type NatureElement } from "../src/lib/constants";
+import { placesDansPartie } from "../src/components/planning/rangement";
+import { partiesInitiales, placerAtelier, rangerParties, SELECTION_RANGEMENT, synchroniserSeance } from "../src/lib/planning";
 import { db } from "../src/lib/db";
 
 export * from "./comptes";
@@ -333,23 +334,22 @@ async function main() {
     /*
      * **Les cases de la séance : le modèle, et ce qui déborde du modèle.**
      *
-     * Le modèle du club en pose quatre. Un gros club en remplit parfois cinq ou six (un groupe
-     * débutants en parallèle, un créneau de sparring encadré) : les cases supplémentaires sont
-     * ajoutées à la suite et nommées **comme l'application les nomme** quand elle en ajoute une
-     * elle-même (« Option 3 », « Option 4 »… — voir `placerAtelier`). En taille « club », aucun
-     * programme ne dépasse le rang 1 : `casesSeance` vaut exactement `partiesInitiales()`.
+     * Le modèle pose une seule partie avec un cours. Les cases que le programme du club remplit
+     * en plus sont des **cours de la même partie**, nommés comme l'application les nomme
+     * (« Cours 1 », « Cours 2 »… — sans préfixe, la séance n'ayant qu'une partie).
      */
     const modele = partiesInitiales();
-    const optionsModele = modele.filter((p) => p.estOption).length;
+    const derniere = modele[modele.length - 1].bloc;
     const nbCases = Math.max(modele.length, ...parties.map((p) => p.rang + 1));
-    const casesSeance = [
-      ...modele,
-      ...Array.from({ length: nbCases - modele.length }, (_, k) => ({
-        libelle: libellePartie(optionsModele + k + 1, true),
-        ordre: modele.length + k,
-        estOption: true,
-      })),
+    const elements: Array<{ bloc: number; nature: NatureElement }> = [
+      ...modele.map(({ bloc, nature }) => ({ bloc, nature })),
+      ...Array.from({ length: nbCases - modele.length }, () => ({ bloc: derniere, nature: "COURS" as const })),
     ];
+    // Les éléments sont déjà dans l'ordre de lecture (le cours du modèle, puis les cours en plus,
+    // tous dans la partie 1) : `ordre` est l'index, et le nom se calcule comme `rangerParties` le ferait.
+    const places = placesDansPartie(elements);
+    const nbParties = new Set(elements.map((e) => e.bloc)).size;
+    const casesSeance = elements.map((e, ordre) => ({ ...e, ordre, libelle: libelleElement(e.bloc, e.nature, places[ordre].rang, places[ordre].nombre, nbParties) }));
     const session = await db.session.create({
       data: {
         periodId: period.id,
@@ -358,9 +358,9 @@ async function main() {
         heureFin: creneau.heureFin,
         lieu: creneau.lieu,
         adresse: creneau.adresse,
-        // **Les quatre parties du modèle**, comme pour une séance créée dans l'application ; celles
-        // que le programme renseigne reçoivent leur thème et leur instructeur, les autres restent
-        // vides mais bien présentes.
+        // **Le cours du modèle** (une seule partie), comme pour une séance créée dans l'application,
+        // plus les cours que le programme demande ; celles que le programme renseigne reçoivent leur
+        // thème et leur instructeur, les autres restent vides mais bien présentes.
         parties: {
           create: casesSeance.map((p, rang) => {
             const saisie = parties.find((x) => x.rang === rang);
@@ -403,9 +403,27 @@ async function main() {
     const { email, statut, ...data } = a;
     const sessionId = statut === "PLANIFIE" && prochaine ? sessionsParDate[prochaine.date] : null;
     const atelier = await db.atelier.create({ data: { ...data, statut, sessionId, proposeParId: users[email].id } });
-    // Le placement passe par l'application (première option libre, sinon une option de plus) plutôt
+    // Le placement passe par l'application (un élément Atelier vide, sinon une option libre, sinon un
+    // élément Atelier de plus dans la dernière partie) plutôt
     // que par une case nommée en dur : le jeu d'essai montre ce que l'équipe verrait vraiment.
     if (sessionId) await placerAtelier(atelier.id, sessionId, users[COMPTES.adminNominatif].id);
+  }
+
+  // ---- La prochaine séance montre ce qu'une partie peut porter : un échauffement avant le premier
+  // cours, une option en parallèle du deuxième (l'atelier planifié ci-dessus occupe déjà la dernière
+  // partie). Ajoutés comme l'application les ajoute, puis rangés par la même fonction.
+  if (prochaine) {
+    const sessionId = sessionsParDate[prochaine.date];
+    const auteur = users[COMPTES.adminNominatif].id;
+    await db.sessionPartie.createMany({
+      data: [
+        { sessionId, bloc: 1, nature: "ECHAUFFEMENT", ordre: -1, libelle: "", theme: "Mobilité et jeu de jambes", instructeurId: users[COMPTES.instructeur].id, modifieParId: auteur },
+        { sessionId, bloc: 2, nature: "OPTION", ordre: 99, libelle: "", theme: "Sparring encadré", niveau: "INTERMEDIAIRE", instructeurId: users[COMPTES.instructeur].id, modifieParId: auteur },
+      ],
+    });
+    const aRanger = await db.sessionPartie.findMany({ where: { sessionId }, select: SELECTION_RANGEMENT });
+    await db.$transaction(rangerParties(aRanger.map((p) => ({ ...p, nature: p.nature as NatureElement })), db));
+    await synchroniserSeance(sessionId);
   }
 
   // ---- Événements : deux annonces publiées et un brouillon (fil, panneau, page publique de partage)

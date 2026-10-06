@@ -137,6 +137,24 @@ describe("chargerPlanning : listes de choix réservées à qui peut écrire", ()
     expect(planning?.ateliersDisponibles.map((a) => a.proposePar)).toEqual(["Chloé Arnaud"]);
   });
 
+  it("lit les deux listes de thèmes, pour tout le monde : elles ne nomment personne", async () => {
+    // Même réponse du faux client pour toute clé de réglage : les deux listes la relisent.
+    reponses.set("setting.findUnique", { value: JSON.stringify(["Mobilité"]) });
+    const { chargerPlanning } = await import("@/lib/planning");
+    const planning = await chargerPlanning(PERIODE, MEMBRE_INVITE, MAINTENANT);
+    expect(planning?.themes).toEqual(["Mobilité"]);
+    expect(planning?.themesEchauffement).toEqual(["Mobilité"]);
+    const cles = appelsDe("setting", "findUnique").map((a) => (a.args.where as { key: string }).key);
+    expect(cles).toEqual(expect.arrayContaining(["themes", "themesEchauffement"]));
+  });
+
+  it("thèmes d'échauffement jamais enregistrés : la liste d'échauffement du club", async () => {
+    const { chargerPlanning } = await import("@/lib/planning");
+    const { THEMES_ECHAUFFEMENT_DU_CLUB } = await import("@/lib/themes-club");
+    const planning = await chargerPlanning(PERIODE, INSTRUCTEUR, MAINTENANT);
+    expect(planning?.themesEchauffement).toEqual([...THEMES_ECHAUFFEMENT_DU_CLUB]);
+  });
+
   it("les retire aussi à l'encadrement sur un trimestre clos (plus rien à écrire)", async () => {
     periodeEnBase("CLOSE");
     const { chargerPlanning } = await import("@/lib/planning");
@@ -154,6 +172,7 @@ describe("optionsDepuis : ce que la grille remet aux cases", () => {
     mois: [],
     personnes: [{ id: "u-instructeur", prenom: "Marion", nom: "Ibert", role: "INSTRUCTEUR", couleur: 3 }],
     themes: ["Messer"],
+    themesEchauffement: ["Mobilité"],
     ateliersDisponibles: [{ id: "a1", titre: "Dague", proposePar: "Chloé Arnaud", sessionId: null }],
   };
 
@@ -164,6 +183,7 @@ describe("optionsDepuis : ce que la grille remet aux cases", () => {
     expect(o.ateliersDisponibles).toEqual([]);
     // Les thèmes ne nomment personne : ils restent
     expect(o.themes).toEqual(["Messer"]);
+    expect(o.themesEchauffement).toEqual(["Mobilité"]);
   });
 
   it("les garde dès que la personne peut écrire dans une case", async () => {

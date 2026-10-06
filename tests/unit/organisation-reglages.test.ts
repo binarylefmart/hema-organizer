@@ -120,6 +120,12 @@ describe("les thèmes du planning sont dans l'espace admin", () => {
     expect(code).toContain("enregistrerThemes");
     expect(code).toContain("enregistrerLieux");
     expect(code).toContain('requirePermission("themes.manage")');
+    // Deux listes de thèmes : échauffements, puis cours et options (l'ancienne
+    // « Thèmes du planning », renommée) — deux formulaires, deux actions.
+    expect(code).toContain("enregistrerThemesEchauffement");
+    expect(code).toContain('titre="Thèmes d\'échauffement"');
+    expect(code).toContain('titre="Thèmes de cours et options"');
+    expect(code).not.toContain('titre="Thèmes du planning"');
   });
 
   it("l'identité du club a son onglet et son écran, réservés au bureau", () => {
