@@ -193,10 +193,10 @@ export function partiesProgramme(lignes: readonly LigneProgramme[]): PartieProgr
  * dans aucune feuille de style — l'étiquette sortirait sans couleur.
  */
 const COULEURS_NATURE: Record<NatureElement, string> = {
-  ECHAUFFEMENT: "bg-partie-1 text-partie-texte",
-  COURS: "bg-partie-3 text-partie-texte",
-  OPTION: "border border-partie-5 bg-partie-5-doux/60 text-partie-5",
-  ATELIER: "border border-partie-2 bg-partie-2-doux/60 text-partie-2",
+  ECHAUFFEMENT: "bg-marque text-encre",
+  COURS: "bg-primaire text-primaire-texte",
+  OPTION: "border border-primaire bg-primaire-doux text-primaire",
+  ATELIER: "border border-vert bg-vert-doux text-vert",
 };
 
 /**
@@ -205,15 +205,19 @@ const COULEURS_NATURE: Record<NatureElement, string> = {
  * Tant qu'une séance n'était qu'une suite de cours et d'options, la teinte comptait le rang dans la
  * série (« Cours 2 » ↔ couleur 2). Depuis que les éléments se rangent dans des parties numérotées,
  * c'est le **titre de partie** qui sépare les blocs, et la couleur n'a plus qu'une question à
- * trancher d'un coup d'œil : *qu'est-ce que c'est* — l'échauffement (ambre), le cours (bleu), une
- * option (violet), un atelier proposé par un membre (sa propre teinte — et c'est **le seul** repère
+ * trancher d'un coup d'œil : *qu'est-ce que c'est* — l'échauffement, le cours, une option, un
+ * atelier proposé par un membre (sa propre teinte — et c'est **le seul** repère
  * qui le distingue : son titre, lui, s'écrit comme n'importe quel thème). Deux cours d'une même partie ont donc la même teinte : c'est leur nom
  * (« Cours 1 », « Cours 2 ») qui les distingue, et il est écrit dessus.
  *
  * **La forme double la teinte** : ce qui se mène en parallèle (`enParallele` — option, atelier) est
- * en contour, plus discret ; l'échauffement et le cours, qui sont le cours lui-même, en aplat. Les
- * teintes sont les repères `--partie-n` de `globals.css` (une palette fixe, posée pour le clair et
- * pour le sombre), jamais une couleur en dur.
+ * en contour, plus discret ; l'échauffement et le cours, qui sont le cours lui-même, en aplat.
+ *
+ * **Les teintes suivent le thème du club** (demande de Delta : « revois les couleurs des cours,
+ * échauffements etc. en fonction des thèmes ») : chaque étiquette reprend une **paire** que chaque
+ * thème définit déjà pour le clair et le sombre, donc un contraste que le thème garantit —
+ * l'échauffement la couleur de marque sur l'encre (l'or du logo sur l'en-tête), le cours et l'option
+ * la couleur primaire (en aplat, puis en contour), l'atelier le vert. Jamais une couleur en dur.
  */
 export function couleurNature(nature: NatureElement): string {
   // Une nature inconnue (donnée ancienne, import) retombe sur le cours plutôt que sur une classe

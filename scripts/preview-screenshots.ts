@@ -590,7 +590,7 @@ function toutesLesScenes(): Scene[] {
     // à cette date » — un écran vide qui ressemble à une capture réussie.
     {
       nom: "planning-parties",
-      description: "Planning en modification : une séance découpée en parties — échauffement et cours en partie 1, option en partie 2, atelier en partie 3 — structure repliée (« Modifier » fermé)",
+      description: "Planning en modification : une séance découpée en parties — échauffement et cours en partie 1, option en partie 2, atelier en partie 3",
       connexion: COMPTES.instructeur,
       chemin: "/planning?modifier=1",
       // La séance du jeu d'essai qui porte un échauffement : visée par **l'étiquette** de l'élément
@@ -604,7 +604,7 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "planning-pied",
-      description: "Planning en modification : le pied d'une carte — « Modifier » (la structure : menus d'ajout, flèches, retrait) et « Ajouter une partie »",
+      description: "Planning en modification : le pied d'une carte — « Ajouter une partie », avec les flèches et le retrait du dernier élément",
       connexion: COMPTES.instructeur,
       chemin: "/planning?modifier=1",
       avant: async (page) => {
@@ -622,8 +622,6 @@ function toutesLesScenes(): Scene[] {
       avant: async (page) => {
         const carte = page.locator("article", { has: page.locator("span", { hasText: /^Échauffement$/ }) }).first();
         await carte.waitFor();
-        // Les menus d'ajout et les flèches ne se montrent qu'une fois « Modifier » ouvert sur la carte.
-        await carte.getByRole("button", { name: "Modifier", exact: true }).click();
         const menu = carte.getByRole("combobox", { name: "Ajouter dans la partie 1" });
         await menu.evaluate((el) => el.scrollIntoView({ block: "center" }));
         await page.evaluate(() => window.scrollBy(0, 220));

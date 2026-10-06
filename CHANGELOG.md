@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.71.1
+
+### Nouveautés
+
+- **planning** : structure éditable dès le mode modification, couleurs des éléments selon le thème
+
+### Autres changements
+
+- **etat** : v0.71.1
+
 ## 0.71.0
 
 ### Nouveautés

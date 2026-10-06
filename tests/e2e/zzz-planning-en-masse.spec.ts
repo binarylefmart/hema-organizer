@@ -84,9 +84,8 @@ test("ajouter une option dans la partie 1 d'une séance cochée, puis la retirer
   // `.last()` dans chaque carte, et les désignerait toutes).
   const id = await cases.last().evaluate((el) => el.closest("article")?.id ?? "");
   const carte = page.locator(`article#${id}`);
-  // ↑ ↓ Retirer ne se montrent qu'une fois la structure de la carte ouverte (« Modifier »).
-  await carte.getByRole("button", { name: "Modifier", exact: true }).click();
-  await expect(carte.getByRole("button", { name: "Terminer", exact: true })).toHaveAttribute("aria-pressed", "true");
+  // ↑ ↓ Retirer sont là dès le mode modification : aucun second bouton par carte.
+  await expect(carte.getByRole("button", { name: "Modifier", exact: true })).toHaveCount(0);
   const options = carte.getByRole("button", { name: /^Retirer « (Partie 1 · )?Option( \d+)? »$/ });
   const avant = await options.count();
   await cases.last().check();

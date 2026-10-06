@@ -45,11 +45,10 @@ import { blocsVoisins, confirmationRetrait, entreesAjout, grouperParPartie, lire
  * comme avant, « Cours », « Option ». Les étiquettes ne changent pas (`nomElement`) ; les noms
  * accessibles, eux, gardent le libellé enregistré (`partie.libelle`), calculé par le serveur.
  *
- * **La structure se règle derrière « Modifier »**. Fermée — c'est l'état de départ —, la carte ne
- * montre que les étiquettes et les champs des cases : c'est ce qu'on remplit le plus souvent, et
- * dix menus d'ajout et trente flèches noyaient les cases d'une carte de trois parties. Ouverte, chaque
- * partie montre son menu « Ajouter dans la partie N… » et chaque élément ses ↑ ↓ Retirer. L'état est
- * local à la carte (pas d'URL) : on ouvre la séance qu'on restructure, pas tout le trimestre.
+ * **La structure se règle dès le mode modification**, sans second bouton par carte (demande de
+ * Delta : « quand je fais modifier dans planning il faut que je refasse de nouveau modifier sur un
+ * programme pour l'éditer, retire le bouton »). Chaque partie montre son menu « Ajouter dans la
+ * partie N… » et chaque élément ses ↑ ↓ Retirer ; « Modifier le planning » est la seule porte.
  *
  * Tout ce qui touche à la **forme** du programme (ajouter, retirer, déplacer, changer de nature) part
  * **sans attendre** « Appliquer les modifications » : un élément provisoire n'aurait pas
@@ -57,10 +56,9 @@ import { blocsVoisins, confirmationRetrait, entreesAjout, grouperParPartie, lire
  */
 export function ListeParties({ sessionId, parties, compact = false }: { sessionId: string; parties: CasePlanning[]; compact?: boolean }) {
   const { modifiable } = useOptionsCase();
-  const [structure, setStructure] = useState(false);
   if (parties.length === 0 && !modifiable) return <p className="text-texte-secondaire">Programme à venir.</p>;
   const nbParties = nombreDeParties(parties);
-  const gestes = modifiable && structure;
+  const gestes = modifiable;
   /*
    * **En lecture, un élément qui n'a rien à dire ne montre pas son étiquette** — et une partie
    * dont aucun élément ne se lit ne montre pas son intitulé.
@@ -116,7 +114,7 @@ export function ListeParties({ sessionId, parties, compact = false }: { sessionI
           </section>
         );
       })}
-      {modifiable && <PiedCarte sessionId={sessionId} bloc={nbParties + 1} ouvert={structure} basculer={() => setStructure((o) => !o)} />}
+      {modifiable && <PiedCarte sessionId={sessionId} bloc={nbParties + 1} />}
     </div>
   );
 }
@@ -271,38 +269,26 @@ function AjouterDansPartie({ sessionId, bloc }: { sessionId: string; bloc: numbe
 }
 
 /**
- * **Le pied de la carte en modification : « Modifier » et « Ajouter une partie », côte à côte.**
- *
- * « Modifier » ouvre la structure de la carte (menus d'ajout, ↑ ↓ Retirer) et devient « Terminer »
- * une fois ouverte ; `aria-pressed` dit l'état à qui ne voit pas le mot changer. « Ajouter une
- * partie » reste toujours là : une partie de plus, qui naît avec un cours vide — une partie n'existe
- * que par ses éléments. On y ajoute ensuite ce qu'on veut avec son menu.
- *
- * Les deux boutons s'empilent sous 390 px : côte à côte, à 48 px de haut chacun, « Ajouter une
- * partie » se coupait en deux lignes sur un petit téléphone.
+ * **Le pied de la carte en modification : « Ajouter une partie ».** Une partie de plus, qui naît avec
+ * un cours vide — une partie n'existe que par ses éléments. On y ajoute ensuite ce qu'on veut avec son
+ * menu. Pleine largeur sous 390 px : à 48 px de haut, le libellé se coupait sur un petit téléphone.
  */
-function PiedCarte({ sessionId, bloc, ouvert, basculer }: { sessionId: string; bloc: number; ouvert: boolean; basculer: () => void }) {
+function PiedCarte({ sessionId, bloc }: { sessionId: string; bloc: number }) {
   const [enVol, start, erreur] = useActionPartie();
   /* Pas d'icône « plus » dans le jeu du projet — c'est la croix, tournée d'un quart de tour : un seul
      tracé à maintenir, et le signe reste celui que tout le monde lit « ajouter ». */
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex flex-col gap-2 min-[390px]:flex-row min-[390px]:flex-wrap">
-        <Bouton variante="secondaire" taille="petite" className="w-full min-[390px]:w-auto" aria-pressed={ouvert} onClick={basculer}>
-          <Icone nom={ouvert ? "check" : "engrenage"} taille={18} />
-          {ouvert ? "Terminer" : "Modifier"}
-        </Bouton>
-        <Bouton
-          variante="secondaire"
-          taille="petite"
-          className="w-full min-[390px]:w-auto"
-          disabled={enVol}
-          onClick={() => start(() => ajouterPartie({ sessionId, bloc, nature: "COURS" }))}
-        >
-          <Icone nom="croix" taille={18} className="rotate-45" />
-          Ajouter une partie
-        </Bouton>
-      </div>
+      <Bouton
+        variante="secondaire"
+        taille="petite"
+        className="w-full min-[390px]:w-auto min-[390px]:self-start"
+        disabled={enVol}
+        onClick={() => start(() => ajouterPartie({ sessionId, bloc, nature: "COURS" }))}
+      >
+        <Icone nom="croix" taille={18} className="rotate-45" />
+        Ajouter une partie
+      </Bouton>
       <p className="text-base font-semibold text-rouge empty:hidden" aria-live="polite">
         {erreur}
       </p>

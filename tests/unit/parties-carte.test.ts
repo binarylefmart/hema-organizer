@@ -109,11 +109,10 @@ describe("l'écran", () => {
     expect(code).toMatch(/\{intitules && \(\s*<h3/);
   });
 
-  it("range la structure derrière « Modifier » / « Terminer », fermée par défaut", () => {
-    expect(code).toContain("const [structure, setStructure] = useState(false);");
-    expect(code).toContain("aria-pressed={ouvert}");
-    expect(code).toContain('{ouvert ? "Terminer" : "Modifier"}');
-    // Fermée : ni menu d'ajout par partie, ni ↑ ↓ Retirer ; « Ajouter une partie » reste.
+  it("montre la structure dès le mode modification, sans second bouton « Modifier » par carte", () => {
+    expect(code).not.toContain("setStructure");
+    expect(code).not.toContain("aria-pressed");
+    expect(code).toContain("const gestes = modifiable;");
     expect(code).toContain("{gestes && <AjouterDansPartie");
     expect(code).toContain("{gestes && <BoutonsElement");
     expect(code).toMatch(/\{modifiable && <PiedCarte /);

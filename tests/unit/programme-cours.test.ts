@@ -240,9 +240,11 @@ describe("le repère de couleur d'un élément", () => {
     expect(couleurNature("ECHAUFFEMENT")).not.toContain("border");
   });
 
-  it("puise dans les repères du thème, sans couleur en dur ni classe composée", () => {
+  it("puise dans les couleurs du thème du club, sans couleur en dur ni classe composée", () => {
+    // Des paires que chaque thème définit pour le clair et le sombre (marque/encre, primaire,
+    // vert) : le contraste est celui que le thème garantit déjà.
     for (const n of NATURES_ELEMENT) {
-      expect(couleurNature(n)).toMatch(/\b(bg|border)-partie-[1-6]\b/);
+      expect(couleurNature(n)).toMatch(/\b(bg|border)-(marque|primaire|vert)\b/);
       expect(couleurNature(n)).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\b(rgb|hsl)a?\(/);
     }
   });
