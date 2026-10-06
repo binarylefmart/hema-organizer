@@ -103,7 +103,7 @@ export function emailDesistementTardif(args: {
       piedDePage: [
         "Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :",
         url,
-        `Message automatique envoyé aux instructeurs de la séance quand un membre se désiste dans les ${libelleDelaiDesistement()} qui précèdent le cours.`,
+        `Message automatique envoyé aux instructeurs du club (sauf ceux qui ne viennent pas eux-mêmes) quand un membre se désiste dans les ${libelleDelaiDesistement()} qui précèdent le cours.`,
       ],
     },
   };

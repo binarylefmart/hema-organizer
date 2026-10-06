@@ -171,7 +171,7 @@ export const RAISON_API_EXCLUE: Partial<Record<TypeNotification, string>> = {
   effectif_faible:
     "C'est une alerte aux instructeurs — « faut-il annuler ? » —, pas une nouvelle du club. Elle porte un lien d'annulation signé au nom de son destinataire, qui n'a rien à faire sur une page web ; et le taux du cours, lui, se publie déjà avec le cours. Ce qu'on refuse ici, c'est d'en faire un titre.",
   desistement_tardif:
-    "Ce message nomme le membre qui se retire d'un cours, à l'intention des seuls instructeurs de la séance. Aucun nom ne sort du club, et un site web n'a rien à décider deux heures avant un cours.",
+    "Ce message nomme le membre qui se retire d'un cours, à l'intention des seuls instructeurs du club. Aucun nom ne sort du club, et un site web n'a rien à décider deux heures avant un cours.",
   atelier_statut: "Réponse à une proposition : le message nomme son auteur et répond à son écrit. Il n'a rien à faire sur une page publique.",
   periode_suivante: "Affaire de bureau : « le trimestre suivant n'existe pas encore » est un oubli d'administrateur, pas une information pour les visiteurs du site.",
   periode_non_activee: "Même famille, même raison : « personne n'a appuyé sur Activer » ne regarde que le bureau.",
@@ -253,7 +253,7 @@ export const DESCRIPTIONS: Record<TypeNotification, DescriptionNotification> = {
   },
   desistement_tardif: {
     titre: "Désistement de dernière minute",
-    quand: `Aux instructeurs de la séance, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans les ${libelleDelaiDesistement()} qui précèdent le cours — avec son nom et l'effectif mis à jour. Jamais sur les salons : le message nomme quelqu'un.`,
+    quand: `À tous les instructeurs du club — sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être —, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans les ${libelleDelaiDesistement()} qui précèdent le cours — avec son nom et l'effectif mis à jour. Jamais sur les salons : le message nomme quelqu'un.`,
   },
   atelier_statut: {
     titre: "Réponse à une proposition d'atelier",

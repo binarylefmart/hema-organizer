@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.72.1
+
+### Nouveautés
+
+- **notifications** : désistement de dernière minute envoyé à tous les instructeurs, sauf ceux qui ne viennent pas
+
 ## 0.72.0
 
 ### Nouveautés

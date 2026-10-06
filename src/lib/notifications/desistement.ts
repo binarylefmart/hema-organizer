@@ -4,6 +4,8 @@ import { parisDateTime, todayIso } from "@/lib/dates";
 import { enqueueEmail } from "@/lib/email/mailer";
 import { emailDesistementTardif } from "@/lib/email/templates/seances";
 import { aUnEmail } from "@/lib/membres";
+import { filtrerAccesActif } from "@/lib/acces-actif";
+import { personnesDuClub } from "@/lib/permissions";
 import { envoiPossible } from "./canaux";
 import { contenuDesistementTardif, type StatutDesistement } from "./contenu";
 import { clesDejaEnvoyees, journaliser, marquerEchec, notifierParPush, pushPossible } from "./journal";
@@ -31,10 +33,12 @@ import { CHAMPS_DESTINATAIRE, chiffresEffectif, equipeJoignable, type Instructeu
  *
  * ## Qui reçoit, et par où
  *
- * L'équipe de la séance — à défaut celle de la période —, réduite à qui a un accès actif : c'est
- * `equipeJoignable` (`seances.ts`, qui applique `filtrerAccesActif`), **la même fonction** que
- * l'alerte « peu de monde ». Puis chacun selon ses préférences (`destinataireRetenu`), et jamais le
- * membre lui-même s'il encadre. **Email et téléphone seulement** : le message nomme quelqu'un, et un
+ * **Tous les instructeurs du club** (demande de Delta : « à tous les instructeurs, pas juste celui de
+ * la séance ») — rôle de base INSTRUCTEUR, compte actif, hors compte de service —, plus l'équipe de la
+ * séance (`equipeJoignable`) si quelqu'un y est posé sans ce rôle ; le tout réduit à qui a un accès actif
+ * (`filtrerAccesActif`). Puis chacun selon ses préférences (`destinataireRetenu`, désactivable depuis
+ * « Mon profil »), jamais le membre lui-même s'il encadre, ni un instructeur qui a répondu Absent ou
+ * Peut-être à cette séance. **Email et téléphone seulement** : le message nomme quelqu'un, et un
  * salon Discord ou un groupe Telegram est public (`CANAUX_PAR_NOTIFICATION.desistement_tardif`).
  *
  * ## Idempotence
@@ -151,8 +155,11 @@ async function signaler({ sessionId, userId, avant, apres, now = new Date() }: S
   if (!membre) return 0;
   const nom = `${membre.prenom} ${membre.nom}`.trim();
 
-  // L'équipe de l'alerte « peu de monde », sans le membre lui-même s'il encadre.
-  const equipe = (await equipeJoignable(s, now)).filter((u) => u.id !== userId);
+  // Tous les instructeurs du club, plus l'équipe de la séance, sans le membre lui-même s'il encadre.
+  // **Sauf les instructeurs qui ne viennent pas eux-mêmes** (Delta : « sauf si l'instructeur est absent
+  // ou peut-être ») : prévenir d'un désistement quelqu'un qui ne sera pas là ne l'aide à rien décider.
+  const neViennentPas = new Set(s.attendances.filter((a) => a.statut === "ABSENT" || a.statut === "PEUT_ETRE").map((a) => a.userId));
+  const equipe = (await destinatairesDesistement(s, now)).filter((u) => u.id !== userId && !neViennentPas.has(u.id));
   if (equipe.length === 0) return 0;
 
   const prefs = await getPreferencesNotifications();
@@ -216,4 +223,21 @@ export function chargeDesistementPush(args: {
     // Un tag par membre : deux désistements sur la même séance ne s'écrasent pas sur l'écran verrouillé.
     tag: `desistement-${args.seance.id}-${args.membreId}`,
   };
+}
+
+/**
+ * **Les instructeurs du club, et l'équipe de la séance** : une seule liste, sans doublon, réduite à qui a
+ * un accès actif. Le rôle se lit sur `role` (le rôle de base), jamais sur `estAdmin` : un membre du bureau
+ * qui n'enseigne pas n'est pas concerné, un instructeur du bureau l'est.
+ */
+async function destinatairesDesistement(s: Parameters<typeof equipeJoignable>[0], now: Date): Promise<InstructeurAlerte[]> {
+  const instructeurs = await db.user.findMany({
+    where: { role: "INSTRUCTEUR", actif: true, service: false },
+    select: CHAMPS_DESTINATAIRE,
+  });
+  const actifs = await filtrerAccesActif(personnesDuClub(instructeurs), now);
+  const equipe = await equipeJoignable(s, now);
+  const parId = new Map<string, InstructeurAlerte>();
+  for (const u of [...actifs, ...equipe]) if (!parId.has(u.id)) parId.set(u.id, u);
+  return [...parId.values()];
 }

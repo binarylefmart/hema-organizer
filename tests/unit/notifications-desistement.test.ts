@@ -32,6 +32,8 @@ const faux = vi.hoisted(() => ({
     period: { statut: string; membres: string[]; instructeurs: string[] };
   },
   personnes: new Map<string, Record<string, unknown>>(),
+  /** Les comptes de rôle INSTRUCTEUR du club, hors équipe de la séance (vide par défaut) */
+  instructeursClub: [] as string[],
   reponses: new Map<string, string>(),
   logs: [] as Array<Record<string, unknown>>,
   emails: [] as Array<{ to: string; sujet: string; ref?: string; contenu: { paragraphes: string[] } }>,
@@ -72,7 +74,11 @@ vi.mock("@/lib/db", () => ({
     user: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => faux.personnes.get(where.id) ?? null),
       // Le tri « accès actif » (`idsAvecAccesActif`) : tout le monde en a un ici.
-      findMany: vi.fn(async (args: { where: { AND: [{ id: { in: string[] } }, unknown] } }) => args.where.AND[0].id.in.map((id) => ({ id }))),
+      // Deux lectures : les instructeurs du club (`role: "INSTRUCTEUR"`), et le tri « accès actif »
+      // (`idsAvecAccesActif`) — tout le monde en a un ici.
+      findMany: vi.fn(async (args: { where: { role?: string; AND?: [{ id: { in: string[] } }, unknown] } }) =>
+        args.where.role === "INSTRUCTEUR" ? faux.instructeursClub.map(utilisateur) : args.where.AND![0].id.in.map((id) => ({ id })),
+      ),
     },
     attendance: {
       findUnique: vi.fn(async ({ where }: { where: { userId_sessionId: { userId: string } } }) => {
@@ -186,6 +192,7 @@ beforeEach(() => {
   faux.echecEmail = null;
   faux.canaux = { email: true, push: true, discord: true, telegram: true };
   faux.reglages = null;
+  faux.instructeursClub = [];
   faux.basePanne = false;
   faux.connecte = { id: "chloe", role: "MEMBRE", actif: true, sessionId: "sess" };
   faux.audits = [];
@@ -327,6 +334,24 @@ describe("destinataires et canaux", () => {
     await desister("chloe", "PRESENT", "PEUT_ETRE");
     expect(faux.emails.map((e) => e.to)).toEqual(["charlie@club.fr"]);
     expect(faux.emails[0].sujet).toContain("(Peut-être)");
+  });
+
+  it("prévient tous les instructeurs du club, pas seulement ceux de la séance, sans doublon", async () => {
+    faux.personnes.set("dana", personne("dana", "Dana", "Roche"));
+    faux.instructeursClub = ["dana", "charlie"];
+    await desister("chloe", "PRESENT", "ABSENT");
+    expect(faux.emails.map((e) => e.to).sort()).toEqual(["alix@club.fr", "charlie@club.fr", "dana@club.fr"]);
+    expect(faux.push.map((p) => p.userId).sort()).toEqual(["alix", "charlie", "dana"]);
+  });
+
+  it("ne prévient pas un instructeur qui a lui-même répondu Absent ou Peut-être à la séance", async () => {
+    faux.personnes.set("dana", personne("dana", "Dana", "Roche"));
+    faux.instructeursClub = ["dana"];
+    faux.reponses.set("alix", "ABSENT");
+    faux.reponses.set("dana", "PEUT_ETRE");
+    await desister("chloe", "PRESENT", "ABSENT");
+    expect(faux.emails.map((e) => e.to)).toEqual(["charlie@club.fr"]);
+    expect(faux.push.map((p) => p.userId)).toEqual(["charlie"]);
   });
 
   it("ne prévient jamais le membre lui-même, s'il encadre la séance", async () => {
