@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.70.1
+
+### Corrections
+
+- **planning** : la barre de sélection ne colle plus, « Modifier le planning » est plein
+
 ## 0.70.0
 
 ### Nouveautés

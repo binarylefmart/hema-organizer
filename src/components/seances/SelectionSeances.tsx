@@ -55,7 +55,7 @@ import {
  * (`PresencesEquipe`) : la mécanique vient du module partagé (`src/components/ui/selection.ts` —
  * cocher, case maîtresse à trois états, `barreDeMasseVisible`, `texteInviteMasse`), la forme de la
  * question de `ChoixGeste`, et **la barre est celle de l'annuaire, au pixel près** (même cadre, même
- * compteur, même « Annuler la sélection », collante sous l'en-tête à partir de 640 px). Un bureau qui a
+ * compteur, même « Annuler la sélection » — mais **pas collante** : voir plus bas). Un bureau qui a
  * appris le geste sur un écran le retrouve ici.
  *
  * **Un interrupteur « Sélection multiple » ouvre les cases** (`InterrupteurSelection`, commun aux
@@ -258,13 +258,15 @@ export function SelectionSeances({
       </div>
 
       {/* **La barre n'existe qu'avec une sélection** (`barreDeMasseVisible`, partagée avec l'annuaire
-          et les présences) — et c'est **celle de l'annuaire**, classe pour classe : collante sous
-          l'en-tête à partir de 640 px seulement (en dessous, elle recouvrirait les cartes qu'on coche). */}
+          et les présences) — et c'est **celle de l'annuaire**, classe pour classe, **sauf le collage** :
+          dépliée sur « Changer le lieu » (autre lieu, adresse) ou « Changer l'horaire », elle peut
+          dépasser la hauteur d'un écran, et une barre collante plus haute que l'écran ne laisse jamais
+          voir sa fin — son bouton compris. Celle du planning a montré le défaut. */}
       {montrerBarre && (
         <div
           role="group"
           aria-label="Agir sur plusieurs séances à la fois"
-          className="relative z-[2] mt-2 flex flex-col gap-2 rounded-xl border-2 border-primaire bg-surface px-3 py-2 shadow-carte sm:sticky sm:top-20"
+          className="relative z-[2] mt-2 flex flex-col gap-2 rounded-xl border-2 border-primaire bg-surface px-3 py-2 shadow-carte"
         >
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-semibold">{compteurAnnonce}</span>

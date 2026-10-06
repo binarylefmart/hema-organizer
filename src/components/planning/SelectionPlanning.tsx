@@ -307,13 +307,15 @@ export function SelectionPlanning({
         )}
       </div>
 
-      {/* La barre n'existe qu'avec une sélection — celle de l'onglet Séances et de l'annuaire, classe
-          pour classe : collante sous l'en-tête à partir de 640 px seulement. */}
+      {/* La barre n'existe qu'avec une sélection — celle de l'onglet Séances, classe pour classe.
+          **Elle n'est pas collante** : dépliée sur « Régler une partie » (cinq listes), elle dépassait
+          la hauteur d'un écran, et la barre « Appliquer les modifications », collée en bas, en
+          recouvrait la fin sans qu'on puisse la faire défiler. Une seule barre collée par écran. */}
       {montrerBarre && (
         <div
           role="group"
           aria-label="Agir sur plusieurs séances à la fois"
-          className="relative z-[2] mt-2 flex flex-col gap-2 rounded-xl border-2 border-primaire bg-surface px-3 py-2 shadow-carte sm:sticky sm:top-20"
+          className="relative z-[2] mt-2 flex flex-col gap-2 rounded-xl border-2 border-primaire bg-surface px-3 py-2 shadow-carte"
         >
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-semibold">{compteurAnnonce}</span>

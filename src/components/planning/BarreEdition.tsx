@@ -150,10 +150,14 @@ export function BarreEdition({ lienLecture }: { lienLecture: string }) {
   );
 }
 
-/** Le bouton d'entrée, montré en lecture seule à qui a le droit de remplir le planning. */
+/**
+ * Le bouton d'entrée, montré en lecture seule à qui a le droit de remplir le planning. **Plein**, comme
+ * « Modifier les séances » et « Modifier la séance » : c'est la seule porte vers la saisie, et les trois
+ * entrées en modification se présentent de la même façon.
+ */
 export function BoutonModifier({ lienEdition }: { lienEdition: string }) {
   return (
-    <LienBouton href={lienEdition} variante="secondaire">
+    <LienBouton href={lienEdition}>
       <Icone nom="livre" taille={18} />
       Modifier le planning
     </LienBouton>
