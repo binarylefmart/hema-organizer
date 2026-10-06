@@ -1,3 +1,4 @@
+import { libelleDelaiDesistement } from "@/lib/constants";
 import { CLES, getSetting, setSetting } from "@/lib/settings";
 // La fenêtre de l'alerte « peu de monde » se lit là où elle est définie (module pur, sans base) :
 // la phrase du panneau ne recopie pas « 3 jours ».
@@ -95,6 +96,7 @@ export const TYPES_NOTIFICATION = [
   "rappel_sans_reponse",
   "seance_annulee",
   "effectif_faible",
+  "desistement_tardif",
   "atelier_statut",
   "evenement_nouveau",
   "periode_suivante",
@@ -122,6 +124,10 @@ export const CANAUX_PAR_NOTIFICATION: Record<TypeNotification, readonly Canal[]>
   // et elle vaut d'autant plus pour qui ne lit ni le salon ni ses emails.
   seance_annulee: ["email", "push", "discord", "telegram", "whatsapp", "api"],
   effectif_faible: ["email", "push", "discord", "telegram", "whatsapp"],
+  // Désistement de dernière minute : le message **nomme le membre** qui se retire. Il s'adresse à
+  // l'encadrement de la séance, donc aux canaux personnels seulement — un salon Discord ou un groupe
+  // Telegram est public, et « untel ne vient plus » n'a rien à y faire.
+  desistement_tardif: ["email", "push"],
   atelier_statut: ["email", "push"],
   // Nouvel événement : email aux membres des périodes actives et annonce sur le salon. Pas de
   // WhatsApp tant que l'envoi automatique n'existe pas (le partage manuel reste possible).
@@ -156,7 +162,7 @@ export const CANAUX_PAR_NOTIFICATION: Record<TypeNotification, readonly Canal[]>
  *    qu'un pourcentage affiché à côté d'un cours. C'est déjà la raison pour laquelle sa case Discord
  *    est décochée par défaut (`preferencesDefaut`) et pour laquelle elle n'est pas routable vers la
  *    liste. Une case ne doit pas pouvoir défaire ce choix.
- * 2. **Tout ce qui nomme quelqu'un** (`rappel_sans_reponse`, `atelier_statut`) ou **ne regarde que le
+ * 2. **Tout ce qui nomme quelqu'un** (`rappel_sans_reponse`, `desistement_tardif`, `atelier_statut`) ou **ne regarde que le
  *    bureau** (`periode_suivante`, `periode_non_activee`) : sans discussion. Le dossier n'a qu'une
  *    garantie, et c'est celle-là — aucun nom ne sort du club, jamais.
  */
@@ -164,6 +170,8 @@ export const RAISON_API_EXCLUE: Partial<Record<TypeNotification, string>> = {
   rappel_sans_reponse: "Ce message s'adresse à une personne précise, qui n'a pas encore répondu. Un site web ne réclame pas une réponse à quelqu'un, et le nom de cette personne ne sort pas du club.",
   effectif_faible:
     "C'est une alerte aux instructeurs — « faut-il annuler ? » —, pas une nouvelle du club. Elle porte un lien d'annulation signé au nom de son destinataire, qui n'a rien à faire sur une page web ; et le taux du cours, lui, se publie déjà avec le cours. Ce qu'on refuse ici, c'est d'en faire un titre.",
+  desistement_tardif:
+    "Ce message nomme le membre qui se retire d'un cours, à l'intention des seuls instructeurs de la séance. Aucun nom ne sort du club, et un site web n'a rien à décider deux heures avant un cours.",
   atelier_statut: "Réponse à une proposition : le message nomme son auteur et répond à son écrit. Il n'a rien à faire sur une page publique.",
   periode_suivante: "Affaire de bureau : « le trimestre suivant n'existe pas encore » est un oubli d'administrateur, pas une information pour les visiteurs du site.",
   periode_non_activee: "Même famille, même raison : « personne n'a appuyé sur Activer » ne regarde que le bureau.",
@@ -172,7 +180,7 @@ export const RAISON_API_EXCLUE: Partial<Record<TypeNotification, string>> = {
 /**
  * Couples réellement émis aujourd'hui par le code (récap de la veille : `notifications/recap.ts` ;
  * rappels sans réponse : `notifications/rappels.ts` ; annulation et effectif faible :
- * `notifications/seances.ts`). Les autres sont des réglages d'avance : l'interface les annonce
+ * `notifications/seances.ts` ; désistement de dernière minute : `notifications/desistement.ts`). Les autres sont des réglages d'avance : l'interface les annonce
  * comme « prévu » tant que l'envoi correspondant n'existe pas — c'est le cas de WhatsApp, qui
  * attend un service d'envoi (`notifications/whatsapp.ts`).
  *
@@ -187,6 +195,7 @@ export const COUPLES_EMIS: Record<TypeNotification, readonly Canal[]> = {
   rappel_sans_reponse: ["email", "push"],
   seance_annulee: ["email", "push", "discord", "telegram", "api"],
   effectif_faible: ["email", "push", "discord", "telegram"],
+  desistement_tardif: ["email", "push"],
   atelier_statut: ["email", "push"],
   evenement_nouveau: ["email", "push", "discord", "telegram", "api"],
   periode_suivante: ["email", "push"],
@@ -241,6 +250,10 @@ export const DESCRIPTIONS: Record<TypeNotification, DescriptionNotification> = {
   effectif_faible: {
     titre: "Alerte « peu de monde »",
     quand: `Chaque matin à 7h et avec les envois du soir, aux instructeurs, dans les ${HORIZON_ALERTE_EFFECTIF} jours qui précèdent un cours ${REGLE_SEUIL_EFFECTIF} — le nombre de personnes correspondant est affiché sur l'écran Club (sur le salon Discord seulement si la case est cochée).`,
+  },
+  desistement_tardif: {
+    titre: "Désistement de dernière minute",
+    quand: `Aux instructeurs de la séance, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans les ${libelleDelaiDesistement()} qui précèdent le cours — avec son nom et l'effectif mis à jour. Jamais sur les salons : le message nomme quelqu'un.`,
   },
   atelier_statut: {
     titre: "Réponse à une proposition d'atelier",
@@ -394,6 +407,8 @@ export const RAISON_ROUTAGE_FIXE: Partial<Record<TypeNotification, string>> = {
    */
   effectif_faible:
     "Elle ne vise que les deux ou trois personnes qui encadrent, et elle annonce que le cours se remplit mal : sur la liste du club, ce serait une publication, pas une alerte. Son lien d'annulation est signé au nom de son destinataire, et une clé donnée à une liste est donnée à tous.",
+  desistement_tardif:
+    "Elle nomme le membre qui se retire et ne vise que les instructeurs de la séance : sur la liste du club, ce serait afficher devant tout le monde qui a lâché le cours au dernier moment.",
   atelier_statut:
     "Réponse à une proposition : le message nomme son auteur et répond à son écrit. Le publier sur une liste, c'est afficher le refus d'une idée devant tout le club.",
   periode_suivante: "Affaire de bureau : deux ou trois destinataires. Une liste n'économiserait rien et noierait le club sous des rappels qui ne le regardent pas.",
@@ -465,6 +480,8 @@ export function preferencesDefaut(): PreferencesNotifications {
       // s'active à la main (case décochée par défaut), contrairement au récap et à l'annulation. Sur le
       // site du club, elle n'a pas de case du tout — voir `RAISON_API_EXCLUE`.
       effectif_faible: { email: true, push: true, discord: false, telegram: false, whatsapp: false },
+      // Personnel (il nomme le membre qui se retire) : email et téléphone, cochés d'office.
+      desistement_tardif: { email: true, push: true },
       atelier_statut: { email: true, push: true },
       evenement_nouveau: { email: true, push: true, discord: true, telegram: true, api: false },
       periode_suivante: { email: true, push: true },

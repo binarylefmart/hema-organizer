@@ -13,7 +13,7 @@ import { deflateSync } from "node:zlib";
 import path from "node:path";
 import { renderEmailHtml } from "../src/lib/email/templates/layout";
 import { emailInvitation, emailNouvelAppareil, emailReset } from "../src/lib/email/templates/auth";
-import { emailEffectifFaible, emailSeanceAnnulee } from "../src/lib/email/templates/seances";
+import { emailDesistementTardif, emailEffectifFaible, emailSeanceAnnulee } from "../src/lib/email/templates/seances";
 import { emailRecapVeille, emailRappelSansReponse } from "../src/lib/email/templates/recap";
 import { embedSeance, embedAnnulation, embedEffectifFaible } from "../src/lib/notifications/contenu";
 import { chargeAnnulationPush, chargeEffectifFaiblePush } from "../src/lib/notifications/seances";
@@ -1192,6 +1192,22 @@ function toutesLesScenes(): Scene[] {
           invites: 12,
           sansReponse: 5,
           urlAnnulation: `${BASE}/annuler/jeton-signe-exemple`,
+        }).contenu,
+      CLUB_EMAIL),
+      pleinePage: true,
+    },
+    {
+      nom: "email-desistement-tardif",
+      description: "Email aux instructeurs : un membre se désiste dans les deux heures avant le cours (nom, nouvelle réponse, effectif mis à jour)",
+      html: renderEmailHtml(
+        emailDesistementTardif({
+          prenom: "Charlie",
+          membre: "Chloé Delta",
+          statut: "ABSENT",
+          seance: { id: "seance-exemple", date: "2026-09-26", heureDebut: "20:00", heureFin: "22:00", lieu: "Gymnase municipal, Villebourg" },
+          presents: 11,
+          invites: 18,
+          aujourdHui: "2026-09-26",
         }).contenu,
       CLUB_EMAIL),
       pleinePage: true,

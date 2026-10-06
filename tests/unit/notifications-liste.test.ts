@@ -352,7 +352,7 @@ describe("volume d'envois annoncé", () => {
      * compare son volume à son quota a besoin de la voir. Toute notification routable, en revanche,
      * doit avoir sa ligne — sans quoi une bascule vers la liste ne se verrait nulle part.
      */
-    expect(e.lignes.map((l) => l.type)).toEqual(["recap_veille", "rappel_sans_reponse", "seance_annulee", "effectif_faible", "evenement_nouveau"]);
+    expect(e.lignes.map((l) => l.type)).toEqual(["recap_veille", "rappel_sans_reponse", "seance_annulee", "effectif_faible", "desistement_tardif", "evenement_nouveau"]);
     for (const type of TYPES_ROUTABLES) expect(e.lignes.map((l) => l.type)).toContain(type);
     expect(e.lignes.find((l) => l.type === "effectif_faible")?.mode).toBe("individuel");
     expect(e.lignes.find((l) => l.type === "effectif_faible")?.parEnvoi).toBe(3);

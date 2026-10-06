@@ -138,7 +138,7 @@ function versSeanceResume(s: { date: string; heureDebut: string; heureFin: strin
  * Ce qu'il faut de chaque personne pour décider si le message lui part : l'adresse, le compte actif,
  * et ses choix personnels de notifications (voir `destinataireRetenu`).
  */
-const CHAMPS_DESTINATAIRE = { id: true, prenom: true, email: true, actif: true, rappelEmail: true, preferencesNotifications: true, service: true } as const;
+export const CHAMPS_DESTINATAIRE = { id: true, prenom: true, email: true, actif: true, rappelEmail: true, preferencesNotifications: true, service: true } as const;
 
 /** Une notification par clé : on ne renvoie jamais deux fois la même alerte. */
 async function dejaEnvoye(dedupKey: string): Promise<boolean> {
@@ -260,7 +260,7 @@ export async function alerterEffectifFaible(now = new Date()): Promise<number> {
 }
 
 /** L'adresse est facultative : un instructeur sans email est simplement écarté de l'alerte. */
-type InstructeurAlerte = {
+export type InstructeurAlerte = {
   id: string;
   prenom: string;
   email: string | null;
@@ -270,7 +270,7 @@ type InstructeurAlerte = {
   service: boolean;
 };
 
-type SeanceEffectif = {
+export type SeanceEffectif = {
   id: string;
   date: string;
   heureDebut: string;
@@ -290,7 +290,7 @@ type SeanceEffectif = {
  * seuls confirmés. Le calculer ici est ce qui garantit que l'alerte et les écrans lisent le même
  * nombre ; l'omettre, c'était valoir zéro « peut-être » et juger un cours plus creux qu'il n'est.
  */
-type ChiffresEffectif = { presents: number; invites: number; peutEtre: number; sansReponse: number };
+export type ChiffresEffectif = { presents: number; invites: number; peutEtre: number; sansReponse: number };
 
 /**
  * **Les chiffres de l'alerte se dérivent de la liste des invités de la séance** — même doctrine que
@@ -312,7 +312,7 @@ type ChiffresEffectif = { presents: number; invites: number; peutEtre: number; s
  * réponses héritées rongent le « sans réponse » de deux personnes, et l'équipe croit avoir relancé
  * tout le monde. En partant du même ensemble que `presents`, l'écart cesse d'être exprimable.
  */
-function chiffresEffectif(s: SeanceEffectif): ChiffresEffectif {
+export function chiffresEffectif(s: SeanceEffectif): ChiffresEffectif {
   const invites = new Set(s.period.membres.map((m) => m.userId));
   const reponses = s.attendances.filter((a) => invites.has(a.userId));
   return {
@@ -416,8 +416,11 @@ function equipeDe(s: SeanceEffectif): InstructeurAlerte[] {
  * et non dans la requête : filtrer en base l'équipe de la séance ferait basculer l'alerte sur celle de
  * la période dès que ses instructeurs n'ont plus d'accès, ce qui changerait **qui** est concerné, pas
  * seulement qui reçoit. Les chiffres, eux, ne passent pas par ici.
+ *
+ * Exportée pour l'alerte de désistement de dernière minute (`desistement.ts`), qui s'adresse à la
+ * **même** équipe : deux façons de choisir l'encadrement d'une séance finiraient par diverger.
  */
-async function equipeJoignable(s: SeanceEffectif, now: Date): Promise<InstructeurAlerte[]> {
+export async function equipeJoignable(s: SeanceEffectif, now: Date): Promise<InstructeurAlerte[]> {
   return filtrerAccesActif(equipeDe(s), now);
 }
 

@@ -33,7 +33,7 @@ import {
  * trop tôt rend service, une alarme qui se tait la veille du mur ne sert à rien.
  *
  * Ce que le modèle **ne compte pas** dans le volume régulier : les annulations, les alertes
- * « peu de monde » et les annonces d'événement. Elles sont occasionnelles — les inscrire dans un
+ * « peu de monde », les désistements de dernière minute et les annonces d'événement. Elles sont occasionnelles — les inscrire dans un
  * total hebdomadaire ferait un chiffre faux dans les deux sens. Elles ont leur ligne, avec leur coût
  * unitaire, et c'est ce qu'on veut savoir : « si j'annule un cours, ce sont 42 emails de plus ».
  */
@@ -89,6 +89,9 @@ export function estimerEnvois({ membresAvecEmail, coursParSemaine, instructeurs,
   const rappel = coutUnitaire(mode("rappel_sans_reponse"), membresAvecEmail);
   const annulation = coutUnitaire(mode("seance_annulee"), membresAvecEmail);
   const effectif = coutUnitaire(mode("effectif_faible"), instructeurs);
+  // Un désistement tardif ne prévient que l'encadrement de **la** séance : borné par les instructeurs
+  // du club, et toujours « par membre » (il nomme quelqu'un, il n'est pas routable).
+  const desistement = coutUnitaire(mode("desistement_tardif"), instructeurs);
   const evenement = coutUnitaire(mode("evenement_nouveau"), membresAvecEmail);
   // Un récap par cours, et deux rappels par cours (J-7 puis J-2) : c'est tout le régulier.
   const parSemaine = coursParSemaine * (recap + 2 * rappel);
@@ -105,6 +108,14 @@ export function estimerEnvois({ membresAvecEmail, coursParSemaine, instructeurs,
     },
     { type: "seance_annulee", titre: DESCRIPTIONS.seance_annulee.titre, mode: mode("seance_annulee"), parEnvoi: annulation, parSemaine: null, cadence: "à chaque annulation" },
     { type: "effectif_faible", titre: DESCRIPTIONS.effectif_faible.titre, mode: mode("effectif_faible"), parEnvoi: effectif, parSemaine: null, cadence: "au plus une fois par cours menacé" },
+    {
+      type: "desistement_tardif",
+      titre: DESCRIPTIONS.desistement_tardif.titre,
+      mode: mode("desistement_tardif"),
+      parEnvoi: desistement,
+      parSemaine: null,
+      cadence: "à chaque désistement de dernière minute",
+    },
     { type: "evenement_nouveau", titre: DESCRIPTIONS.evenement_nouveau.titre, mode: mode("evenement_nouveau"), parEnvoi: evenement, parSemaine: null, cadence: "à chaque événement publié" },
   ];
   // Ceinture : l'ordre et le contenu des lignes suivent la constante, pour qu'une notification

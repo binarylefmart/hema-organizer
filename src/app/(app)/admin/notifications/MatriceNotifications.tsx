@@ -163,7 +163,7 @@ export function MatriceNotifications({ prefs, etats, volume }: { prefs: Preferen
         <tbody
           key={type}
           /* `first-of-type` et non `first` : les enfants du tableau sont `caption, thead,
-              tbody×8`, donc le premier `tbody` n'est **pas** `:first-child` — les deux classes ne
+              tbody` × une par notification, donc le premier `tbody` n'est **pas** `:first-child` — les deux classes ne
               s'appliquaient jamais. `last:` fonctionnait, lui : le dernier `tbody` est bien le
               dernier enfant. */
           className="block border-t border-bordure/60 py-3 first-of-type:border-t-0 first-of-type:pt-0 last:pb-0 lg:table-row-group lg:py-0"

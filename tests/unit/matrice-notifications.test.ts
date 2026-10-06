@@ -30,8 +30,8 @@ import { raisonSansObjet } from "@/app/(app)/admin/notifications/raisons";
  *    par `enregistrerNotifications`, et la règle CSS `:has()` qui grise un canal décoché s'accroche à
  *    ces classes : un `id` renommé ne casse rien de visible, il **éteint silencieusement** le
  *    grisage, ou pire, fait arriver au serveur une case qu'il ne reconnaît plus ;
- * 2. **une case ou une raison, jamais les deux, jamais aucune** — les 48 cellules de la matrice, dont
- *    30 cases et 18 « sans objet » ; chacun de ces 18 porte une phrase, et c'est la seule chose qui
+ * 2. **une case ou une raison, jamais les deux, jamais aucune** — les 54 cellules de la matrice, dont
+ *    32 cases et 22 « sans objet » ; chacun de ces 22 porte une phrase, et c'est la seule chose qui
  *    distingue un réglage volontairement absent d'un oubli (« un réglage absent sans explication
  *    passe pour un oubli, et quelqu'un finit par l'ajouter ») ;
  * 3. **une seule mise en page** — le même arbre est une pile de fiches au doigt et un vrai tableau
@@ -126,10 +126,10 @@ describe("une case ou une raison, jamais les deux, jamais aucune", () => {
   const avecCase = couples.filter(({ type, canal }) => CANAUX_PAR_NOTIFICATION[type].includes(canal));
   const sansObjet = couples.filter(({ type, canal }) => !CANAUX_PAR_NOTIFICATION[type].includes(canal));
 
-  it("les 48 cellules se partagent en 30 cases et 18 « sans objet »", () => {
-    expect(couples).toHaveLength(48);
-    expect(avecCase).toHaveLength(30);
-    expect(sansObjet).toHaveLength(18);
+  it("les 54 cellules se partagent en 32 cases et 22 « sans objet »", () => {
+    expect(couples).toHaveLength(54);
+    expect(avecCase).toHaveLength(32);
+    expect(sansObjet).toHaveLength(22);
   });
 
   it.each(sansObjet.map(({ type, canal }) => [type, canal] as const))("%s × %s dit pourquoi, en une phrase entière", (type, canal) => {
@@ -288,7 +288,7 @@ describe("deux formes de cellule, aucun vocabulaire à apprendre", () => {
   const code = sansCommentaires(MATRICE);
 
   /**
-   * . Les deux mots demandaient d'apprendre un vocabulaire avant de lire une grille de 48
+   * . Les deux mots demandaient d'apprendre un vocabulaire avant de lire une grille de 54
    * cellules ; la forme de la cellule porte la même information.
    */
   it("ni « prévu » ni « sans objet » ne s'écrivent plus dans la matrice", () => {

@@ -254,6 +254,24 @@ export const MOT_DE_PASSE_MIN = 10;
 export const PART_EFFECTIF_LIVREE = 20;
 
 /**
+ * **La fenêtre du « désistement de dernière minute » : les 120 minutes qui précèdent le début.**
+ *
+ * Un membre qui retire son « Présent » (vers Absent ou Peut-être), ou son « Peut-être » (vers
+ * Absent), dans cette fenêtre fait partir une alerte nominative à l'encadrement de la séance
+ * (`src/lib/notifications/desistement.ts`). Plus tôt, l'alerte « peu de monde » et les écrans
+ * suffisent ; après le début, le membre ne peut de toute façon plus répondre. Le début se calcule
+ * dans le fuseau du club (`parisDateTime`), jamais dans un fuseau écrit en dur.
+ */
+export const DELAI_DESISTEMENT_TARDIF_MIN = 120;
+
+/** « 2 heures » : la fenêtre ci-dessus, dite en clair dans les phrases de réglage et les emails. */
+export function libelleDelaiDesistement(minutes = DELAI_DESISTEMENT_TARDIF_MIN): string {
+  if (minutes % 60 !== 0) return `${minutes} minutes`;
+  const heures = minutes / 60;
+  return `${heures} heure${heures > 1 ? "s" : ""}`;
+}
+
+/**
  * **Une séance se découpe en parties numérotées, et chaque partie porte des éléments.**
  *
  * « Partie 1 », « Partie 2 », « Partie 3 »… se suivent dans le temps (`SessionPartie.bloc`, contigu à

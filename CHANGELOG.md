@@ -2,6 +2,20 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.72.0
+
+### Nouveautés
+
+- **notifications** : désistement de dernière minute, aux instructeurs de la séance
+
+### Corrections
+
+- **suivi** : la trame ne dépasse plus la hauteur de la fenêtre — le haut (constructions) reste visible
+
+### Autres changements
+
+- **etat** : v0.72.0
+
 ## 0.71.1
 
 ### Nouveautés

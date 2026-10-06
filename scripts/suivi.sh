@@ -275,7 +275,28 @@ afficher_constructions() {
 
 # ── L'écran ────────────────────────────────────────────────────────────────────────────────────
 COLS=$(tput cols 2>/dev/null || echo 100)
-trap 'COLS=$(tput cols 2>/dev/null || echo 100)' WINCH
+LIGNES=$(tput lines 2>/dev/null || echo 50)
+trap 'COLS=$(tput cols 2>/dev/null || echo 100); LIGNES=$(tput lines 2>/dev/null || echo 50)' WINCH
+
+# **Jamais plus de lignes que la fenêtre.** Une trame plus haute que le terminal le faisait défiler à
+# chaque tour, et c'est le **haut** qui sortait de l'écran — la section « Constructions », justement
+# celle qu'on regarde après un tag (Delta, après la v0.71.1 : « rien dans monitor », fenêtre de 40
+# lignes pour une trame de 55). On coupe donc la trame à la hauteur, on le dit sur la dernière ligne,
+# et la dernière ligne n'a pas de retour à la ligne, qui ferait à lui seul défiler l'écran d'un cran.
+afficher_trame() {
+  local sortie=$'\e[H' n=0 total max=$(( LIGNES > 2 ? LIGNES - 1 : 1 )) l
+  total=$(printf '%s' "$1" | grep -c '')
+  while IFS= read -r l; do
+    n=$((n+1))
+    if [ "$n" -ge "$max" ] && [ "$total" -gt "$max" ]; then
+      sortie+="${GRIS}   … $(( total - n + 1 )) ligne(s) de plus : agrandis la fenêtre${Z}"$'\e[K'
+      break
+    fi
+    sortie+="${l}"$'\e[K\n'
+  done <<<"$1"
+  sortie+=$'\e[J'
+  printf '%s' "$sortie"
+}
 quitter() { printf '\e[?25h\e[?1049l'; exit 0; }
 trap quitter INT TERM
 printf '\e[?1049h\e[?25l'
@@ -326,7 +347,7 @@ while :; do
   maintenant=$(date +%s)
   if [ "$actifs" -eq 0 ] && [ $(( maintenant - P_DERNIERE )) -ge "$PORTES_MIN_S" ]; then
     ligne "   ${J}mesure en cours…${Z}"
-    printf '\e[H%s' "$TRAME"   # on montre l'attente avant de bloquer une minute
+    afficher_trame "$TRAME"   # on montre l'attente avant de bloquer une minute
     mesurer_portes
     TRAME=${TRAME%"   ${J}mesure en cours…${Z}"$'\n'}
   fi
@@ -396,10 +417,7 @@ while :; do
   ligne "   ${GRIS}q pour fermer · rafraîchi toutes les ${INTERVALLE} s${Z}"
 
   # Une seule écriture, au même endroit, chaque ligne effacée jusqu'à son bord : rien ne clignote.
-  sortie=$'\e[H'
-  while IFS= read -r l; do sortie+="${l}"$'\e[K\n'; done <<<"$TRAME"
-  sortie+=$'\e[J'
-  printf '%s' "$sortie"
+  afficher_trame "$TRAME"
 
   # `read -t` sert de pause **et** de clavier : on peut fermer la fenêtre sans attendre le tour. Hors
   # terminal (redirigé dans un fichier, par exemple pour vérifier la trame), `read` rendrait la main

@@ -12,7 +12,7 @@ import {
   type NatureElement,
   type Niveau,
 } from "@/lib/constants";
-import { formatDateLongue, formatHoraire } from "@/lib/dates";
+import { addDays, formatDateLongue, formatHeure, formatHoraire } from "@/lib/dates";
 import { baseUrl } from "@/lib/env";
 import { calculerTaux, effectifAttendu, palierEffectif, PALIER_LABELS, type Compteurs } from "@/lib/presences";
 import { COULEUR_BLEU, COULEUR_OR, COULEUR_ROUGE, type DiscordEmbed } from "./discord";
@@ -20,7 +20,9 @@ import { COULEUR_BLEU, COULEUR_OR, COULEUR_ROUGE, type DiscordEmbed } from "./di
 /**
  * **Contenu commun** des notifications de séance (cahier des charges § Notifications) : une seule
  * mise en forme, réutilisée par l'email de récap, l'embed Discord et — le jour venu — le partage
- * WhatsApp. Aucun nom de membre n'y figure jamais, seulement les chiffres.
+ * WhatsApp. Aucun nom de membre n'y figure jamais, seulement les chiffres — **à une exception près,
+ * déclarée** : {@link contenuDesistementTardif}, qui nomme le membre qui se retire et ne part donc
+ * que par les canaux personnels (email et téléphone de l'encadrement), jamais sur un salon.
  *
  * **Pourquoi le nom du club arrive en argument** (`nomClub`) : il n'est plus une constante du code
  * mais une donnée lue en base (`src/lib/identite.ts`), donc une lecture asynchrone. Rendre ces
@@ -375,5 +377,68 @@ export function embedEffectifFaible(s: SeanceResume, c: ChiffresSeance, sansRepo
       { name: "Sans réponse", value: `${sansReponse}` },
     ],
     footer: { text: nomClub },
+  };
+}
+
+/* ─────────────────────── Désistement de dernière minute (message nominatif) ───────────────────────
+ *
+ * **La seule mise en forme de ce module qui nomme quelqu'un**, et c'est pour cela qu'elle ne
+ * produit pas d'embed : le type `desistement_tardif` n'a ni colonne Discord ni colonne Telegram
+ * (`CANAUX_PAR_NOTIFICATION`). L'email de l'encadrement et la notification sur le téléphone lisent
+ * tous deux cette fonction-ci : un seul texte, deux débouchés.
+ */
+export const TITRE_DESISTEMENT = "⚠️ Désistement de dernière minute";
+
+/** Ce que le membre vient de répondre, et qui fait l'objet de l'alerte. */
+export type StatutDesistement = "ABSENT" | "PEUT_ETRE";
+
+export const LIBELLES_STATUT_DESISTEMENT: Record<StatutDesistement, string> = { ABSENT: "Absent", PEUT_ETRE: "Peut-être" };
+
+/**
+ * « de ce soir », « d'aujourd'hui », « de demain » : la fenêtre est de deux heures, le cours est donc
+ * presque toujours le jour même. Le lendemain ne se présente que pour un cours qui commence peu
+ * après minuit ; au-delà, la date en toutes lettres.
+ */
+export function quandCoursProche(date: string, heureDebut: string, aujourdHui: string): string {
+  if (date === aujourdHui) return heureDebut >= "17:00" ? "de ce soir" : "d'aujourd'hui";
+  if (date === addDays(aujourdHui, 1)) return "de demain";
+  return `du ${formatDateLongue(date)}`;
+}
+
+export type ContenuDesistement = {
+  /** « ⚠️ Désistement de dernière minute » */
+  titre: string;
+  /** « Prénom Nom ne vient plus (Absent) au cours de ce soir 20h00 — Gymnase » */
+  phrase: string;
+  /** « ✅ 12 présents / 18 — 67 % » : l'effectif **après** la nouvelle réponse */
+  chiffres: string;
+  /** Chemin de la fiche de la séance (relatif : l'email le rend absolu, le téléphone l'ouvre tel quel) */
+  chemin: string;
+  /** Le tout sur une ligne : objet d'email, journaux */
+  ligne: string;
+};
+
+/**
+ * **Le contenu de l'alerte de désistement**, une fois pour l'email et le téléphone (fonction pure).
+ *
+ * `aujourdHui` est la date du jour **dans le fuseau du club** (`todayIso`), passée par l'appelant :
+ * la fonction ne lit pas l'horloge, pour rester testable et pour que l'email et la bulle d'un même
+ * passage disent le même « ce soir ».
+ */
+export function contenuDesistementTardif(args: {
+  membre: string;
+  statut: StatutDesistement;
+  seance: { id: string; date: string; heureDebut: string; lieu: string };
+  chiffres: ChiffresSeance;
+  aujourdHui: string;
+}): ContenuDesistement {
+  const { membre, statut, seance } = args;
+  const phrase = `${membre} ne vient plus (${LIBELLES_STATUT_DESISTEMENT[statut]}) au cours ${quandCoursProche(seance.date, seance.heureDebut, args.aujourdHui)} ${formatHeure(seance.heureDebut)} — ${seance.lieu}`;
+  return {
+    titre: TITRE_DESISTEMENT,
+    phrase,
+    chiffres: ligneChiffres(args.chiffres),
+    chemin: `/seances/${seance.id}`,
+    ligne: `${TITRE_DESISTEMENT} — ${phrase}`,
   };
 }

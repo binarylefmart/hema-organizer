@@ -9,6 +9,7 @@ import { toucherElevation } from "@/lib/auth/elevation";
 import { audit } from "@/lib/audit";
 import { ATTENDANCE_STATUTS, ecritureFermee, REFUS_PERIODE_CLOSE } from "@/lib/constants";
 import { seanceCommencee } from "@/lib/dates";
+import { signalerDesistementTardif } from "@/lib/notifications/desistement";
 import { can } from "@/lib/permissions";
 import { presenceAutruiSchema, presencesEnMasseSchema } from "@/lib/validation/presences";
 
@@ -54,15 +55,35 @@ export async function indiquerPresence(input: { sessionId: string; statut: strin
     return { ok: false, erreur: "Le cours a déjà commencé : la réponse n'est plus modifiable." };
   }
 
+  /*
+   * **La réponse d'avant, pour l'alerte « désistement de dernière minute »** — et pour elle seule.
+   * Une lecture qui échoue vaut « sans réponse » : on se prive d'une alerte, jamais de la réponse.
+   */
+  const avant = await reponseAvant(user.id, sessionId);
   await db.attendance.upsert({
     where: { userId_sessionId: { userId: user.id, sessionId } },
     create: { userId: user.id, sessionId, statut },
     update: { statut },
   });
+  /*
+   * **Après l'écriture, et sans pouvoir la défaire** : `signalerDesistementTardif` ne lève jamais,
+   * et décide seul (transition, fenêtre de deux heures, séance, préférences). Seul ce chemin — le
+   * membre qui répond pour lui-même — l'appelle : une correction du bureau n'annonce rien.
+   */
+  await signalerDesistementTardif({ sessionId, userId: user.id, avant, apres: statut });
   await touchSession();
   revalidatePath("/seances");
   revalidatePath("/");
   return { ok: true, statut };
+}
+
+/** La réponse enregistrée avant celle-ci, ou `null` (sans réponse, ou lecture impossible). */
+async function reponseAvant(userId: string, sessionId: string): Promise<string | null> {
+  try {
+    return (await db.attendance.findUnique({ where: { userId_sessionId: { userId, sessionId } }, select: { statut: true } }))?.statut ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export type ResultatPresenceAutrui = { ok: true; statut: string | null } | { ok: false; erreur: string };

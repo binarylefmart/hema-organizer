@@ -1,5 +1,7 @@
 import { formatDateLongue, formatHeure } from "@/lib/dates";
 import { baseUrl } from "@/lib/env";
+import { libelleDelaiDesistement } from "@/lib/constants";
+import { contenuDesistementTardif, type StatutDesistement } from "@/lib/notifications/contenu";
 import { seuilEnPersonnes } from "@/lib/presences";
 import type { EmailContenu } from "./layout";
 
@@ -67,6 +69,41 @@ export function emailEffectifFaible(args: {
         "Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :",
         args.urlAnnulation,
         piedAlerteEffectif(invites, args.partEffectifMin),
+      ],
+    },
+  };
+}
+
+/**
+ * **Désistement de dernière minute** : un instructeur de la séance apprend qu'un membre retire sa
+ * réponse dans les deux heures qui précèdent le cours. Le texte vient de `contenuDesistementTardif`
+ * (`notifications/contenu.ts`), le même que la notification sur le téléphone.
+ *
+ * Un email **par instructeur** (aucun destinataire visible des autres), jamais routé vers la liste du
+ * club : il nomme le membre (`RAISON_ROUTAGE_FIXE.desistement_tardif`). Pas de bouton d'annulation —
+ * deux heures avant le cours, la décision se prend sur la fiche, en connaissance de cause.
+ */
+export function emailDesistementTardif(args: {
+  prenom: string;
+  membre: string;
+  statut: StatutDesistement;
+  seance: SeanceEmail & { id: string };
+  presents: number;
+  invites: number;
+  aujourdHui: string;
+}): { sujet: string; contenu: EmailContenu } {
+  const c = contenuDesistementTardif({ membre: args.membre, statut: args.statut, seance: args.seance, chiffres: { presents: args.presents, invites: args.invites }, aujourdHui: args.aujourdHui });
+  const url = `${baseUrl()}${c.chemin}`;
+  return {
+    sujet: c.ligne,
+    contenu: {
+      titre: `Bonjour ${args.prenom},`,
+      paragraphes: [`${c.titre}`, `${c.phrase}.`, `Effectif mis à jour : ${c.chiffres}`],
+      boutons: [{ label: "Voir la séance", url }],
+      piedDePage: [
+        "Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :",
+        url,
+        `Message automatique envoyé aux instructeurs de la séance quand un membre se désiste dans les ${libelleDelaiDesistement()} qui précèdent le cours.`,
       ],
     },
   };
