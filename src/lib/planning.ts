@@ -789,3 +789,38 @@ export async function retirerAtelier(atelierId: string): Promise<void> {
   });
   for (const c of new Set(cases.map((c) => c.sessionId))) await synchroniserSeance(c);
 }
+
+/**
+ * **Une séance qui s'annule rend ses ateliers à la file des propositions**, comme une séance supprimée
+ * (`detacherAteliers`, `src/actions/seances.ts`).
+ *
+ * Un atelier planifié sur un cours qui n'aura pas lieu n'est planifié nulle part : il resterait
+ * « Dans le planning » sans date, invisible dans la file à trancher, et sa case garderait son titre
+ * dans un programme verrouillé. On vide donc la case (`retirerAtelier`, le geste « Retirer du planning »)
+ * et l'atelier repasse en attente, prêt à être reprogrammé ailleurs. Aucun email au membre : la séance
+ * annulée vient d'être annoncée, et la reprogrammation, elle, le préviendra.
+ *
+ * Rétablir la séance ne raccroche rien : l'atelier a peut-être été placé ailleurs entre-temps.
+ */
+export async function libererAteliersDesSeances(sessionIds: readonly string[]): Promise<{ id: string; titre: string; sessionId: string }[]> {
+  if (sessionIds.length === 0) return [];
+  const [rattaches, cases] = await Promise.all([
+    db.atelier.findMany({ where: { sessionId: { in: [...sessionIds] } }, select: { id: true, titre: true, sessionId: true } }),
+    db.sessionPartie.findMany({ where: { sessionId: { in: [...sessionIds] }, atelierId: { not: null } }, select: { atelierId: true, sessionId: true } }),
+  ]);
+  const liberes = new Map<string, { id: string; titre: string; sessionId: string }>();
+  for (const a of rattaches) if (a.sessionId) liberes.set(a.id, { id: a.id, titre: a.titre, sessionId: a.sessionId });
+  const manquants = cases.filter((c) => c.atelierId && !liberes.has(c.atelierId));
+  if (manquants.length > 0) {
+    const autres = await db.atelier.findMany({ where: { id: { in: manquants.map((c) => c.atelierId as string) } }, select: { id: true, titre: true } });
+    for (const a of autres) liberes.set(a.id, { id: a.id, titre: a.titre, sessionId: manquants.find((c) => c.atelierId === a.id)?.sessionId ?? "" });
+  }
+  const ids = [...liberes.keys()];
+  if (ids.length === 0) return [];
+  for (const id of ids) await retirerAtelier(id);
+  await db.$transaction([
+    db.atelier.updateMany({ where: { id: { in: ids }, statut: "PLANIFIE" }, data: { statut: "PROPOSE", sessionId: null } }),
+    db.atelier.updateMany({ where: { id: { in: ids } }, data: { sessionId: null } }),
+  ]);
+  return [...liberes.values()];
+}

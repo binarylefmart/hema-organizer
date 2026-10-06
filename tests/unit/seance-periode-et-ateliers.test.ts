@@ -31,6 +31,16 @@ const faux = vi.hoisted(() => ({
   audits: [] as Array<{ action: string; cible: string | null; details: unknown }>,
 }));
 
+// L'annulation rend les ateliers à la file (`libererAteliersDesSeances`) : doublure, ce test ne porte pas
+// sur les ateliers ; les appels sont relevés pour vérifier que chaque annulation les libère.
+const liberation = vi.hoisted(() => ({ appels: [] as string[][] }));
+vi.mock("@/lib/planning", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/planning")>()),
+  libererAteliersDesSeances: vi.fn(async (ids: readonly string[]) => {
+    liberation.appels.push([...ids]);
+    return [];
+  }),
+}));
 vi.mock("@/lib/db", () => ({
   db: {
     session: {

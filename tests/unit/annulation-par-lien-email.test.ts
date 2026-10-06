@@ -18,6 +18,16 @@ const faux = vi.hoisted(() => ({
   notifiees: [] as string[],
 }));
 
+// L'annulation rend les ateliers à la file (`libererAteliersDesSeances`) : doublure, ce test ne porte pas
+// sur les ateliers ; les appels sont relevés pour vérifier que chaque annulation les libère.
+const liberation = vi.hoisted(() => ({ appels: [] as string[][] }));
+vi.mock("@/lib/planning", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/planning")>()),
+  libererAteliersDesSeances: vi.fn(async (ids: readonly string[]) => {
+    liberation.appels.push([...ids]);
+    return [];
+  }),
+}));
 vi.mock("@/lib/db", () => ({
   db: {
     user: { findUnique: vi.fn(async ({ where }: { where: { id: string } }) => faux.membres.find((m) => m.id === where.id) ?? null) },
@@ -145,6 +155,8 @@ describe("annulation depuis le lien du mail", () => {
     expect(faux.audits).toEqual([
       expect.objectContaining({ acteurId: "u-charlie", acteurEmail: "charlie@exemple.fr", action: "seance.annulee", cible: "s-1" }),
     ]);
+    // L'annulation par lien libère les ateliers de la séance, comme celle faite dans l'application.
+    expect(liberation.appels.length).toBeGreaterThan(0);
   });
 
   it("n'écrit rien et ne prévient personne sur un trimestre clos", async () => {

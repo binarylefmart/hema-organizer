@@ -2,6 +2,7 @@ import { PLEINE_LARGEUR } from "@/components/ui/pleine-largeur";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { EntreeModification } from "@/components/ui/EntreeModification";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -187,6 +188,13 @@ async function SousLesFiltres({ planning, temps }: Omit<IlotPlanning, "choisie">
   );
 }
 
+/** « Modifier le planning », pour qui a le droit de remplir les cases — sous le titre, comme partout. */
+async function EntreePlanning({ planning, lien }: { planning: Promise<Planning | null>; lien: string }) {
+  const p = await planning;
+  if (!p?.modifiable) return null;
+  return <EntreeModification href={lien}>Modifier le planning</EntreeModification>;
+}
+
 /**
  * Rien à montrer de ce côté-ci : on nomme le côté où l'on est et on tend l'autre,
  * plutôt que de laisser la page vide (`GrillePlanning` garde son état « fenêtre trop étroite »).
@@ -212,9 +220,8 @@ async function CorpsPlanning({
   temps,
   gestion,
   modeEdition,
-  lienEdition,
   lienLecture,
-}: Omit<IlotPlanning, "choisie"> & { gestion: boolean; modeEdition: boolean; lienEdition: string; lienLecture: string }) {
+}: Omit<IlotPlanning, "choisie"> & { gestion: boolean; modeEdition: boolean; lienLecture: string }) {
   const p = await planning;
   if (!p)
     return (
@@ -254,7 +261,7 @@ async function CorpsPlanning({
   }
   return (
     <>
-      <GrillePlanning planning={p} gestion={gestion} colonnes={colonnes} modeEdition={modeEdition} lienEdition={lienEdition} lienLecture={lienLecture} />
+      <GrillePlanning planning={p} gestion={gestion} colonnes={colonnes} modeEdition={modeEdition} lienLecture={lienLecture} />
       {/* Rendu **avec** la grille, donc monté une fois la ligne visée présente : c'est tout ce qui
           permet de suivre l'ancre `#seance-…` d'un bouton « Programme de la séance ». */}
       <AllerALAncre />
@@ -363,6 +370,13 @@ export default async function PagePlanning({ searchParams }: Props) {
         )}
       </div>
 
+      {/* L'entrée en modification, à la place commune à tous les onglets : sous le titre. */}
+      {!modeEdition && (
+        <Suspense fallback={null}>
+          <EntreePlanning planning={planning} lien={lienMode(true)} />
+        </Suspense>
+      )}
+
       <Suspense fallback={<SelecteurPeriodeSquelette />}>
         <Filtres periodes={periodes} planning={planning} choisie={choisie} temps={temps} peutCreer={can(user, "periods.manage")} />
       </Suspense>
@@ -376,7 +390,6 @@ export default async function PagePlanning({ searchParams }: Props) {
           temps={temps}
           gestion={can(user, "sessions.manage")}
           modeEdition={modeEdition}
-          lienEdition={lienMode(true)}
           lienLecture={lienMode(false)}
         />
       </Suspense>

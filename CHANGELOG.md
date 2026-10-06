@@ -2,6 +2,13 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.70.2
+
+### Nouveautés
+
+- **ui** : les boutons « Modifier » au même endroit sur tous les onglets
+- **seances** : une séance annulée rend ses ateliers à la file, et sa fiche le dit
+
 ## 0.70.1
 
 ### Corrections

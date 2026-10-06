@@ -11,7 +11,7 @@ import { ecritureFermee, REFUS_PERIODE_CLOSE } from "@/lib/constants";
 import { annulationSchema, seancesEnMasseSchema, seanceSchema } from "@/lib/validation/gestion";
 import { notifierAnnulation, phraseAnnulation, porteurJetonAnnulation } from "@/lib/notifications/seances";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
-import { partiesInitiales } from "@/lib/planning";
+import { libererAteliersDesSeances, partiesInitiales } from "@/lib/planning";
 import { formatDateSansAnnee, seanceCommencee } from "@/lib/dates";
 import { seanceAnnulable, seanceRetablissable } from "@/components/seances/gestes-seance";
 
@@ -97,6 +97,21 @@ function commencee(seance: { date: string; heureDebut: string }): boolean {
  * transaction, avec l'effacement lui-même — que le balayage des gardes veut lire dans le corps de
  * l'action exportée, pas dans un utilitaire.
  */
+/**
+ * Libère les ateliers des séances qui viennent d'être annulées (`libererAteliersDesSeances`) et le
+ * journalise atelier par atelier, sous la même action que « Retirer du planning ».
+ */
+async function libererEtJournaliser(acteur: Parameters<typeof audit>[0], sessionIds: string[]) {
+  const liberes = await libererAteliersDesSeances(sessionIds);
+  for (const a of liberes) await audit(acteur, "atelier.decision", a.id, { statut: "PROPOSE", depuis: "annulation", sessionId: a.sessionId, titre: a.titre });
+  return liberes;
+}
+
+/** « 1 atelier remis en attente » : ce que l'annulation a rendu à la file des propositions. */
+function phraseAteliersLiberes(n: number): string {
+  return n === 1 ? "1 atelier planifié repasse en attente, à reprogrammer ailleurs." : `${n} ateliers planifiés repassent en attente, à reprogrammer ailleurs.`;
+}
+
 function detacherAteliers(sessionId: string | { in: string[] }) {
   return [
     db.atelier.updateMany({ where: { sessionId, statut: "PLANIFIE" }, data: { statut: "PROPOSE", sessionId: null } }),
@@ -227,10 +242,12 @@ export async function annulerSeance(_prev: FormState, fd: FormData): Promise<For
   if (!seanceAnnulable({ annulee: false, passee: commencee(ouverte.seance) })) return { erreur: REFUS_COMMENCEE.annuler };
   await db.session.update({ where: { id: parsed.data.sessionId }, data: { annulee: true, motifAnnulation: parsed.data.motif } });
   await audit(user, "seance.annulee", parsed.data.sessionId, { motif: parsed.data.motif });
+  const liberes = await libererEtJournaliser(user, [parsed.data.sessionId]);
   const prevenus = await notifierAnnulation(parsed.data.sessionId);
   rafraichir(parsed.data.sessionId);
   // La phrase dépend du mode d'envoi : « 12 membres prévenus » ou « annonce envoyée sur la liste ».
-  return { succes: `Séance annulée — ${await phraseAnnulation(prevenus)}.` };
+  const suite = liberes.length > 0 ? ` ${phraseAteliersLiberes(liberes.length)}` : "";
+  return { succes: `Séance annulée — ${await phraseAnnulation(prevenus)}.${suite}` };
 }
 
 /**
@@ -263,6 +280,7 @@ export async function annulerDepuisEmail(token: string, fd: FormData): Promise<v
   if (!seance.annulee) {
     await db.session.update({ where: { id: sessionId }, data: { annulee: true, motifAnnulation: parsed.data.motif, annulationLienUtiliseLe: new Date() } });
     await audit(acteur, "seance.annulee", sessionId, { motif: parsed.data.motif, via: "email" });
+    await libererEtJournaliser(acteur, [sessionId]);
     await notifierAnnulation(sessionId);
     rafraichir(sessionId);
   }
@@ -480,6 +498,7 @@ export async function appliquerGesteSeancesEnMasse(entree: unknown): Promise<Res
   if (demande.geste === "annuler") {
     await db.$transaction([db.session.updateMany({ where: { id: { in: ids } }, data: { annulee: true, motifAnnulation: demande.motif } })]);
     for (const s of aEcrire) await audit(acteur, ACTION_AUDIT.annuler, s.id, { motif: demande.motif, enMasse: true });
+    const liberes = await libererEtJournaliser(acteur, ids);
     // Une annonce par séance, après le commit : celle que le geste unitaire envoie, avec sa
     // déduplication. En série, comme les envois du dépôt — la file d'emails fait le reste.
     let messages = 0;
@@ -487,6 +506,7 @@ export async function appliquerGesteSeancesEnMasse(entree: unknown): Promise<Res
     rafraichir();
     const phrases = [`${seances(ids.length)} annulée${accord(ids.length)} : ${ids.length} annonce${accord(ids.length)} d'annulation (${messages} email${accord(messages)}, et les salons du club selon leurs réglages).`];
     if (dejas > 0) phrases.push(`${seances(dejas)} ${dejas > 1 ? "étaient" : "était"} déjà annulée${accord(dejas)} : personne n'est prévenu à nouveau.`);
+    if (liberes.length > 0) phrases.push(phraseAteliersLiberes(liberes.length));
     return { succes: phrases.join(" ") };
   }
 

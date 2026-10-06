@@ -10,6 +10,7 @@ import { formatDateLongue, formatDateSansAnnee, formatHoraire, minuscule, seance
 import { prochainesSeances, seancesDePeriode, type SeanceCarte } from "@/lib/seances";
 import { Alerte } from "@/components/ui/Alerte";
 import { LienBouton } from "@/components/ui/Bouton";
+import { EntreeModification } from "@/components/ui/EntreeModification";
 import { Carte } from "@/components/ui/Carte";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { Icone } from "@/components/ui/Icone";
@@ -236,10 +237,7 @@ async function ActionsOrganisation({
     return (
       // **Visible sans chercher** : bouton plein, taille normale, toute la largeur sur téléphone —
       // c'est la seule porte vers les gestes d'organisation, elle ne doit pas se lire comme un lien.
-      <LienBouton href={lien({ modifier: "1" })} className="w-full sm:w-auto">
-        <Icone nom="livre" taille={20} />
-        Modifier les séances
-      </LienBouton>
+      <EntreeModification href={lien({ modifier: "1" })}>Modifier les séances</EntreeModification>
     );
   }
   const { periodeLue, toutes } = await contenu;
@@ -622,6 +620,13 @@ export default async function PageSeances({ searchParams }: Props) {
           {ongletVue("historique", "Historique")}
         </nav>
       </div>
+      {/* L'entrée en modification (ou le bandeau du mode), à la place commune à tous les onglets : sous
+          le titre, avant les filtres et la liste — plus dans la colonne de côté. */}
+      {equipe && !vue.historique && (
+        <Suspense fallback={<Bloc className="h-12 w-full rounded-xl sm:ml-auto sm:w-56" />}>
+          <ActionsOrganisation contenu={contenu} enEdition={enEdition} lien={lien} />
+        </Suspense>
+      )}
       {vue.historique ? (
         <Historique userId={user.id} tout={tout === "1"} />
       ) : (
@@ -655,13 +660,6 @@ export default async function PageSeances({ searchParams }: Props) {
           }
           cote={
             <>
-              {equipe && (
-                <div className="flex flex-wrap gap-2">
-                  <Suspense fallback={<Bloc className="h-12 w-36 rounded-xl" />}>
-                    <ActionsOrganisation contenu={contenu} enEdition={enEdition} lien={lien} />
-                  </Suspense>
-                </div>
-              )}
               <Suspense fallback={<SelecteurPeriodeSquelette />}>
                 <Filtres periodes={periodes} contenu={contenu} vue={vue} peutCreer={can(user, "periods.manage")} lien={lien} enEdition={enEdition} />
               </Suspense>

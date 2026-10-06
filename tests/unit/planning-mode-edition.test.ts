@@ -61,7 +61,8 @@ describe("la grille n'ouvre ses cases qu'en mode modification", () => {
     expect(grille).toContain("enEdition ? optionsDepuis(p) : optionsDepuis({ ...p, modifiable: false, peutProgrammer: false })");
     // Le droit de remplir et le mode sont deux choses : le bouton d'entrée suit le droit.
     expect(grille).toContain("const peutModifier = p.modifiable");
-    expect(grille).toContain("<BoutonModifier");
+    // Le bouton d'entrée vit sous le titre de la page, à la place commune à tous les onglets.
+    expect(lire("src/app/(app)/planning/page.tsx")).toContain("<EntreeModification");
   });
 
   /**
@@ -146,7 +147,7 @@ describe("la barre d'édition ne promet que ce qu'elle tient", () => {
      * Le libellé d'application ne compte pas les cases (un bouton dont le texte change de longueur à
      * chaque réglage se déplace sous le doigt) ; le chiffre vit dans la phrase à gauche.
      */
-    expect(barre).toContain("Modifier le planning");
+    expect(fs.readFileSync(path.join(process.cwd(), "src/app/(app)/planning/page.tsx"), "utf8")).toContain("Modifier le planning");
     expect(barre).toContain("Appliquer les modifications");
     expect(barre).toContain(">\n            Annuler\n          <");
   });

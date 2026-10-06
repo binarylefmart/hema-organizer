@@ -12,6 +12,7 @@ import type { AtelierStatut } from "@/lib/constants";
 import { modifierSeance } from "@/actions/seances";
 import { Carte } from "@/components/ui/Carte";
 import { LienBouton } from "@/components/ui/Bouton";
+import { EntreeModification } from "@/components/ui/EntreeModification";
 import { GestesSeance } from "@/components/seances/GestesSeance";
 import { lienPlanning, modeEditionDemande } from "@/components/planning/mode-edition";
 import { BarreTaux } from "@/components/seances/BarreTaux";
@@ -96,15 +97,11 @@ export default async function PageSeance({ params, searchParams }: Props) {
             partage={partageSeance({ ...carte, disciplines: carte.disciplines.join(", "), compteurs: carte.compteurs }, todayIso())}
             libelle="Partager la séance"
           />
-          {!enEdition && (
-            // **Visible sans chercher** : bouton plein, à côté du partage — la seule porte vers la saisie.
-            <LienBouton href={`/seances/${id}?modifier=1`}>
-              <Icone nom="livre" taille={20} />
-              Modifier la séance
-            </LienBouton>
-          )}
         </div>
       </div>
+
+      {/* L'entrée en modification, à la place commune à tous les onglets : sous le titre. */}
+      {!enEdition && <EntreeModification href={`/seances/${id}?modifier=1`}>Modifier la séance</EntreeModification>}
 
       {enEdition && (
         // Le mode se dit, et sa sortie est à la place de l'entrée : on ne se demande jamais où l'on est.
@@ -139,14 +136,21 @@ export default async function PageSeance({ params, searchParams }: Props) {
         {/* **En modification, pas de carte « Programme » : un seul bouton, pleine largeur.** Le programme se
             règle dans le planning, ouvert sur cette séance et déjà en modification ; une carte qui n'aurait
             porté que ce lien n'était qu'un cadre de plus autour d'un bouton. */}
-        {enEdition ? (
+        {enEdition && !carte.annulee ? (
           <LienBouton href={`${lienPlanning({ periode: carte.periodId, date: carte.date }, true)}#seance-${id}`} pleineLargeur>
             <Icone nom="livre" taille={20} />
             Modifier le programme dans le planning
           </LienBouton>
         ) : (
           <Carte titre="Programme" actions={<Link href={`/planning?periode=${carte.periodId}`} className="inline-flex min-h-12 items-center text-sm">Voir tout le planning</Link>}>
-            {planning && colonne ? (
+            {carte.annulee ? (
+              // **Une séance annulée n'a plus de programme à lire** : il est verrouillé, et ses ateliers sont
+              // repartis dans la file des propositions. La carte le dit comme celle du planning.
+              <p className="rounded-xl bg-rouge/10 px-4 py-3 text-base">
+                <strong className="text-rouge">Séance annulée</strong>
+                {carte.motifAnnulation ? <> — {carte.motifAnnulation}</> : null}. Le programme ne se joue pas.
+              </p>
+            ) : planning && colonne ? (
               <ProgrammeCases
                 sessionId={id}
                 // Les parties de cette séance, déjà triées : la carte du planning et cet écran

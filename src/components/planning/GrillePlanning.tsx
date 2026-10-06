@@ -11,7 +11,7 @@ import { SEANCES_VISIBLES } from "@/components/seances/listes";
 import { SeancesRepliees } from "./SeancesRepliees";
 import { FournisseurOptions } from "./ContexteOptions";
 import { FournisseurBrouillon } from "./ContexteBrouillon";
-import { BarreEdition, BoutonModifier } from "./BarreEdition";
+import { BarreEdition } from "./BarreEdition";
 import { optionsDepuis } from "./options";
 import { CaseSeancePlanning, SelectionPlanning } from "./SelectionPlanning";
 import type { LignePlanning } from "./selection-planning";
@@ -222,14 +222,12 @@ export function GrillePlanning({
   gestion = false,
   colonnes,
   modeEdition = false,
-  lienEdition,
   lienLecture,
 }: {
   planning: Planning;
   gestion?: boolean;
   colonnes: ColonnePlanning[];
   modeEdition?: boolean;
-  lienEdition?: string;
   lienLecture?: string;
 }) {
   // Le **droit** de remplir, qui ouvre le bouton ; et le **mode**, qui ouvre les cases.
@@ -316,13 +314,8 @@ export function GrillePlanning({
         </FournisseurBrouillon>
       ) : (
         <div className="flex flex-col gap-3">
-          {/* Le bouton d'entrée, aligné à droite au-dessus des cartes : il ne concerne que
-              l'encadrement, et il ne doit pas se lire comme un titre de la grille. */}
-          {peutModifier && lienEdition && (
-            <div className="flex justify-end">
-              <BoutonModifier lienEdition={lienEdition} />
-            </div>
-          )}
+          {/* Le bouton d'entrée n'est plus ici : il est sous le titre de la page, à la place commune
+              à tous les onglets (`EntreeModification`, rendu par `src/app/(app)/planning/page.tsx`). */}
           <div className="grid grid-cols-1 items-start gap-3">
             {decoupe.visibles}
             <SeancesRepliees cachees={decoupe.cachees} restantes={decoupe.restantes} />

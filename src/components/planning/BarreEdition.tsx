@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { enregistrerCases } from "@/actions/planning";
-import { Bouton, LienBouton } from "@/components/ui/Bouton";
+import { Bouton } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
 import { useBrouillon } from "./ContexteBrouillon";
 
@@ -147,19 +147,5 @@ export function BarreEdition({ lienLecture }: { lienLecture: string }) {
         Parties ajoutées, retirées, déplacées et ateliers programmés sont enregistrés tout de suite. Seules les cases attendent.
       </p>
     </div>
-  );
-}
-
-/**
- * Le bouton d'entrée, montré en lecture seule à qui a le droit de remplir le planning. **Plein**, comme
- * « Modifier les séances » et « Modifier la séance » : c'est la seule porte vers la saisie, et les trois
- * entrées en modification se présentent de la même façon.
- */
-export function BoutonModifier({ lienEdition }: { lienEdition: string }) {
-  return (
-    <LienBouton href={lienEdition}>
-      <Icone nom="livre" taille={18} />
-      Modifier le planning
-    </LienBouton>
   );
 }
