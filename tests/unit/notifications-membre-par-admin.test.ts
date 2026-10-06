@@ -125,7 +125,7 @@ vi.mock("next/navigation", () => ({
 const { TYPES_REFUSABLES, preferencesDefaut, preferencesPersonnellesDe, serialiserPreferencesPersonnelles } = await import("@/lib/notifications/preferences");
 const { definirNotificationsMembre } = await import("@/actions/membres");
 const { definirPreferenceNotification } = await import("@/actions/profil");
-const { lignesNotificationsMembre } = await import("@/lib/notifications/membre");
+const { lignesNotificationsMembre, typesVisiblesPour } = await import("@/lib/notifications/membre");
 
 const CHLOE = "u-chloe";
 
@@ -358,7 +358,8 @@ describe("ce que le club a coupé", () => {
     const { lignes } = await lignesNotificationsMembre({ id: CHLOE });
     const ligne = lignes.find((l) => l.type === "evenement_nouveau");
     expect(ligne && envoyeLigne(ligne)).toBe(false);
-    expect(lignes.filter(envoyeLigne)).toHaveLength(TYPES_REFUSABLES.length - 1);
+    // Chloé est membre : elle ne voit que les lignes qui peuvent lui arriver (`typesVisiblesPour`).
+    expect(lignes.filter(envoyeLigne)).toHaveLength(typesVisiblesPour({ role: "MEMBRE", estAdmin: false }).length - 1);
   });
 });
 
@@ -374,12 +375,8 @@ describe("lecture et retour en arrière côté profil", () => {
       ["recap_veille", false],
       ["rappel_sans_reponse", false],
       ["seance_annulee", true],
-      ["effectif_faible", false],
-      ["desistement_tardif", false],
       ["atelier_statut", true],
       ["evenement_nouveau", false],
-      ["periode_suivante", false],
-      ["periode_non_activee", false],
     ]);
     // Les messages d'accès et de sécurité restent hors de portée des deux écrans
     expect(obligatoires.length).toBeGreaterThan(0);

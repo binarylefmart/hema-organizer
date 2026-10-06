@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.72.2
+
+### Nouveautés
+
+- **profil** : chacun ne voit que les notifications qui peuvent lui arriver
+
 ## 0.72.1
 
 ### Nouveautés

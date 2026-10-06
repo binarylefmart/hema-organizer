@@ -48,6 +48,27 @@ export type LigneObligatoire = { titre: string; quand: string };
  * avec les mêmes phrases — et écrivent au même endroit.
  */
 
+/**
+ * **Chacun ne voit que ce qui peut lui arriver** (demande de Delta : les notifications de l'encadrement et
+ * du bureau s'affichaient telles quelles chez un simple membre, avec des cases qui laissaient croire qu'il
+ * pouvait s'y abonner). Les rôles s'additionnent : un instructeur du bureau voit les deux groupes.
+ *
+ * - **L'encadrement** (rôle de base INSTRUCTEUR) : les alertes qui lui sont adressées.
+ * - **Le bureau** (`estAdmin`) : l'organisation des périodes, et les alertes de sécurité.
+ *
+ * Un affichage, pas une règle d'envoi : qui reçoit se décide toujours dans les modules d'envoi.
+ */
+export const TYPES_ENCADREMENT: readonly TypeNotification[] = ["effectif_faible", "desistement_tardif"];
+export const TYPES_BUREAU: readonly TypeNotification[] = ["periode_suivante", "periode_non_activee"];
+const OBLIGATOIRES_BUREAU: readonly string[] = ["Alertes de sécurité"];
+
+/** Les types qu'une personne voit dans ses réglages, selon son rôle de base et le bureau. */
+export function typesVisiblesPour(compte: { role?: string | null; estAdmin?: boolean | null }): TypeNotification[] {
+  const encadre = compte.role === "INSTRUCTEUR";
+  const bureau = compte.estAdmin === true;
+  return TYPES_REFUSABLES.filter((t) => (TYPES_ENCADREMENT.includes(t) ? encadre : TYPES_BUREAU.includes(t) ? bureau : true));
+}
+
 /** « Ne recevoir que l'essentiel » : le récap de la veille, et lui seul. */
 export const TYPES_ESSENTIELS: readonly TypeNotification[] = ["recap_veille"];
 
@@ -73,11 +94,11 @@ export async function lignesNotificationsMembre(user: { id: string }): Promise<{
   obligatoires: readonly LigneObligatoire[];
 }> {
   const [compte, club] = await Promise.all([
-    db.user.findUnique({ where: { id: user.id }, select: { rappelEmail: true, preferencesNotifications: true } }),
+    db.user.findUnique({ where: { id: user.id }, select: { rappelEmail: true, preferencesNotifications: true, role: true, estAdmin: true } }),
     getPreferencesNotifications(),
   ]);
   const choix = preferencesPersonnellesDe(compte ?? {});
-  const lignes = TYPES_REFUSABLES.map<LigneNotification>((type) => ({
+  const lignes = typesVisiblesPour(compte ?? {}).map<LigneNotification>((type) => ({
     type,
     titre: DESCRIPTIONS[type].titre,
     quand: phrasePourLeMembre(DESCRIPTIONS[type].quand),
@@ -88,5 +109,6 @@ export async function lignesNotificationsMembre(user: { id: string }): Promise<{
     // choix personnel — sa case disparaît, et la ligne entière est grisée si les deux sont coupés.
     club: { email: notificationActiveDans(club, type, "email"), push: notificationActiveDans(club, type, "push") },
   }));
-  return { lignes, obligatoires: NOTIFICATIONS_TOUJOURS_ENVOYEES };
+  const obligatoires = compte?.estAdmin ? NOTIFICATIONS_TOUJOURS_ENVOYEES : NOTIFICATIONS_TOUJOURS_ENVOYEES.filter((o) => !OBLIGATOIRES_BUREAU.includes(o.titre));
+  return { lignes, obligatoires };
 }
