@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.70.3
+
+### Autres changements
+
+- **partage** : des liens partout, en petite taille, comme sur les cartes de séance
+
 ## 0.70.2
 
 ### Nouveautés

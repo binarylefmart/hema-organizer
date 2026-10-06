@@ -24,7 +24,12 @@ type Props = {
   partage: Partage;
   /** Taille des boutons : « petite » dans une liste de cartes, « normale » sur une fiche. */
   taille?: "petite" | "normale";
-  /** « discret » se fond dans une ligne d'actions secondaires ; « secondaire » s'assume. */
+  /**
+   * « discret » (par défaut) : des liens, partout pareils — sur les cartes de séance comme en tête du
+   * planning, d'une séance ou d'un événement. Partager n'est jamais l'action principale d'un écran, et
+   * deux boutons encadrés en tête de page lui donnaient plus de poids que « Modifier ». « secondaire »
+   * reste disponible, sans appelant aujourd'hui.
+   */
   variante?: "discret" | "secondaire";
   /** Libellé du bouton principal (« Partager la séance », « Partager le planning »…). */
   libelle?: string;
@@ -33,7 +38,7 @@ type Props = {
 /** Le message de confirmation s'efface tout seul : une copie réussie n'a pas à rester à l'écran. */
 const DUREE_CONFIRMATION = 3000;
 
-export function BoutonPartager({ partage, taille = "normale", variante = "secondaire", libelle = "Partager" }: Props) {
+export function BoutonPartager({ partage, taille = "petite", variante = "discret", libelle = "Partager" }: Props) {
   // `navigator.share` ne se teste qu'une fois la page montée (le rendu serveur ne sait pas quel appareil lit)
   const [natifDisponible, setNatifDisponible] = useState(false);
   const [copie, setCopie] = useState(false);
