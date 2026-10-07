@@ -155,6 +155,7 @@ function lignePlanning(c: ColonnePlanning): LignePlanning | null {
       bloc: p.bloc,
       nature: p.nature,
       rang: p.rang,
+      teinte: p.teinte,
       atelier: p.atelier !== null,
       serveur: {
         instructeurId: p.instructeurId ?? "",

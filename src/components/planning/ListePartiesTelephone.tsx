@@ -8,6 +8,7 @@ import { Bouton } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
 import { couleurNature } from "@/components/seances/programme-cours";
 import { EcuNature } from "@/components/seances/EcuNature";
+import { classesPartie } from "@/components/seances/teintes";
 import { CaseEditeur } from "./CaseEditeur";
 import { useBrouillon } from "./ContexteBrouillon";
 import { useOptionsCase } from "./ContexteOptions";
@@ -309,14 +310,17 @@ export function ListePartiesTelephone({
       <div ref={conteneur} className="relative flex flex-col gap-3">
         {groupes.map((groupe) => {
           const idTitre = `${sessionId}-partie-tel-${groupe.bloc}`;
+          const couleur = classesPartie(groupe.bloc);
           return (
-            <section key={groupe.bloc} aria-labelledby={intitules ? idTitre : undefined} className="flex min-w-0 flex-col gap-2">
+            // Avec plusieurs parties, chacune prend sa teinte (`classesPartie`) : titre et bande à
+            // gauche du bloc entier, sans fond — la même lecture que sur l'ordinateur.
+            <section key={groupe.bloc} aria-labelledby={intitules ? idTitre : undefined} className={`flex min-w-0 flex-col gap-2 ${intitules ? `${couleur.bande} pl-2` : ""}`}>
               {intitules && (
-                <h3 id={idTitre} className="font-titre text-base font-semibold text-texte-secondaire">
+                <h3 id={idTitre} className={`font-titre text-base font-semibold ${couleur.titre}`}>
                   {nomPartie(groupe.bloc)}
                 </h3>
               )}
-              <ul className={`flex flex-col gap-2 ${intitules ? "border-l-2 border-bordure/60 pl-2" : ""}`}>
+              <ul className="flex flex-col gap-2">
                 {groupe.elements.map((partie) => (
                   <LigneElement
                     key={partie.id}
@@ -538,8 +542,8 @@ function LigneElement({
             }}
           >
             <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
-              <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-base font-semibold ${couleurNature(partie.nature)}`}>
-                <EcuNature nature={partie.nature} />
+              <span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-base font-semibold ${couleurNature(partie.nature, partie.teinte)}`}>
+                <EcuNature nature={partie.nature} teinte={partie.teinte} />
                 {nomElement(partie.nature, partie.rang, partie.nombre)}
               </span>
               <span className="block max-w-full break-words text-base text-texte-secondaire">

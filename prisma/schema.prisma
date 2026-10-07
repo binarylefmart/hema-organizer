@@ -291,6 +291,15 @@ model SessionPartie {
   /// en parallèle ; un élément ATELIER porte normalement un `atelierId`, et vidé (atelier retiré)
   /// il reste un élément Atelier vide, réutilisable par le prochain atelier placé.
   nature    String @default("COURS")
+  /// **Teinte du cours ou de l'option** dans la palette du programme (1 à `NOMBRE_TEINTES`,
+  /// src/components/seances/teintes.ts), `null` pour un échauffement ou un atelier, qui gardent
+  /// leur couleur à eux. **Enregistrée, pour ne jamais bouger toute seule** : elle s'attribue à la
+  /// création de l'élément et quand son thème change — celle du thème si elle est libre dans la
+  /// séance, sinon la suivante libre (`teinteAEcrire`) — et rien d'autre ne la touche (réordonner,
+  /// changer de partie, retirer un voisin, changer l'instructeur). Une ligne d'avant la colonne
+  /// (`null` sur un cours) se lit avec la même règle (`teintesProgramme`) et se renseigne par
+  /// `scripts/reparer-donnees.ts` (contrôle `teintes`).
+  teinte    Int?
 
   instructeurId String?
   /// **Celui qui assiste** : un second encadrant, facultatif, un seul. Il compte comme le premier

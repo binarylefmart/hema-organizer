@@ -255,7 +255,11 @@ jobs:
     needs: image
     if: vars.PORTAINER_DEPLOY == 'true'
     runs-on: [self-hosted, hema-deploy]
-    permissions: {}
+    # Lecture seule, et pas moins : le job récupère `scripts/deployer-portainer.sh` dans un dépôt
+    # **privé**. Avec `permissions: {}`, le jeton ne pouvait pas lire le dépôt et la récupération
+    # échouait (« Repository not found ») — l'image était publiée, rien ne se déployait.
+    permissions:
+      contents: read
     concurrency:
       group: deploiement-portainer
       cancel-in-progress: false

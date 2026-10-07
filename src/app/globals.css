@@ -110,36 +110,44 @@
   --ocre-sur-encre: var(--ocre);
   --ocre-sur-encre: color-mix(in srgb, var(--ocre) 55%, var(--encre-texte));
 
-  /* **Une couleur par rang de partie, et de vraies couleurs**.
+  /* **Les huit teintes du programme : une par cours ou option d'une séance, une par partie**
+     (`src/components/seances/teintes.ts`).
 
-      **Elles ne viennent plus du thème, et c'est le point.** Un thème ne garantit que deux couleurs
-      lisibles comme *texte* (l'ocre et le vert), et tout mélange entre ses couleurs retombe dans
-      l'olive : quatre nuances de deux familles, c'est tout ce qu'on pouvait en tirer. Ces six-ci
-      sont donc **fixes**, comme la palette d'un graphique l'est : elles ne disent pas la marque du
-      club, elles **distinguent** des lignes voisines — et c'est précisément pour cela qu'elles
-      doivent rester les mêmes d'un thème à l'autre.
+      **Elles ne viennent pas du thème du club, et c'est le point.** Elles ne disent pas la marque du
+      club, elles **distinguent** : chaque thème de cours a la sienne (« l'épée longue est toujours
+      bleue »), deux éléments d'une séance n'ont jamais la même, et la partie N prend la N-ième. Une
+      palette fixe, comme celle d'un graphique, pour que la couleur d'un thème de cours reste la même
+      d'un thème du club à l'autre. Elle évite les deux familles déjà prises : l'or de l'échauffement
+      et le vert de l'atelier, qui gardent leurs couleurs à eux.
 
-      Deux jeux, un par mode, et le texte posé dessus suit (`--partie-texte`) : en clair des teintes
-      **sombres et saturées** qui portent du blanc ; en sombre des **pastels** qui portent de
-      l'encre. Le contraste de chaque étiquette — aplat du cours comme contour de l'option — est
-      vérifié sur tous les thèmes et les deux modes par `tests/unit/themes.test.ts`, qui mesure
-      aussi l'écart deux à deux : une couleur qui se confondrait avec sa voisine ne distinguerait
-      plus rien. */
-  --partie-texte: #ffffff;
-  --partie-1: #8a5a00; /* ambre */
-  --partie-2: #2f6b3a; /* vert */
-  --partie-3: #1a5a96; /* bleu */
-  --partie-4: #b03a2e; /* rouge */
-  --partie-5: #6a3fa0; /* violet */
-  --partie-6: #0f6b6b; /* sarcelle */
-  /* Le fond du contour : un voile de la teinte sur la surface du thème — il suit donc le thème, là où
-     la teinte, elle, ne doit pas bouger. */
-  --partie-1-doux: color-mix(in srgb, var(--partie-1) 12%, var(--surface));
-  --partie-2-doux: color-mix(in srgb, var(--partie-2) 12%, var(--surface));
-  --partie-3-doux: color-mix(in srgb, var(--partie-3) 12%, var(--surface));
-  --partie-4-doux: color-mix(in srgb, var(--partie-4) 12%, var(--surface));
-  --partie-5-doux: color-mix(in srgb, var(--partie-5) 12%, var(--surface));
-  --partie-6-doux: color-mix(in srgb, var(--partie-6) 12%, var(--surface));
+      Construite en OKLCH : huit teintes réparties sur le cercle hors de l'or et du vert, et une clarté
+      **alternée** d'une famille voisine à l'autre — c'est ce qui sépare deux voisines quand le cercle
+      se partage en huit. Deux jeux, un par mode, et le texte posé sur l'aplat du cours suit
+      (`--teinte-texte`) : en clair des teintes **sombres** qui portent du blanc ; en sombre des teintes
+      **claires** qui portent l'encre — exactement comme `--primaire` et `--primaire-texte` dans les
+      thèmes sombres. Une même teinte ne peut pas, sur un fond sombre, porter du blanc en aplat *et* se
+      lire en texte sur son fond doux. Contrastes (texte sur l'aplat, teinte sur son fond doux, titre
+      et bande sur la surface) et écarts (deux à deux, à l'or, au vert) vérifiés sur tous les thèmes
+      et les deux modes par `tests/unit/themes.test.ts`. */
+  --teinte-texte: #ffffff;
+  --teinte-1: #283f92; /* bleu */
+  --teinte-2: #994a08; /* rouille */
+  --teinte-3: #0b515a; /* sarcelle */
+  --teinte-4: #6d236d; /* prune */
+  --teinte-5: #6e4da7; /* violet */
+  --teinte-6: #831922; /* framboise */
+  --teinte-7: #036b9a; /* azur */
+  --teinte-8: #9e3963; /* rose */
+  /* Le fond du contour de l'option : un voile de la teinte sur la surface du thème — il suit donc le
+     thème, là où la teinte, elle, ne bouge pas. */
+  --teinte-1-doux: color-mix(in srgb, var(--teinte-1) 12%, var(--surface));
+  --teinte-2-doux: color-mix(in srgb, var(--teinte-2) 12%, var(--surface));
+  --teinte-3-doux: color-mix(in srgb, var(--teinte-3) 12%, var(--surface));
+  --teinte-4-doux: color-mix(in srgb, var(--teinte-4) 12%, var(--surface));
+  --teinte-5-doux: color-mix(in srgb, var(--teinte-5) 12%, var(--surface));
+  --teinte-6-doux: color-mix(in srgb, var(--teinte-6) 12%, var(--surface));
+  --teinte-7-doux: color-mix(in srgb, var(--teinte-7) 12%, var(--surface));
+  --teinte-8-doux: color-mix(in srgb, var(--teinte-8) 12%, var(--surface));
 
   --ombre-carte: 0 1px 2px rgba(43, 38, 34, 0.06), 0 10px 28px -14px rgba(43, 38, 34, 0.35);
   --ombre-carte-survol: 0 2px 4px rgba(43, 38, 34, 0.07), 0 16px 36px -14px rgba(43, 38, 34, 0.4);
@@ -674,15 +682,18 @@
 :root {
   @variant sombre {
     color-scheme: dark;
-    /* **Les six repères de partie en mode sombre** : les mêmes teintes, en pastel, et le texte passe
-       à l'encre. Posés ici une seule fois — ils ne viennent pas du thème (voir leur bloc en clair). */
-    --partie-texte: #1a1613;
-    --partie-1: #e8c07a;
-    --partie-2: #9bd3a6;
-    --partie-3: #8fc4f0;
-    --partie-4: #f0a79b;
-    --partie-5: #c9adf0;
-    --partie-6: #86d0cc;
+    /* **Les huit teintes du programme en mode sombre** : les mêmes familles, éclaircies, et le texte
+       de l'aplat passe à l'encre. Posées ici une seule fois — elles ne viennent pas du thème (voir leur
+       bloc en clair). */
+    --teinte-texte: #1a1613;
+    --teinte-1: #c8d7fd;
+    --teinte-2: #f3a677;
+    --teinte-3: #74ecfd;
+    --teinte-4: #febffb;
+    --teinte-5: #c7b0fa;
+    --teinte-6: #fdc9c6;
+    --teinte-7: #72c5f9;
+    --teinte-8: #f6a1be;
     /* Mode sombre « parchemin éteint » : brun chaud, volontairement pas noir */
     --fond: #2c2622;
     --fond-haut: #332c27;
@@ -1304,20 +1315,24 @@
   --color-rouge: var(--rouge);
   --color-rouge-doux: var(--rouge-doux);
   --color-ocre: var(--ocre);
-  /* Les six repères de partie (voir `:root`) : `bg-partie-3`, `border-partie-3`, `text-partie-3`… */
-  --color-partie-texte: var(--partie-texte);
-  --color-partie-1: var(--partie-1);
-  --color-partie-1-doux: var(--partie-1-doux);
-  --color-partie-2: var(--partie-2);
-  --color-partie-2-doux: var(--partie-2-doux);
-  --color-partie-3: var(--partie-3);
-  --color-partie-3-doux: var(--partie-3-doux);
-  --color-partie-4: var(--partie-4);
-  --color-partie-4-doux: var(--partie-4-doux);
-  --color-partie-5: var(--partie-5);
-  --color-partie-5-doux: var(--partie-5-doux);
-  --color-partie-6: var(--partie-6);
-  --color-partie-6-doux: var(--partie-6-doux);
+  /* Les huit teintes du programme (voir `:root`) : `bg-teinte-3`, `border-teinte-3`, `fill-teinte-3-doux`… */
+  --color-teinte-texte: var(--teinte-texte);
+  --color-teinte-1: var(--teinte-1);
+  --color-teinte-1-doux: var(--teinte-1-doux);
+  --color-teinte-2: var(--teinte-2);
+  --color-teinte-2-doux: var(--teinte-2-doux);
+  --color-teinte-3: var(--teinte-3);
+  --color-teinte-3-doux: var(--teinte-3-doux);
+  --color-teinte-4: var(--teinte-4);
+  --color-teinte-4-doux: var(--teinte-4-doux);
+  --color-teinte-5: var(--teinte-5);
+  --color-teinte-5-doux: var(--teinte-5-doux);
+  --color-teinte-6: var(--teinte-6);
+  --color-teinte-6-doux: var(--teinte-6-doux);
+  --color-teinte-7: var(--teinte-7);
+  --color-teinte-7-doux: var(--teinte-7-doux);
+  --color-teinte-8: var(--teinte-8);
+  --color-teinte-8-doux: var(--teinte-8-doux);
   --color-ocre-doux: var(--ocre-doux);
   --color-jauge: var(--jauge);
   --color-vert-sur-encre: var(--vert-sur-encre);

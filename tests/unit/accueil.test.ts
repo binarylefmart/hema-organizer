@@ -113,6 +113,8 @@ function seancesVisees(where: Record<string, unknown>): string[] {
 
 vi.mock("@/lib/db", () => ({
   db: {
+    // La liste des thèmes du club (teinte d'un élément) : le réglage n'est jamais enregistré ici.
+    setting: { findUnique: vi.fn(async () => null) },
     period: {
       findFirst: vi.fn(async ({ where, orderBy }: { where: Record<string, unknown>; orderBy: { dateDebut: "asc" | "desc" } }) => {
         faux.appels.push("period.findFirst");

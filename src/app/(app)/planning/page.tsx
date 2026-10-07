@@ -15,7 +15,6 @@ import { SelecteurHorizon } from "@/components/ui/SelecteurHorizon";
 import { SelecteurHorizonSquelette, SelecteurPeriodeSquelette, TableauSquelette } from "@/components/ui/Squelette";
 import { HORIZON_LABELS, HORIZON_LABELS_PASSE, lireHorizon, type Horizon } from "@/lib/horizon";
 import { formatDateLongue, formatDateSansAnnee, todayIso } from "@/lib/dates";
-import { EnCours } from "@/components/layout/EnCours";
 import { AllerALAncre } from "@/components/planning/AllerALAncre";
 import { GrillePlanning } from "@/components/planning/GrillePlanning";
 import { BoutonPartager } from "@/components/partage/BoutonPartager";
@@ -299,7 +298,6 @@ export default async function PagePlanning({ searchParams }: Props) {
   const modeEdition = modeEditionDemande(modifier);
   const seancesChoisies = lireSeancesChoisies(seances);
   const lienMode = (edition: boolean) => lienPlanning({ periode, h, quand, date, seances: seancesChoisies.join(",") || undefined }, edition);
-  const admin = can(user, "audit.view");
   const maintenant = new Date();
   // Une date illisible (forme fausse, 31 février) vaut date absente : l'écran retombe sur son
   // affichage habituel plutôt que de filtrer sur un jour que personne ne peut atteindre.
@@ -358,16 +356,9 @@ export default async function PagePlanning({ searchParams }: Props) {
      */
     <div className={`flex flex-col gap-5 ${PLEINE_LARGEUR}`}>
       <div className="flex flex-wrap items-end justify-between gap-3">
+        {/* Plus de lien vers le journal des modifications sous le titre : il encombrait l'en-tête du
+            planning pour un geste de bureau, qui se fait depuis l'espace admin (Journal d'audit). */}
         <h1 className="text-3xl">Planning de cours</h1>
-        {admin && (
-          // Le journal vit dans l'espace admin, derrière l'élévation : un administrateur entré par son
-          // lien personnel sera d'abord renvoyé sur /connexion/admin. Le libellé le dit, comme « Mon profil »,
-          // plutôt que de laisser la demande de mot de passe arriver en surprise.
-          <Link href="/admin/audit?q=planning.case" className="inline-flex items-center gap-2 text-sm">
-            Journal des modifications (mot de passe admin)
-            <EnCours taille={14} />
-          </Link>
-        )}
       </div>
 
       {/* L'entrée en modification, à la place commune à tous les onglets : sous le titre. */}

@@ -109,6 +109,8 @@ const seance = (id: string) => faux.seances.find((s) => s.id === id);
 
 vi.mock("@/lib/db", () => {
   const client = {
+    // La liste des thèmes du club (teinte d'un élément) : le réglage n'est jamais enregistré ici.
+    setting: { findUnique: vi.fn(async () => null) },
     sessionPartie: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
         const p = partie(where.id);
@@ -132,6 +134,10 @@ vi.mock("@/lib/db", () => {
           },
         };
       }),
+      // Les voisins d'une case, relus dans la transaction pour lui choisir une teinte libre.
+      findMany: vi.fn(async ({ where }: { where: { sessionId: string; id?: { not: string } } }) =>
+        faux.parties.filter((p) => p.sessionId === where.sessionId && p.id !== where.id?.not).map((p) => ({ ...p })),
+      ),
       update: vi.fn(({ where, data }: { where: { id: string }; data: Partial<Partie> }) => {
         const p = partie(where.id);
         if (!p) throw new Error("introuvable");
@@ -155,7 +161,14 @@ vi.mock("@/lib/db", () => {
     db: {
       ...client,
       $transaction: vi.fn(async (arg: unknown) => {
-        if (typeof arg === "function") return (arg as (c: typeof client) => Promise<unknown>)(client);
+        if (typeof arg === "function") {
+          // Une transaction interactive : on y compte les écritures de case, comme on compte les
+          // opérations d'une transaction en tableau — c'est le « tout dans une seule » qui importe.
+          const avant = faux.ecritures.length;
+          const rendu = await (arg as (c: typeof client) => Promise<unknown>)(client);
+          faux.transactions.push(faux.ecritures.length - avant);
+          return rendu;
+        }
         const ops = arg as Promise<unknown>[];
         faux.transactions.push(ops.length);
         return Promise.all(ops);

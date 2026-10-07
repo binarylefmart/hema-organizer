@@ -11,7 +11,6 @@ import { formatDateCourte, formatHeure } from "@/lib/dates";
 import { LIBELLE_VIDE } from "@/lib/constants";
 import { FORM_INITIAL, type FormState } from "@/lib/form";
 import {
-  enPuces,
   erreursAffichees,
   erreursEtape,
   ETAPES_ATELIER,
@@ -38,10 +37,9 @@ const nomComplet = (p: Personne) => `${p.prenom} ${p.nom}`.trim();
  * `onSubmit` plutôt que par `action=` : React n'a donc aucun formulaire à réinitialiser derrière
  * nous, et une étape refusée par le serveur se retrouve telle qu'on l'avait laissée.
  *
- * Les choix (qui anime, le second, la séance) sont de **vrais boutons radio** portant le nom du champ :
- * c'est la case cochée qui part dans le `FormData`, comme partait la liste du formulaire d'ordinateur.
- * Les personnes passent toujours par la liste du dépôt ; la séance souhaitée est en puces jusqu'à vingt
- * entrées, la liste au-delà (`enPuces`).
+ * « Qui anime » est un choix en **vrais boutons radio** portant le nom du champ : c'est la case cochée
+ * qui part dans le `FormData`, comme partait la liste du formulaire d'ordinateur. Le second animateur
+ * et la séance souhaitée passent par la liste du dépôt.
  */
 export function AssistantAtelier({
   action,
@@ -258,26 +256,17 @@ export function AssistantAtelier({
       </Etape>
 
       <Etape numero={4} courante={etape} question={question}>
-        {enPuces(choixSeances) ? (
-          <Puces
-            titre="Séance souhaitée (facultatif)"
-            name="sessionId"
-            entrees={choixSeances}
-            valeur={saisie.sessionId}
-            onChange={(v) => changer("sessionId", v)}
-            erreur={erreurs.sessionId}
-          />
-        ) : (
-          <ChampListe
-            label="Séance souhaitée (facultatif)"
-            name="sessionId"
-            id="assistant-seance"
-            valeur={saisie.sessionId}
-            entrees={choixSeances}
-            onChange={(v) => changer("sessionId", v)}
-            erreur={erreurs.sessionId}
-          />
-        )}
+        {/* **La séance souhaitée se choisit dans la liste**, comme les personnes : une rangée de
+            dates en puces remplissait l'écran pour un choix facultatif. */}
+        <ChampListe
+          label="Séance souhaitée (facultatif)"
+          name="sessionId"
+          id="assistant-seance"
+          valeur={saisie.sessionId}
+          entrees={choixSeances}
+          onChange={(v) => changer("sessionId", v)}
+          erreur={erreurs.sessionId}
+        />
       </Etape>
 
       <div className="flex gap-3">
@@ -340,47 +329,5 @@ function GrosChoix({ name, value, checked, onChange, children }: { name: string;
       <input type="radio" name={name} value={value} checked={checked} onChange={onChange} className="size-5 shrink-0 accent-primaire" />
       <span>{children}</span>
     </label>
-  );
-}
-
-/** Des puces exclusives : de vrais boutons radio portant le nom du champ, rangés à la ligne. */
-function Puces({
-  titre,
-  name,
-  entrees,
-  valeur,
-  onChange,
-  erreur,
-}: {
-  titre: string;
-  name: string;
-  entrees: { valeur: string; libelle: string }[];
-  valeur: string;
-  onChange: (v: string) => void;
-  erreur?: string;
-}) {
-  const id = `assistant-${name}`;
-  return (
-    <div role="radiogroup" aria-labelledby={`${id}-titre`} aria-describedby={erreur ? `${id}-erreur` : undefined} className="flex flex-col gap-2">
-      <p id={`${id}-titre`} className="font-semibold">
-        {titre}
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {entrees.map((e) => (
-          <label
-            key={e.valeur || "vide"}
-            className="flex min-h-12 cursor-pointer items-center rounded-full border-2 border-bordure bg-surface px-4 text-base font-semibold text-texte has-[:checked]:border-primaire has-[:checked]:bg-primaire has-[:checked]:text-primaire-texte has-[:focus-visible]:outline has-[:focus-visible]:outline-3 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-jauge"
-          >
-            <input type="radio" name={name} value={e.valeur} checked={valeur === e.valeur} onChange={() => onChange(e.valeur)} className="sr-only" />
-            {e.libelle}
-          </label>
-        ))}
-      </div>
-      {erreur && (
-        <p id={`${id}-erreur`} className="text-sm font-semibold text-rouge" role="alert">
-          {erreur}
-        </p>
-      )}
-    </div>
   );
 }

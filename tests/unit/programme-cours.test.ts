@@ -15,9 +15,9 @@ import { programmeDepuisParties, type ProgrammeSeance } from "@/lib/planning";
  * les écrans à le poser sans condition.
  *
  * Il tient aussi **la lecture par partie** — « Partie 1 », puis ses éléments
- * (« Échauffement », « Cours 2 », « Atelier ») — et **le repère de couleur d'un élément**, qui ne
- * dépend plus que de sa nature (`couleurNature`), identique sur le planning et sur la fiche puisque les
- * deux écrans appellent la même fonction.
+ * (« Échauffement », « Cours 2 », « Atelier ») — et **le repère de couleur d'un élément** : sa forme
+ * dit sa nature, sa teinte son rang parmi les cours et options de la séance (`couleurNature`),
+ * identique sur le planning et sur la fiche puisque les deux écrans appellent la même fonction.
  */
 
 const lire = (p: string) => fs.readFileSync(path.join(process.cwd(), p), "utf8");
@@ -31,6 +31,7 @@ const cas = (c: Partial<ProgrammeSeance[number]> & { ordre: number }): Programme
   nature: "COURS",
   rang: 1,
   nombre: 1,
+  teinte: 1,
   libelle: "Partie 1 · Cours",
   instructeur: null,
   instructeurId: null,
@@ -122,7 +123,7 @@ describe("la mise en forme du programme", () => {
   it("le planning et la fiche appellent la même fonction de couleur : plus aucune table à recopier", () => {
     const grille = lire("src/components/planning/GrillePlanning.tsx");
     expect(grille).not.toContain("COULEUR_PARTIE");
-    expect(composant).toContain("couleurNature(l.nature)");
+    expect(composant).toContain("couleurNature(l.nature, l.teinte)");
     expect(composant).not.toContain("couleurPartie");
   });
 });
@@ -200,6 +201,27 @@ describe("la lecture par partie", () => {
     expect(l.nom).toBe("Cours 2");
   });
 
+  it("donne à chaque cours et option sa teinte, comptée sur la séance entière avant le filtre", () => {
+    const themesClub = ["Messer", "Dague", "Épée longue", "Lutte"];
+    const lignes = lignesProgramme(programmeDepuisParties(seance, themesClub));
+    // Échauffement sans teinte. Le cours vide de la partie 2 ne s'affiche pas, mais il **tient** la
+    // teinte 3 (la 1 de son thème vide était prise) : l'épée longue, qui voulait la 3, prend la 4 —
+    // exactement ce que le planning, qui montre le cours vide, affiche aussi.
+    expect(lignes.map((l) => [l.nom, l.teinte])).toEqual([
+      ["Échauffement", null],
+      ["Cours 1", 1],
+      ["Cours 2", 2],
+      ["Cours", 4],
+      ["Option", 5],
+    ]);
+  });
+
+  it("lit la teinte enregistrée telle quelle, sans la recalculer", () => {
+    const enregistree = seance.map((p) => (p.id === "p4" ? { ...p, teinte: 7 } : p));
+    const [, , , epee] = lignesProgramme(programmeDepuisParties(enregistree, ["Messer", "Dague", "Épée longue", "Lutte"]));
+    expect(epee.teinte).toBe(7);
+  });
+
   it("regroupe par numéro, pas par voisinage : une liste mal triée ne coupe pas une partie en deux", () => {
     const groupes = grouperParPartie([{ bloc: 2 }, { bloc: 1 }, { bloc: 2 }]);
     expect(groupes.map((g) => [g.nom, g.elements.length])).toEqual([
@@ -224,32 +246,40 @@ describe("la lecture par partie", () => {
 });
 
 /**
- * **Une teinte par nature** : la partie se lit à son titre, la couleur ne dit plus que *ce qu'est*
- * l'élément. La forme double la teinte — ce qui se mène en parallèle (option, atelier) est en contour.
+ * **La forme dit la nature, la teinte le rang** : chaque cours et chaque option a sa teinte de la
+ * palette (`teintes.ts`), l'échauffement et l'atelier gardent la leur. La forme double toujours la
+ * nature — ce qui se mène en parallèle (option, atelier) est en contour.
  */
 describe("le repère de couleur d'un élément", () => {
-  it("donne une teinte différente à chaque nature", () => {
-    const teintes = NATURES_ELEMENT.map(couleurNature);
-    expect(new Set(teintes).size).toBe(NATURES_ELEMENT.length);
+  it("donne à deux cours de teintes différentes deux étiquettes différentes, et garde l'échauffement et l'atelier", () => {
+    expect(couleurNature("COURS", 1)).not.toBe(couleurNature("COURS", 2));
+    expect(couleurNature("OPTION", 3)).not.toBe(couleurNature("COURS", 3));
+    // La teinte ne touche ni l'échauffement ni l'atelier : c'est leur couleur qui les fait reconnaître.
+    expect(couleurNature("ECHAUFFEMENT", 2)).toBe(couleurNature("ECHAUFFEMENT"));
+    expect(couleurNature("ATELIER", 4)).toBe(couleurNature("ATELIER"));
+    const toutes = [couleurNature("ECHAUFFEMENT"), couleurNature("ATELIER"), couleurNature("COURS", 1), couleurNature("OPTION", 1)];
+    expect(new Set(toutes).size).toBe(toutes.length);
   });
 
   it("met en contour ce qui se mène en parallèle, en aplat l'échauffement et le cours", () => {
-    expect(couleurNature("OPTION")).toContain("border");
+    expect(couleurNature("OPTION", 2)).toContain("border");
     expect(couleurNature("ATELIER")).toContain("border");
-    expect(couleurNature("COURS")).not.toContain("border");
+    expect(couleurNature("COURS", 2)).not.toContain("border");
     expect(couleurNature("ECHAUFFEMENT")).not.toContain("border");
   });
 
-  it("puise dans les couleurs du thème du club, sans couleur en dur ni classe composée", () => {
-    // Des paires que chaque thème définit pour le clair et le sombre (marque/encre, primaire,
-    // vert) : le contraste est celui que le thème garantit déjà.
+  it("puise dans des variables — palette du programme, marque et vert du thème —, sans couleur en dur", () => {
     for (const n of NATURES_ELEMENT) {
-      expect(couleurNature(n)).toMatch(/\b(bg|border)-(marque|primaire|vert)\b/);
-      expect(couleurNature(n)).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\b(rgb|hsl)a?\(/);
+      for (const t of [null, 1, 2, 3, 4, 5] as const) {
+        expect(couleurNature(n, t)).toMatch(/\b(bg|border)-(marque|vert|teinte-[1-5])\b/);
+        expect(couleurNature(n, t)).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\b(rgb|hsl)a?\(/);
+      }
     }
   });
 
   it("ne rend jamais une classe vide, même pour une nature inconnue", () => {
     expect(couleurNature("INCONNUE" as never)).toBe(couleurNature("COURS"));
+    // Un cours dont la teinte manque (ligne d'avant la palette) prend la première plutôt que rien.
+    expect(couleurNature("COURS", null)).toBe(couleurNature("COURS", 1));
   });
 });

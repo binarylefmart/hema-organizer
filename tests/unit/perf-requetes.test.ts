@@ -191,6 +191,7 @@ describe("planning d'une période", () => {
       "nature",
       "niveau",
       "ordre",
+      "teinte",
       "theme",
       "updatedAt",
     ]);

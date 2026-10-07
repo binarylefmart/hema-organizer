@@ -1,8 +1,11 @@
 import type { NomIcone } from "@/components/ui/Icone";
 import { libelleDuree, libellePrix } from "@/components/evenements/libelles";
 import { niveauAffiche, NIVEAU_DEFAUT, type NatureElement, type Niveau } from "./constants";
+import { teintesProgramme, type Teinte } from "@/components/seances/teintes";
 import { formatDateLongue, formatHeure, formatHoraire, todayIso } from "./dates";
 import { db } from "./db";
+// La liste des thèmes de cours du club : la teinte d'un élément qui n'en a pas encore s'en déduit.
+import { getThemes } from "./planning";
 import { evenementParId, evenementTermine } from "./evenements";
 import {
   elementsRanges,
@@ -57,6 +60,12 @@ export type CasePartage = {
   bloc: number;
   nature: NatureElement;
   nom: string;
+  /**
+   * Teinte du cours ou de l'option (`teintesProgramme`), `null` pour un échauffement ou un atelier —
+   * comptée sur la séance entière, avant le filtre des cases sans titre. Un repère d'affichage : l'API
+   * publique ne la recopie pas (`versSeancePublique`, liste blanche).
+   */
+  teinte: Teinte | null;
   libelle: string;
   theme: string;
   description: string;
@@ -202,7 +211,7 @@ const SELECT_PARTAGE = {
   periodId: true,
   period: { select: { id: true, nom: true, statut: true } },
   parties: {
-    select: { id: true, libelle: true, ordre: true, bloc: true, nature: true, theme: true, description: true, niveau: true, atelier: { select: { titre: true } } },
+    select: { id: true, libelle: true, ordre: true, bloc: true, nature: true, teinte: true, theme: true, description: true, niveau: true, atelier: { select: { titre: true } } },
     orderBy: { ordre: "asc" },
   },
 } as const;
@@ -221,7 +230,7 @@ type SeanceBrute = {
   annulee: boolean;
   motifAnnulation: string | null;
   period: { id: string; nom: string; statut: string };
-  parties: Array<{ id: string; libelle: string; ordre: number; bloc: number; nature: string; theme: string; description: string; niveau: string; atelier: { titre: string } | null }>;
+  parties: Array<{ id: string; libelle: string; ordre: number; bloc: number; nature: string; teinte: number | null; theme: string; description: string; niveau: string; atelier: { titre: string } | null }>;
 };
 
 /**
@@ -233,11 +242,14 @@ type SeanceBrute = {
  *
  * Les parties arrivent déjà triées (`orderBy: { ordre }`) ; on retrie quand même (`elementsRanges` :
  * partie, nature, ordre), parce que c'est cette fonction — et non la requête — qui promet l'ordre à
- * qui lit `CasePartage[]`. Le rang et le nombre de chaque élément s'y comptent **avant** le filtre.
+ * qui lit `CasePartage[]`. Le rang et le nombre de chaque élément s'y comptent **avant** le filtre,
+ * et sa teinte aussi.
  */
-function programme(parties: SeanceBrute["parties"]): CasePartage[] {
+function programme(parties: SeanceBrute["parties"], themesClub: readonly string[]): CasePartage[] {
   const cases: CasePartage[] = [];
-  for (const c of elementsRanges(parties)) {
+  const ranges = elementsRanges(parties);
+  const teintes = teintesProgramme(ranges, themesClub).elements;
+  for (const [i, c] of ranges.entries()) {
     const titre = (c.atelier?.titre ?? "").trim() || c.theme.trim();
     if (!titre) continue;
     cases.push({
@@ -252,6 +264,7 @@ function programme(parties: SeanceBrute["parties"]): CasePartage[] {
       bloc: c.bloc,
       nature: c.nature,
       nom: c.nom,
+      teinte: teintes[i],
       libelle: c.libelle,
       theme: titre,
       description: c.description.trim(),
@@ -262,7 +275,7 @@ function programme(parties: SeanceBrute["parties"]): CasePartage[] {
   return cases;
 }
 
-function versPartage(s: SeanceBrute, invites: number, totaux: TotauxStatuts): SeancePartagee {
+function versPartage(s: SeanceBrute, invites: number, totaux: TotauxStatuts, themesClub: readonly string[]): SeancePartagee {
   return {
     id: s.id,
     date: s.date,
@@ -276,7 +289,7 @@ function versPartage(s: SeanceBrute, invites: number, totaux: TotauxStatuts): Se
     annulee: s.annulee,
     motifAnnulation: s.motifAnnulation,
     compteurs: compteursDepuisTotaux(totaux, invites),
-    programme: programme(s.parties),
+    programme: programme(s.parties, themesClub),
     periode: s.period,
   };
 }
@@ -360,8 +373,8 @@ export async function seancePartagee(id: string): Promise<SeancePartagee | null>
   if (!id || id.length > 64) return null;
   const s = await db.session.findUnique({ where: { id }, select: SELECT_PARTAGE });
   if (!s || s.period.statut === PERIODE_BROUILLON) return null;
-  const { invites, totaux } = await chiffresPartage([s]);
-  return versPartage(s, invites.get(s.periodId) ?? 0, totaux.get(s.id) ?? {});
+  const [{ invites, totaux }, themes] = await Promise.all([chiffresPartage([s]), getThemes()]);
+  return versPartage(s, invites.get(s.periodId) ?? 0, totaux.get(s.id) ?? {}, themes);
 }
 
 /**
@@ -391,8 +404,8 @@ export async function planningPartage(periodId: string, now = new Date()): Promi
     }),
     invitesParPeriode([periodId]),
   ]);
-  const totaux = await totauxParSeance(sessions);
-  return { periode, seances: sessions.map((s) => versPartage(s, invites.get(s.periodId) ?? 0, totaux.get(s.id) ?? {})), total };
+  const [totaux, themes] = await Promise.all([totauxParSeance(sessions), getThemes()]);
+  return { periode, seances: sessions.map((s) => versPartage(s, invites.get(s.periodId) ?? 0, totaux.get(s.id) ?? {}, themes)), total };
 }
 
 /**
@@ -411,8 +424,8 @@ export async function prochainesSeancesPubliques(limite: number, now = new Date(
     take: limite,
     select: SELECT_PARTAGE,
   });
-  const { invites, totaux } = await chiffresPartage(sessions);
-  return sessions.map((s) => versPartage(s, invites.get(s.periodId) ?? 0, totaux.get(s.id) ?? {}));
+  const [{ invites, totaux }, themes] = await Promise.all([chiffresPartage(sessions), getThemes()]);
+  return sessions.map((s) => versPartage(s, invites.get(s.periodId) ?? 0, totaux.get(s.id) ?? {}, themes));
 }
 
 /* ------------------------------------------------------------------ */

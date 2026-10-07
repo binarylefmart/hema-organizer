@@ -32,6 +32,8 @@ function correspond(s: Record<string, unknown>, where: Record<string, unknown> =
 
 vi.mock("@/lib/db", () => ({
   db: {
+    // La liste des thèmes du club (teinte d'un élément) : le réglage n'est jamais enregistré ici.
+    setting: { findUnique: vi.fn(async () => null) },
     session: {
       findMany: vi.fn(async (args: { where?: Record<string, unknown>; orderBy?: unknown }) => {
         faux.appels.findMany.push(args);

@@ -6,11 +6,11 @@ import { CLASSES_CONTROLE } from "@/components/ui/Champ";
 import { nommerAdministrateurs, type ResultatNomination } from "./actions";
 import { AdresseEmail } from "@/components/ui/AdresseEmail";
 import {
-  cherchable,
   coches,
   filtrerCandidats,
   libelleBouton,
   LIBELLE_SANS_SELECTION,
+  NOMINATION_VISIBLES,
   nomComplet,
   texteConfirmation,
   texteHorsRecherche,
@@ -33,9 +33,10 @@ import {
  * passer de un à plusieurs ne relâche rien. Il n'y a donc rien à nommer avec le mot « Tout », qui ne
  * s'écrit nulle part.
  *
- * **La recherche n'apparaît qu'au-delà de vingt noms** ({@link cherchable}) : un club de douze garde
- * exactement la carte qu'il avait, un club de quatre-vingts ne fait pas défiler l'annuaire au doigt.
- * Ce que la recherche cache **et qui est coché** est compté et dit — la sélection survit à la frappe.
+ * **La recherche est toujours là, et la liste se replie à {@link NOMINATION_VISIBLES} noms** (« Afficher
+ * les N autres ») : un gros club ne fait plus défiler l'annuaire dans une boîte, et pendant une
+ * recherche tous les résultats s'affichent. Ce que la recherche ou le repli cache **et qui est coché**
+ * est compté et dit — la sélection survit à la frappe.
  *
  * **Le cas d'une seule personne ne coûte pas un clic de plus qu'avant** : une case, un bouton. La
  * boîte de confirmation ne s'ouvre qu'à partir de deux noms ; pour un seul, le frein reste celui qui
@@ -44,11 +45,15 @@ import {
 export function SelectionNomination({ candidats }: { candidats: Candidat[] }) {
   const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set());
   const [recherche, setRecherche] = useState("");
+  const [deplie, setDeplie] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
 
-  const avecRecherche = cherchable(candidats);
-  const visibles = avecRecherche ? filtrerCandidats(candidats, recherche) : candidats;
+  const enRecherche = recherche.trim() !== "";
+  const trouves = filtrerCandidats(candidats, recherche);
+  const replie = !enRecherche && !deplie && trouves.length > NOMINATION_VISIBLES;
+  const visibles = replie ? trouves.slice(0, NOMINATION_VISIBLES) : trouves;
+  const restants = trouves.length - visibles.length;
   const caches = selection.size - visibles.filter((c) => selection.has(c.id)).length;
   const horsRecherche = texteHorsRecherche(caches);
 
@@ -95,19 +100,15 @@ export function SelectionNomination({ candidats }: { candidats: Candidat[] }) {
         <p className="text-sm text-texte-secondaire">
           Elles devront se donner un mot de passe et une double authentification avant que l&apos;administration s&apos;ouvre à elles.
         </p>
-        {avecRecherche && (
-          <input
-            type="search"
-            value={recherche}
-            onChange={(e) => setRecherche(e.target.value)}
-            placeholder="Chercher un nom ou une adresse"
-            aria-label="Chercher une personne à nommer"
-            className={`${CLASSES_CONTROLE} border-bordure px-4`}
-          />
-        )}
-        {/* Au-delà du seuil, la liste se cale sur 18 rem de haut — la hauteur de panneau du projet —
-            plutôt que d'allonger la page de quatre-vingts lignes sous la carte. */}
-        <div className={avecRecherche ? "max-h-72 overflow-y-auto rounded-xl border border-bordure/60" : undefined}>
+        <input
+          type="search"
+          value={recherche}
+          onChange={(e) => setRecherche(e.target.value)}
+          placeholder="Chercher un nom ou une adresse"
+          aria-label="Chercher une personne à nommer"
+          className={`${CLASSES_CONTROLE} border-bordure px-4`}
+        />
+        <div>
           {visibles.length === 0 ? (
             <p className="p-3 text-texte-secondaire">Aucun nom ne correspond à cette recherche.</p>
           ) : (
@@ -138,6 +139,11 @@ export function SelectionNomination({ candidats }: { candidats: Candidat[] }) {
                 </li>
               ))}
             </ul>
+          )}
+          {(restants > 0 || (deplie && !enRecherche && trouves.length > NOMINATION_VISIBLES)) && (
+            <Bouton type="button" variante="discret" className="mt-1 self-start" onClick={() => setDeplie((d) => !d)}>
+              {restants > 0 ? `Afficher ${restants === 1 ? "l'autre personne" : `les ${restants} autres personnes`}` : "Replier la liste"}
+            </Bouton>
           )}
         </div>
       </fieldset>

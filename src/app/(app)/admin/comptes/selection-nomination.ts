@@ -71,6 +71,14 @@ export function texteHorsRecherche(nbCaches: number): string | null {
 export const NOMS_MAX = 5;
 
 /**
+ * **Dix noms montrés d'emblée, puis « Afficher les N autres »** (demande du bureau : « en cas de gros
+ * groupe »). Plus court que le repli des personnes de l'application (`LIGNES_VISIBLES`, 20) : cette
+ * liste ne se parcourt pas, on y cherche deux ou trois noms — la recherche, toujours là, fait le
+ * reste. Pendant une recherche, tous les résultats s'affichent.
+ */
+export const NOMINATION_VISIBLES = 10;
+
+/**
  * **La confirmation annonce ce qui va se passer** : combien de personnes, lesquelles quand c'est
  * lisible, et **ce que le rôle emporte** — les pleins pouvoirs techniques, dont celui de nommer
  * d'autres administrateurs. Nommer trois administrateurs d'un clic sans récapitulatif serait

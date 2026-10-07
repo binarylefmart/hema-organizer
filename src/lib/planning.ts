@@ -16,6 +16,9 @@ import { reglagesVides } from "@/components/planning/options";
 // élément dans sa partie (`placesDansPartie`) en vient aussi : le rang qui décide du nom est celui qui
 // s'affiche à côté.
 import { ordreDInsertion, ordreEntier, placesDansPartie, rangementsParties, type PartieARanger, type RangementPartie } from "@/components/planning/rangement";
+// La teinte d'un cours ou d'une option se compte comme son rang, sur la séance entière : elle part
+// d'ici avec la ligne (voir l'en-tête de `teintes.ts`).
+import { teintesProgramme, type Teinte } from "@/components/seances/teintes";
 
 /**
  * Planning de cours : une colonne par séance, **autant de cases que la séance a de parties**,
@@ -55,6 +58,11 @@ export type CasePlanning = {
    */
   rang: number;
   nombre: number;
+  /**
+   * **Teinte du cours ou de l'option** dans la palette du programme (`teintesProgramme`), `null` pour
+   * un échauffement ou un atelier — comptée, comme le rang, sur la séance entière et avant tout filtre.
+   */
+  teinte: Teinte | null;
   /** Nom complet calculé (« Partie 1 · Cours »), tenu à jour par `rangerParties` */
   libelle: string;
   instructeurId: string | null;
@@ -343,6 +351,7 @@ export async function chargerPlanning(periodId: string, user: UserLike & { id: s
               libelle: true,
               bloc: true,
               nature: true,
+              teinte: true,
               instructeurId: true,
               instructeurSecondId: true,
               theme: true,
@@ -427,6 +436,7 @@ export async function chargerPlanning(periodId: string, user: UserLike & { id: s
     // éléments arrivent déjà triés par `ordre`, qui matérialise l'ordre de lecture.
     const lus = s.parties.map((p) => ({ ...p, nature: natureLue(p.nature) }));
     const places = placesDansPartie(lus);
+    const teintes = teintesProgramme(lus, themes).elements;
     const parties: CasePlanning[] = lus.map((p, i) => ({
       id: p.id,
       ordre: p.ordre,
@@ -434,6 +444,7 @@ export async function chargerPlanning(periodId: string, user: UserLike & { id: s
       nature: p.nature,
       rang: places[i].rang,
       nombre: places[i].nombre,
+      teinte: teintes[i],
       libelle: p.libelle,
       instructeurId: p.instructeurId,
       instructeur: p.instructeur ? `${p.instructeur.prenom} ${p.instructeur.nom}` : null,
@@ -510,7 +521,7 @@ export function caseVide(c: Pick<CasePlanning, "instructeur" | "instructeurSecon
 /** Une ligne du programme d'une séance, pour la carte Présences et la page de gestion. */
 export type LigneProgrammeSeance = Pick<
   CasePlanning,
-  "id" | "ordre" | "libelle" | "bloc" | "nature" | "rang" | "nombre" | "instructeur" | "instructeurId" | "instructeurSecond" | "instructeurSecondId" | "theme" | "description" | "niveau"
+  "id" | "ordre" | "libelle" | "bloc" | "nature" | "rang" | "nombre" | "teinte" | "instructeur" | "instructeurId" | "instructeurSecond" | "instructeurSecondId" | "theme" | "description" | "niveau"
 > & {
   atelier: { id: string; titre: string } | null;
 };
@@ -540,6 +551,8 @@ export function programmeDepuisParties(
     libelle: string;
     bloc: number;
     nature: string;
+    /** La teinte enregistrée (`null` sur une ligne d'avant la colonne) — facultative comme `niveau`. */
+    teinte?: number | null;
     theme: string;
     /** Facultatif pour la même raison que `niveau` : une requête écrite avant ce champ ne le porte pas. */
     description?: string | null;
@@ -550,6 +563,8 @@ export function programmeDepuisParties(
     instructeurSecond?: { prenom: string; nom: string } | null;
     atelier: { id: string; titre: string } | null;
   }>,
+  /** La liste des thèmes de cours et options du club (`getThemes`) : la teinte d'une ligne qui n'en a pas encore s'en déduit */
+  themesClub: readonly string[] = [],
 ): ProgrammeSeance {
   const ordonnees = [...parties].sort((a, b) => a.ordre - b.ordre).map((c) => ({ ...c, nature: natureLue(c.nature) }));
   /*
@@ -558,9 +573,10 @@ export function programmeDepuisParties(
    * C'est la seule place où la séance est encore complète : deux lignes plus bas, les éléments
    * muets ont disparu, et compter sur ce qui reste ferait dire « Cours » (seul) à côté d'un libellé
    * « Partie 1 · Cours 2 ». Rang et nombre partent donc avec la ligne au lieu d'être redérivés à
-   * l'écran.
+   * l'écran — et la teinte aussi : le cours que le planning montre bleu doit l'être sur la fiche.
    */
   const places = placesDansPartie(ordonnees);
+  const teintes = teintesProgramme(ordonnees, themesClub).elements;
   return ordonnees
     .map((c, i) => ({
       id: c.id,
@@ -569,6 +585,7 @@ export function programmeDepuisParties(
       nature: c.nature,
       rang: places[i].rang,
       nombre: places[i].nombre,
+      teinte: teintes[i],
       libelle: c.libelle,
       instructeur: c.instructeur ? `${c.instructeur.prenom} ${c.instructeur.nom}` : null,
       instructeurId: c.instructeurId,
@@ -664,14 +681,22 @@ export const SELECTION_RANGEMENT = { id: true, ordre: true, bloc: true, nature: 
  * seule partie, un cours, nommé « Cours » sans préfixe), avec leur rang et leur nom déjà justes, pour que `rangerParties`
  * n'ait rien à réécrire dessus.
  */
-export function partiesInitiales(): Array<{ libelle: string; ordre: number; bloc: number; nature: NatureElement }> {
+export function partiesInitiales(): Array<{ libelle: string; ordre: number; bloc: number; nature: NatureElement; teinte: number | null }> {
   const places = placesDansPartie(PARTIES_MODELE);
   const nbParties = new Set(PARTIES_MODELE.map((p) => p.bloc)).size;
+  // Des éléments encore sans thème, créés dans l'ordre du modèle : la même règle qu'à l'ajout d'un
+  // élément (`teinteAEcrire`), donc la teinte 1 pour le cours du modèle. Aucune liste de thèmes à
+  // consulter — un thème vide n'en dépend pas.
+  const teintes = teintesProgramme(
+    PARTIES_MODELE.map((p, i) => ({ id: String(i).padStart(4, "0"), bloc: p.bloc, nature: p.nature, theme: "" })),
+    [],
+  ).elements;
   return PARTIES_MODELE.map((p, ordre) => ({
     libelle: libelleElement(p.bloc, p.nature, places[ordre].rang, places[ordre].nombre, nbParties),
     ordre,
     bloc: p.bloc,
     nature: p.nature,
+    teinte: teintes[ordre],
   }));
 }
 
@@ -782,6 +807,8 @@ export async function placerAtelier(atelierId: string, sessionId: string, acteur
       data: {
         atelierId,
         nature: "ATELIER",
+        // Un atelier garde le vert, sans teinte de la palette : la case qu'il occupe rend la sienne.
+        teinte: null,
         instructeurId: atelier.animateurId ?? atelier.animateurSecondId ?? atelier.proposeParId,
         instructeurSecondId: atelier.animateurId ? atelier.animateurSecondId : null,
         theme: atelier.titre,

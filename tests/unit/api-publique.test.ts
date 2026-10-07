@@ -86,6 +86,7 @@ const SEANCE: SeancePartagee = {
       bloc: 1,
       nature: "COURS",
       nom: "Cours",
+      teinte: 1,
       libelle: "Partie 1 · Cours",
       theme: "Messer",
       description: "Garde haute, puis trois passes lentes en binôme.",

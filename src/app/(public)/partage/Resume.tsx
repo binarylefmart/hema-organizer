@@ -2,6 +2,7 @@ import { boutonClasses } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
 import { couleurNature, grouperParPartie } from "@/components/seances/programme-cours";
 import { EcuNature } from "@/components/seances/EcuNature";
+import { classesPartie } from "@/components/seances/teintes";
 import { PastilleNiveau } from "@/components/ui/Pastille";
 import { lienCarte } from "@/lib/dates";
 import { LIBELLE_ANNULEE, lignesEvenement, lignesResume, type EvenementPartage, type LigneResume, type SeancePartagee } from "@/lib/partage";
@@ -48,20 +49,21 @@ export function ResumeSeance({ seance, compact = false }: { seance: SeancePartag
            volontairement aucun identifiant de ligne (voir `CasePartage`). */
         <ul className="flex flex-col gap-3 border-t border-bordure/50 pt-3" aria-label="Programme">
           {grouperParPartie(seance.programme).map((p) => (
-            <li key={p.bloc} className="flex min-w-0 flex-col gap-1">
-              {/* Une seule partie affichée (`nom: null`) : ni titre ni filet, le programme se lit
-                  comme avant les parties (`partiesNommees`). */}
-              {p.nom && <p className="text-xs font-semibold uppercase tracking-wide text-texte-secondaire">{p.nom}</p>}
-              <ul aria-label={p.nom ?? undefined} className={`flex min-w-0 flex-col gap-1.5 ${p.nom ? "border-l-2 border-bordure/60 pl-3" : ""}`}>
+            <li key={p.bloc} className={`flex min-w-0 flex-col gap-1 ${p.nom ? `${classesPartie(p.bloc).bande} pl-3` : ""}`}>
+              {/* Une seule partie affichée (`nom: null`) : ni titre ni bande, le programme se lit
+                  comme avant les parties (`partiesNommees`). Sinon le titre et la bande à gauche
+                  prennent la teinte de la partie (`classesPartie`), comme dans l'application. */}
+              {p.nom && <p className={`text-xs font-semibold uppercase tracking-wide ${classesPartie(p.bloc).titre}`}>{p.nom}</p>}
+              <ul aria-label={p.nom ?? undefined} className="flex min-w-0 flex-col gap-1.5">
                 {p.elements.map((c, i) => (
                   <li key={i} className="flex flex-col gap-0.5 text-[0.95rem]">
                     <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       {/* Le nom de l'élément — calculé depuis sa nature et son rang — et rien d'autre :
                           aucun nom de personne ne sort d'ici, pas même celui de l'instructeur (voir
-                          l'en-tête). À la couleur de sa nature (`couleurNature`), comme sur la fiche
-                          d'une séance dans l'application. */}
-                      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${couleurNature(c.nature)}`}>
-                        <EcuNature nature={c.nature} taille={14} />
+                          l'en-tête). Sa forme dit sa nature, sa teinte son rang dans la séance
+                          (`couleurNature`), comme sur la fiche d'une séance dans l'application. */}
+                      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${couleurNature(c.nature, c.teinte)}`}>
+                        <EcuNature nature={c.nature} teinte={c.teinte} taille={14} />
                         {c.nom}
                       </span>
                       {/* **Un atelier se lit comme un cours** (avenant, « ne mets pas les

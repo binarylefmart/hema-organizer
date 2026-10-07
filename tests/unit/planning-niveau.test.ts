@@ -97,7 +97,7 @@ describe("le niveau suit la case jusqu'aux écrans", () => {
   });
 
   it("ne donne rien à lire sur la fiche quand il est indifférent", () => {
-    const ligne = { bloc: 1, nature: "COURS" as const, nombre: 1, instructeur: null, instructeurId: null, instructeurSecond: null, instructeurSecondId: null, description: "", atelier: null };
+    const ligne = { bloc: 1, nature: "COURS" as const, nombre: 1, teinte: null, instructeur: null, instructeurId: null, instructeurSecond: null, instructeurSecondId: null, description: "", atelier: null };
     const [avec, sans] = lignesFiche([
       { ...ligne, id: "c1", ordre: 0, rang: 1, libelle: "Cours 1", theme: "Messer", niveau: "AVANCE" },
       { ...ligne, id: "c2", ordre: 1, rang: 2, libelle: "Cours 2", theme: "Lutte", niveau: "INDIFFERENT" },

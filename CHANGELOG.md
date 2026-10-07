@@ -2,6 +2,21 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.74.0
+
+### Nouveautés
+
+- **planning** : une couleur par thème de cours, enregistrée, et une par partie
+- **evenements** : sur téléphone, annonces groupées « À publier » / « Publiés » avec leurs boutons
+- **planning** : le lien vers le journal des modifications quitte l'en-tête
+- **admin** : nommer un administrateur — recherche toujours là, liste repliée à dix noms
+- **ateliers** : la séance souhaitée se choisit dans un menu déroulant
+
+### Corrections
+
+- **evenements** : pastille sous le titre, et les gestes du volet partent d'un toucher
+- **deploiement** : le job de déploiement peut lire le dépôt privé
+
 ## 0.73.0
 
 ### Nouveautés

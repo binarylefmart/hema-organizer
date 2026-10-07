@@ -419,6 +419,9 @@ async function main() {
       data: [
         { sessionId, bloc: 1, nature: "ECHAUFFEMENT", ordre: -1, libelle: "", theme: "Mobilité et jeu de jambes", instructeurId: users[COMPTES.instructeur].id, modifieParId: auteur },
         { sessionId, bloc: 2, nature: "OPTION", ordre: 99, libelle: "", theme: "Sparring encadré", niveau: "INTERMEDIAIRE", instructeurId: users[COMPTES.instructeur].id, modifieParId: auteur },
+        // Assez de cours et d'options pour voir les teintes : chacun la sienne, selon son thème.
+        { sessionId, bloc: 1, nature: "OPTION", ordre: 50, libelle: "", theme: "Dague", instructeurId: users[COMPTES.adminNominatif].id, modifieParId: auteur },
+        { sessionId, bloc: 2, nature: "COURS", ordre: 90, libelle: "", theme: "Messer", niveau: "DEBUTANT", instructeurId: users[COMPTES.adminNominatif].id, modifieParId: auteur },
       ],
     });
     const aRanger = await db.sessionPartie.findMany({ where: { sessionId }, select: SELECTION_RANGEMENT });

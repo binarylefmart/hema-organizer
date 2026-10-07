@@ -32,6 +32,8 @@ const faux = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => {
   const client = {
+    // La liste des thèmes du club (teinte d'un élément) : le réglage n'est jamais enregistré ici.
+    setting: { findUnique: vi.fn(async () => null) },
     sessionPartie: {
       findMany: vi.fn(async ({ where }: { where: { sessionId: string } }) => faux.parties.filter((p) => p.sessionId === where.sessionId).map((p) => ({ ...p }))),
       findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => ({ ...faux.parties.find((p) => p.id === where.id)! })),

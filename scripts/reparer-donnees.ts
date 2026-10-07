@@ -19,8 +19,9 @@
  * | `rangs`         | partie (`bloc`) trouée, `ordre` troué, ou `libelle` qui ne dit plus sa place | partie, rang et nom remis d'accord |
  * | `creneaux`      | `dedupKey` de récap ou de rappel d'avant l'empreinte du créneau           | la clé est **renommée**           |
  * | `vides`         | élément **vide en trop** : au-delà des cours du modèle, jamais touché     | l'élément est supprimé, rangs refaits |
+ * | `teintes`       | cours ou option sans teinte enregistrée (ligne d'avant la colonne), ou teinte sur un échauffement / un atelier | la teinte lue est enregistrée |
  *
- * Un neuvième relevé, **purement informatif** et jamais réparé, liste les lignes dont la clé
+ * Un dixième relevé, **purement informatif** et jamais réparé, liste les lignes dont la clé
  * étrangère pointe vers un parent disparu (`PRAGMA foreign_key_check`). Une base saine n'en a
  * aucune ; s'il en sort, c'est une corruption d'un autre ordre, qui se règle à la main.
  *
@@ -52,6 +53,8 @@ import { rangementsParties, type PartieARanger, type RangementPartie } from "../
 // supprimer ce que l'application considère comme rempli. Les deux modules sont purs.
 import { reglagesVides } from "../src/components/planning/options";
 import { estNatureElement, PARTIES_MODELE } from "../src/lib/constants";
+// La règle des teintes, la même que l'écran lit : enregistrer ce qui s'affiche déjà, rien d'autre.
+import { estTeinte, prendUneTeinte, teintesProgramme } from "../src/components/seances/teintes";
 
 /* ────────────────────────────── Ce que le script sait détecter ──────────────────────────────
  *
@@ -61,7 +64,7 @@ import { estNatureElement, PARTIES_MODELE } from "../src/lib/constants";
  */
 
 /** Nom des contrôles, dans l'ordre où le rapport les présente. */
-export const CONTROLES = ["fantomes", "ateliers", "notifications", "liens", "parties", "rangs", "creneaux", "vides"] as const;
+export const CONTROLES = ["fantomes", "ateliers", "notifications", "liens", "parties", "rangs", "creneaux", "vides", "teintes"] as const;
 export type Controle = (typeof CONTROLES)[number];
 
 export type LigneReponse = {
@@ -494,6 +497,34 @@ export function detecterPartiesSurnumeraires(parties: readonly LignePartieComple
   return { aSupprimer, rangs, seancesVidees };
 }
 
+/** Ce qu'il faut d'un élément pour juger de sa teinte. */
+export type LigneTeinte = { id: string; sessionId: string; bloc: number; nature: string; theme: string; teinte: number | null; updatedAt: Date };
+export type TeinteAEcrire = { id: string; sessionId: string; avant: number | null; apres: number | null; updatedAt: Date };
+
+/**
+ * 9. **Teintes des éléments.** Depuis que la teinte d'un cours ou d'une option est enregistrée
+ * (`SessionPartie.teinte`), les lignes d'avant la colonne la portent `null` : l'écran la calcule à la
+ * lecture (`teintesProgramme`), et c'est **exactement cette valeur** qu'on enregistre — rien ne
+ * change à l'écran, mais elle ne bougera plus quand un voisin change de thème ou disparaît. Un
+ * échauffement ou un atelier qui porterait une teinte (écriture d'une autre version) la rend.
+ * La séance entière est jugée d'un coup, comme à la lecture : une teinte se choisit parmi celles des
+ * voisins.
+ */
+export function detecterTeintesManquantes(parties: readonly LigneTeinte[], themesClub: readonly string[]): TeinteAEcrire[] {
+  const parSeance = new Map<string, LigneTeinte[]>();
+  for (const p of parties) parSeance.set(p.sessionId, [...(parSeance.get(p.sessionId) ?? []), p]);
+  const aEcrire: TeinteAEcrire[] = [];
+  for (const lignes of parSeance.values()) {
+    const lues = lignes.map((p) => ({ ...p, nature: estNatureElement(p.nature) ? p.nature : ("COURS" as const) }));
+    const teintes = teintesProgramme(lues, themesClub).elements;
+    lues.forEach((p, i) => {
+      const juste = prendUneTeinte(p.nature) ? estTeinte(p.teinte) : p.teinte === null;
+      if (!juste) aEcrire.push({ id: p.id, sessionId: p.sessionId, avant: p.teinte, apres: teintes[i], updatedAt: p.updatedAt });
+    });
+  }
+  return aEcrire;
+}
+
 /* « 2026-09-24 » → « », sans dépendance : une date de séance est une chaîne en base. */
 const dateFr = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 
@@ -704,6 +735,7 @@ type Releve = {
   rangs: RangAReparer[];
   creneaux: ClesSansCreneau;
   vides: SurnumerairesAReparer;
+  teintes: TeinteAEcrire[];
 };
 
 type Base = typeof import("../src/lib/db").db;
@@ -718,6 +750,7 @@ async function relever(db: Base, controles: ReadonlySet<Controle>): Promise<Rele
     rangs: [],
     creneaux: { aReecrire: [], sansSeance: [], dejaPrises: [] },
     vides: { aSupprimer: [], rangs: [], seancesVidees: [] },
+    teintes: [],
   };
 
   if (controles.has("fantomes")) {
@@ -825,6 +858,17 @@ async function relever(db: Base, controles: ReadonlySet<Controle>): Promise<Rele
     }
   }
 
+  if (controles.has("teintes")) {
+    // La liste des thèmes de cours du club : la teinte d'un thème est sa place dans cette liste.
+    // Import différé, comme `db` : ce module se charge sans base.
+    const { getThemes } = await import("../src/lib/planning");
+    const [parties, themes] = await Promise.all([
+      db.sessionPartie.findMany({ select: { id: true, sessionId: true, bloc: true, nature: true, theme: true, teinte: true, updatedAt: true } }),
+      getThemes(),
+    ]);
+    releve.teintes = detecterTeintesManquantes(parties, themes);
+  }
+
   if (controles.has("liens")) {
     const invitations = await db.invitation.findMany({
       where: { revokedAt: null },
@@ -858,7 +902,8 @@ function total(releve: Releve): number {
     releve.creneaux.aReecrire.length +
     // Les parties en trop, et non leurs rangements : ranger les survivantes est la **conséquence**
     // de la suppression, pas une seconde incohérence à compter.
-    releve.vides.aSupprimer.length
+    releve.vides.aSupprimer.length +
+    releve.teintes.length
   );
 }
 
@@ -1025,6 +1070,19 @@ function afficherReleve(releve: Releve, controles: ReadonlySet<Controle>, tout: 
       }
     }
   }
+}
+
+function afficherTeintes(releve: Releve, tout: boolean): void {
+  titre("9. Teintes des cours et options");
+  if (releve.teintes.length === 0) {
+    ligne("  Aucune à enregistrer. Chaque cours et chaque option porte la sienne.");
+    return;
+  }
+  const seances = new Set(releve.teintes.map((t) => t.sessionId));
+  ligne(`  ${pluriel(releve.teintes.length, "élément")} sur ${pluriel(seances.size, "séance")} —`);
+  ligne("  la teinte affichée est calculée à chaque lecture ; une fois enregistrée, elle ne bougera");
+  ligne("  plus quand un voisin change de thème ou disparaît. Rien ne change à l'écran.");
+  detail(releve.teintes.map((t) => `séance ${t.sessionId}, élément ${t.id} : ${t.avant ?? "aucune"} → ${t.apres ?? "aucune"}`), tout);
 }
 
 /**
@@ -1226,6 +1284,15 @@ async function reparer(db: Base, releve: Releve, controles: ReadonlySet<Controle
       if (ranges > 0) faits.push(`${pluriel(ranges, "partie")} rangée${ranges > 1 ? "s" : ""} derrière elles`);
     }
 
+    if (controles.has("teintes") && releve.teintes.length > 0) {
+      // Une par une, **avec l'`updatedAt` que la ligne portait déjà** : enregistrer la teinte qu'on
+      // voyait déjà n'est la modification de personne (même règle que les rangs, plus haut).
+      for (const t of releve.teintes) {
+        await tx.sessionPartie.update({ where: { id: t.id }, data: { teinte: t.apres, updatedAt: t.updatedAt } });
+      }
+      faits.push(`${pluriel(releve.teintes.length, "teinte")} enregistrée${releve.teintes.length > 1 ? "s" : ""}`);
+    }
+
     if (controles.has("creneaux") && releve.creneaux.aReecrire.length > 0) {
       // **On renomme, on ne supprime jamais** : la ligne reste, c'est sa clé qui rejoint la forme
       // que l'application calcule désormais. Une par une, `dedupKey` étant `@unique` — et les
@@ -1277,6 +1344,7 @@ async function journaliser(db: Base, releve: Releve, faits: readonly string[]): 
             .slice(0, 200)
             .map((p) => `${dateFr(p.date)} ${p.libelle}`),
           partiesVidesNonDetaillees: Math.max(0, retireesReellement.length - 200),
+          teintesEnregistrees: releve.teintes.length,
           faits,
         }),
       },
@@ -1319,8 +1387,9 @@ export async function main(argv: readonly string[]): Promise<number> {
 
     const releve = await relever(db, options.controles);
     afficherReleve(releve, options.controles, options.tout);
+    if (options.controles.has("teintes")) afficherTeintes(releve, options.tout);
 
-    titre("9. Lignes pointant vers un parent disparu (relevé, jamais réparé)");
+    titre("10. Lignes pointant vers un parent disparu (relevé, jamais réparé)");
     await verifierClesEtrangeres(db);
 
     const anomalies = total(releve);

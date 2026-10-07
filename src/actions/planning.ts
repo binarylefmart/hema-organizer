@@ -18,6 +18,7 @@ import {
 import { notifierDecisionAtelier } from "@/lib/notifications/ateliers";
 import { champ, zodToFormState, type FormState } from "@/lib/form";
 import {
+  getThemes,
   natureLue,
   nettoyerThemes,
   partieLibre,
@@ -30,6 +31,7 @@ import {
   synchroniserSeance,
 } from "@/lib/planning";
 import { ordreAvant, ordreDInsertion, ordreEntier, rangementsParties, type PartieARanger } from "@/components/planning/rangement";
+import { normaliserTheme, prendUneTeinte, teinteAEcrire } from "@/components/seances/teintes";
 import { transitionAutorisee } from "@/lib/ateliers";
 import { can, estCompteDeService } from "@/lib/permissions";
 import {
@@ -154,6 +156,38 @@ type CaseAvant = Extract<
   Awaited<ReturnType<typeof partiePourEcriture>>,
   { partie: unknown }
 >["partie"];
+
+/**
+ * **La teinte à enregistrer pour un élément qu'on crée ou dont le thème change** (`teinteAEcrire`,
+ * `src/components/seances/teintes.ts`) : celle de son thème si aucun autre élément de la séance ne la
+ * porte, sinon la suivante libre ; `null` pour un échauffement ou un atelier.
+ *
+ * Le reste de la séance est relu **dans la transaction de l'écriture** : SQLite n'admet qu'un
+ * écrivain à la fois, si bien que deux cours enregistrés au même instant ne peuvent pas lire la même
+ * teinte libre. La liste des thèmes du club, elle, se lit avant d'ouvrir la transaction.
+ */
+async function teinteAEnregistrer(
+  tx: Pick<Prisma.TransactionClient, "sessionPartie">,
+  sessionId: string,
+  element: { id?: string; nature: NatureElement; theme: string },
+  themesClub: readonly string[],
+): Promise<number | null> {
+  if (!prendUneTeinte(element.nature)) return null;
+  const autres = await tx.sessionPartie.findMany({
+    where: { sessionId, ...(element.id ? { id: { not: element.id } } : {}) },
+    select: { id: true, bloc: true, nature: true, theme: true, teinte: true },
+  });
+  return teinteAEcrire(element, autres.map((p) => ({ ...p, nature: natureLue(p.nature) })), themesClub);
+}
+
+/**
+ * **La teinte ne se recalcule que si le thème change** — à la casse, aux accents et aux espaces
+ * près, qui ne changent pas la teinte d'un thème. Changer l'instructeur, le niveau ou la description
+ * la laisse où elle est.
+ */
+function themeChange(avant: { theme: string }, apres: { theme: string }): boolean {
+  return normaliserTheme(avant.theme) !== normaliserTheme(apres.theme);
+}
 
 /**
  * **Les refus d'une case, écrits une fois pour les deux portes.**
@@ -329,20 +363,27 @@ export async function enregistrerCase(input: {
   }
   if (caseInchangee(avant, parsed.data)) return { succes: "Rien à changer." };
 
-  const apres = await db.sessionPartie.update({
-    where: { id: partieId },
-    data: {
-      instructeurId,
-      instructeurSecondId,
-      theme,
-      description,
-      niveau,
-      modifieParId: user.id,
-    },
-    include: {
-      instructeur: { select: { prenom: true, nom: true } },
-      instructeurSecond: { select: { prenom: true, nom: true } },
-    },
+  // Un thème qui change emporte sa teinte (celle du nouveau thème, si elle est libre dans la séance).
+  const retinter = themeChange(avant, parsed.data);
+  const themesClub = retinter ? await getThemes() : [];
+  const apres = await db.$transaction(async (tx) => {
+    const teinte = retinter ? await teinteAEnregistrer(tx, avant.sessionId, { id: partieId, nature: natureLue(avant.nature), theme }, themesClub) : undefined;
+    return tx.sessionPartie.update({
+      where: { id: partieId },
+      data: {
+        instructeurId,
+        instructeurSecondId,
+        theme,
+        description,
+        niveau,
+        ...(teinte !== undefined ? { teinte } : {}),
+        modifieParId: user.id,
+      },
+      include: {
+        instructeur: { select: { prenom: true, nom: true } },
+        instructeurSecond: { select: { prenom: true, nom: true } },
+      },
+    });
   });
   await synchroniserSeance(avant.sessionId);
   await audit(
@@ -535,27 +576,37 @@ export async function enregistrerCases(input: {
   // unitaire s'arrête de la même façon sur sa case (« Rien à changer. »).
   if (aEcrire.length === 0) return { succes: compteRenduLot(0, inchangees) };
 
-  // Prisma n'a pas d'« update de masse » qui rende les lignes écrites : on empile les opérations et
-  // c'est `$transaction` qui en fait un seul aller-retour atomique.
-  const apres = await db.$transaction(
-    aEcrire.map(({ reglages }) =>
-      db.sessionPartie.update({
-        where: { id: reglages.partieId },
-        data: {
-          instructeurId: reglages.instructeurId,
-          instructeurSecondId: reglages.instructeurSecondId,
-          theme: reglages.theme,
-          description: reglages.description,
-          niveau: reglages.niveau,
-          modifieParId: user.id,
-        },
-        include: {
-          instructeur: { select: { prenom: true, nom: true } },
-          instructeurSecond: { select: { prenom: true, nom: true } },
-        },
-      }),
-    ),
-  );
+  // Une seule transaction, case après case : la teinte d'une case dont le thème change se choisit
+  // parmi celles que portent **déjà** les autres éléments de la séance — y compris une voisine du
+  // même lot écrite juste avant elle. Tout ou rien, comme avant.
+  const themesClub = aEcrire.some(({ reglages, avant }) => themeChange(avant, reglages)) ? await getThemes() : [];
+  const apres = await db.$transaction(async (tx) => {
+    const ecrites = [];
+    for (const { reglages, avant } of aEcrire) {
+      const teinte = themeChange(avant, reglages)
+        ? await teinteAEnregistrer(tx, avant.sessionId, { id: reglages.partieId, nature: natureLue(avant.nature), theme: reglages.theme }, themesClub)
+        : undefined;
+      ecrites.push(
+        await tx.sessionPartie.update({
+          where: { id: reglages.partieId },
+          data: {
+            instructeurId: reglages.instructeurId,
+            instructeurSecondId: reglages.instructeurSecondId,
+            theme: reglages.theme,
+            description: reglages.description,
+            niveau: reglages.niveau,
+            ...(teinte !== undefined ? { teinte } : {}),
+            modifieParId: user.id,
+          },
+          include: {
+            instructeur: { select: { prenom: true, nom: true } },
+            instructeurSecond: { select: { prenom: true, nom: true } },
+          },
+        }),
+      );
+    }
+    return ecrites;
+  });
 
   // **Une fois par séance touchée, jamais une fois par case** : `synchroniserSeance` recopie tout le
   // programme de la séance dans la séance (cartes, exports, récap du soir) — l'appeler dix fois pour
@@ -632,16 +683,20 @@ async function creerPartie(
   sessionId: string,
   voulu: { bloc: number; nature: NatureElement },
   auteurId: string,
+  themesClub: readonly string[],
 ) {
   const existantes = await elementsARanger(tx, sessionId);
   if (existantes.length >= PARTIES_PAR_SEANCE_MAX) return null;
   const bloc = Math.min(Math.max(voulu.bloc, 1), nombreDeParties(existantes) + 1);
   const ordre = ordreDInsertion(existantes, bloc, voulu.nature);
+  // Un cours ou une option naît sans thème : il prend la teinte 1 si elle est libre dans la séance,
+  // sinon la suivante libre — et la garde jusqu'à ce que son thème change.
+  const teinte = await teinteAEnregistrer(tx, sessionId, { nature: voulu.nature, theme: "" }, themesClub);
   const nouvelle = await tx.sessionPartie.create({
     // Libellé et rang provisoires : `rangerParties`, juste en dessous, pose les vrais (et rien d'autre
     // ne lit la ligne avant le commit). La base ne prend qu'un rang entier, le rangement reçoit le
     // rang intercalaire (`ordreEntier`).
-    data: { sessionId, libelle: "", bloc, nature: voulu.nature, ordre: ordreEntier(ordre), modifieParId: auteurId },
+    data: { sessionId, libelle: "", bloc, nature: voulu.nature, teinte, ordre: ordreEntier(ordre), modifieParId: auteurId },
     select: SELECTION_RANGEMENT,
   });
   for (const ecriture of rangerParties([...existantes, { ...nouvelle, ordre }], tx)) await ecriture;
@@ -690,7 +745,8 @@ export async function ajouterPartie(input: {
    * ne tient qu'une connexion vers SQLite, qui n'accepte qu'un écrivain à la fois : la transaction
    * les met réellement à la file.
    */
-  const creee = await db.$transaction((tx) => creerPartie(tx, sessionId, { bloc, nature }, user.id));
+  const themesClub = await getThemes();
+  const creee = await db.$transaction((tx) => creerPartie(tx, sessionId, { bloc, nature }, user.id, themesClub));
   if (!creee)
     return {
       erreur: `Une séance ne peut pas porter plus de ${PARTIES_PAR_SEANCE_MAX} éléments.`,
@@ -786,6 +842,7 @@ export async function ajouterPartiesEnMasse(input: {
   // L'ordre du journal est celui du calendrier, jamais celui des clics.
   seances.sort((x, y) => x.date.localeCompare(y.date));
 
+  const themesClub = await getThemes();
   const issue = await db.$transaction(async (tx) => {
     // Le plafond pesé pour toutes avant d'en créer une : c'est ce qui rend le « tout ou rien » vrai.
     for (const s of seances) {
@@ -794,7 +851,7 @@ export async function ajouterPartiesEnMasse(input: {
     }
     const creees: Array<{ seance: { id: string; date: string }; libelle: string; bloc: number }> = [];
     for (const s of seances) {
-      const creee = await creerPartie(tx, s.id, { bloc, nature }, user.id);
+      const creee = await creerPartie(tx, s.id, { bloc, nature }, user.id, themesClub);
       // Impossible après la vérification ci-dessus, sauf écriture concurrente : on annule la transaction.
       if (!creee) throw new Error(`Séance pleine : ${s.id}`);
       creees.push({ seance: s, libelle: creee.libelle, bloc: creee.bloc });
@@ -852,22 +909,31 @@ export async function changerNaturePartie(input: {
 
   const maintenant = new Date();
   const toutes = await elementsARanger(db, avant.sessionId);
-  await db.$transaction([
-    db.sessionPartie.update({
+  /*
+   * **La teinte suit la nature, pas l'inverse** : d'option à cours (ou l'inverse), l'élément garde la
+   * sienne — c'est le même élément, au même thème. Devenu échauffement, il n'en a plus (`null`) ; venu
+   * d'un échauffement ou d'un atelier vide, il en reçoit une, comme à sa création.
+   */
+  const garde = prendUneTeinte(natureLue(avant.nature)) && prendUneTeinte(nature);
+  const themesClub = garde ? [] : await getThemes();
+  await db.$transaction(async (tx) => {
+    const teinte = garde ? undefined : await teinteAEnregistrer(tx, avant.sessionId, { id: partieId, nature, theme: avant.theme }, themesClub);
+    await tx.sessionPartie.update({
       where: { id: partieId },
-      data: { nature, modifieParId: user.id },
-    }),
+      data: { nature, ...(teinte !== undefined ? { teinte } : {}), modifieParId: user.id },
+    });
     /*
      * L'élément change de nature **dans la liste** avant le rangement, à son rang d'avant, et avec un
      * horodatage **neuf** : le rangement peut réécrire son nom, donc l'écrire une seconde fois après
      * la ligne ci-dessus — en lui rendant son ancien `updatedAt`, il défairait la seule trace de ce
      * clic.
      */
-    ...rangerParties(
+    for (const ecriture of rangerParties(
       toutes.map((p) => (p.id === partieId ? { ...p, nature, updatedAt: maintenant } : p)),
-      db,
-    ),
-  ]);
+      tx,
+    ))
+      await ecriture;
+  });
   await synchroniserSeance(avant.sessionId);
   const apres = await db.sessionPartie.findUnique({
     where: { id: partieId },

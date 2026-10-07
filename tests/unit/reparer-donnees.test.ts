@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 
 const RACINE = process.cwd();
 import {
+  detecterTeintesManquantes,
   ArgumentInvalide,
   CONTROLES,
   cleHorodatee,
@@ -810,5 +811,32 @@ describe("8 bis. le contrôle qui supprime, après relecture adverse", () => {
   it("n'abrège jamais la liste de ce qu'il supprime", () => {
     const code = fs.readFileSync(path.join(RACINE, "scripts/reparer-donnees.ts"), "utf8");
     expect(code).toContain("detail(aSupprimer.map(decrirePartieEnTrop), true)");
+  });
+});
+
+describe("contrôle « teintes » : enregistrer la teinte que l'écran lit déjà", () => {
+  const LE = new Date("2026-09-12T18:30:00.000Z");
+  const p = (id: string, nature: string, theme: string, teinte: number | null, sessionId = "s1") => ({ id, sessionId, bloc: 1, nature, theme, teinte, updatedAt: LE });
+
+  it("renseigne les cours et options sans teinte avec la valeur lue, et ne touche pas les autres", () => {
+    const plan = detecterTeintesManquantes(
+      [p("a1", "COURS", "Messer", 2), p("a2", "COURS", "Messer", null), p("a3", "ECHAUFFEMENT", "Mobilité", null), p("b1", "OPTION", "Dague", null, "s2")],
+      ["Épée longue", "Messer", "Dague"],
+    );
+    expect(plan.map((t) => [t.id, t.apres])).toEqual([
+      ["a2", 2],
+      ["b1", 3],
+    ]);
+    // L'horodatage de la ligne voyage avec le plan : enregistrer la teinte n'est la modification de personne.
+    expect(plan[0].updatedAt).toBe(LE);
+  });
+
+  it("retire une teinte posée sur un échauffement ou un atelier, et ne rend rien sur une base saine", () => {
+    expect(detecterTeintesManquantes([p("a1", "ATELIER", "Lutte", 4)], []).map((t) => [t.id, t.apres])).toEqual([["a1", null]]);
+    expect(detecterTeintesManquantes([p("a1", "COURS", "", 1), p("a2", "ECHAUFFEMENT", "", null)], [])).toEqual([]);
+  });
+
+  it("fait partie des contrôles", () => {
+    expect([...CONTROLES]).toContain("teintes");
   });
 });

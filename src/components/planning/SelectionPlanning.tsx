@@ -437,7 +437,7 @@ export function SelectionPlanning({
                       onChange={() => setElementsCoches((s) => basculer(s, el.id))}
                       className="size-6 shrink-0 accent-primaire"
                     />
-                    <EcuNature nature={el.nature} />
+                    <EcuNature nature={el.nature} teinte={el.teinte} />
                     <span className="flex min-w-0 flex-col">
                       <span className="font-semibold">{el.libelle}</span>
                       <span className="text-base text-texte-secondaire">{cochable ? resume : "Atelier : son thème est figé, il se règle depuis sa carte."}</span>

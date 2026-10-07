@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { libelleElement, type NatureElement } from "@/lib/constants";
 import { placesDansPartie, rangementsParties, sequenceRangee } from "@/components/planning/rangement";
+import { teinteDuTheme } from "@/components/seances/teintes";
+import { THEMES_DU_CLUB } from "@/lib/themes-club";
 
 /**
  * **Les éléments d'une séance, rangés en parties** : on ajoute un échauffement, un
@@ -36,6 +38,8 @@ type Partie = {
   niveau: string;
   atelierId: string | null;
   modifieParId: string | null;
+  /** Teinte enregistrée du cours ou de l'option, `null` pour les autres (ou une ligne d'avant la colonne). */
+  teinte: number | null;
   /** `@updatedAt` en base : c'est ce champ que la grille affiche dans « Modifié par … le … ». */
   updatedAt: Date;
 };
@@ -85,6 +89,8 @@ const partie = (id: string) => faux.parties.find((p) => p.id === id);
 
 vi.mock("@/lib/db", () => {
   const client = {
+    // La liste des thèmes du club (teinte d'un élément) : le réglage n'est jamais enregistré ici.
+    setting: { findUnique: vi.fn(async () => null) },
     sessionPartie: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
         const p = partie(where.id);
@@ -96,7 +102,9 @@ vi.mock("@/lib/db", () => {
           session: { id: p.sessionId, date: "2126-10-01", annulee: faux.annulee, period: { statut: faux.statutPeriode } },
         };
       }),
-      findMany: vi.fn(async ({ where }: { where: { sessionId: string } }) => faux.parties.filter((p) => p.sessionId === where.sessionId).map((p) => ({ ...p }))),
+      findMany: vi.fn(async ({ where }: { where: { sessionId: string; id?: { not: string } } }) =>
+        faux.parties.filter((p) => p.sessionId === where.sessionId && p.id !== where.id?.not).map((p) => ({ ...p })),
+      ),
       findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => {
         const p = partie(where.id);
         if (!p) throw new Error("introuvable");
@@ -118,6 +126,7 @@ vi.mock("@/lib/db", () => {
           niveau: "INDIFFERENT",
           atelierId: null,
           modifieParId: data.modifieParId ?? null,
+          teinte: data.teinte ?? null,
           updatedAt: new Date((faux.horloge += 60_000)),
         };
         faux.parties.push(creee);
@@ -239,6 +248,7 @@ function ligne(id: string, bloc: number, nature: NatureElement, ordre: number, l
     niveau: "INDIFFERENT",
     atelierId: null,
     modifieParId: null,
+    teinte: null,
     updatedAt: REMPLI_LE,
   };
 }
@@ -1001,5 +1011,80 @@ describe("la séance reste rangée, quoi qu'on lui fasse", () => {
     // Les parties 2 et 5 deviennent 2 et 3 derrière la partie 1 née ici ; dans la partie 2, l'option
     // garde sa place devant le cours (rang 1 contre 5) : l'ordre d'une partie est libre.
     expect(rangee()).toEqual(["Partie 1 · Échauffement", "Partie 2 · Option", "Partie 2 · Cours", "Partie 3 · Cours"]);
+  });
+});
+
+/**
+ * **La teinte d'un élément est enregistrée, et ne bouge que si son thème change** (`teintes.ts`).
+ * Elle s'attribue à la création d'un cours ou d'une option et au changement de thème — celle du
+ * thème si elle est libre dans la séance, sinon la suivante libre —, et aucun autre geste n'y touche.
+ */
+describe("la teinte d'un élément, enregistrée", () => {
+  /** La séance de départ, avec des teintes déjà enregistrées : 1 à 4 dans l'ordre. */
+  const teinter = () => faux.parties.forEach((p, i) => (p.teinte = i + 1));
+  const teintes = () => Object.fromEntries(faux.parties.map((p) => [p.id, p.teinte]));
+  const donnees = () => vi.mocked(db.sessionPartie.update).mock.calls.map((c) => (c[0] as { data: Record<string, unknown> }).data);
+
+  it("donne à un cours ajouté une teinte qu'aucun autre élément de la séance ne porte", async () => {
+    teinter();
+    faux.permissions = [];
+    expect(await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" })).toMatchObject({ succes: expect.any(String) });
+    const nouveau = faux.parties.find((p) => p.id.startsWith("c-"))!;
+    expect(nouveau.teinte).toBe(5);
+  });
+
+  it("ne donne aucune teinte à un échauffement ajouté", async () => {
+    teinter();
+    await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ECHAUFFEMENT" });
+    expect(faux.parties.find((p) => p.id.startsWith("c-"))!.teinte).toBeNull();
+  });
+
+  it("change avec le thème : celle du nouveau thème si elle est libre", async () => {
+    teinter();
+    const theme = THEMES_DU_CLUB[5];
+    await enregistrerCase({ partieId: "c0", instructeurId: "u1", theme, niveau: "INDIFFERENT" });
+    expect(partie("c0")!.teinte).toBe(teinteDuTheme(theme, THEMES_DU_CLUB));
+  });
+
+  it("reprend la teinte d'un voisin au même thème : même thème, même couleur", async () => {
+    teinter();
+    const theme = THEMES_DU_CLUB[1];
+    partie("c2")!.theme = theme;
+    partie("c2")!.teinte = teinteDuTheme(theme, THEMES_DU_CLUB);
+    await enregistrerCase({ partieId: "c0", instructeurId: "u1", theme, niveau: "INDIFFERENT" });
+    expect(partie("c0")!.teinte).toBe(partie("c2")!.teinte);
+  });
+
+  it("prend la suivante libre quand un voisin d'un autre thème porte déjà celle du thème", async () => {
+    teinter();
+    const theme = THEMES_DU_CLUB[1];
+    partie("c2")!.theme = "Un tout autre thème";
+    partie("c2")!.teinte = teinteDuTheme(theme, THEMES_DU_CLUB);
+    await enregistrerCase({ partieId: "c0", instructeurId: "u1", theme, niveau: "INDIFFERENT" });
+    expect(partie("c0")!.teinte).not.toBe(partie("c2")!.teinte);
+  });
+
+  it("ne bouge pas quand seuls l'instructeur, le niveau ou la description changent", async () => {
+    teinter();
+    await enregistrerCase({ partieId: "c1", instructeurId: "u2", theme: "", description: "Garde haute", niveau: "DEBUTANT" });
+    expect(partie("c1")!.teinte).toBe(2);
+    expect(donnees().every((d) => !("teinte" in d))).toBe(true);
+  });
+
+  it("ne bouge pas quand on réordonne, qu'on change de partie ou qu'on retire un voisin", async () => {
+    teinter();
+    const avant = teintes();
+    await deplacerElement({ partieId: "c3", versBloc: 1, avantId: "c0" });
+    expect(teintes()).toEqual(avant);
+    await retirerPartie({ partieId: "c1" });
+    const restantes = Object.fromEntries(Object.entries(avant).filter(([id]) => id !== "c1"));
+    expect(teintes()).toEqual(restantes);
+    expect(donnees().every((d) => !("teinte" in d))).toBe(true);
+  });
+
+  it("reste la même quand une option devient un cours", async () => {
+    teinter();
+    await changerNaturePartie({ partieId: "c1", nature: "COURS" });
+    expect(partie("c1")!.teinte).toBe(2);
   });
 });

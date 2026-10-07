@@ -85,7 +85,7 @@ const SEANCE: SeancePartagee = {
   annulee: false,
   motifAnnulation: null,
   compteurs: compterPresences([...Array(13).fill("PRESENT"), ...Array(3).fill("ABSENT")], 18),
-  programme: [{ ordre: 0, bloc: 1, nature: "COURS", nom: "Cours", libelle: "Partie 1 · Cours", theme: "Messer", description: "", niveau: "INDIFFERENT", atelier: false }],
+  programme: [{ ordre: 0, bloc: 1, nature: "COURS", nom: "Cours", teinte: 1, libelle: "Partie 1 · Cours", theme: "Messer", description: "", niveau: "INDIFFERENT", atelier: false }],
   periode: PERIODE,
 };
 
@@ -232,8 +232,9 @@ describe("lecture d'une séance partagée", () => {
     expect(appelDe("attendance", "groupBy")?.args.by).toEqual(["sessionId", "statut"]);
     // Une case du planning ne donne que son thème, son niveau et le titre de son atelier — jamais qui encadre
     // `id`, `libelle`, `ordre`, `bloc` et `nature` ont remplacé le code de partie : ce sont des données
-    // de la séance, pas des données de personne. Aucun identifiant d'encadrant ne figure ici.
-    expect(colonnes(appelDe("session", "findUnique")?.args.select, ["parties"])).toEqual(["id", "libelle", "ordre", "bloc", "nature", "theme", "description", "niveau"]);
+    // de la séance, pas des données de personne — `teinte` aussi, un repère d'affichage. Aucun
+    // identifiant d'encadrant ne figure ici.
+    expect(colonnes(appelDe("session", "findUnique")?.args.select, ["parties"])).toEqual(["id", "libelle", "ordre", "bloc", "nature", "teinte", "theme", "description", "niveau"]);
     expect(colonnes(appelDe("session", "findUnique")?.args.select, ["parties", "atelier"])).toEqual(["titre"]);
   });
 

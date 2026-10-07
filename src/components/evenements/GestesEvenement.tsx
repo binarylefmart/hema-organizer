@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { publierEvenement, supprimerEvenement } from "@/actions/evenements";
+import { useEffect, useState } from "react";
 import { Bouton } from "@/components/ui/Bouton";
 import { ChoixGeste } from "@/components/ui/ChoixGeste";
 import { Icone } from "@/components/ui/Icone";
-import { gesteRetenu, messageApresGeste, varianteGeste } from "@/components/ui/choix-geste";
+import { gesteRetenu, varianteGeste } from "@/components/ui/choix-geste";
 import { gestesEvenement, type GesteEvenement } from "./gestes-evenement";
+import { useGesteEvenement } from "./useGesteEvenement";
 
 /**
  * **« Que veux-tu faire ? » d'une annonce d'événement** — la forme commune (`ChoixGeste`), sur la page
@@ -42,11 +41,10 @@ export function GestesEvenement({
   /** Où aller une fois l'annonce supprimée, quand la page affichée était la sienne. */
   apresSuppression?: string;
 }) {
-  const router = useRouter();
   const gestes = gestesEvenement({ nom, publie }, { modifier, supprimer });
   const [choisi, setChoisi] = useState<GesteEvenement | "">("");
-  const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
-  const [enCours, demarrer] = useTransition();
+  // L'écriture (confirmation, action, message) est partagée avec les lignes du téléphone.
+  const { lancer: lancerGeste, enCours, message, setMessage } = useGesteEvenement();
 
   // Une page revenue du serveur où le geste ne s'applique plus (publier → dépublier) : le choix
   // revient à « Choisir une action… » plutôt que de garder une valeur que la liste ne montre plus.
@@ -58,34 +56,7 @@ export function GestesEvenement({
 
   const lancer = (g: GesteEvenement) => {
     const offert = gestes.find((x) => x.geste === g);
-    if (!offert) return;
-    if (g === "modifier") {
-      router.push(`/evenements/${id}/modifier`);
-      return;
-    }
-    if (offert.confirmation && !window.confirm(offert.confirmation)) return;
-    setMessage(null);
-    demarrer(async () => {
-      try {
-        if (g === "supprimer") {
-          await supprimerEvenement(id);
-          if (apresSuppression) {
-            router.replace(apresSuppression);
-            return;
-          }
-        } else {
-          await publierEvenement(id, g === "publier");
-        }
-        // Les deux actions ne répondent rien : le message d'après coup est celui du geste.
-        setMessage(messageApresGeste(undefined, offert.fait));
-        setChoisi("");
-        router.refresh();
-      } catch (e) {
-        const texte = e instanceof Error ? e.message : "";
-        if (texte.includes("NEXT_REDIRECT")) return;
-        setMessage({ type: "erreur", texte: texte || "Le geste n'a pas abouti — vérifie ta connexion." });
-      }
-    });
+    if (offert) lancerGeste(id, offert, { apresSuppression, apres: () => setChoisi("") });
   };
 
   if (gestes.length === 0) return null;

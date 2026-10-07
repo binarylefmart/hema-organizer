@@ -56,7 +56,8 @@ describe("partiesInitiales", () => {
    * « il manque quelque chose ».
    */
   it("donne la partie unique du modèle, un cours, nommé « Cours » sans préfixe", () => {
-    expect(partiesInitiales()).toEqual([{ libelle: "Cours", ordre: 0, bloc: 1, nature: "COURS" }]);
+    // Le cours du modèle naît avec la teinte 1 : un thème vide prend la première, libre dans une séance neuve.
+    expect(partiesInitiales()).toEqual([{ libelle: "Cours", ordre: 0, bloc: 1, nature: "COURS", teinte: 1 }]);
   });
 });
 

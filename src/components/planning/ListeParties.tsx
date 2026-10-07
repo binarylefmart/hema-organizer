@@ -10,6 +10,7 @@ import { Bouton } from "@/components/ui/Bouton";
 import { ListeDeroulante } from "@/components/ui/ListeDeroulante";
 import { couleurNature } from "@/components/seances/programme-cours";
 import { EcuNature } from "@/components/seances/EcuNature";
+import { classesPartie } from "@/components/seances/teintes";
 import { CaseEditeur } from "./CaseEditeur";
 import { ListePartiesTelephone } from "./ListePartiesTelephone";
 import { useActionPartie } from "./useActionPartie";
@@ -29,8 +30,11 @@ import { confirmationRetrait, pasVoisins, entreesAjout, grouperParPartie, lireAj
  * **découpe** (`grouperParPartie`), elle ne le recalcule pas.
  *
  * **Le nom d'un élément ne se saisit pas** : « Cours », « Option 2 » (`nomElement`, numéroté
- * seulement quand la partie en porte plusieurs), à la couleur de sa nature (`couleurNature`). Ce qui
- * le décrit, ce sont ses informations : instructeur, thème, niveau, description (`CaseEditeur`).
+ * seulement quand la partie en porte plusieurs), dans une étiquette dont la forme dit la nature et la
+ * teinte le rang du cours ou de l'option dans la séance (`couleurNature`, teinte calculée par le
+ * serveur sur la séance entière). Quand la séance a plusieurs parties, chacune prend sa teinte : titre
+ * « Partie N » et bande à gauche (`classesPartie`). Ce qui décrit l'élément, ce sont ses informations :
+ * instructeur, thème, niveau, description (`CaseEditeur`).
  *
  * Le même composant sert la carte du planning et l'écran d'une séance : il n'y a qu'un seul endroit
  * où un élément se règle, change de nature, change de partie ou se retire.
@@ -112,24 +116,26 @@ export function ListeParties({ sessionId, parties, compact = false }: { sessionI
       {groupes.map((groupe) => {
         const { elements } = groupe;
         const idTitre = `${sessionId}-partie-${groupe.bloc}`;
+        const couleur = classesPartie(groupe.bloc);
         return (
           // Sans intitulé, la partie n'est plus une région nommée : une `section` sans nom ne se
-          // distingue de rien, la liste suffit.
-          <section key={groupe.bloc} aria-labelledby={intitules ? idTitre : undefined} className="flex min-w-0 flex-col gap-2">
+          // distingue de rien, la liste suffit. Avec, la bande de sa teinte borde tout le bloc —
+          // titre, éléments et menu d'ajout —, sans fond.
+          <section key={groupe.bloc} aria-labelledby={intitules ? idTitre : undefined} className={`flex min-w-0 flex-col gap-2 ${intitules ? `${couleur.bande} pl-3` : ""}`}>
             {intitules && (
-              <h3 id={idTitre} className="font-titre text-base font-semibold text-texte-secondaire">
+              <h3 id={idTitre} className={`font-titre text-base font-semibold ${couleur.titre}`}>
                 {nomPartie(groupe.bloc)}
               </h3>
             )}
-            <ul className={`flex flex-col gap-2 ${intitules ? "border-l-2 border-bordure/60 pl-2" : ""}`}>
+            <ul className="flex flex-col gap-2">
               {elements.map((partie) => (
                 <li key={partie.id} className="flex min-w-0 flex-col gap-1">
                   {modifiable ? (
                     <ReglagesElement partie={partie} parties={parties} gestes={gestes} />
                   ) : (
                     // En lecture, le nom est une simple étiquette : rien à régler, rien à annoncer
-                    <span className={`inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-1 text-sm font-semibold ${couleurNature(partie.nature)}`}>
-                      <EcuNature nature={partie.nature} />
+                    <span className={`inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-1 text-sm font-semibold ${couleurNature(partie.nature, partie.teinte)}`}>
+                      <EcuNature nature={partie.nature} teinte={partie.teinte} />
                       {nomElement(partie.nature, partie.rang, partie.nombre)}
                     </span>
                   )}
@@ -162,8 +168,8 @@ function ReglagesElement({ partie, parties, gestes }: { partie: CasePlanning; pa
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1">
-        <span className={`inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold ${couleurNature(partie.nature)}`}>
-          <EcuNature nature={partie.nature} taille={20} />
+        <span className={`inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold ${couleurNature(partie.nature, partie.teinte)}`}>
+          <EcuNature nature={partie.nature} teinte={partie.teinte} taille={20} />
           {nomElement(partie.nature, partie.rang, partie.nombre)}
         </span>
         {gestes && <BoutonsElement partie={partie} haut={voisins.haut} bas={voisins.bas} enVol={enVol} start={start} />}

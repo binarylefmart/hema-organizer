@@ -4,6 +4,7 @@ import { texteInviteMasse, type MotsLignes } from "@/components/ui/selection";
 import { pairesEgales, type Paire } from "./file-envoi";
 import type { EcritureEnMasse } from "./brouillon";
 import { NATURES_AJOUTABLES, nombreDeParties, type NatureAjoutable } from "./parties-carte";
+import type { Teinte } from "@/components/seances/teintes";
 
 /**
  * **Agir sur plusieurs séances du planning à la fois** — la partie sans React ni base, donc testable.
@@ -41,6 +42,8 @@ export type PartieLigne = {
   nature: NatureElement;
   /** Rang dans sa nature et sa partie, à partir de 1 : l'ordre des noms proposés. */
   rang: number;
+  /** Teinte du cours ou de l'option (`teintesProgramme`), pour que son écu ait la couleur du planning. */
+  teinte?: Teinte | null;
   /** Un atelier occupe la case : elle ne se règle pas ici (le serveur la refuserait). */
   atelier: boolean;
   /** Ce que le serveur porte : le point de comparaison du brouillon. */

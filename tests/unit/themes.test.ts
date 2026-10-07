@@ -357,23 +357,24 @@ describe("la vignette du prochain cours, sur tous les thèmes", () => {
 });
 
 /**
- * **Les six repères de partie, sur tous les thèmes**.
+ * **Les huit teintes du programme, sur tous les thèmes** (`src/components/seances/teintes.ts`).
  *
- * L'étiquette d'une partie n'alterne plus deux teintes mais en porte **une par rang** (« cours/option
- * 1 couleur 1, cours/option 2 couleur 2 etc »). Deux d'entre elles sont des couleurs que chaque thème
- * définit déjà ; les deux autres s'en dérivent par `color-mix`, et c'est **exactement ce que ce bloc
- * existe pour surveiller** : une valeur calculée ne se relit pas à l'œil dans la feuille de style, et
- * personne ne va vérifier quinze thèmes × deux modes × quatre teintes à la main. C'est aussi lui qui a
- * **ramené six teintes à quatre** : il a trouvé deux mélanges indiscernables et un contraste à 3,9:1.
+ * Chaque cours et chaque option prend la teinte de son thème de cours (unique dans sa séance), et
+ * chaque partie nommée la sienne (titre et bande à gauche). La palette est **fixe** — elle ne suit
+ * pas le thème du club —, mais le fond doux de l'option se mélange à la surface du thème, et la
+ * surface, elle, change partout : personne ne va vérifier vingt thèmes × deux modes × huit teintes à
+ * la main.
  *
- * Deux propriétés, et aucune n'est cosmétique :
+ * Trois propriétés, et aucune n'est cosmétique :
  *
- * 1. **le texte posé sur l'étiquette reste lisible** — l'aplat du cours porte `--primaire-texte`, le
- *    contour de l'option porte sa propre teinte sur son fond `-doux` ;
- * 2. **deux teintes ne se confondent pas**, sinon le repère ne sépare plus rien et le rang 3 vaut le
- *    rang 1 — le défaut qu'on vient de corriger.
+ * 1. **tout ce qui s'écrit reste lisible** (WCAG AA, 4,5:1) — le texte de l'aplat du cours, la teinte
+ *    de l'option sur son fond doux, et le titre « Partie N » sur la surface de la carte ; la bande de
+ *    la partie, élément graphique, n'en demande que 3:1, que le titre couvre ;
+ * 2. **deux teintes ne se confondent pas**, sinon deux cours voisins se lisent comme un seul ;
+ * 3. **aucune ne se confond avec l'échauffement ni avec l'atelier**, qui gardent la marque du thème et
+ *    le vert : c'est leur couleur qui les fait reconnaître.
  */
-describe("les six repères de partie, sur tous les thèmes", () => {
+describe("les huit teintes du programme, sur tous les thèmes", () => {
   /** Découpe les arguments d'un `color-mix(...)` sur les virgules **de premier niveau**. */
   function arguments_(dedans: string): string[] {
     const morceaux: string[] = [];
@@ -392,8 +393,8 @@ describe("les six repères de partie, sur tous les thèmes", () => {
 
   /**
    * Une déclaration de couleur réduite à son `#rrggbb`, comme le ferait le navigateur : `var(--x)`,
-   * `color-mix(…)`, et **les deux imbriqués** — `--partie-4-doux` mélange `--partie-4`, qui est
-   * elle-même un mélange. Le `melange` du bloc précédent ne descend pas d'un niveau ; celui-ci est
+   * `color-mix(…)`, et **les deux imbriqués** — `--teinte-4-doux` mélange `--teinte-4` à la surface,
+   * qui peut elle-même être un mélange. Le `melange` du bloc précédent ne descend pas d'un niveau ; celui-ci est
    * récursif, et c'est la seule différence entre les deux.
    */
   function resolue(declaration: string, lire: (variable: string) => string): string {
@@ -413,44 +414,80 @@ describe("les six repères de partie, sur tous les thèmes", () => {
       .join("")}`;
   }
 
-  /** Écart entre deux couleurs, en unités de canal (0–255) : de quoi dire « ce ne sont pas les mêmes ». */
+  /**
+   * **Écart perçu entre deux couleurs** : la distance dans l'espace OKLab, où une même distance se
+   * voit pareil quelle que soit la teinte — à la différence des canaux sRGB, qui comptent deux pastels
+   * très différents comme voisins et deux bleus sombres indiscernables comme éloignés. Repère : vers
+   * 0,02 l'œil hésite, au-delà de 0,08 deux étiquettes posées côte à côte ne se confondent plus.
+   */
   function ecart(a: string, b: string): number {
-    const [x, y] = [canaux(a), canaux(b)];
-    return Math.sqrt(x.reduce((s, v, i) => s + ((v - y[i]) * 255) ** 2, 0));
+    const oklab = (c: string) => {
+      const [r, v, bl] = canaux(c).map((x) => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+      const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * v + 0.0514459929 * bl);
+      const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * v + 0.1073969566 * bl);
+      const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * v + 0.6299787005 * bl);
+      return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+    };
+    const [x, y] = [oklab(a), oklab(b)];
+    return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
   }
 
-  const RANGS = [1, 2, 3, 4, 5, 6] as const;
+  const TEINTES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 
   for (const sombre of [false, true]) {
     const mode = sombre ? "sombre" : "clair";
+    const lecteur = (id: ThemeId) => (v: string) => {
+      const trouve = variableDuTheme(id, v, sombre) ?? variableDuTheme(id, v, false);
+      expect(trouve, `${id} / ${mode} : ${v} introuvable`).not.toBeNull();
+      return trouve!;
+    };
 
-    it(`gardent l'étiquette lisible en mode ${mode} (WCAG AA)`, () => {
+    it(`gardent l'étiquette, le titre et la bande lisibles en mode ${mode} (WCAG AA)`, () => {
       for (const id of IDS) {
-        const lire = (v: string) => {
-          const trouve = variableDuTheme(id, v, sombre) ?? variableDuTheme(id, v, false);
-          expect(trouve, `${id} / ${mode} : ${v} introuvable`).not.toBeNull();
-          return trouve!;
-        };
-        const surAplat = resolue(lire("--primaire-texte"), lire);
-        for (const n of RANGS) {
-          const teinte = resolue(lire(`--partie-${n}`), lire);
-          const doux = resolue(lire(`--partie-${n}-doux`), lire);
-          expect(contraste(teinte, surAplat), `${id} / ${mode} : « Cours ${n} » (texte sur l'aplat)`).toBeGreaterThanOrEqual(4.5);
-          expect(contraste(teinte, doux), `${id} / ${mode} : « Option ${n} » (teinte sur son fond doux)`).toBeGreaterThanOrEqual(4.5);
+        const lire = lecteur(id);
+        const surAplat = resolue(lire("--teinte-texte"), lire);
+        const surface = resolue(lire("--surface"), lire);
+        for (const n of TEINTES) {
+          const teinte = resolue(lire(`--teinte-${n}`), lire);
+          const doux = resolue(lire(`--teinte-${n}-doux`), lire);
+          expect(contraste(teinte, surAplat), `${id} / ${mode} : cours en teinte ${n} (texte sur l'aplat)`).toBeGreaterThanOrEqual(4.5);
+          expect(contraste(teinte, doux), `${id} / ${mode} : option en teinte ${n} (teinte sur son fond doux)`).toBeGreaterThanOrEqual(4.5);
+          expect(contraste(teinte, surface), `${id} / ${mode} : « Partie ${n} » (titre sur la surface)`).toBeGreaterThanOrEqual(4.5);
+          expect(contraste(teinte, surface), `${id} / ${mode} : bande de la partie ${n} sur la surface`).toBeGreaterThanOrEqual(3);
         }
       }
     });
 
     it(`restent distinguables deux à deux en mode ${mode}`, () => {
       for (const id of IDS) {
-        const lire = (v: string) => variableDuTheme(id, v, sombre) ?? variableDuTheme(id, v, false)!;
-        const teintes = RANGS.map((n) => ({ n, hex: resolue(lire(`--partie-${n}`), lire) }));
+        const lire = lecteur(id);
+        const teintes = TEINTES.map((n) => ({ n, hex: resolue(lire(`--teinte-${n}`), lire) }));
         for (const a of teintes)
           for (const b of teintes)
             if (a.n < b.n)
-              // 24 unités sur 255 : l'écart au-dessous duquel deux étiquettes voisines se lisent
-              // comme la même couleur.
-              expect(ecart(a.hex, b.hex), `${id} / ${mode} : « ${a.n} » et « ${b.n} » trop proches`).toBeGreaterThanOrEqual(24);
+              // En sombre, la lisibilité impose des teintes claires, qui se rapprochent : 0,08 est le
+              // plancher tenu par les huit, et il suffit à séparer deux étiquettes posées côte à côte.
+              expect(ecart(a.hex, b.hex), `${id} / ${mode} : teintes ${a.n} et ${b.n} trop proches`).toBeGreaterThanOrEqual(0.08);
+      }
+    });
+
+    /*
+     * L'or de l'échauffement est la marque du thème par défaut : d'autres thèmes ont une marque rose,
+     * mauve ou sarcelle, et huit teintes fixes ne peuvent pas éviter vingt marques à la fois. C'est
+     * l'écu (fasce ondée) et le nom de l'étiquette qui les séparent alors. Le vert, lui, est le vert
+     * dans tous les thèmes : on le vérifie partout.
+     */
+    it(`ne se confondent ni avec l'or de l'échauffement ni avec le vert de l'atelier en mode ${mode}`, () => {
+      const lireDefaut = lecteur(THEME_DEFAUT);
+      const or = resolue(lireDefaut("--marque"), lireDefaut);
+      for (const id of IDS) {
+        const lire = lecteur(id);
+        const vert = resolue(lire("--vert"), lire);
+        for (const n of TEINTES) {
+          const teinte = resolue(lire(`--teinte-${n}`), lire);
+          expect(ecart(teinte, or), `${mode} : teinte ${n} trop proche de l'or de l'échauffement`).toBeGreaterThanOrEqual(0.08);
+          expect(ecart(teinte, vert), `${id} / ${mode} : teinte ${n} trop proche du vert de l'atelier`).toBeGreaterThanOrEqual(0.075);
+        }
       }
     });
   }

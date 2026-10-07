@@ -3,7 +3,7 @@ import { parisOffsetMinutes, seanceCommencee, todayIso } from "./dates";
 import { compteursDepuisTotaux, type Compteurs } from "./presences";
 import { isStaff, type UserLike } from "./permissions";
 import { parseDisciplines, type AttendanceStatut } from "./constants";
-import { programmeDepuisParties, type ProgrammeSeance } from "./planning";
+import { getThemes, programmeDepuisParties, type ProgrammeSeance } from "./planning";
 // La borne d'arrivée dans la période n'a qu'une définition, et elle vit là où le taux personnel du
 // bureau se calcule : deux versions de cette règle, c'étaient deux chiffres pour la même personne.
 import { jourDArrivee } from "./tableau-de-bord";
@@ -163,7 +163,7 @@ export function participantsAPlat(liste: ListesParStatut): ParticipantStatut[] {
   ]);
 }
 
-function versCarte(s: SessionBrute, invites: readonly Participant[], user: UserLike & { id: string }, now: Date): SeanceCarte {
+function versCarte(s: SessionBrute, invites: readonly Participant[], user: UserLike & { id: string }, now: Date, themesClub: readonly string[]): SeanceCarte {
   const userId = user.id;
   // Une seule répartition, lue deux fois : le compteur en est le dénombrement, la liste l'affichage.
   const participants = listeParticipants(s.attendances, invites);
@@ -183,7 +183,7 @@ function versCarte(s: SessionBrute, invites: readonly Participant[], user: UserL
     motifAnnulation: s.motifAnnulation,
     instructeurs: s.instructeurs.map((i) => i.user),
     ateliers: s.ateliers.map((a) => ({ id: a.id, titre: a.titre, animateur: `${a.proposePar.prenom} ${a.proposePar.nom}` })),
-    programme: programmeDepuisParties(s.parties),
+    programme: programmeDepuisParties(s.parties, themesClub),
     compteurs: compteursDeLaListe(participants, invites.length),
     monStatut: s.attendances.find((a) => a.userId === userId)?.statut ?? null,
     inscrit: invites.some((p) => p.id === userId),
@@ -207,8 +207,8 @@ export async function prochainesSeances(user: UserLike & { id: string }, now = n
     include: INCLUDE_CARTE,
   });
   // Une seule lecture de la liste des invités par période concernée, partagée par toutes ses cartes
-  const invites = await invitesDesPeriodes(sessions.map((s) => s.periodId));
-  return sessions.map((s) => versCarte(s, invites.get(s.periodId) ?? [], user, now));
+  const [invites, themes] = await Promise.all([invitesDesPeriodes(sessions.map((s) => s.periodId)), getThemes()]);
+  return sessions.map((s) => versCarte(s, invites.get(s.periodId) ?? [], user, now, themes));
 }
 
 /**
@@ -227,15 +227,16 @@ export async function seancesDePeriode(periodId: string, user: UserLike & { id: 
     include: INCLUDE_CARTE,
   });
   if (sessions.length === 0) return [];
-  const invites = (await invitesDesPeriodes([periodId])).get(periodId) ?? [];
-  return sessions.map((s) => versCarte(s, invites, user, now));
+  const [parPeriode, themes] = await Promise.all([invitesDesPeriodes([periodId]), getThemes()]);
+  const invites = parPeriode.get(periodId) ?? [];
+  return sessions.map((s) => versCarte(s, invites, user, now, themes));
 }
 
 export async function seanceCarte(id: string, user: UserLike & { id: string }, now = new Date()): Promise<SeanceCarte | null> {
   const s = await chargerUne(id);
   if (!s) return null;
-  const invites = (await invitesDesPeriodes([s.periodId])).get(s.periodId) ?? [];
-  return versCarte(s, invites, user, now);
+  const [parPeriode, themes] = await Promise.all([invitesDesPeriodes([s.periodId]), getThemes()]);
+  return versCarte(s, parPeriode.get(s.periodId) ?? [], user, now, themes);
 }
 
 /** "HH:MM" de l'instant donné, en heure de Paris (même repère que les heures stockées). */

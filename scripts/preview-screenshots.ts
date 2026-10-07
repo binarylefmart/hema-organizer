@@ -1179,6 +1179,20 @@ function toutesLesScenes(): Scene[] {
       pleinePage: true,
     },
     {
+      nom: "action-evenements-autres-gestes",
+      description: "Événements de l'équipe sur téléphone : le volet « ⋯ » d'une annonce publiée ouvert — dépublier, supprimer, voir comme un membre (sur PC, le tableau)",
+      connexion: COMPTES.admin,
+      chemin: "/gestion/evenements",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        // Une annonce publiée, de préférence : c'est elle qui montre « Dépublier l'annonce… ».
+        const publies = page.getByRole("group", { name: "Publiés" }).getByRole("button", { name: "Autres gestes" });
+        const bouton = (await publies.count()) > 0 ? publies.first() : page.getByRole("button", { name: "Autres gestes" }).first();
+        await bouton.click();
+        await page.getByRole("dialog").waitFor();
+      },
+    },
+    {
       nom: "evenement-affiche",
       description: "Nouvelle annonce : l'affiche se dépose d'un glisser, ou se choisit d'un clic",
       connexion: COMPTES.admin,

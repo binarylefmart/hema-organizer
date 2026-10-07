@@ -3,6 +3,7 @@ import { Icone } from "@/components/ui/Icone";
 import { PastilleNiveau } from "@/components/ui/Pastille";
 import { couleurNature, lignesProgramme, partiesProgramme, programmeMuet, texteLibre, type LigneProgramme, type PartieProgramme } from "./programme-cours";
 import { EcuNature } from "./EcuNature";
+import { classesPartie } from "./teintes";
 
 /**
  * **Ce qu'on va travailler** — le programme d'un cours en lecture seule : le thème de chaque partie,
@@ -73,10 +74,10 @@ export function ProgrammeCours({
  * Une partie du cours : son titre (« Partie 1 »), puis ses éléments — sans titre quand elle est la
  * seule à montrer quelque chose.
  *
- * Le titre est écrit **sobrement** — petites capitales, couleur secondaire — parce que ce sont les
- * éléments qui portent l'information ; il ne fait que dire où commence le bloc suivant. Les éléments
- * sont indentés sous lui d'un filet, pour que deux parties voisines se séparent d'un coup d'œil sans
- * qu'on ait à lire le numéro.
+ * Le titre est écrit **sobrement** — petites capitales — parce que ce sont les éléments qui portent
+ * l'information ; il ne fait que dire où commence le bloc suivant. Il prend la **teinte de la partie**
+ * (`classesPartie`), et le bloc entier une bande de cette teinte à gauche, sans fond : deux parties
+ * voisines se séparent d'un coup d'œil sans qu'on ait à lire le numéro.
  */
 function BlocPartie({ partie: p, compact }: { partie: PartieProgramme; compact: boolean }) {
   const elements = p.elements.map((l) => (
@@ -87,10 +88,11 @@ function BlocPartie({ partie: p, compact }: { partie: PartieProgramme; compact: 
   /* **Une seule partie affichée** (`nom: null`, `partiesNommees`) : ni titre ni filet — les éléments
      se lisent directement, comme avant les parties. */
   if (!p.nom) return <ul className={`flex min-w-0 flex-col ${compact ? "gap-1" : "gap-2.5"}`}>{elements}</ul>;
+  const couleur = classesPartie(p.bloc);
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <p className={`font-semibold uppercase tracking-wide text-texte-secondaire ${compact ? "text-[0.7rem]" : "text-xs"}`}>{p.nom}</p>
-      <ul aria-label={p.nom} className={`flex min-w-0 flex-col border-l-2 border-bordure/60 ${compact ? "gap-1 pl-2" : "gap-2.5 pl-3"}`}>
+    <div className={`flex min-w-0 flex-col gap-1 ${couleur.bande} ${compact ? "pl-2" : "pl-3"}`}>
+      <p className={`font-semibold uppercase tracking-wide ${couleur.titre} ${compact ? "text-[0.7rem]" : "text-xs"}`}>{p.nom}</p>
+      <ul aria-label={p.nom} className={`flex min-w-0 flex-col ${compact ? "gap-1" : "gap-2.5"}`}>
         {elements}
       </ul>
     </div>
@@ -104,8 +106,8 @@ function BlocPartie({ partie: p, compact }: { partie: PartieProgramme; compact: 
  * nom et un thème sur la même ligne renvoyaient le thème à la ligne suivante de toute façon, une fois
  * sur deux au milieu d'un mot.
  *
- * Resserré, il reste sur la même ligne que le contenu, dans une étiquette à la couleur de sa nature
- * (`couleurNature`).
+ * Resserré, il reste sur la même ligne que le contenu, dans une étiquette dont la forme dit la nature
+ * et la teinte le rang du cours ou de l'option dans la séance (`couleurNature`).
  *
  * **Une seule mention de l'élément** : son nom dans la partie (« Échauffement », « Cours 2 »), calculé
  * depuis sa nature et son rang (`nomElement`) — la partie, elle, est déjà dite par le titre du bloc,
@@ -124,8 +126,8 @@ function LigneCase({ ligne: l, compact }: { ligne: LigneProgramme; compact: bool
         <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {/* `break-words` : un nom doit pouvoir se couper plutôt que de déborder de la fiche sur
               un téléphone de 390 px. */}
-          <span className={`inline-flex min-w-0 items-center gap-1 self-start break-words rounded-md px-1.5 py-0.5 text-xs font-semibold ${couleurNature(l.nature)}`}>
-            <EcuNature nature={l.nature} taille={14} />
+          <span className={`inline-flex min-w-0 items-center gap-1 self-start break-words rounded-md px-1.5 py-0.5 text-xs font-semibold ${couleurNature(l.nature, l.teinte)}`}>
+            <EcuNature nature={l.nature} teinte={l.teinte} taille={14} />
             {l.nom}
           </span>
           <Contenu ligne={l} compact />
@@ -136,8 +138,8 @@ function LigneCase({ ligne: l, compact }: { ligne: LigneProgramme; compact: bool
   }
   return (
     <div className="flex flex-col gap-1">
-      <span className={`inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-0.5 text-sm font-semibold ${couleurNature(l.nature)}`}>
-        <EcuNature nature={l.nature} />
+      <span className={`inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-0.5 text-sm font-semibold ${couleurNature(l.nature, l.teinte)}`}>
+        <EcuNature nature={l.nature} teinte={l.teinte} />
         {l.nom}
       </span>
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">

@@ -1,5 +1,6 @@
 import { niveauAffiche, nomElement, nomPartie, partiesNommees, type NatureElement, type Niveau } from "@/lib/constants";
 import type { ProgrammeSeance } from "@/lib/planning";
+import { APLAT_TEINTE, CONTOUR_TEINTE, type Teinte } from "./teintes";
 
 /**
  * Les règles de lecture du programme d'un cours, sans React (voir `ProgrammeCours.tsx`).
@@ -14,8 +15,9 @@ import type { ProgrammeSeance } from "@/lib/planning";
  *
  * **Depuis les parties et éléments**, une séance se lit **partie par partie** —
  * « Partie 1 », puis ce qu'elle porte : « Échauffement », « Cours 2 », « Atelier »… —, et ce module
- * porte aussi le repère de couleur d'un élément, qui ne dépend plus que de sa **nature**
- * (`couleurNature`). Le planning l'**importe d'ici** : une seule table pour les deux écrans.
+ * porte aussi le repère de couleur d'un élément : sa forme dit sa **nature**, sa teinte son **rang**
+ * parmi les cours et options de la séance (`couleurNature`, `teintes.ts`). Le planning l'**importe
+ * d'ici** : une seule table pour tous les écrans.
  */
 
 /** Ce qu'une case renseignée donne à lire, une fois nettoyée. */
@@ -38,6 +40,8 @@ export type LigneProgramme = {
    */
   rang: number;
   nombre: number;
+  /** Teinte du cours ou de l'option (`teintesProgramme`), recopiée de la ligne reçue comme le rang */
+  teinte: Teinte | null;
   /** Nom court de l'élément dans sa partie (« Échauffement », « Cours 2 »), via `nomElement` */
   nom: string;
   /** Nom complet calculé (« Partie 1 · Cours »), tel que la base le garde */
@@ -108,6 +112,7 @@ export function lignesProgramme(programme: ProgrammeSeance): LigneProgramme[] {
         nature: c.nature,
         rang: c.rang,
         nombre: c.nombre,
+        teinte: c.teinte,
         nom: nomElement(c.nature, c.rang, c.nombre),
         libelle: nettoyer(c.libelle),
         theme,
@@ -188,39 +193,44 @@ export function partiesProgramme(lignes: readonly LigneProgramme[]): PartieProgr
 }
 
 /*
- * Les classes sont écrites **en entier**, jamais composées (`bg-partie-${n}`) : Tailwind lit les
+ * Les classes sont écrites **en entier**, jamais composées (`bg-teinte-${n}`) : Tailwind lit les
  * sources pour savoir quelles classes engendrer, et une classe calculée à l'exécution n'existerait
- * dans aucune feuille de style — l'étiquette sortirait sans couleur.
+ * dans aucune feuille de style — l'étiquette sortirait sans couleur. Celles du cours et de l'option
+ * vivent dans `teintes.ts`, une par teinte.
  */
-const COULEURS_NATURE: Record<NatureElement, string> = {
+const COULEURS_NATURE: Record<"ECHAUFFEMENT" | "ATELIER", string> = {
   ECHAUFFEMENT: "bg-marque text-encre",
-  COURS: "bg-primaire text-primaire-texte",
-  OPTION: "border border-primaire bg-primaire-doux text-primaire",
   ATELIER: "border border-vert bg-vert-doux text-vert",
 };
 
 /**
- * **Repère de couleur d'un élément : une teinte par nature**, et rien d'autre.
+ * **Repère de couleur d'un élément : la forme dit sa nature, la teinte son rang.**
  *
- * Tant qu'une séance n'était qu'une suite de cours et d'options, la teinte comptait le rang dans la
- * série (« Cours 2 » ↔ couleur 2). Depuis que les éléments se rangent dans des parties numérotées,
- * c'est le **titre de partie** qui sépare les blocs, et la couleur n'a plus qu'une question à
- * trancher d'un coup d'œil : *qu'est-ce que c'est* — l'échauffement, le cours, une option, un
- * atelier proposé par un membre (sa propre teinte — et c'est **le seul** repère
- * qui le distingue : son titre, lui, s'écrit comme n'importe quel thème). Deux cours d'une même partie ont donc la même teinte : c'est leur nom
- * (« Cours 1 », « Cours 2 ») qui les distingue, et il est écrit dessus.
+ * Une teinte par nature ne distinguait pas deux cours d'une même séance : ils portaient la même
+ * étiquette, et seul le numéro écrit dessus les séparait — or deux cours, c'est deux groupes, deux
+ * salles, deux instructeurs, et il faut savoir d'un coup d'œil lequel on lit. Désormais (choix du
+ * bureau sur maquette) **chaque cours et chaque option prend sa propre teinte**, la suivante de la
+ * palette dans l'ordre de lecture de la séance entière — cours et options comptés ensemble, pour que
+ * deux éléments d'une séance ne partagent jamais une teinte tant que la palette n'est pas épuisée
+ * (`teintesProgramme`). La teinte arrive **avec la ligne**, comptée là où la séance est encore
+ * complète : jamais recomptée ici.
  *
- * **La forme double la teinte** : ce qui se mène en parallèle (`enParallele` — option, atelier) est
- * en contour, plus discret ; l'échauffement et le cours, qui sont le cours lui-même, en aplat.
+ * **La forme dit toujours la nature** : le cours, qui est le cours lui-même, en aplat (la teinte en
+ * fond, `--teinte-texte` dessus) ; l'option, menée en parallèle (`enParallele`), en contour (la teinte
+ * douce en fond, la teinte au bord et au texte). **L'échauffement et l'atelier ne prennent aucune
+ * teinte** et n'en consomment pas : la marque du thème sur l'encre (l'or du logo sur l'en-tête) pour
+ * l'un, le vert en contour pour l'autre — c'est **leur** couleur qui les fait reconnaître, et pour
+ * l'atelier proposé par un membre c'est **le seul** repère qui le distingue (son titre s'écrit comme
+ * n'importe quel thème).
  *
- * **Les teintes suivent le thème du club** (demande de Delta : « revois les couleurs des cours,
- * échauffements etc. en fonction des thèmes ») : chaque étiquette reprend une **paire** que chaque
- * thème définit déjà pour le clair et le sombre, donc un contraste que le thème garantit —
- * l'échauffement la couleur de marque sur l'encre (l'or du logo sur l'en-tête), le cours et l'option
- * la couleur primaire (en aplat, puis en contour), l'atelier le vert. Jamais une couleur en dur.
+ * **La palette ne suit pas le thème du club** : « le cours bleu » doit le rester d'un thème à l'autre.
+ * Cinq teintes fixes, un jeu clair et un jeu sombre (`globals.css`), dont les contrastes sont vérifiés
+ * sur tous les thèmes par `tests/unit/themes.test.ts`. Jamais une couleur en dur.
  */
-export function couleurNature(nature: NatureElement): string {
-  // Une nature inconnue (donnée ancienne, import) retombe sur le cours plutôt que sur une classe
-  // vide : une étiquette sans couleur se lirait comme un défaut d'affichage.
-  return COULEURS_NATURE[nature] ?? COULEURS_NATURE.COURS;
+export function couleurNature(nature: NatureElement, teinte: Teinte | null = null): string {
+  if (nature === "ECHAUFFEMENT" || nature === "ATELIER") return COULEURS_NATURE[nature];
+  if (nature === "OPTION") return CONTOUR_TEINTE[teinte ?? 1];
+  // Le cours — et une nature inconnue (donnée ancienne, import), qui retombe sur lui plutôt que sur
+  // une classe vide : une étiquette sans couleur se lirait comme un défaut d'affichage.
+  return APLAT_TEINTE[teinte ?? 1];
 }
