@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { definirRoleMembre } from "@/actions/membres";
 import { Icone } from "@/components/ui/Icone";
@@ -24,26 +24,31 @@ const ENTREES_ROLE: EntreeListe[] = [
  * Comme les cases du planning, il **ne dit rien quand tout va bien** — le rôle choisi est dans la
  * liste, c'est lui la confirmation — et ne parle que pour un refus.
  *
- * `presentation="boutons"` : la fiche d'une personne au téléphone montre les deux rôles en deux
- * boutons (« Membre » / « Instructeur ») — même état, même miroir du serveur, même action, mêmes
- * refus ; seul le dessin change. Un appui sur le rôle qui n'est pas le sien l'applique, comme un choix
- * dans la liste. La fiche relit ensuite la page : sa pastille de rôle, en tête, doit suivre.
+ * `presentation="curseur"` : la fiche d'une personne au téléphone montre le rôle en curseur à deux
+ * positions (« Membre » | « Instructeur »), posé d'emblée sur le rôle actuel — même état, même miroir
+ * du serveur, même action, mêmes refus ; seul le dessin change. Toucher l'autre côté, ou y glisser le
+ * doigt, applique ce rôle. La fiche relit ensuite la page : sa pastille de rôle, en tête, doit suivre.
  */
 export function SelecteurRole({
   userId,
   role,
   nom,
   presentation = "liste",
+  rafraichir = false,
 }: {
   userId: string;
   role: string;
   nom: string;
-  presentation?: "liste" | "boutons";
+  presentation?: "liste" | "curseur";
+  /** Relire la page après un choix réussi : la fiche d'une personne affiche son rôle en tête. */
+  rafraichir?: boolean;
 }) {
   const [valeur, setValeur] = useState(role);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, start] = useTransition();
   const router = useRouter();
+  const origineGlisse = useRef<number | null>(null);
+  const glisseFait = useRef(false);
   /**
    * **Le rôle du serveur reprend la main dès qu'il bouge** — même patron que les cases du planning
    * (`vuDuServeur`, dans `CaseEditeur`), et pour un défaut de la même famille, relevé après
@@ -86,7 +91,7 @@ export function SelecteurRole({
       if (res?.erreur) {
         setErreur(res.erreur);
         setValeur(role);
-      } else if (presentation === "boutons") {
+      } else if (presentation === "curseur" || rafraichir) {
         router.refresh();
       }
     });
@@ -96,24 +101,56 @@ export function SelecteurRole({
       {erreur ?? ""}
     </span>
   );
-  if (presentation === "boutons") {
+  if (presentation === "curseur") {
+    const aDroite = valeur === ENTREES_ROLE[1].valeur;
     return (
       <div className="flex flex-col gap-1">
-        <p id={`role-${userId}-boutons`} className="font-semibold">
-          Rôle
-        </p>
-        <div role="group" aria-labelledby={`role-${userId}-boutons`} className="grid grid-cols-2 gap-2">
+        {/* **Un curseur à deux positions** : le rond glisse sous le rôle choisi. Un appui sur l'autre
+            côté — ou un glissé du doigt vers lui — applique ce rôle, comme un choix dans la liste. */}
+        <div
+          role="radiogroup"
+          aria-label={`Rôle de ${nom}`}
+          className="relative grid grid-cols-2 rounded-full border-2 border-bordure/70 bg-surface p-1 shadow-carte touch-pan-y"
+          onPointerDown={(ev) => {
+            origineGlisse.current = ev.clientX;
+            glisseFait.current = false;
+          }}
+          onPointerUp={(ev) => {
+            const depart = origineGlisse.current;
+            origineGlisse.current = null;
+            if (depart === null || enCours) return;
+            const ecart = ev.clientX - depart;
+            if (Math.abs(ecart) < 24) return;
+            // Le `click` qui suit ce relâcher viserait le bouton sous le doigt, peut-être l'autre
+            // rôle : il ne doit pas défaire le glissé.
+            glisseFait.current = true;
+            choisir(ENTREES_ROLE[ecart > 0 ? 1 : 0].valeur);
+          }}
+        >
+          <span
+            aria-hidden
+            className={`pointer-events-none absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-full bg-primaire shadow-carte transition-transform duration-200 ease-out motion-reduce:transition-none ${
+              aDroite ? "translate-x-full" : "translate-x-0"
+            }`}
+          />
           {ENTREES_ROLE.map((e) => {
             const choisi = valeur === e.valeur;
             return (
               <button
                 key={e.valeur}
                 type="button"
-                aria-pressed={choisi}
+                role="radio"
+                aria-checked={choisi}
                 disabled={enCours}
-                onClick={() => choisir(e.valeur)}
-                className={`inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl border-2 px-3 text-base font-semibold transition active:scale-[0.98] disabled:opacity-60 ${
-                  choisi ? "border-primaire bg-primaire text-primaire-texte" : "border-bordure/70 bg-surface text-texte"
+                onClick={() => {
+                  if (glisseFait.current) {
+                    glisseFait.current = false;
+                    return;
+                  }
+                  choisir(e.valeur);
+                }}
+                className={`relative z-10 inline-flex min-h-12 items-center justify-center gap-1.5 rounded-full px-3 text-base font-semibold transition-colors disabled:opacity-60 ${
+                  choisi ? "text-primaire-texte" : "text-texte"
                 }`}
               >
                 {choisi && <Icone nom="check" taille={18} />}
@@ -133,8 +170,8 @@ export function SelecteurRole({
       <label id={`role-${userId}-libelle`} className="sr-only" htmlFor={`role-${userId}`}>
         Rôle de {nom}
       </label>
-      {/* La liste du dépôt (`ListeDeroulante`), jamais un `<select>` nu : elle a la forme de sa
-          voisine du bureau (`SelecteurBureau`) et s'ouvre vers le bas même au pied de l'annuaire.
+      {/* La liste du dépôt (`ListeDeroulante`), jamais un `<select>` nu : elle a la forme des autres
+          listes de l'annuaire et s'ouvre vers le bas même à son pied.
           **Elle enregistre au choix, comme le `<select>` au `change`** — c'est la différence assumée
           avec la liste de la barre de masse, qui attend son bouton. `onChoisir` est appelé même quand
           on rechoisit l'entrée déjà affichée, ce que `change` ne faisait pas : on ne part donc au

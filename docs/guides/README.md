@@ -4,9 +4,9 @@ Un guide par rôle, écrit pour être **imprimé** et posé à côté d'un tél�
 
 | Fichier | Pour qui | Ce qu'il couvre |
 |---|---|---|
-| `guide-membre.html` | les adhérents | **le socle** : entrer, dire si on vient, lire le planning (cours et options, ce qui n'est pas rempli ne s'affiche pas), proposer un atelier, les événements, son profil et ses messages |
-| `guide-instructeur.html` | l'encadrement | **le complément du précédent** : remplir le planning partie par partie (`----------` = rien ici), tenir les séances, décider des ateliers, publier les annonces, ce qu'on reçoit en plus et le tableau de bord |
-| `guide-admin.html` | le bureau | **la troisième marche** : ouvrir l'espace admin, la saison (trimestre ou bimestre), corriger les présences (à l'unité ou par lots), l'annuaire et les rôles par lots, les liens, les comptes, le journal, Discord et Telegram, la liste de distribution, l'API publique, la part d'effectif, les thèmes et les lieux |
+| `guide-membre.html` | les adhérents | **le socle** : entrer, dire si on vient, lire le planning (parties, échauffements, cours, options, ateliers ; une couleur par thème), proposer un atelier (l'assistant du téléphone ou le formulaire), les événements, son profil et ses messages |
+| `guide-instructeur.html` | l'encadrement | **le complément du précédent** : remplir le planning au téléphone (gestes, « Valider », niveau en quatre boutons) et à l'ordinateur, plusieurs séances d'un coup, tenir les séances, programmer ou refuser les ateliers, publier les annonces, ce qu'on reçoit en plus et le tableau de bord |
+| `guide-admin.html` | le bureau | **la troisième marche** : ouvrir l'espace admin (menu en liste sur téléphone), la saison (trimestre ou bimestre), corriger les présences (à l'unité ou par lots), l'annuaire et les rôles par lots, les liens, les comptes, le journal, Discord et Telegram, la liste de distribution, l'API publique, la part d'effectif, les thèmes et les lieux |
 
 Les trois guides se lisent **en cascade** : le guide du membre dit
 tout ce que tout le monde fait, et les deux autres ne répètent rien — ils commencent par un renvoi

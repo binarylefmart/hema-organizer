@@ -30,9 +30,8 @@ export const THEMES_DU_CLUB: readonly string[] = [
 ];
 
 /**
- * **Les thèmes d'échauffement proposés tant que le bureau n'a pas enregistré sa propre liste**
- * (Delta : « récupère la liste des thèmes que j'ai et pousse les deux dans le public et le
- * privé »). Même règle que `THEMES_DU_CLUB` : une liste enregistrée, même vide, fait toujours foi
+ * **Les thèmes d'échauffement proposés tant que le bureau n'a pas enregistré sa propre liste**,
+ * publiés dans les deux dépôts comme `THEMES_DU_CLUB`. Même règle que `THEMES_DU_CLUB` : une liste enregistrée, même vide, fait toujours foi
  * (`getThemesEchauffement`, src/lib/planning.ts).
  */
 export const THEMES_ECHAUFFEMENT_DU_CLUB: readonly string[] = [

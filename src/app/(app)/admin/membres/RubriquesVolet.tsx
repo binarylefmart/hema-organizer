@@ -14,7 +14,7 @@ export type Rubrique = { cle: string; libelle: string; contenu: ReactNode };
 /**
  * **Au téléphone, l'annuaire range ses formulaires et ses gestes rares dans un volet du bas**
  * (`VoletBas`) : « + Ajouter » sur la liste (une personne, un fichier CSV, les gestes sur tout le
- * club), « ⋯ » sur la fiche d'une personne (son nom et son adresse, le bureau, puis les gestes de
+ * club), « ⋯ » sur la fiche d'une personne (son nom et son adresse, où vivent les droits d'administrateur, puis les gestes de
  * « Que veux-tu faire ? »).
  *
  * - **sans rien choisi**, les rubriques en gros boutons, puis les gestes (`GestesProposes` présenté en

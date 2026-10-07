@@ -29,7 +29,6 @@ import { BoutonAction } from "@/components/ui/BoutonAction";
 import { GestesProposes, type GestePret } from "@/components/ui/GestesProposes";
 import { Alerte } from "@/components/ui/Alerte";
 import { Pastille } from "@/components/ui/Pastille";
-import { SelecteurBureau } from "../SelecteurBureau";
 import { LIBELLE_BUREAU } from "../bureau";
 import { gestesFiche, type GesteFiche } from "../gestes-fiche";
 import { Icone } from "@/components/ui/Icone";
@@ -151,14 +150,11 @@ export default async function PageMembre({ params }: Props) {
     return action ? [{ ...g, action }] : [];
   });
   /*
-   * **Nommer ou retirer un administrateur depuis la fiche**. Les verrous ne bougent pas d'un cran :
-   * ce sont ceux de l'écran « Comptes admin », qui portait déjà ce geste — `admins.manage`
-   * (`peutNommerAdmin`), le compte du portail intouchable, et personne ne se retire son propre
-   * bureau. Le réglage n'est rendu qu'à qui peut aboutir : « un bouton qui ne peut que refuser est
-   * pire que pas de bouton » (`CLAUDE.md`). Le code 2FA récent, lui, est redemandé par l'action
-   * elle-même, comme pour tous les gestes qui touchent un compte.
+   * **Le bureau ne se donne ni ne se retire depuis la fiche** : c'est un geste de « Comptes admin »
+   * et de nulle part ailleurs. La fiche montre l'état (pastille « admin ») et dit où le geste vit —
+   * le lien seulement à qui peut ouvrir cette page (`peutNommerAdmin`, soit `admins.manage`).
    */
-  const peutDonnerLeBureau = peutNommerAdmin(acteur) && modifiable && !portail && !soiMeme;
+  const ouvreComptesAdmin = peutNommerAdmin(acteur);
   // Régler les notifications de quelqu'un d'autre est réservé au bureau : la carte n'existe pas pour
   // un instructeur. Le compte du portail, lui, ne reçoit que les alertes de sécurité : rien à régler.
   const peutReglerNotifications = can(acteur, "notifications.autrui") && !portail;
@@ -314,18 +310,22 @@ export default async function PageMembre({ params }: Props) {
           Le serveur réaffirme le rôle et refuse qu'il change sur le portail. */}
     </FormulaireAction>
   );
-  const reglageBureau = peutDonnerLeBureau ? (
-    <>
-      <SelecteurBureau userId={m.id} nom={`${m.prenom} ${m.nom}`} estAdmin={duBureau} retour={`/admin/membres/${m.id}`} />
-      <p className="mt-2 max-w-prose text-sm text-texte-secondaire">
-        {/* « son rôle d'instructeur », jamais « de instructeur » : la phrase se lit à voix
-            haute, comme « les choix d'Bravo » plus bas sur cette même fiche. */}
-        Le bureau s&apos;ajoute au rôle : {m.prenom} garde son rôle {m.role === "INSTRUCTEUR" ? "d'instructeur" : "de membre"} quoi qu&apos;il
-        arrive ici.
-        Mot de passe et double authentification sont obligatoires pour un administrateur, et lui seront demandés avant que
-        l&apos;administration s&apos;ouvre. Le changement est inscrit au journal d&apos;audit.
-      </p>
-    </>
+  /*
+   * **Où vivent les droits d'administrateur**, à la place de l'ancien réglage : une phrase, et le
+   * lien vers « Comptes admin » pour qui peut l'ouvrir. Le compte du portail et sa propre fiche n'ont
+   * plus de cas à part — la phrase vaut pour tout le monde, et c'est « Comptes admin » qui dit ce
+   * qui s'y refuse.
+   */
+  const noteBureau = ouvreComptesAdmin ? (
+    <p className="max-w-prose text-sm text-texte-secondaire">
+      Les droits d&apos;administrateur se donnent et se retirent dans{" "}
+      <Link href="/admin/comptes" className="font-semibold">
+        Comptes admin
+      </Link>
+      .
+    </p>
+  ) : duBureau ? (
+    <p className="max-w-prose text-sm text-texte-secondaire">Seul un administrateur donne ou retire les droits d&apos;administrateur.</p>
   ) : null;
   /*
    * **Les rubriques du volet « ⋯ » au téléphone** : les gestes rares, rangés derrière un bouton.
@@ -335,7 +335,7 @@ export default async function PageMembre({ params }: Props) {
   const rubriquesAutres: Rubrique[] = [
     // Une clé sur chaque contenu : ils voyagent dans un tableau jusqu'au composant client.
     { cle: "identite", libelle: "Modifier le nom ou l'email", contenu: <Fragment key="identite">{formulaireIdentite}</Fragment> },
-    ...(reglageBureau ? [{ cle: "bureau", libelle: "Droits d'administrateur", contenu: <div key="bureau">{reglageBureau}</div> }] : []),
+    ...(noteBureau ? [{ cle: "bureau", libelle: "Droits d'administrateur", contenu: <div key="bureau">{noteBureau}</div> }] : []),
   ];
   const resumeNotifications = notifications && refusables.length > 0 ? `${refusables.filter(recoit).length} sur ${refusables.length}` : undefined;
   return (
@@ -401,12 +401,17 @@ export default async function PageMembre({ params }: Props) {
         </div>
 
         {/*
-          **Au téléphone, les gestes courants en tête de fiche** : le rôle de base en deux boutons (la
-          même action que la liste déroulante de l'annuaire, `SelecteurRole`), « Renvoyer le lien » en
+          **Au téléphone, les gestes courants en tête de fiche** : le rôle de base en curseur
+          à deux positions (`SelecteurRole`, même action que la liste de l'annuaire), « Renvoyer le lien » en
           bouton visible, et « ⋯ » pour le reste — l'identité, le bureau, et « Que veux-tu faire ? ».
         */}
         <div className="flex flex-col gap-3 ordi:hidden">
-          {!roleVerrouille && <SelecteurRole userId={m.id} role={m.role} nom={`${m.prenom} ${m.nom}`} presentation="boutons" />}
+          {!roleVerrouille && (
+            <div className="flex flex-col gap-1">
+              <span className="font-semibold">Rôle</span>
+              <SelecteurRole userId={m.id} role={m.role} nom={`${m.prenom} ${m.nom}`} presentation="curseur" />
+            </div>
+          )}
           <div className="flex gap-2">
             {peutRenvoyerLien && periodeLien && (
               <BoutonAction
@@ -441,36 +446,9 @@ export default async function PageMembre({ params }: Props) {
           <HorsTelephone>
             <Carte titre="Identité et rôle">
               {formulaireIdentite}
-              {/*
-                **Le bureau, à part du formulaire — et c'est le point de la demande** (« pour
-                la sélection des rôles où admin est présent, fais un menu déroulant à part avec au choix
-                `----------` ou `admin` »).
-
-                **Pourquoi hors du formulaire, littéralement :** « Enregistrer » au-dessus écrit un nom,
-                une adresse et un rôle, et se reprend d'un geste. Donner ou retirer les droits du club ne
-                se glisse pas dans ce lot-là — ni dans son bouton, ni dans son journal : le geste a sa
-                propre confirmation, sa propre entrée d'audit (`admin.droits_donnes` /
-                `admin.droits_retires`) et son propre code 2FA. Un seul « Enregistrer » pour les deux
-                aurait fait d'un changement d'adresse l'occasion de nommer un administrateur par
-                inadvertance.
-
-                Le trait de séparation n'est donc pas décoratif : il dit que ce qui suit ne part pas avec
-                le bouton d'au-dessus.
-              */}
-              {reglageBureau && <div className="mt-4 border-t border-bordure/60 pt-4">{reglageBureau}</div>}
-              {/* Et quand le geste n'est pas offert, on dit où il vit : une fiche qui ne montre ni le
-                  réglage ni son emplacement laisse chercher. Les deux cas sont le compte du portail (qui
-                  reste administrateur par construction) et sa propre fiche — personne ne se retire son
-                  propre bureau, c'est fermer la porte de l'intérieur. */}
-              {!peutDonnerLeBureau && duBureau && (
-                <p className="mt-4 max-w-prose border-t border-bordure/60 pt-4 text-sm text-texte-secondaire">
-                  {portail
-                    ? "Le compte de connexion du portail reste administrateur : sans lui, plus personne n'ouvrirait l'administration technique."
-                    : soiMeme
-                      ? "Tu ne peux pas te retirer tes propres droits d'administrateur : demande-le à un autre membre du bureau, depuis « Comptes admin » ou depuis cette fiche."
-                      : "Seul un administrateur donne ou retire les droits d'administrateur."}
-                </p>
-              )}
+              {/* Le bureau ne se règle pas ici : la fiche dit seulement où le geste vit. Le trait
+                  de séparation dit que ce qui suit ne part pas avec « Enregistrer ». */}
+              {noteBureau && <div className="mt-4 border-t border-bordure/60 pt-4">{noteBureau}</div>}
             </Carte>
           </HorsTelephone>
 

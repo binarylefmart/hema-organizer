@@ -67,12 +67,16 @@ describe("l'annuaire au téléphone", () => {
 });
 
 describe("la fiche d'une personne au téléphone", () => {
-  it("le rôle de base en deux boutons, par la même action que la liste", () => {
-    expect(FICHE).toContain('presentation="boutons"');
+  it("le rôle de base en curseur à deux positions, même action que l'annuaire", () => {
+    expect(FICHE).toMatch(/<SelecteurRole[^>]*presentation="curseur"/);
     const selecteur = lire("src/app/(app)/admin/membres/SelecteurRole.tsx");
     expect(selecteur.match(/definirRoleMembre\(/g) ?? []).toHaveLength(1);
     // Le miroir du serveur vaut pour les deux présentations.
     expect(selecteur).toContain("if (vuDuServeur !== role)");
+    // Le curseur se lit comme un choix à deux, posé sur le rôle actuel, et relit la fiche.
+    expect(selecteur).toContain('role="radiogroup"');
+    expect(selecteur).toContain("aria-checked={choisi}");
+    expect(selecteur).toContain('presentation === "curseur" || rafraichir');
   });
 
   it("« Renvoyer le lien » reprend l'action et la confirmation de la ligne de la période", () => {

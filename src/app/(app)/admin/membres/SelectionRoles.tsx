@@ -162,8 +162,8 @@ const SUJETS_GESTES: Record<GesteMasse, string> = {
  *
  * **« Administrateur » n'y figure pas, et ce n'est pas un oubli** : ce n'est plus un rôle. Tout le
  * monde porte un **rôle de base** — membre ou instructeur (`ROLES_DE_BASE`) — et le bureau s'ajoute
- * par-dessus, dans sa **propre** liste déroulante (`SelecteurBureau`), à l'unité et derrière une
- * confirmation. Cette liste-ci est donc exactement `ROLES_DE_BASE`, et le serveur le tient aussi :
+ * par-dessus, et il se donne et se retire dans « Comptes admin », jamais depuis l'annuaire.
+ * Cette liste-ci est donc exactement `ROLES_DE_BASE`, et le serveur le tient aussi :
  * `definirRolesEnMasse` valide le rôle reçu contre la même constante.
  *
  * **La première entrée est l'absence de choix** (valeur vide, l'écriture du vide de `ListeDeroulante`).

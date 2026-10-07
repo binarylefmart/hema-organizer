@@ -4,7 +4,7 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
-import { can, canEditUser, estCompteDeService, peutNommerAdmin } from "@/lib/permissions";
+import { can, canEditUser, estCompteDeService } from "@/lib/permissions";
 import { creerMembre, definirActif, definirActifTous, definirEmailMembre, envoyerInvitationMembre, envoyerLienMembre, reinitialiserAccesMembre, supprimerMembre } from "@/actions/membres";
 import { aDejaUnAcces, periodeDuLien } from "@/lib/membres";
 import { Carte } from "@/components/ui/Carte";
@@ -22,7 +22,6 @@ import { etatDuLien } from "./etat-lien";
 import { libelleAfficher, libelleCompteur, LIBELLE_REPLIER, LIGNES_VISIBLES } from "@/components/seances/listes";
 import { ImportCsv } from "./ImportCsv";
 import { SelecteurRole } from "./SelecteurRole";
-import { SelecteurBureau } from "./SelecteurBureau";
 import { LIBELLE_BUREAU } from "./bureau";
 import { CaseMembre, ZoneSelection } from "./SelectionRoles";
 import { ChoixToutLeMonde } from "./ChoixToutLeMonde";
@@ -584,14 +583,10 @@ export default async function PageMembres({ searchParams }: Props) {
                 // comptes que la ligne sait traiter, sinon une case promettrait un geste refusé.
                 const peutChangerRole = roleReglable(m);
                 /*
-                 * **Nommer ou retirer un administrateur depuis l'annuaire**. Les verrous ne bougent
-                 * pas d'un cran : ce sont ceux de l'écran « Comptes admin » — `admins.manage`
-                 * (`peutNommerAdmin`), le compte du portail intouchable, et personne ne se retire
-                 * son propre bureau. Le bouton n'est rendu qu'à qui peut aboutir : « un bouton qui
-                 * ne peut que refuser est pire que pas de bouton » (`CLAUDE.md`). Le code 2FA, lui,
-                 * est redemandé par l'action, comme partout ailleurs.
+                 * **Le bureau ne se donne pas ici** : nommer ou retirer un administrateur est un geste
+                 * de « Comptes admin » et de nulle part ailleurs. La ligne ne fait que le montrer
+                 * (pastille « admin »).
                  */
-                const peutDonnerLeBureau = peutNommerAdmin(acteur) && canEditUser(acteur, m) && acteur.id !== m.id && !estCompteDeService(m);
                 /*
                  * **Les gestes qui manquaient à la ligne** : on les trouvait sur la fiche, ou en
                  * cochant une seule case. Mêmes verrous que leurs actions, et pas un bouton de plus
@@ -620,7 +615,6 @@ export default async function PageMembres({ searchParams }: Props) {
                   peutChangerActivation ||
                   peutModifierEmail ||
                   peutChangerRole ||
-                  peutDonnerLeBureau ||
                   peutSupprimerLigne;
                 const nomComplet = `${m.prenom} ${m.nom}`;
                 const actionsLigne: Partial<Record<GesteFiche, () => Promise<unknown>>> = {
@@ -879,17 +873,12 @@ export default async function PageMembres({ searchParams }: Props) {
                                       où le panneau couvre la ligne, l'adresse et les périodes
                                       restent — ce sont elles qui disparaissent derrière le rideau. */}
                                 </p>
-                                {/* **Deux listes déroulantes, deux questions**. Celle-ci porte le
-                                    **rôle de base** — membre ↔ instructeur, en un geste, et elle
-                                    enregistre au choix : son pire effet se défait du même geste.
-                                    « Administrateur » n'y figure pas parce que ce n'est plus un
-                                    rôle. */}
+                                {/* La liste déroulante du **rôle de base** — membre ↔ instructeur,
+                                    en un geste, et elle enregistre au choix : son pire effet se
+                                    défait du même geste. « Administrateur » n'y figure pas parce que
+                                    ce n'est plus un rôle, et le bureau ne se donne pas depuis
+                                    l'annuaire : c'est l'affaire de « Comptes admin ». */}
                                 {peutChangerRole && <SelecteurRole userId={m.id} role={m.role} nom={`${m.prenom} ${m.nom}`} />}
-                                {/* Et celle-là porte le **bureau, en supplément** : `----------` ou
-                                    « admin ». Elle n'enregistre **pas** au choix — elle demande une
-                                    confirmation et un code 2FA récent, parce que le geste donne ou retire
-                                    tous les droits du club. Voir `SelecteurBureau`. */}
-                                {peutDonnerLeBureau && <SelecteurBureau userId={m.id} nom={`${m.prenom} ${m.nom}`} estAdmin={m.estAdmin} retour="/admin/membres" />}
                                 {peutModifierEmail && (
                                   <FormulaireAction
                                     action={definirEmailMembre.bind(null, m.id, retour)}

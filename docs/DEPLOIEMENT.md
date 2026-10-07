@@ -516,6 +516,15 @@ docker exec hema-organizer node reparer.cjs      # vérification seule, aucune �
 Lisez ce qu'il signale, puis relancez avec `--reparer` seulement s'il signale quelque chose — il
 prend alors une sauvegarde avant d'écrire.
 
+Un cas fréquent après la migration `teinte_des_elements` (qui ajoute à chaque élément du programme la
+couleur de son thème) : le contrôle `teintes` signale les cours et options enregistrés avant elle. Ce
+n'est pas une panne — l'écran calcule déjà la même couleur pour ces lignes —, et l'enregistrer est
+**facultatif** :
+
+```bash
+docker exec hema-organizer node reparer.cjs --seulement=teintes --reparer
+```
+
 ---
 
 ## 8. Mettre à jour une version
@@ -530,6 +539,9 @@ prend alors une sauvegarde avant d'écrire.
 
    ou, pour une copie à l'instant même plutôt que celle de 03:30, passer par le § 12 dont l'étape de
    réparation sauvegarde d'office.
+
+   Le conteneur prend de toute façon sa propre copie au démarrage quand des migrations attendent
+   (`avant-migration-<date>-<heure>.db`, voir § 8 bis) ; la vôtre reste le filet si celle-là manque.
 
 2. **Publier la version** (§ 3) et attendre la fin du workflow GitHub Actions.
 3. **Relire le § 7** si la version apporte des migrations ou change un comportement, et choisir
@@ -569,8 +581,14 @@ elle qu'on restaure au § 10 si un retour en arrière l'exige.
 ### Ce qui fait tourner le job
 
 Un **runner GitHub auto-hébergé** sur le serveur : un petit service qui va chercher le travail chez
-GitHub — rien n'est ouvert en entrée — et parle à Portainer en local, par son API. Il ne sert qu'au
-dépôt privé `hema-organizer` ; le miroir public n'a pas la variable `PORTAINER_DEPLOY` et ignore le job.
+GitHub — rien n'est ouvert en entrée — et parle à Portainer en local, par son API. Le job ne tourne
+que dans un dépôt où la variable `PORTAINER_DEPLOY` vaut `true` : un dépôt qui ne l'a pas (un fork, une
+copie qui ne fait que construire l'image) publie l'image et saute le job.
+
+Le job récupère `scripts/deployer-portainer.sh` dans le dépôt lui-même, avec un jeton en **lecture
+seule** (`contents: read`). C'est le minimum, et il suffit aussi quand le dépôt est privé : sans ce
+droit de lecture, la récupération échoue (« Repository not found ») et l'image publiée ne se déploie
+pas.
 
 1. **Un compte dédié sur le serveur**, sans droits Docker (le runner ne parle qu'à l'API de Portainer) :
 
@@ -611,7 +629,7 @@ dépôt privé `hema-organizer` ; le miroir public n'a pas la variable `PORTAINE
    |---|---|---|
    | `PORTAINER_URL` | *Secrets* | l'adresse de Portainer **vue du serveur**, par ex. `https://localhost:9443` |
    | `PORTAINER_TOKEN` | *Secrets* | le jeton de l'étape 3 |
-   | `PORTAINER_STACK_NAME` | *Variables* | **le nom de la stack** (`hema_organizer` au club) — elle est retrouvée par son nom, ce qui survit à « supprimer la stack et la recréer depuis le modèle », qui change son numéro |
+   | `PORTAINER_STACK_NAME` | *Variables* | **le nom de la stack** tel que Portainer l'affiche (par ex. `hema_organizer`) — elle est retrouvée par son nom, ce qui survit à « supprimer la stack et la recréer depuis le modèle », qui change son numéro |
    | `PORTAINER_STACK_ID` | *Variables* | facultatif — le numéro de la stack (12 dans l'exemple), seulement si le nom n'est pas donné |
    | `PORTAINER_ENDPOINT_ID` | *Variables* | l'environnement (3 dans l'exemple) |
    | `PORTAINER_TLS_INSECURE` | *Variables* | `true` si Portainer répond en HTTPS avec son certificat auto-signé (cas de `:9443`) |
@@ -628,8 +646,11 @@ curl -fsS -k -H "X-API-Key: <jeton>" https://localhost:9443/api/stacks/<id> | jq
 
 Puis **le test de bout en bout, sans publier** : GitHub → *Actions* → **Test du déploiement** → *Run
 workflow*. Il redéploie la stack telle quelle (même image, retéléchargée) par **le même script** que la
-publication (`scripts/deployer-portainer.sh`) et attend que le conteneur ait redémarré et soit sain —
-quelques secondes d'interruption, comme un « Update the stack ».
+publication (`scripts/deployer-portainer.sh`) et attend que le conteneur soit sain. **Une image
+inchangée ne redémarre rien** : Docker garde le conteneur quand l'image retéléchargée est la même, et
+le test le dit (« Image inchangée : conteneur conservé ») au lieu d'attendre un redémarrage qui
+n'aura pas lieu. Si l'image a changé, il attend que le conteneur ait redémarré — quelques secondes
+d'interruption, comme un « Update the stack ».
 
 Ensuite, à chaque publication : suivre le job « Déploiement sur Portainer » dans GitHub
 (ou dans `scripts/suivi.sh`). **Ne pas** utiliser *Run workflow* pour « rejouer » une version déjà en
@@ -638,7 +659,7 @@ ce numéro et sous `latest`, code non publié compris.
 
 ### « Supprimer la stack et la recréer depuis le modèle »
 
-Ce n'est plus nécessaire pour mettre à jour : le job fait déjà « Update the stack » avec *Re-pull image*.
+Ce n'est pas nécessaire pour mettre à jour : le job fait déjà « Update the stack » avec *Re-pull image*.
 Si on le fait quand même (pour repartir d'un modèle modifié, par exemple), rien à reprendre côté GitHub :
 la stack est retrouvée **par son nom** (`PORTAINER_STACK_NAME`), et son nouveau numéro n'a pas
 d'importance — à condition de lui redonner **le même nom**.
@@ -811,7 +832,7 @@ rien du tout.
    docker exec hema-organizer node reparer.cjs
    ```
 
-2. **Lire le rapport.** Il compte neuf sections, dans cet ordre :
+2. **Lire le rapport.** Il compte dix sections, dans cet ordre :
 
    | Section | Ce qu'elle cherche | Ce que la réparation ferait |
    |---|---|---|
@@ -820,10 +841,11 @@ rien du tout.
    | `notifications` | une même notification journalisée deux fois le même jour | la ligne en trop est supprimée |
    | `liens` | plusieurs liens personnels vivants pour la même personne sur la même période | les plus anciens sont révoqués |
    | `parties` | une case de planning réservée à un atelier qui n'y est plus | la case est détachée et redevient modifiable |
-   | `rangs` | un rang troué, ou un nom de partie qui ne dit plus son rang (« deux Cours 2, aucun Cours 1 ») | le rang et le nom sont remis d'accord. C'est ce rang qui décide de l'ordre du programme partout, et ce nom qui part tel quel dans les emails et sur le site du club |
+   | `rangs` | une partie trouée (« Partie 1 », puis « Partie 3 »), un rang troué, ou un nom d'élément qui ne dit plus sa place (« deux Option 2, aucune Option 1 ») | la partie, le rang et le nom sont remis d'accord. C'est ce rang qui décide de l'ordre du programme partout, et ce nom qui part tel quel dans les emails et sur le site du club |
    | `creneaux` | une clé d'envoi qui ne porte pas l'empreinte du créneau de sa séance | la clé est **renommée**, jamais supprimée : l'effacer ferait repartir l'envoi qu'elle retenait |
-   | `vides` | une partie **vide en trop** : au-delà des deux cours qu'une séance porte toujours | la partie est supprimée et les suivantes sont rangées derrière elle. Les **deux premiers cours sont protégés même vides**, et une partie qui porte quoi que ce soit — un instructeur, un thème, une description, un niveau, un atelier retenu — n'est jamais touchée |
-   | (9) parents disparus | les lignes dont la référence pointe dans le vide | **jamais réparé** : simple relevé. Une base saine n'en a aucune ; s'il en sort, gardez la sauvegarde et demandez de l'aide avant de toucher à quoi que ce soit |
+   | `vides` | un élément du programme **vide en trop** : au-delà du cours qu'une séance neuve porte toujours | l'élément est supprimé et les suivants sont rangés derrière lui. Le **premier cours est protégé même vide**, et un élément qui porte quoi que ce soit — un instructeur, un thème, une description, un niveau, un atelier retenu — n'est jamais touché |
+   | `teintes` | un cours ou une option sans couleur enregistrée (ligne d'avant la migration `teinte_des_elements`), ou une couleur posée sur un échauffement ou un atelier | la couleur que l'écran affiche déjà est enregistrée ; rien ne change à l'écran |
+   | (10) parents disparus | les lignes dont la référence pointe dans le vide | **jamais réparé** : simple relevé. Une base saine n'en a aucune ; s'il en sort, gardez la sauvegarde et demandez de l'aide avant de toucher à quoi que ce soit |
 
    Le rapport nomme au plus un prénom, jamais une adresse, et abrège les listes au-delà de quinze
    lignes. Le bilan final dit combien de lignes sont à corriger — ou que la base est saine.

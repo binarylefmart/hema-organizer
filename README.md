@@ -1,92 +1,121 @@
 # HEMA Organizer
 
-Un club d'AMHE, c'est deux ou trois séances par semaine, une salle à remplir, des instructeurs qui
-préparent leur cours, des stages à annoncer et un trimestre à tenir. **HEMA Organizer rassemble tout
-ça dans une application web que le club héberge lui-même.**
+**L'outil dédié aux clubs d'AMHE (arts martiaux historiques européens)** : qui vient au cours, ce
+qu'on y travaille, qui l'encadre, et ce que le club annonce. Une application web en français, que le club
+héberge lui-même, pensée d'abord pour le téléphone.
 
-Chacun ouvre l'appli et dit s'il vient au prochain cours : ✅ présent, ❌ absent, 🤔 peut-être. Les
-instructeurs voient tout de suite le remplissage de chaque séance, montent le programme — un premier
-cours à la longue épée, un second au messer, un atelier proposé par un membre — et décident des
-propositions. Le bureau tient le trimestre, les comptes et les accès. La veille du cours, le
-récapitulatif part tout seul : email, salon Discord ou Telegram, notification sur le téléphone.
+Un soir de cours, c'est un échauffement, un cours d'épée longue, une option de messer pour qui
+préfère, parfois un atelier proposé par un membre, et une salle qu'il faut remplir. Un trimestre,
+c'est deux ou trois séances par semaine, des instructeurs qui se partagent les cours, un bureau qui
+tient l'annuaire, et des stages, tournois et démonstrations à annoncer. HEMA Organizer rassemble tout
+ça :
 
-Et parce qu'un club ne vit pas que de ses séances, les **stages, tournois et démonstrations** ont leur
-place : une annonce avec son affiche, ses dates, son lieu, ses tarifs et son lien d'inscription, que
-le club publie quand il veut et qui s'affiche aussi sur son site.
+- **chaque membre** dit en un geste s'il vient : ✅ présent, ❌ absent, 🤔 peut-être ;
+- **les instructeurs** montent le programme de chaque séance, partie par partie, et voient tout de
+  suite qui sera là ;
+- **le bureau** tient les trimestres, l'annuaire, les accès et ce que le club envoie ;
+- **la veille du cours**, le récapitulatif part tout seul : email, salon Discord ou Telegram,
+  notification sur le téléphone, et si le club le veut, sur son site WordPress.
 
-Rien à créer pour entrer : chacun reçoit **son lien personnel** par email et il le connecte
+Rien à créer pour entrer : chacun reçoit **son lien personnel** par email, qui le connecte
 directement. Un mot de passe et une double authentification sont là pour qui les veut, obligatoires
-pour le bureau seulement. L'interface est en français, sobre, et faite pour qu'on réponde depuis le
-quai du tram en deux gestes — c'est aussi ce qu'on attend d'un outil qu'on utilise cinquante fois par
-trimestre.
-
-Le nom du club, son sigle, ses logos, ses couleurs, ses salles, ses jours de cours et ses douze thèmes
-graphiques sont des **réglages** : une autre association installe la même image et la met à ses
-couleurs sans toucher au code.
+pour le bureau seulement.
 
 <sub>Next.js 15 · TypeScript · SQLite (Prisma) · Tailwind · une seule image Docker · AGPL-3.0</sub>
 
-### Ce que ça fait
+## Ce que l'outil fait pour un club d'AMHE
 
 | Pour un membre | Pour un instructeur | Pour le bureau |
 |---|---|---|
-| Répondre aux prochains cours, voir son historique et son taux de présence | Le planning du trimestre, **partie par partie** : qui mène, qui assiste, le thème, le niveau | Les trimestres, les séances engendrées en récurrence, l'annuaire et les liens d'accès |
-| Proposer un atelier et suivre la réponse | Valider, refuser ou **programmer** un atelier dans une séance | Corriger les réponses d'un cours, **par lots**, même après coup |
-| Lire les annonces de stages et de tournois, et s'inscrire par le lien de l'organisateur | **Annoncer un événement** : affiche, dates, lieu, tarifs, lien d'inscription — en brouillon puis publié | Ce que le club envoie et publie : email, Discord, Telegram, téléphone, site web |
-| Installer l'application sur son téléphone et recevoir les rappels | Annuler un cours : l'annonce part aussitôt, avec le motif | Double authentification **obligatoire**, sessions révocables, journal d'audit |
-| Un lien personnel, ou un mot de passe et une double authentification s'il le souhaite | Le tableau de bord : taux par séance, par membre, export CSV | La part d'effectif sous laquelle un cours est « en danger », et l'alerte qui va avec |
+| Répondre aux prochains cours en un geste, voir qui vient, revoir son historique et son taux de présence | Le **planning du trimestre**, séance par séance : échauffements, cours, options et ateliers, rangés en parties, dans l'ordre de la soirée | Les **périodes** (trimestre, bimestre ou dates libres) et leurs séances engendrées d'un coup, jour par jour |
+| Lire le programme : la discipline, l'instructeur, le niveau, en couleurs | Pour chaque cours : qui mène, qui assiste, la discipline, le niveau, quelques mots de description | L'**annuaire**, les rôles (membre, instructeur), les liens personnels, les corrections de présence après coup |
+| **Proposer un atelier** : un jeu, un exercice, la lecture d'un traité, avec son animateur | **Programmer ou refuser** les ateliers proposés, avec un mot pour le membre | Les **listes de disciplines et d'échauffements**, les salles du club, son nom, son logo et ses couleurs |
+| Lire les annonces de **stages, tournois et démonstrations**, et s'inscrire chez l'organisateur | **Annoncer un événement** : affiche, dates, lieu, tarifs, lien d'inscription | Ce que le club **envoie et publie** : email, Discord, Telegram, téléphone, site du club |
+| Installer l'application sur son téléphone et choisir ses rappels | Annuler un cours (l'annonce part avec le motif), être prévenu d'un effectif trop faible ou d'un désistement de dernière minute | Double authentification **obligatoire**, appareils déconnectables, journal de tout ce qui est fait |
 
-### Les stages, tournois et démonstrations
+Tout se règle dans l'application : le nom du club, son sigle, ses logos, ses couleurs, ses salles,
+ses disciplines, ses jours de cours, son fuseau horaire et une vingtaine de thèmes de couleurs. Un
+autre club installe la même image et la met à ses couleurs sans toucher au code.
 
-Une annonce se crée en brouillon, se relit, puis se publie — et c'est **la publication** qui déclenche
-l'annonce, une seule fois : email aux membres des trimestres en cours, message sur le salon, et
-notification sur le téléphone de qui l'a activée. Une correction après coup **met à jour** le message
-déjà posté au lieu d'en poster un second ; dépublier le barre.
+## Au téléphone
 
-<p align="center"><img src="docs/captures/evenement.jpg" width="78%" alt="L'annonce d'un stage : dates, horaires, salle et son adresse, organisateur, durée, tarifs, description et bouton d'inscription"><br>
-<i>Une annonce telle qu'un membre la lit, avec son bouton d'inscription et son lien à partager.</i></p>
+L'application prend une forme dédiée dès qu'on la touche du doigt ou que l'écran est étroit. Les
+gestes sont les mêmes partout :
 
-Elle porte ce dont un club a besoin pour décider s'il y va : les dates (avec l'heure, et la durée si
-l'événement tient sur plusieurs jours), le lieu et son adresse, l'organisateur, le tarif en texte
-libre — « 25 € », « 15 € / 10 € adhérents », « prix libre » —, le lien d'inscription, la publication
-d'origine et une affiche. Chaque annonce a sa **page de partage**, lisible sans compte, à coller dans
-un groupe de messagerie ; et le club peut la republier sur son propre site, par l'API et le plugin
-WordPress livrés ici.
+- **répondre en un tap**, sur une carte de séance resserrée qui dit qui vient, qui hésite et qui
+  manque ;
+- **régler le planning aux gestes** : toucher une ligne pour la déplier, choisir le niveau parmi
+  quatre boutons, **✓ Valider** pour la replier ; glisser vers la gauche pour retirer, tenir la poignée
+  pour changer de place ou de partie. La première fois, une courte démonstration montre les deux
+  gestes ;
+- **une barre Annuler · Appliquer** : rien n'est écrit tant qu'on n'a pas appliqué ;
+- **une couleur par discipline** : l'épée longue garde la même couleur dans tout le trimestre, et deux
+  disciplines d'une même séance n'ont jamais la même ;
+- **la sélection multiple** : cocher plusieurs séances, puis un volet propose ce qu'on peut faire sur
+  toutes à la fois (régler les cours, annuler, changer de salle ou d'horaire) ;
+- **proposer un atelier** en quatre questions, une par écran ;
+- **décider d'un atelier** avec deux boutons, **Programmer** ou **Refuser** ;
+- **l'espace admin en menu**, les présences en trois boutons ✓ ? ✕, les annonces rangées en « À
+  publier » et « Publiés ».
 
-## Aperçu
+Sur un ordinateur, les mêmes écrans s'élargissent : le planning montre les réglages de chaque cours
+côte à côte, avec des flèches ↑ ↓ pour changer l'ordre de la soirée.
 
-Captures de la démonstration livrée (`npm run db:seed:demo`) — un club fictif, des données
+## Aperçu : téléphone et ordinateur
+
+Captures de la démonstration livrée (`npm run db:seed:demo`) : un club fictif, des données
 fabriquées.
 
 <table>
+  <tr><th width="34%">Téléphone</th><th>Ordinateur</th></tr>
+  <tr><td colspan="2"><b>Répondre à un cours</b> — un tap, et la carte dit qui vient, qui hésite, qui manque.</td></tr>
   <tr>
-    <td width="50%"><img src="docs/captures/accueil.jpg" alt="L'accueil : les prochains cours, trois boutons de réponse par carte"></td>
-    <td width="50%"><img src="docs/captures/planning.jpg" alt="Le planning du trimestre, une séance par ligne, réglée partie par partie"></td>
+    <td><img src="docs/captures/reponse-tel.jpg" alt="Une carte de séance sur téléphone : trois boutons de réponse et le nombre de présents"></td>
+    <td><img src="docs/captures/reponse-pc.jpg" alt="La liste des séances sur ordinateur, avec les trois boutons de réponse"></td>
   </tr>
+  <tr><td colspan="2"><b>Le planning d'une séance</b> — échauffement, cours, options et atelier, rangés en parties ; chaque discipline a sa couleur. Au téléphone, une ligne se règle du bout du doigt.</td></tr>
   <tr>
-    <td><b>L'accueil</b> — les prochains cours, le plus proche en haut, et la réponse en un tap.</td>
-    <td><b>Le planning</b> — en lecture seule par défaut ; « Modifier le planning » ouvre la saisie.</td>
+    <td><img src="docs/captures/planning-tel.jpg" alt="Le planning en modification sur téléphone : une ligne de cours dépliée, le niveau en quatre boutons et Valider"></td>
+    <td><img src="docs/captures/planning-pc.jpg" alt="Le planning sur ordinateur : une séance en deux parties, échauffement, atelier, cours et options, chaque discipline à sa couleur"></td>
   </tr>
+  <tr><td colspan="2"><b>Proposer un atelier</b> — une question par écran sur le téléphone, un formulaire sur l'ordinateur.</td></tr>
   <tr>
-    <td><img src="docs/captures/tableau-de-bord.jpg" alt="Tableau de bord : taux de présence par séance et par membre"></td>
-    <td><img src="docs/captures/presences.jpg" alt="Écran de correction des présences d'une séance, avec sélection par lots"></td>
+    <td><img src="docs/captures/atelier-tel.jpg" alt="L'assistant Proposer un atelier sur téléphone : qui anime ?"></td>
+    <td><img src="docs/captures/atelier-pc.jpg" alt="Le formulaire Proposer un atelier sur ordinateur, et les propositions du membre"></td>
   </tr>
+  <tr><td colspan="2"><b>Les stages et tournois</b> — l'annonce telle qu'un membre la lit, avec son inscription et son lien à partager.</td></tr>
   <tr>
-    <td><b>Le tableau de bord</b> — taux par séance, par membre, export CSV.</td>
-    <td><b>Les présences</b> — corriger le registre d'un cours, une ligne ou tout un lot.</td>
+    <td><img src="docs/captures/evenement-tel.jpg" alt="L'annonce d'un stage sur téléphone"></td>
+    <td><img src="docs/captures/evenement-pc.jpg" alt="L'annonce d'un stage sur ordinateur : dates, lieu, tarifs, inscription"></td>
   </tr>
+  <tr><td colspan="2"><b>L'espace instructeur</b> — programmer ou refuser l'atelier d'un membre, avec un mot pour lui.</td></tr>
   <tr>
-    <td><img src="docs/captures/telephone.jpg" alt="La liste des séances sur un téléphone"></td>
-    <td><img src="docs/captures/mode-sombre.jpg" alt="La même liste de séances en mode sombre"></td>
+    <td><img src="docs/captures/instructeur-tel.jpg" alt="Sur téléphone, le volet Programmer d'une proposition d'atelier"></td>
+    <td><img src="docs/captures/instructeur-pc.jpg" alt="Sur ordinateur, la file des propositions d'atelier"></td>
   </tr>
+  <tr><td colspan="2"><b>Le bureau</b> — l'espace admin, en menu sur le téléphone, en onglets sur l'ordinateur.</td></tr>
   <tr>
-    <td><b>Sur un téléphone</b> — installable depuis le navigateur, notifications comprises.</td>
-    <td><b>Mode sombre</b> — suit le réglage du système, et douze thèmes au choix du club.</td>
+    <td><img src="docs/captures/admin-tel.jpg" alt="L'espace admin sur téléphone : le menu en liste"></td>
+    <td><img src="docs/captures/admin-pc.jpg" alt="L'espace admin sur ordinateur : les onglets et l'écran des périodes"></td>
   </tr>
 </table>
 
 <p align="center"><img src="docs/captures/email-rappel.jpg" width="70%" alt="L'email de rappel de la veille du cours"><br>
 <i>Le rappel de la veille, envoyé à ceux qui ont répondu « présent » ou « peut-être ».</i></p>
+
+## Les stages, tournois et démonstrations
+
+Une annonce se crée en brouillon, se relit, puis se publie. C'est **la publication** qui déclenche
+l'annonce, une seule fois : email aux membres des trimestres en cours, message sur le salon, et
+notification sur le téléphone de qui l'a activée. Une correction après coup **met à jour** le message
+déjà posté au lieu d'en poster un second ; dépublier le barre.
+
+Elle porte ce dont un club a besoin pour décider s'il y va : les dates (avec l'heure, et la durée si
+l'événement tient sur plusieurs jours), le lieu et son adresse, l'organisateur, le tarif en texte
+libre (« 25 € », « 15 € / 10 € adhérents », « prix libre »), le lien d'inscription, la publication
+d'origine et une affiche. Chaque annonce a sa **page de partage**, lisible sans compte, à coller dans
+un groupe de messagerie ; et le club peut la republier sur son propre site, par l'API et le plugin
+WordPress livrés ici.
 
 ## Essayer en deux minutes
 
@@ -302,12 +331,17 @@ Dans **Espace admin** :
 2. **Notifications → Email** — bouton **« M'envoyer un email de test »**. **Ne sautez pas cette
    étape** : une configuration SMTP fausse ne se voit nulle part ailleurs, et c'est elle qui enverra
    les liens de connexion. Le verdict exact du serveur s'affiche juste en dessous.
-3. **Thèmes et lieux** — vos salles avec leur adresse, et les thèmes que les instructeurs
-   choisiront dans le planning.
+3. **Thèmes et lieux** — vos salles avec leur adresse, vos disciplines et vos échauffements : ce
+   sont les thèmes que les instructeurs choisiront dans le planning.
 4. **Périodes** — créez le premier trimestre, ses jours et ses horaires : les séances sont engendrées
    d'un coup.
-5. **Membres** — importez l'annuaire (CSV) ou saisissez-le. **Vous n'avez rien à envoyer** : chaque
-   membre reçoit son lien personnel tout seul, trois jours avant le premier cours.
+5. **Membres** — importez l'annuaire (CSV) ou saisissez-le. **Aucun email ne part à l'ajout** :
+   quand vous êtes prêt, bouton **Pour tout le monde** → **Envoyer l'invitation**. Aux trimestres
+   suivants, les liens repartent tout seuls, trois jours avant le premier cours.
+
+Le détail de chaque écran, et tout ce qu'un club d'AMHE peut régler ensuite, est dans
+**[Mettre en place les fonctions d'un club d'AMHE](#mettre-en-place-les-fonctions-dun-club-damhe)**,
+plus bas.
 
 ### Vérifiez que tout est en place
 
@@ -353,6 +387,151 @@ propre registre.
    `ghcr.io`, le mot de passe est un [jeton d'accès personnel](https://github.com/settings/tokens)
    avec la seule portée `read:packages`. Une image publique ne demande rien.
 
+
+## Mettre en place les fonctions d'un club d'AMHE
+
+L'application est installée et vous êtes entré dans l'espace admin (étape 6). Voici, écran par écran,
+ce qu'un club d'AMHE règle avant d'ouvrir l'outil à ses membres. Comptez une heure la première fois.
+
+Tout se passe dans **Espace admin**, qu'on ouvre depuis **Mon profil** → **Se connecter en tant
+qu'administrateur**. Sur un ordinateur, ses écrans sont des onglets ; sur un téléphone, c'est un
+menu en trois groupes : *Le club au quotidien* (Périodes, Membres, Présences, Thèmes et lieux),
+*Réglages* (Club, Notifications, Comptes admin) et *Sécurité* (Sessions, Journal d'audit, À propos).
+
+### 1. L'identité du club — *Club*
+
+| Carte | Ce que vous réglez |
+|---|---|
+| **Nom et sigle** | Le nom entier (« Les Compagnons d'Armes ») et le sigle, qui donne son nom à l'outil : « HEMA Organizer » devient « *VOTRE SIGLE* Organizer » |
+| **Apparence** | Le thème de couleurs du club, et une couleur de marque si vous en avez une |
+| **Logo complet**, **Icône carrée** | Le blason du club : il s'affiche en tête de l'application, dans les emails et sur l'icône du téléphone |
+| **Effectif** | La part des inscrits sous laquelle un cours est « en danger » (20 % par défaut) : c'est le seuil de l'alerte « peu de monde » envoyée aux instructeurs |
+| **Fuseau horaire** | Celui du club. Les rappels et les sauvegardes suivent cette heure |
+
+### 2. Les salles — *Thèmes et lieux*, carte « Lieux des cours »
+
+Une salle par ligne, au format `Nom | Adresse`, puis **Enregistrer les lieux**. Les créneaux et les
+séances les proposeront. L'adresse fait un lien vers le plan sur le téléphone des membres, et elle est
+publiée avec les cours si vous ouvrez l'API (§ 9).
+
+### 3. Les disciplines et les échauffements — *Thèmes et lieux*
+
+Deux listes, un thème par ligne :
+
+- **Thèmes de cours et options** : vos disciplines et vos sujets de cours. L'outil arrive avec une
+  liste d'AMHE (épée longue, messer, dague, lutte, rapière, sidesword, montante, hache de pas,
+  sparring…) : gardez ce que vous enseignez, ajoutez le reste. Il en faut au moins un.
+- **Thèmes d'échauffement** : cardio, jeu de jambes, coupes à vide, jeux d'opposition… Laissée vide,
+  la liste disparaît et l'échauffement se décrit librement.
+
+**Ce que ces listes déclenchent** : chaque discipline prend **sa couleur sur le planning**, la même
+dans tout le trimestre. Huit couleurs, attribuées dans l'ordre de la liste : mettez en tête les
+disciplines que le club enseigne le plus. Un cours déjà posé garde sa couleur si vous réordonnez.
+Un instructeur peut toujours écrire un thème hors liste (« Autre… ») : il reçoit lui aussi une
+couleur stable.
+
+### 4. La saison — *Périodes*
+
+1. **Nouvelle période**, puis un des trois onglets :
+   - **Trimestre** : choisissez la saison (2026 pour 2026-2027) puis le trimestre ;
+   - **Bimestre** : six cycles de deux mois, calés sur septembre (*pair*) ou sur octobre (*impair*) ;
+   - **Période personnalisée** : des dates libres, pour un stage d'été ou une saison découpée
+     autrement.
+2. Sur la période : **Instructeurs habituels** (ceux qu'on met par défaut sur les séances), puis
+   **Créneaux hebdomadaires** — un jour, un horaire, une salle — avec **Ajouter le créneau**.
+3. Carte **Séances**, encart *Reste à créer* : décochez les vacances, les jours fériés et les soirs où
+   le gymnase est pris, puis **Créer N séances**. Tout le trimestre est engendré d'un coup.
+4. **Membres invités** : inscrivez le club sur la période.
+5. **Activer la période** : l'encadrement peut alors remplir le planning. Activer n'envoie aucun
+   email.
+
+### 5. Le modèle d'une séance — *Planning*, par les instructeurs
+
+Une séance neuve arrive avec **une partie et un cours**. L'encadrement la complète dans
+**Planning** → **Modifier le planning** :
+
+- **les parties** : *Partie 1* avant la pause, *Partie 2* après (« Ajouter une partie »). Le titre de
+  partie ne s'affiche qu'à partir de deux ;
+- **dans chaque partie**, par le menu « Ajouter dans la partie N… » : un **Échauffement**, un ou
+  plusieurs **Cours**, des **Options** (un autre cours au même moment, au choix des membres), et les
+  **ateliers** en attente ;
+- **l'ordre est libre** : chaque ligne se déplace (flèches ↑ ↓ sur ordinateur, poignée sur téléphone),
+  y compris d'une partie à l'autre ;
+- **chaque ligne** porte un instructeur qui mène, un second qui assiste, un thème, un **niveau**
+  (tous niveaux, débutant, intermédiaire, avancé) et une description facultative ;
+- **plusieurs séances d'un coup** : « Sélection multiple », puis régler les mêmes cours sur tous les
+  mardis du trimestre, par exemple.
+
+Rien n'est écrit avant **Appliquer**. Le nom d'une ligne (« Cours », « Option 2 », « Partie 2 ·
+Échauffement ») se calcule tout seul. Les noms des instructeurs ne sortent jamais du club.
+
+### 6. Les ateliers proposés par les membres — rien à régler
+
+Chaque membre a l'onglet **Atelier** : un titre, quelques mots, qui anime (lui-même ou un autre
+membre, avec un second animateur s'il le faut), le matériel à sortir, la séance souhaitée. Les
+instructeurs les retrouvent dans l'**Espace instructeur** (l'écu de la barre du haut) → **Ateliers**,
+et les **programment** dans une séance ou les **refusent** avec un mot. Le membre est prévenu dans les
+deux cas. Seul le bureau peut effacer une proposition sans répondre (un doublon).
+
+### 7. Les événements : stages, tournois, démonstrations — rien à régler
+
+Les instructeurs les publient depuis **Espace instructeur** → **Événements** → **Nouvel événement**.
+Pour qu'une publication parte aussi sur le salon du club, branchez Discord ou Telegram (§ 8).
+
+### 8. Les notifications — *Notifications*
+
+L'écran principal porte la **matrice** : une ligne par message, une colonne par canal. En tête,
+l'heure du **Récap de la veille** (18:00 par défaut). Chaque canal a sa page :
+
+| Canal | Où | Ce qu'il faut |
+|---|---|---|
+| **Email** | Notifications → Email | Rien de plus que les variables `SMTP_*`. Bouton **M'envoyer un email de test**. Option : une **liste de distribution** pour les messages collectifs, si le serveur d'envoi a un quota |
+| **Discord** | Notifications → Discord | L'URL d'un webhook du salon (paramètres du salon → Intégrations → Webhooks). Un salon différent par message, si vous voulez |
+| **Telegram** | Notifications → Telegram | Un bot créé avec @BotFather, ajouté au groupe du club ; l'écran trouve lui-même l'identifiant du salon |
+| **Téléphone** | Notifications → Téléphone | Rien côté serveur. Chaque membre active **Notifications sur cet appareil** dans Mon profil (sur iPhone, après avoir posé l'icône sur l'écran d'accueil) |
+| **Site du club** | Notifications → Site du club | Voir § 9 : rien ne part, c'est le site qui vient lire |
+
+Les messages : récap de la veille, rappel à qui n'a pas répondu (une semaine puis deux jours avant),
+séance annulée, alerte « peu de monde » aux instructeurs, désistement de dernière minute, réponse à
+un atelier, nouvel événement, et deux alertes au bureau (période à créer, période à activer). Chacun
+règle ensuite les siens dans **Mon profil**.
+
+### 9. Les prochains cours sur le site du club — l'API publique et le plugin WordPress
+
+1. **Notifications**, carte **Publication des cours sur le site du club** : cochez **Publier les
+   prochains cours**, puis **Enregistrer**. Tant que la case n'est pas cochée, rien ne sort.
+2. **À propos** donne l'adresse de l'API, qui finit par `/api/public/prochaines-seances`.
+3. Sur le site WordPress, installez l'extension
+   **[wordpress-plugin/hema-prochains-cours](wordpress-plugin/hema-prochains-cours/)** (un `.zip` du
+   dossier), puis **Réglages → Prochains cours HEMA** : collez l'adresse de l'API et celle de
+   l'application.
+4. Dans une page : `[hema_prochains_cours limite="3" titre="Prochains entraînements"]` (avec
+   Elementor : le widget *Shortcode*).
+
+Ce qui sort : date, horaire, salle et adresse, thème, programme partie par partie avec son niveau et
+sa description, annulation et motif, taux de participation. **Aucun nom**, ni membre ni instructeur.
+Dans la colonne **Site du club** de la matrice, vous pouvez aussi republier le récap de la veille,
+les annulations et les nouveaux événements (`/api/public/annonces`).
+
+### 10. Les rôles et les liens personnels — *Membres* et *Comptes admin*
+
+| Rôle | Ce qu'il fait | Où il se donne |
+|---|---|---|
+| **Membre** | Répond aux cours, lit le planning, propose des ateliers, lit les événements | Par défaut, à l'ajout dans **Membres** |
+| **Instructeur** | En plus : le planning, les séances, les ateliers, les événements, le tableau de bord | **Membres** : à l'ajout, sur sa fiche, ou pour plusieurs à la fois par **Changer le rôle…** |
+| **Bureau** (administrateur) | En plus : l'espace admin | **Comptes admin** → **Donner les droits admin**, et nulle part ailleurs. Il garde son rôle de membre ou d'instructeur |
+
+1. **Membres** : ajoutez les gens un par un, ou importez un fichier CSV (`prénom;nom;email;rôle`).
+   Une personne sans adresse (un enfant, par exemple) peut être inscrite : elle compte dans les
+   effectifs.
+2. **Pour tout le monde** → **Envoyer l'invitation** : chacun reçoit son **lien personnel**, valable
+   quatre mois, qui le connecte sans mot de passe. Aux trimestres suivants, les liens repartent tout
+   seuls trois jours avant le premier cours.
+3. Donnez au club les **[trois guides](docs/guides/)** : membre, instructeur, bureau.
+
+Un nouvel administrateur doit se donner un mot de passe et une double authentification avant d'ouvrir
+l'espace admin : l'application le guide.
+
 ## Les trois guides d'utilisation
 
 Livrés avec l'application, **prêts à imprimer ou à envoyer au club** — un guide par rôle, en PDF et
@@ -362,9 +541,9 @@ monde fait, et les deux autres ne le répètent pas.
 
 | | Pour qui | Ce qu'il couvre | |
 |---|---|---|---|
-| 📘 **Guide du membre**<br>12 pages | les adhérents | Entrer dans l'application, dire si on vient, lire le planning, proposer un atelier, les événements, son profil et ses messages | **[PDF](docs/guides/HEMA-Organizer-guide-membre.pdf)** · [HTML](docs/guides/guide-membre.html) |
-| 📗 **Guide de l'instructeur**<br>11 pages | l'encadrement | Remplir le planning partie par partie, tenir les séances, décider des ateliers, publier les annonces, le tableau de bord | **[PDF](docs/guides/HEMA-Organizer-guide-instructeur.pdf)** · [HTML](docs/guides/guide-instructeur.html) |
-| 📕 **Guide de l'administrateur**<br>20 pages | le bureau | Ouvrir l'espace admin, la saison, corriger les présences, l'annuaire et les rôles, les liens et les comptes, Discord et Telegram, l'API publique, les thèmes et les lieux | **[PDF](docs/guides/HEMA-Organizer-guide-administrateur.pdf)** · [HTML](docs/guides/guide-admin.html) |
+| 📘 **Guide du membre**<br>12 pages | les adhérents | Entrer dans l'application, dire si on vient, lire le programme et ses couleurs, proposer un atelier (l'assistant du téléphone), les événements, son profil et ses messages | **[PDF](docs/guides/HEMA-Organizer-guide-membre.pdf)** · [HTML](docs/guides/guide-membre.html) |
+| 📗 **Guide de l'instructeur**<br>12 pages | l'encadrement | Remplir le planning au téléphone (les gestes) et à l'ordinateur, plusieurs séances d'un coup, tenir les séances, programmer ou refuser les ateliers, publier les annonces, le tableau de bord | **[PDF](docs/guides/HEMA-Organizer-guide-instructeur.pdf)** · [HTML](docs/guides/guide-instructeur.html) |
+| 📕 **Guide de l'administrateur**<br>20 pages | le bureau | Ouvrir l'espace admin (le menu du téléphone), la saison, corriger les présences, l'annuaire et les rôles, les liens et les comptes, Discord et Telegram, l'API publique, les thèmes et les lieux | **[PDF](docs/guides/HEMA-Organizer-guide-administrateur.pdf)** · [HTML](docs/guides/guide-admin.html) |
 
 Ils se refont d'une commande après une modification de l'interface (`npm run guides:pdf`), captures
 comprises : [docs/guides/](docs/guides/).

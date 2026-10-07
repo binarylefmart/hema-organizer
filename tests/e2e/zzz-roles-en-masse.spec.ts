@@ -206,11 +206,12 @@ test("changer le rôle par lots : un compte du bureau garde sa case, et son bure
 });
 
 /**
- * **La fiche au téléphone : le rôle de base en deux boutons.** Même action que la liste déroulante de
- * l'annuaire (`definirRoleMembre`), donc même journal et mêmes refus ; un appui sur l'autre rôle
- * l'applique, et la pastille de la tête de fiche suit. On remet le rôle du seed en sortant.
+ * **La fiche au téléphone : le rôle de base en curseur à deux positions**, posé sur le rôle actuel.
+ * Même action que celle de l'annuaire (`definirRoleMembre`), donc même journal et mêmes refus ;
+ * toucher l'autre côté l'applique, et la pastille de la tête de fiche suit. On remet le rôle du seed
+ * en sortant.
  */
-test("la fiche règle le rôle de base en deux boutons", async ({ page }) => {
+test("la fiche règle le rôle de base au curseur", async ({ page }) => {
   test.setTimeout(120_000);
   await connecter(page, COMPTES.admin, "/admin/membres?q=Foxtrot");
   // Toute la ligne mène à la fiche : on la touche au bout, pas sur le nom.
@@ -219,16 +220,17 @@ test("la fiche règle le rôle de base en deux boutons", async ({ page }) => {
   await ligne.click({ position: { x: boite.width - 24, y: boite.height / 2 } });
   await expect(page.getByRole("heading", { level: 1, name: /Foxtrot 08/ })).toBeVisible({ timeout: 30_000 });
 
-  const roles = page.getByRole("group", { name: "Rôle" });
-  await expect(roles.getByRole("button", { name: "Membre" })).toHaveAttribute("aria-pressed", "true");
-  await roles.getByRole("button", { name: "Instructeur" }).click();
-  await expect(roles.getByRole("button", { name: "Instructeur" })).toHaveAttribute("aria-pressed", "true");
+  const curseur = page.getByRole("radiogroup", { name: "Rôle de Foxtrot 08" });
+  const position = (role: string) => curseur.getByRole("radio", { name: role, exact: true });
+  const choisirRole = (role: string) => position(role).click();
+  await expect(position("Membre"), "le curseur part du rôle actuel").toBeChecked();
+  await choisirRole("Instructeur");
   // La tête de fiche est relue : sa pastille dit le nouveau rôle.
   await expect(page.getByRole("heading", { level: 1 }).getByText("Instructeur", { exact: true })).toBeVisible({ timeout: 30_000 });
   await page.reload();
-  await expect(roles.getByRole("button", { name: "Instructeur" }), "le rôle est bien écrit en base").toHaveAttribute("aria-pressed", "true");
+  await expect(position("Instructeur"), "le rôle est bien écrit en base").toBeChecked();
 
   // Remise en état.
-  await roles.getByRole("button", { name: "Membre" }).click();
+  await choisirRole("Membre");
   await expect(page.getByRole("heading", { level: 1 }).getByText("Membre", { exact: true })).toBeVisible({ timeout: 30_000 });
 });

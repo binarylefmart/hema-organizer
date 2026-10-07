@@ -2,6 +2,18 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.75.0
+
+### Nouveautés
+
+- **admin** : au téléphone, la fiche d'un membre règle le rôle par un curseur Membre | Instructeur
+- **admin** : la fiche d'un membre choisit le rôle dans une liste, et Membres ne nomme plus d'administrateur
+
+### Autres changements
+
+- page d'accueil, guides et déploiement orientés clubs d'AMHE, captures téléphone et bureau
+- un commentaire publié ne cite plus personne
+
 ## 0.74.0
 
 ### Nouveautés
