@@ -2,6 +2,17 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.76.0
+
+### Corrections
+
+- **telephone** : liens activés dans la liste des périodes, et la raison des canaux absents dans la matrice
+- **admin** : fiche d'un membre — ni rubrique des droits admin, « ‹ Membres » pour revenir, saison d'arrivée visible au téléphone
+
+### Autres changements
+
+- **etat** : v0.76.0
+
 ## 0.75.0
 
 ### Nouveautés

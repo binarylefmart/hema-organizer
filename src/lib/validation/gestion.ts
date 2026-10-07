@@ -282,7 +282,7 @@ export const seancesEnMasseSchema = z.discriminatedUnion("geste", [
  * approximative. Seules les saisons proposées par la liste sont acceptées : jamais une saison à
  * venir, jamais une faute de frappe de trois siècles.
  */
-const saisonArrivee = z.preprocess(
+export const saisonArrivee = z.preprocess(
   (v) => (typeof v === "string" ? v.trim() : v == null ? "" : v),
   z.union([
     z.literal("").transform(() => null),

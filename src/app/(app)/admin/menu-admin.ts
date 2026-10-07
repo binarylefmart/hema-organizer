@@ -91,3 +91,14 @@ export function groupesVisibles(visiteur: VisiteurAdmin): GroupeAdmin[] {
 export function rubriquesVisibles(visiteur: VisiteurAdmin): RubriqueAdmin[] {
   return groupesVisibles(visiteur).flatMap((g) => g.rubriques);
 }
+
+/**
+ * **Où ramène le « ‹ » du téléphone** : au menu depuis une rubrique, **à la rubrique** depuis une de ses
+ * pages (la fiche d'un membre ramène à « Membres », une période à « Périodes », un canal à
+ * « Notifications ») — on revient d'où l'on vient, pas deux crans plus haut. `null` sur le menu lui-même.
+ */
+export function retourAdmin(chemin: string): { href: string; label: string } | null {
+  if (chemin === "/admin") return null;
+  const rubrique = GROUPES_ADMIN.flatMap((g) => g.rubriques).find((r) => chemin.startsWith(`${r.href}/`));
+  return rubrique ? { href: rubrique.href, label: rubrique.label } : { href: "/admin", label: "Admin" };
+}

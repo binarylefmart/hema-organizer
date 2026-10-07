@@ -210,6 +210,14 @@ export function MatriceNotifications({ prefs, etats, volume }: { prefs: Preferen
                 >
                   <span className="titre-notification block font-semibold">{DESCRIPTIONS[type].titre}</span>
                   <span className="block text-sm text-texte-secondaire">{DESCRIPTIONS[type].quand}</span>
+                  {/* **Au téléphone, les canaux absents disent pourquoi** : les cellules vides du tableau
+                      (et leur infobulle) n'y sont pas rendues. Une phrase par raison, canaux regroupés ; sur ordinateur, elle
+                      reste lue à l'oreille (`lg:sr-only`), l'infobulle ne l'étant pas. */}
+                  {absencesParRaison(type).map(({ raison, canaux }) => (
+                    <span key={raison} className="mt-1 block text-sm text-texte-secondaire lg:sr-only">
+                      Pas de {canaux.join(", ")} : {raison}
+                    </span>
+                  ))}
                 </th>
                 {CANAUX.map((canal) => {
                   const concerne = CANAUX_PAR_NOTIFICATION[type].includes(canal);
@@ -357,4 +365,15 @@ export function MatriceNotifications({ prefs, etats, volume }: { prefs: Preferen
       </table>
     </>
   );
+}
+
+/** Les canaux sans case pour une notification, regroupés par la raison qu'en donne `raisonSansObjet`. */
+function absencesParRaison(type: TypeNotification): { raison: string; canaux: string[] }[] {
+  const groupes = new Map<string, string[]>();
+  for (const canal of CANAUX) {
+    if (CANAUX_PAR_NOTIFICATION[type].includes(canal)) continue;
+    const raison = raisonSansObjet(type, canal);
+    groupes.set(raison, [...(groupes.get(raison) ?? []), LIBELLES_CANAUX[canal]]);
+  }
+  return [...groupes].map(([raison, canaux]) => ({ raison, canaux }));
 }

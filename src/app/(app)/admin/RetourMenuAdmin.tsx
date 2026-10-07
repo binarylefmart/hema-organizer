@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icone } from "@/components/ui/Icone";
+import { retourAdmin } from "./menu-admin";
 
 /**
  * **« ‹ Admin » : le retour au menu de l'espace admin, sur le téléphone seulement.**
@@ -15,19 +16,22 @@ import { Icone } from "@/components/ui/Icone";
  * le monte n'est pas re-rendu d'une page sœur à l'autre — seul `usePathname()` suit la navigation
  * (c'est le défaut raconté dans `LargeurEspaceAdmin`). Il ne reçoit rien de la session : le layout ne
  * le monte que pendant l'élévation.
+ *
+ * Depuis une page **sous** une rubrique (fiche d'un membre, d'une période, canal de notification), il
+ * ramène à la rubrique et prend son nom (« ‹ Membres ») : `retourAdmin`.
  */
 export function RetourMenuAdmin() {
-  const chemin = usePathname();
-  if (chemin === "/admin") return null;
+  const retour = retourAdmin(usePathname());
+  if (!retour) return null;
   return (
     <Link
-      href="/admin"
+      href={retour.href}
       className="-ml-1 inline-flex min-h-12 items-center gap-1 self-start pr-3 font-semibold no-underline ordi:hidden"
     >
       <Icone nom="chevronBas" taille={20} className="rotate-90" />
       {/* Le nom entendu dit où mène le lien ; l'œil, lui, a le chevron. */}
-      <span className="sr-only">Retour au menu </span>
-      Admin
+      <span className="sr-only">{retour.href === "/admin" ? "Retour au menu " : "Retour à "}</span>
+      {retour.label}
     </Link>
   );
 }

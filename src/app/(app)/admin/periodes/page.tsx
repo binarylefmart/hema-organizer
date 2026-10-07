@@ -60,8 +60,8 @@ export default async function PagePeriodes({ searchParams }: Props) {
       </div>
       {/*
        * **Sur téléphone, une ligne par période** : son nom, ses dates et ses séances,
-       * l'état en pastille à droite ; toucher la ligne ouvre la période, où tout se gère (séances,
-       * activer, clore). Le reste des colonnes — invités, liens activés — vit sur cette page-là.
+       * l'état en pastille à droite, et les liens activés (« 8 / 12 ») hors brouillon ; toucher la ligne
+       * ouvre la période, où tout se gère (séances, activer, clore) et où se lisent les invités.
        * La bascule est en CSS : le serveur rend les deux, la fenêtre choisit, et il n'y a aucun
        * champ de formulaire à ne pas doubler. Sur ordinateur, rien ne change.
        */}
@@ -76,7 +76,7 @@ export default async function PagePeriodes({ searchParams }: Props) {
                   key={p.id}
                   href={`/admin/periodes/${p.id}`}
                   titre={p.nom}
-                  detail={`${jourMois(p.dateDebut)} → ${jourMois(p.dateFin)}\u00a0· ${p._count.sessions}\u00a0${p._count.sessions > 1 ? "séances" : "séance"}`}
+                  detail={`${jourMois(p.dateDebut)} → ${jourMois(p.dateFin)}\u00a0· ${p._count.sessions}\u00a0${p._count.sessions > 1 ? "séances" : "séance"}${p.statut === "BROUILLON" ? "" : `\u00a0· ${p.invitations.filter((i) => i.usedAt).length}\u00a0/ ${p.invitations.length} liens activés`}`}
                   resume={<Pastille ton={TON[p.statut as keyof typeof TON] ?? "neutre"}>{LABEL[p.statut as keyof typeof LABEL] ?? p.statut}</Pastille>}
                 />
               ))}

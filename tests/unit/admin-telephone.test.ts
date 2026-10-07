@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { GROUPES_ADMIN, groupesVisibles, rubriquesVisibles } from "@/app/(app)/admin/menu-admin";
+import { GROUPES_ADMIN, groupesVisibles, retourAdmin, rubriquesVisibles } from "@/app/(app)/admin/menu-admin";
 
 /**
  * **L'espace admin sur un téléphone** : un menu en liste à la place des dix onglets, une ligne fine
@@ -53,10 +53,17 @@ describe("la navigation de l'espace admin bascule à 768 px", () => {
   it("les onglets se cachent sur le téléphone, « ‹ Admin » sur l'ordinateur", () => {
     expect(LAYOUT).toMatch(/<div className="tel:hidden">\s*<SousNav/);
     expect(LAYOUT).toContain("<RetourMenuAdmin />");
-    expect(RETOUR).toContain('href="/admin"');
+    expect(RETOUR).toContain("retourAdmin(usePathname())");
     expect(RETOUR).toContain("ordi:hidden");
+  });
+
+  it("« ‹ » ramène d'où l'on vient : au menu depuis une rubrique, à la rubrique depuis une de ses pages", () => {
     // Pas de retour vers le menu… sur le menu.
-    expect(RETOUR).toContain('if (chemin === "/admin") return null;');
+    expect(retourAdmin("/admin")).toBeNull();
+    expect(retourAdmin("/admin/membres")).toEqual({ href: "/admin", label: "Admin" });
+    expect(retourAdmin("/admin/membres/abc123")).toEqual({ href: "/admin/membres", label: "Membres" });
+    expect(retourAdmin("/admin/periodes/nouvelle")).toEqual({ href: "/admin/periodes", label: "Périodes" });
+    expect(retourAdmin("/admin/notifications/discord")).toEqual({ href: "/admin/notifications", label: "Notifications" });
   });
 
   it("le bandeau garde un seul formulaire pour quitter, avec ses mots longs et courts", () => {

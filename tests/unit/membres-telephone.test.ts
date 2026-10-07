@@ -79,6 +79,15 @@ describe("la fiche d'une personne au téléphone", () => {
     expect(selecteur).toContain('presentation === "curseur" || rafraichir');
   });
 
+  it("la saison d'arrivée est visible au téléphone, enregistrée au choix sous les verrous de la fiche", () => {
+    expect(FICHE).toMatch(/<SelecteurSaison[\s\S]*?entrees=\{entreesSaison\}/);
+    const action = lire("src/actions/membres.ts");
+    const corps = action.slice(action.indexOf("export async function definirSaisonMembre"));
+    expect(corps).toMatch(/assertPermission\("members\.manage"\)/);
+    expect(corps).toMatch(/canEditUser\(acteur, cible\)/);
+    expect(corps).toMatch(/ERREUR_PORTAIL_IDENTITE/);
+  });
+
   it("« Renvoyer le lien » reprend l'action et la confirmation de la ligne de la période", () => {
     expect(FICHE.match(/L'ancien lien cessera de fonctionner\./g) ?? []).toHaveLength(2);
     expect(FICHE.match(/envoyerLienMembre\.bind\(null, m\.id, (p|periodeLien)\.id, `\/admin\/membres\/\$\{m\.id\}`\)/g) ?? []).toHaveLength(2);

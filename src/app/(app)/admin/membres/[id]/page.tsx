@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
 import { formatDateHeure } from "@/lib/dates";
 import { dateDAdhesion, libelleNumeroSaison, libelleSaison, numeroDeSaison, saisonEnregistree, saisonsProposees } from "@/lib/blasons";
-import { can, canEditUser, estCompteDeService, peutNommerAdmin } from "@/lib/permissions";
+import { can, canEditUser, estCompteDeService } from "@/lib/permissions";
 import { revoquerInvitation } from "@/actions/periodes";
 import { lienARenouveler } from "@/lib/invitations";
 import {
@@ -34,6 +34,7 @@ import { gestesFiche, type GesteFiche } from "../gestes-fiche";
 import { Icone } from "@/components/ui/Icone";
 import { etatDuLien } from "../etat-lien";
 import { SelecteurRole } from "../SelecteurRole";
+import { SelecteurSaison } from "../SelecteurSaison";
 import { HorsTelephone, RubriquesVolet, type Rubrique } from "../RubriquesVolet";
 // La liste groupée de « Mon profil », reprise telle quelle : la fiche d'une personne range ses cartes
 // de la même façon au téléphone.
@@ -149,12 +150,8 @@ export default async function PageMembre({ params }: Props) {
     const action = actionsFiche[g.geste];
     return action ? [{ ...g, action }] : [];
   });
-  /*
-   * **Le bureau ne se donne ni ne se retire depuis la fiche** : c'est un geste de « Comptes admin »
-   * et de nulle part ailleurs. La fiche montre l'état (pastille « admin ») et dit où le geste vit —
-   * le lien seulement à qui peut ouvrir cette page (`peutNommerAdmin`, soit `admins.manage`).
-   */
-  const ouvreComptesAdmin = peutNommerAdmin(acteur);
+  // **Le bureau ne se donne ni ne se retire depuis la fiche**, et elle n'en parle pas : c'est un
+  // geste de « Comptes admin » et de nulle part ailleurs. Elle montre seulement l'état (pastille « admin »).
   // Régler les notifications de quelqu'un d'autre est réservé au bureau : la carte n'existe pas pour
   // un instructeur. Le compte du portail, lui, ne reçoit que les alertes de sécurité : rien à régler.
   const peutReglerNotifications = can(acteur, "notifications.autrui") && !portail;
@@ -220,6 +217,16 @@ export default async function PageMembre({ params }: Props) {
    * et rôle » sur ordinateur, dans le volet « ⋯ » au téléphone. Un seul exemplaire dans la page à la
    * fois (`HorsTelephone`, et le volet qui ne se rend qu'ouvert) : leurs champs portent des `id`.
    */
+  // Les saisons proposées, une fois pour le champ du formulaire (ordinateur) et la liste du téléphone.
+  const entreesSaison = [
+    { valeur: "", libelle: "Je ne sais pas" },
+    ...saisons.map((an, i) => ({
+      valeur: String(an),
+      libelle: `${libelleSaison(an)} — ${i === 0 ? "cette saison" : `${libelleNumeroSaison(i + 1)} aujourd'hui`}`,
+    })),
+    // Une saison plus ancienne que la liste (saisie d'avant) reste affichée telle quelle.
+    ...(saisonAuClub !== null && !saisons.includes(saisonAuClub) ? [{ valeur: String(saisonAuClub), libelle: libelleSaison(saisonAuClub) }] : []),
+  ];
   const formulaireIdentite = (
     <FormulaireAction action={modifierMembre.bind(null, m.id)} bouton="Enregistrer">
       <div className="grid gap-4 @md:grid-cols-2">
@@ -264,8 +271,8 @@ export default async function PageMembre({ params }: Props) {
           portail
             ? "Le compte de connexion du portail reste administrateur."
             : soiMeme
-              ? "Ton propre rôle se règle aussi : membre ou instructeur, il n'ouvre aucun droit. Tes droits d'administrateur, eux, ne se retirent pas d'ici."
-              : "Membre ou instructeur. Les droits d'administrateur se règlent juste en dessous, à part."
+              ? "Ton propre rôle se règle aussi : membre ou instructeur, il n'ouvre aucun droit."
+              : "Membre ou instructeur."
         }
       />
       {/* **Au club depuis** — la seule entrée du rang (voir `ECHELLE`, src/lib/blasons.ts).
@@ -282,15 +289,7 @@ export default async function PageMembre({ params }: Props) {
             label="Arrivé(e) au club la saison"
             name="saisonArrivee"
             valeur={saisonAuClub === null ? "" : String(saisonAuClub)}
-            entrees={[
-              { valeur: "", libelle: "Je ne sais pas" },
-              ...saisons.map((an, i) => ({
-                valeur: String(an),
-                libelle: `${libelleSaison(an)} — ${i === 0 ? "cette saison" : `${libelleNumeroSaison(i + 1)} aujourd'hui`}`,
-              })),
-              // Une saison plus ancienne que la liste (saisie d'avant) reste affichée telle quelle.
-              ...(saisonAuClub !== null && !saisons.includes(saisonAuClub) ? [{ valeur: String(saisonAuClub), libelle: libelleSaison(saisonAuClub) }] : []),
-            ]}
+            entrees={entreesSaison}
             disabled={!modifiable}
             aide="Sert à calculer son rang. « Je ne sais pas » : la saison de création du compte fera foi."
           />
@@ -311,31 +310,13 @@ export default async function PageMembre({ params }: Props) {
     </FormulaireAction>
   );
   /*
-   * **Où vivent les droits d'administrateur**, à la place de l'ancien réglage : une phrase, et le
-   * lien vers « Comptes admin » pour qui peut l'ouvrir. Le compte du portail et sa propre fiche n'ont
-   * plus de cas à part — la phrase vaut pour tout le monde, et c'est « Comptes admin » qui dit ce
-   * qui s'y refuse.
-   */
-  const noteBureau = ouvreComptesAdmin ? (
-    <p className="max-w-prose text-sm text-texte-secondaire">
-      Les droits d&apos;administrateur se donnent et se retirent dans{" "}
-      <Link href="/admin/comptes" className="font-semibold">
-        Comptes admin
-      </Link>
-      .
-    </p>
-  ) : duBureau ? (
-    <p className="max-w-prose text-sm text-texte-secondaire">Seul un administrateur donne ou retire les droits d&apos;administrateur.</p>
-  ) : null;
-  /*
    * **Les rubriques du volet « ⋯ » au téléphone** : les gestes rares, rangés derrière un bouton.
-   * L'identité (nom, adresse, saison d'arrivée) et le bureau, puis « Que veux-tu faire ? » (`gestes`,
+   * L'identité (nom, adresse, saison d'arrivée), puis « Que veux-tu faire ? » (`gestes`,
    * présentés en volet : mêmes actions et mêmes confirmations que la carte « Accès et compte »).
    */
   const rubriquesAutres: Rubrique[] = [
     // Une clé sur chaque contenu : ils voyagent dans un tableau jusqu'au composant client.
     { cle: "identite", libelle: "Modifier le nom ou l'email", contenu: <Fragment key="identite">{formulaireIdentite}</Fragment> },
-    ...(noteBureau ? [{ cle: "bureau", libelle: "Droits d'administrateur", contenu: <div key="bureau">{noteBureau}</div> }] : []),
   ];
   const resumeNotifications = notifications && refusables.length > 0 ? `${refusables.filter(recoit).length} sur ${refusables.length}` : undefined;
   return (
@@ -403,13 +384,29 @@ export default async function PageMembre({ params }: Props) {
         {/*
           **Au téléphone, les gestes courants en tête de fiche** : le rôle de base en curseur
           à deux positions (`SelecteurRole`, même action que la liste de l'annuaire), « Renvoyer le lien » en
-          bouton visible, et « ⋯ » pour le reste — l'identité, le bureau, et « Que veux-tu faire ? ».
+          bouton visible, et « ⋯ » pour le reste — l'identité et « Que veux-tu faire ? ».
         */}
         <div className="flex flex-col gap-3 ordi:hidden">
           {!roleVerrouille && (
             <div className="flex flex-col gap-1">
               <span className="font-semibold">Rôle</span>
               <SelecteurRole userId={m.id} role={m.role} nom={`${m.prenom} ${m.nom}`} presentation="curseur" />
+            </div>
+          )}
+          {/* **Au club depuis**, visible d'emblée comme le rôle : sur ordinateur, il vit dans « Identité et rôle ». */}
+          {!portail && (
+            <div className="flex flex-col gap-1">
+              <SelecteurSaison
+                userId={m.id}
+                nom={`${m.prenom} ${m.nom}`}
+                valeur={saisonAuClub === null ? "" : String(saisonAuClub)}
+                entrees={entreesSaison}
+                disabled={!modifiable}
+              />
+              <p className="text-sm text-texte-secondaire">
+                Aujourd&apos;hui : <strong className="font-semibold text-texte">{libelleNumeroSaison(numeroDeSaison(adhesion))} au club</strong>
+                {m.auClubDepuis ? "." : " — d'après la création du compte."}
+              </p>
             </div>
           )}
           <div className="flex gap-2">
@@ -446,9 +443,6 @@ export default async function PageMembre({ params }: Props) {
           <HorsTelephone>
             <Carte titre="Identité et rôle">
               {formulaireIdentite}
-              {/* Le bureau ne se règle pas ici : la fiche dit seulement où le geste vit. Le trait
-                  de séparation dit que ce qui suit ne part pas avec « Enregistrer ». */}
-              {noteBureau && <div className="mt-4 border-t border-bordure/60 pt-4">{noteBureau}</div>}
             </Carte>
           </HorsTelephone>
 

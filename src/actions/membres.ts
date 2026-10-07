@@ -23,7 +23,8 @@ import {
   preferencesPersonnellesDe,
   type TypeNotification,
 } from "@/lib/notifications/preferences";
-import { emailFacultatifSchema, ligneCsvSchema, membreSchema } from "@/lib/validation/gestion";
+import { emailFacultatifSchema, ligneCsvSchema, membreSchema, saisonArrivee } from "@/lib/validation/gestion";
+import { dateDepuisSaison } from "@/lib/blasons";
 
 /** Le compte de connexion du portail n'est pas une personne du club : il ne se désactive ni ne se supprime. */
 const ERREUR_PORTAIL_COMPTE = "Le compte de connexion du portail ne peut pas être désactivé ni supprimé.";
@@ -461,6 +462,29 @@ export async function retirerDroitsAdmin(userId: string, retour?: string): Promi
   // une rétrogradation qui n'a plus lieu, et c'est le genre de phrase qu'une relecture croit.
   await audit(acteur, "admin.droits_retires", userId, { email: cible.email, roleDeBase: cible.role });
   rafraichir();
+}
+
+/**
+ * **La saison d'arrivée seule**, choisie dans sa liste sur la fiche d'un membre au téléphone. Mêmes
+ * verrous que `modifierMembre` pour ce champ (`members.manage`, `canEditUser`, identité du portail
+ * intouchable sauf par lui-même), même conversion (`saisonArrivee`, vide = « je ne sais pas »), même
+ * entrée de journal. Pas de code redemandé : comme le formulaire complet quand ni l'adresse ni le
+ * rôle ne bougent.
+ */
+export async function definirSaisonMembre(userId: string, saison: string): Promise<{ erreur?: string }> {
+  const acteur = await assertPermission("members.manage");
+  const cible = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, role: true, estAdmin: true, service: true, auClubDepuis: true } });
+  if (!canEditUser(acteur, cible)) return { erreur: "Tu ne peux pas modifier ce compte." };
+  if (estCompteDeService(cible) && acteur.id !== cible.id) return { erreur: ERREUR_PORTAIL_IDENTITE };
+  const parsed = saisonArrivee.safeParse(saison);
+  if (!parsed.success) return { erreur: "Choisis une saison dans la liste." };
+  const auClubDepuis = dateDepuisSaison(parsed.data);
+  if ((cible.auClubDepuis?.getTime() ?? null) === (auClubDepuis?.getTime() ?? null)) return {};
+  await db.user.update({ where: { id: userId }, data: { auClubDepuis } });
+  await audit(acteur, "membre.modifie", userId, { auClubDepuis });
+  rafraichir();
+  revalidatePath(`/admin/membres/${userId}`);
+  return {};
 }
 
 /**

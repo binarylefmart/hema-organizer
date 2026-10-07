@@ -66,12 +66,11 @@ describe("l'annuaire n'a aucun chemin vers le bureau", () => {
     expect(comptes).toMatch(/\bretirerDroitsAdmin\b/);
   });
 
-  it("la fiche montre l'état et renvoie vers « Comptes admin »", () => {
+  it("la fiche montre l'état, sans rubrique ni réglage des droits d'administrateur", () => {
     const fiche = lire(`${DOSSIER}/[id]/page.tsx`);
     expect(fiche).toMatch(/LIBELLE_BUREAU/);
-    expect(fiche).toMatch(/href="\/admin\/comptes"/);
-    // Le lien n'est rendu qu'à qui peut ouvrir la page (`admins.manage`).
-    expect(fiche).toMatch(/peutNommerAdmin\(acteur\)/);
+    expect(fiche).not.toMatch(/Droits d'administrateur/);
+    expect(fiche).not.toMatch(/peutNommerAdmin/);
     expect(LIBELLE_BUREAU).toBe("admin");
   });
 });
