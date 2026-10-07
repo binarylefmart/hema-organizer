@@ -86,7 +86,7 @@ export function VignetteProchainCours({ seance }: { seance: SeanceCarte }) {
     >
       <p className="text-xs font-bold uppercase tracking-[0.14em] text-marque">Prochain cours</p>
       <p className="mt-1 text-lg font-bold leading-tight sm:text-xl">
-        {formatDateCourte(seance.date)} · {formatHeure(seance.heureDebut)}
+        {formatDateCourte(seance.date)}&nbsp;· {formatHeure(seance.heureDebut)}
       </p>
       {/* **Le lieu mène à la carte**, comme sur la carte de séance : on regarde cet écran sur un
           téléphone, souvent en partant au cours, et « où est-ce ? » finit toujours dans une

@@ -7,11 +7,14 @@ import { formatDateCourte, formatHeure } from "@/lib/dates";
 import { Alerte } from "@/components/ui/Alerte";
 import { Bouton } from "@/components/ui/Bouton";
 import { ChoixGeste } from "@/components/ui/ChoixGeste";
+import { ExplicationGeste } from "@/components/ui/ExplicationGeste";
 import { Icone } from "@/components/ui/Icone";
 import { ListeDeroulante } from "@/components/ui/ListeDeroulante";
 import { ZoneTexte } from "@/components/ui/ZoneTexte";
+import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
+import { VoletBas } from "@/components/ui/VoletBas";
 import { gesteRetenu, varianteGeste } from "@/components/ui/choix-geste";
-import { gesteAvecMot, gestesAtelier, STATUT_VISE, type GesteAtelier } from "./gestes-atelier";
+import { gesteAvecMot, gestesAtelier, ouvrirVolet, STATUT_VISE, type GesteAtelier } from "./gestes-atelier";
 
 type Seance = { id: string; date: string; heureDebut: string; lieu: string };
 
@@ -30,6 +33,15 @@ type Seance = { id: string; date: string; heureDebut: string; lieu: string };
  *
  * La décision passe toujours par `deciderAtelier` (statut visé, séance, mot), l'effacement par
  * `effacerProposition` : gardes, audit et emails inchangés.
+ *
+ * **Sur téléphone, une proposition en attente porte deux boutons** au lieu de la liste et
+ * d'« Appliquer » : « Programmer » (plein) et « Refuser… ». Chacun ouvre, dans le volet du bas
+ * (`VoletBas`, le même que partout ailleurs sur téléphone), ce que la liste ouvrait pour lui — la
+ * séance pré-remplie, le mot facultatif, l'explication — puis son bouton de confirmation ; « Fermer »
+ * le referme sans rien décider. Un tap de moins, et le même `lancer` derrière, donc les mêmes verrous, les mêmes
+ * emails, la même confirmation. Le geste rare, « Effacer sans répondre » (bureau seul), vit dans le
+ * panneau de « Refuser… », sous la décision : c'est là qu'on se demande si l'on doit répondre. Les
+ * autres statuts gardent la liste — ils n'ont qu'un ou deux gestes, et rarement.
  */
 export function DecisionAtelier({
   atelierId,
@@ -60,6 +72,12 @@ export function DecisionAtelier({
   const [seance, setSeance] = useState(defaut);
   const [mot, setMot] = useState("");
   const [choisi, setChoisi] = useState<GesteAtelier | "">("");
+  const telephone = useEcranTelephone();
+  const [panneau, setPanneau] = useState<"placer" | "refuser" | null>(null);
+  // Le geste dont part la décision en cours ou refusée : son erreur ne se montre que dans son volet.
+  const [envoye, setEnvoye] = useState<GesteAtelier | null>(null);
+  // Le dernier volet ouvert : rouvrir le même garde le mot tapé (un refus du serveur ne le perd pas).
+  const [dernierVolet, setDernierVolet] = useState<"placer" | "refuser" | null>(null);
 
   const gestes = gestesAtelier({ titre, prenom, statut, seancePlacee }, { effacer: Boolean(effacer), seancesDisponibles: seances.length > 0 });
   const geste = gesteRetenu(choisi, gestes);
@@ -77,8 +95,17 @@ export function DecisionAtelier({
     if (state.succes) {
       setChoisi("");
       setMot("");
+      setPanneau(null);
     }
   }, [state]);
+
+  /** Le mot d'un autre geste n'y passe pas (`ouvrirVolet`) ; rouvrir le même volet le garde. */
+  const ouvrir = (g: "placer" | "refuser") => {
+    const suite = ouvrirVolet(g, dernierVolet === g ? mot : "");
+    setMot(suite.mot);
+    setPanneau(suite.panneau);
+    setDernierVolet(g);
+  };
 
   const lancer = (g: GesteAtelier) => {
     const offert = gestes.find((x) => x.geste === g);
@@ -102,11 +129,109 @@ export function DecisionAtelier({
     fd.set("statut", STATUT_VISE[g]);
     if (g === "placer") fd.set("sessionId", seance);
     if (gesteAvecMot(g) && mot.trim()) fd.set("commentaire", mot.trim());
+    setEnvoye(g);
     demarrer(() => decider(fd));
   };
 
   const idChoix = `geste-atelier-${atelierId}`;
   const idSeance = `seance-atelier-${atelierId}`;
+
+  const placer = gestes.find((g) => g.geste === "placer");
+  const refuser = gestes.find((g) => g.geste === "refuser");
+  const gesteEffacer = gestes.find((g) => g.geste === "effacer");
+
+  const listeSeances = (
+    <div className="flex flex-col gap-1">
+      <label id={`${idSeance}-libelle`} htmlFor={idSeance} className="text-base font-semibold">
+        Séance
+      </label>
+      <ListeDeroulante
+        id={idSeance}
+        libelleId={`${idSeance}-libelle`}
+        libelle="Séance"
+        valeur={seance}
+        entrees={seances.map((s) => ({ valeur: s.id, libelle: `${formatDateCourte(s.date)}\u00a0· ${formatHeure(s.heureDebut)}\u00a0· ${s.lieu}` }))}
+        onChoisir={setSeance}
+        className="min-h-12 w-full rounded-xl border-2 border-bordure bg-surface px-3 text-base text-texte shadow-champ"
+      />
+    </div>
+  );
+  const champMot = (
+    <ZoneTexte
+      label={`Un mot pour ${prenom} (facultatif)`}
+      name="commentaire"
+      id={`commentaire-${atelierId}`}
+      value={mot}
+      onChange={(e) => setMot(e.target.value)}
+      maxLength={500}
+      rows={2}
+      placeholder={panneau === "refuser" ? "ex. Merci ! Le programme est complet ce trimestre, repropose-le au prochain." : "ex. Super idée, on le fait le 12 !"}
+      aide="Joint à l'email, et lu sur sa page « Proposer un atelier »."
+    />
+  );
+
+  if (telephone && statut === "PROPOSE" && refuser) {
+    const ouvert = panneau === "placer" ? placer : panneau === "refuser" ? refuser : undefined;
+    return (
+      <div className="flex flex-col gap-3" data-decision-telephone>
+        {state.erreur && <Alerte type="erreur">{state.erreur}</Alerte>}
+        {state.succes && <Alerte type="succes">{state.succes}</Alerte>}
+        {erreurEffacement && <Alerte type="erreur">{erreurEffacement}</Alerte>}
+        {!placer && seances.length === 0 && (
+          <p className="text-base text-texte-secondaire">Aucune séance à venir : l&apos;atelier ne peut pas encore être placé dans le planning.</p>
+        )}
+
+        {/* Refuser à gauche, Programmer à droite : ce qui valide reste sous le pouce. */}
+        <div className="flex gap-2">
+          <Bouton variante="secondaire" className="flex-1" aria-haspopup="dialog" disabled={enCours} onClick={() => ouvrir("refuser")}>
+            Refuser…
+          </Bouton>
+          {placer && (
+            <Bouton className="flex-1" aria-haspopup="dialog" disabled={enCours} onClick={() => ouvrir("placer")}>
+              Programmer
+            </Bouton>
+          )}
+        </div>
+
+        <VoletBas
+          ouvert={Boolean(ouvert)}
+          titre={ouvert?.geste === "placer" ? `Programmer « ${titre} »` : `Refuser « ${titre} »`}
+          // Pendant l'envoi, le volet reste ouvert : le fermer laisserait croire que rien ne part.
+          onFermer={() => !enCours && setPanneau(null)}
+        >
+          {ouvert && (
+            <>
+              {/* La carte est derrière le voile : l'erreur d'une décision se dit ici aussi. */}
+              {state.erreur && envoye === ouvert.geste && <Alerte type="erreur">{state.erreur}</Alerte>}
+              {erreurEffacement && <Alerte type="erreur">{erreurEffacement}</Alerte>}
+              {ouvert.geste === "placer" && listeSeances}
+              {champMot}
+              <ExplicationGeste explication={ouvert.explication} />
+              <Bouton
+                pleineLargeur
+                disabled={enCours || (ouvert.geste === "placer" && !seance)}
+                aria-busy={decisionEnCours}
+                onClick={() => lancer(ouvert.geste)}
+              >
+                {decisionEnCours ? "Un instant…" : ouvert.geste === "placer" ? "Programmer" : "Refuser"}
+              </Bouton>
+              {ouvert.geste === "refuser" && gesteEffacer && (
+                <div className="mt-2 flex flex-col gap-2 border-t border-bordure pt-3">
+                  <p className="text-base text-texte-secondaire">
+                    Un doublon, un envoi par erreur ? On peut aussi l&apos;effacer sans répondre : personne n&apos;est prévenu.
+                  </p>
+                  <Bouton variante="danger" disabled={enCours} aria-busy={effacement} onClick={() => lancer("effacer")}>
+                    {!enCours && <Icone nom="alerte" taille={18} />}
+                    Effacer sans répondre
+                  </Bouton>
+                </div>
+              )}
+            </>
+          )}
+        </VoletBas>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -143,35 +268,8 @@ export function DecisionAtelier({
           enCours={enCours}
           onLancer={() => geste && lancer(geste)}
         >
-          {geste === "placer" && (
-            <div className="flex flex-col gap-1">
-              <label id={`${idSeance}-libelle`} htmlFor={idSeance} className="text-base font-semibold">
-                Séance
-              </label>
-              <ListeDeroulante
-                id={idSeance}
-                libelleId={`${idSeance}-libelle`}
-                libelle="Séance"
-                valeur={seance}
-                entrees={seances.map((s) => ({ valeur: s.id, libelle: `${formatDateCourte(s.date)} · ${formatHeure(s.heureDebut)} · ${s.lieu}` }))}
-                onChoisir={setSeance}
-                className="min-h-12 w-full rounded-xl border-2 border-bordure bg-surface px-3 text-base text-texte shadow-champ"
-              />
-            </div>
-          )}
-          {gesteAvecMot(geste) && (
-            <ZoneTexte
-              label={`Un mot pour ${prenom} (facultatif)`}
-              name="commentaire"
-              id={`commentaire-${atelierId}`}
-              value={mot}
-              onChange={(e) => setMot(e.target.value)}
-              maxLength={500}
-              rows={2}
-              placeholder="ex. Super idée, on le fait le 12 !"
-              aide="Joint à l'email, et lu sur sa page « Proposer un atelier »."
-            />
-          )}
+          {geste === "placer" && listeSeances}
+          {gesteAvecMot(geste) && champMot}
         </ChoixGeste>
       )}
     </div>

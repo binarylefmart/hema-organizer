@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { LIBELLE_VIDE } from "@/lib/constants";
 import type { Paire } from "@/components/planning/file-envoi";
-import { paireImposee, poserEnMasse, type EtatBrouillon } from "@/components/planning/brouillon";
+import { VARIABLE_HAUTEUR_BARRE_EDITION } from "@/components/ui/barre-selection";
+import { casesAEnvoyer, paireImposee, poserEnMasse, texteEcartees, type EtatBrouillon } from "@/components/planning/brouillon";
 import {
   blocsProposes,
   confirmationPlanning,
@@ -76,12 +77,18 @@ describe("les parties qu'on peut choisir", () => {
     expect(p.map(libellePartieProposee)).toEqual(["Partie 1 · Cours (3 séances)", "Partie 2 · Cours (2 séances)", "Partie 2 · Option (1 séance)"]);
   });
 
-  it("l'ordre est celui d'une carte — partie, nature, rang —, pas celui de la première séance cochée", () => {
-    const d = seance("d", [partie("d3", "Partie 2 · Option 2"), partie("d1", "Partie 3 · Cours"), partie("d0", "Partie 1 · Échauffement")]);
+  it("l'ordre est celui de la place par défaut — partie, nature (l'atelier avant l'option), rang —, pas celui de la première séance cochée", () => {
+    const d = seance("d", [
+      partie("d3", "Partie 2 · Option 2"),
+      partie("d1", "Partie 3 · Cours"),
+      partie("d4", "Partie 2 · Atelier"),
+      partie("d0", "Partie 1 · Échauffement"),
+    ]);
     expect(partiesProposees([d, a]).map((x) => x.libelle)).toEqual([
       "Partie 1 · Échauffement",
       "Partie 1 · Cours",
       "Partie 2 · Cours",
+      "Partie 2 · Atelier",
       "Partie 2 · Option",
       "Partie 2 · Option 2",
       "Partie 3 · Cours",
@@ -234,6 +241,59 @@ describe("le brouillon écrit en masse", () => {
     expect(paireImposee(imposee, 0)).toEqual({ ...VIDE, theme: "Sabre" });
     expect(paireImposee(imposee, 3)).toBeNull();
     expect(paireImposee(undefined, 0)).toBeNull();
+  });
+});
+
+/**
+ * **Un élément retiré ne bloque plus « Appliquer ».** Retiré pendant qu'il portait un réglage, il
+ * laissait son identifiant dans le brouillon ; le serveur, tout-ou-rien, refusait alors le lot entier
+ * (« Cette partie n'existe plus. Rien n'a été enregistré. ») et la seule issue était « Annuler ».
+ */
+describe("ce qu'« Appliquer » envoie", () => {
+  it("écarte les éléments qui ne sont plus affichés, et garde l'ordre des autres", () => {
+    const modifiees = new Map<string, Paire>([
+      ["a", { ...VIDE, theme: "Dague" }],
+      ["retiree", { ...VIDE, theme: "Sabre" }],
+      ["b", { ...VIDE, theme: "Lance" }],
+    ]);
+    const { cases, ecartees } = casesAEnvoyer(modifiees, ["b", "a", "autre"]);
+    expect(cases.map((c) => c.partieId)).toEqual(["a", "b"]);
+    expect(cases[0]).toEqual({ partieId: "a", ...VIDE, theme: "Dague" });
+    expect(ecartees).toEqual(["retiree"]);
+  });
+
+  it("n'écarte rien quand tout est encore là", () => {
+    const { ecartees } = casesAEnvoyer(new Map([["a", VIDE]]), ["a"]);
+    expect(ecartees).toEqual([]);
+  });
+
+  it("dit ce qu'il écarte", () => {
+    expect(texteEcartees(1)).toBe("1 réglage portait sur un élément retiré entre-temps : il a été écarté.");
+    expect(texteEcartees(3)).toMatch(/^3 réglages portaient sur des éléments retirés entre-temps/);
+  });
+
+  it("la barre d'édition passe par ce tri, avec les éléments que la page montre", () => {
+    const barre = readFileSync(path.join(process.cwd(), "src/components/planning/BarreEdition.tsx"), "utf8");
+    expect(barre).toContain("casesAEnvoyer(brouillon.modifiees, partiesAffichees)");
+    expect(barre).not.toContain("[...brouillon.modifiees].map(");
+    expect(readFileSync(path.join(process.cwd(), "src/components/planning/GrillePlanning.tsx"), "utf8")).toMatch(/<BarreEdition[^>]*partiesAffichees=/);
+  });
+});
+
+/**
+ * **La barre de sélection se cale sur la hauteur réelle de la barre d'édition.** Posée à `10rem`
+ * fixes, elle supposait une barre d'édition d'une ligne : l'aide « i » ouverte ou un message
+ * d'erreur la faisaient grandir, et « Appliquer » passait sous la barre de sélection.
+ */
+describe("les deux barres du bas du planning", () => {
+  const source = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
+
+  it("la barre d'édition publie sa hauteur, la barre de sélection s'y cale", () => {
+    expect(source("src/components/planning/BarreEdition.tsx")).toContain("setProperty(VARIABLE_HAUTEUR_BARRE_EDITION");
+    const selection = source("src/components/ui/BarreSelection.tsx");
+    // Le nom publié et le nom lu sont le même : une faute de frappe ferait retomber sur la valeur par défaut.
+    expect(selection).toContain(`var(${VARIABLE_HAUTEUR_BARRE_EDITION},`);
+    expect(selection).not.toMatch(/\+10rem\)\]/);
   });
 });
 

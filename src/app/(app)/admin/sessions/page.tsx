@@ -8,6 +8,7 @@ import { BoutonAction } from "@/components/ui/BoutonAction";
 import { LienBouton } from "@/components/ui/Bouton";
 import { Cellule, Ligne, Tableau } from "@/components/ui/Tableau";
 import { Icone } from "@/components/ui/Icone";
+import { nommerAppareil } from "@/lib/notifications/push";
 
 export const metadata: Metadata = { title: "Sessions de connexion" };
 
@@ -60,7 +61,10 @@ export default async function PageSessions({ searchParams }: Props) {
                   téléphone en montrait plus qu'un écran de 1 920. Le message de `646457d`
                   promettait « rien n'est caché » ; ce n'était vrai que des six colonnes, pas de
                   leur contenu. */}
-              <Cellule label="Appareil" className="break-words text-sm md:max-w-56 md:truncate lg:max-w-none lg:whitespace-normal lg:break-words" title={s.userAgent ?? ""}>{s.userAgent ?? "—"}</Cellule>
+              {/* **Le nom de l'appareil, pas l'en-tête brut** (« Chrome sur Android ») : le même que la
+                  liste des appareils du profil (`nommerAppareil`). L'en-tête entier reste en infobulle,
+                  pour qui doit distinguer deux navigateurs du même nom. */}
+              <Cellule label="Appareil" className="break-words text-sm md:max-w-56 md:truncate lg:max-w-none lg:whitespace-normal lg:break-words" title={s.userAgent ?? ""}>{s.userAgent ? nommerAppareil(s.userAgent) : "—"}</Cellule>
               <Cellule label="IP" className="text-sm">{s.ip ?? "—"}</Cellule>
               <Cellule>
                 <div className="flex flex-wrap gap-2">

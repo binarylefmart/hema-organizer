@@ -71,7 +71,7 @@ describe("la barre tient dans la largeur du contenu", () => {
     // Seule entrée libellée de l'en-tête à ces largeurs (les onglets sont dans la barre du bas) :
     // sans cela, il ne restait pas la place d'écrire « Accueil » sur un téléphone de 390.
     const code = lire(NAVIGATION);
-    expect(code).toContain('{!iconesSeules && <span className="hidden md:inline">{o.label}</span>}');
+    expect(code).toContain('{!iconesSeules && <span className="hidden ordi:inline">{o.label}</span>}');
     expect(code).toContain("aria-label={o.label}");
   });
 });

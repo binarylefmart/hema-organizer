@@ -81,7 +81,7 @@ export default async function PageSeance({ params, searchParams }: Props) {
           </p>
           <h1 className="text-3xl">{formatDateLongue(carte.date)}</h1>
           <p className="text-texte-secondaire">
-            {formatHoraire(carte.heureDebut, carte.heureFin)} · {carte.lieu}
+            {formatHoraire(carte.heureDebut, carte.heureFin)}&nbsp;· {carte.lieu}
             {carte.annulee && (
               <>
                 {" "}

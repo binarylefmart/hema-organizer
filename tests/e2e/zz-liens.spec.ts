@@ -18,16 +18,15 @@ test("renvoyer les liens à tous les membres d'une période", async ({ page }) =
   test.setTimeout(120_000);
   await connecter(page, COMPTES.admin);
   await page.goto("/admin/membres");
-  // Le bouton « Renvoyer les liens » est devenu un geste de « Que veux-tu faire ? », dans le volet
-  // « Pour tout le monde » en tête d'annuaire.
-  await page.locator('details[name="membre"] > summary').filter({ hasText: "Pour tout le monde" }).click();
-  const volet = page.locator("details[open]").filter({ has: page.getByRole("heading", { name: "Pour tout le monde" }) });
-  await volet.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
-  await page.getByRole("option", { name: /^Renvoyer/ }).click();
+  // Le bouton « Renvoyer les liens » est devenu un geste de « Que veux-tu faire ? » sur tout le club ;
+  // au téléphone, il est rangé dans le volet « + Ajouter », sous « Gestes sur tout le club ».
+  await page.getByRole("button", { name: "Ajouter", exact: true }).click();
+  const volet = page.getByRole("dialog", { name: "Ajouter" });
+  await volet.getByRole("button", { name: /^Renvoyer/ }).click();
   page.once("dialog", (d) => d.accept());
   await volet.getByRole("button", { name: /^Renvoyer/ }).click();
-  // Les liens sont régénérés : les anciens ne fonctionnent plus. Le choix revient à « Choisir une action… ».
-  await expect(volet.getByRole("combobox", { name: /Que veux-tu faire \? Choisir une action/ })).toBeVisible({ timeout: 30_000 });
+  // Les liens sont régénérés : les anciens ne fonctionnent plus. Le volet revient à la liste des gestes.
+  await expect(volet.getByRole("heading", { name: "Gestes sur tout le club" })).toBeVisible({ timeout: 30_000 });
   await page.goto("/profil");
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   /*

@@ -56,7 +56,7 @@ export function FormulaireAtelier({
         valeur={valeurs?.sessionId ?? ""}
         entrees={[
           { valeur: "", libelle: "Peu importe" },
-          ...seances.map((s) => ({ valeur: s.id, libelle: `${formatDateCourte(s.date)} · ${formatHeure(s.heureDebut)} · ${s.lieu}` })),
+          ...seances.map((s) => ({ valeur: s.id, libelle: `${formatDateCourte(s.date)}\u00a0· ${formatHeure(s.heureDebut)}\u00a0· ${s.lieu}` })),
         ]}
       />
     </FormulaireAction>

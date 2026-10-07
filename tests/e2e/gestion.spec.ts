@@ -18,7 +18,7 @@ async function compterEmails(type: string): Promise<number> {
  * l'identifiant de sa séance (`data-geste-seance`), qui ne bouge pas, plutôt que par son rang, qui change
  * dès que la séance sort des annulables — et le jeu de démonstration contient déjà une séance annulée.
  */
-async function annulerNiemeSeance(page: Page, rang: number, motif: string): Promise<void> {
+async function annulerNiemeSeance(page: Page, rang: number, motif: string): Promise<string> {
   await page.goto("/seances?modifier=1");
   // L'onglet Séances n'affiche que les cinq premières cartes : on déplie d'abord, sinon les
   // suivantes ne sont pas dans la page du tout (repli côté client, `ListeSeances`).
@@ -33,7 +33,36 @@ async function annulerNiemeSeance(page: Page, rang: number, motif: string): Prom
   page.once("dialog", (d) => d.accept());
   await gestes.getByRole("button", { name: "Annuler la séance" }).click();
   await expect(page.locator(`[data-geste-seance="${id}"][data-retablissable="true"]`)).toBeVisible({ timeout: 20_000 });
+  annulees.push(id!);
+  return id!;
 }
+
+/**
+ * **Les séances annulées ici sont rétablies à la fin de chaque scénario.** Elles restaient annulées
+ * jusqu'au resemage de la campagne suivante, et les fichiers qui passent après en héritaient : le
+ * planning ne montre que cinq séances, une séance annulée n'y a pas de case, si bien que « Tous les
+ * mardis » de `zzz-planning-en-masse` ne cochait plus, selon le jour de la semaine, que la séance du
+ * jeu d'essai à deux parties — et la partie « Cours » seule disparaissait des parties à régler. Un
+ * scénario rend la base telle qu'il l'a trouvée.
+ */
+const annulees: string[] = [];
+
+async function retablirSeance(page: Page, id: string): Promise<void> {
+  await page.goto("/seances?modifier=1");
+  const suite = page.getByRole("button", { name: /Afficher les .* cours suivants/ });
+  if (await suite.isVisible().catch(() => false)) await suite.click();
+  const gestes = page.locator(`[data-geste-seance="${id}"][data-retablissable="true"]`);
+  await expect(gestes).toBeVisible();
+  await gestes.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
+  await page.getByRole("option", { name: "Rétablir la séance" }).click();
+  page.once("dialog", (d) => d.accept());
+  await gestes.getByRole("button", { name: "Rétablir la séance" }).click();
+  await expect(page.locator(`[data-geste-seance="${id}"][data-annulable="true"]`)).toBeVisible({ timeout: 20_000 });
+}
+
+test.afterEach(async ({ page }) => {
+  while (annulees.length) await retablirSeance(page, annulees.shift()!);
+});
 
 /** Gestion : ajout d'une personne (lien envoyé), annulation d'une séance, accès admin réservé. */
 test.describe("gestion", () => {
@@ -47,14 +76,17 @@ test.describe("gestion", () => {
     await connecter(page, COMPTES.admin);
     await page.goto("/admin/membres");
     const email = `nouvelle.${Date.now()}@club.test`;
-    // Le formulaire d'ajout, et lui seul : chaque ligne de la liste cache aussi un champ « Email de
-    // … ». On vise le début du libellé et le verbe du bouton, pas leur formulation du jour.
-    const ajout = page.locator("section").filter({ has: page.getByRole("heading", { name: "Ajouter un membre" }) }).last();
+    // Au téléphone, le formulaire d'ajout vit dans le volet « + Ajouter », derrière « Une personne » :
+    // le même formulaire que la carte de l'ordinateur. On vise le début du libellé et le verbe du
+    // bouton, pas leur formulation du jour.
+    await page.getByRole("button", { name: "Ajouter", exact: true }).click();
+    const ajout = page.getByRole("dialog", { name: "Ajouter" });
+    await ajout.getByRole("button", { name: "Une personne" }).click();
     await ajout.getByLabel("Prénom").fill("Nadia");
     await ajout.getByLabel("Nom", { exact: true }).fill("Test");
     await ajout.getByLabel(/^Email/).fill(email);
     await ajout.getByRole("button", { name: /^Ajouter/ }).click();
-    await expect(page.getByText(/Nadia Test ajouté\(e\)\. Aucun email n'est parti/)).toBeVisible();
+    await expect(ajout.getByText(/Nadia Test ajouté\(e\)\. Aucun email n'est parti/)).toBeVisible();
 
     // Laisser à un envoi éventuel le temps d'arriver sur disque, puis vérifier qu'il n'existe pas.
     await page.waitForTimeout(2_000);
@@ -95,7 +127,9 @@ test.describe("gestion", () => {
 
   test("un admin voit l'administration et le journal d'audit", async ({ page }) => {
     await connecter(page, COMPTES.admin);
-    await page.goto("/admin/audit");
+    // Filtré sur l'action : en fin de campagne, la connexion de l'admin peut être sortie des
+    // cinquante dernières entrées, et la première page ne la montrait plus.
+    await page.goto("/admin/audit?q=connexion.succes");
     await expect(page.getByRole("heading", { name: "Journal d'audit" })).toBeVisible();
     await expect(page.getByText("connexion.succes").first()).toBeVisible();
   });

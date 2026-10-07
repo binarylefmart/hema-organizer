@@ -45,13 +45,13 @@ export function NavEntete({ onglets, iconesSeules = false }: { onglets: Onglet[]
             } ${actif ? "bg-white/15 font-semibold text-marque ring-1 ring-marque/50" : ""}`}
           >
             <Icone nom={o.icone} taille={iconesSeules ? 22 : 18} />
-            {/* Sous 768 px, le mot s'efface : la seule entrée libellée de l'en-tête à ces largeurs
-                est « Admin » (les onglets, eux, sont dans la barre du bas jusqu'à 768 px), et avec
+            {/* En version téléphone, le mot s'efface : la seule entrée libellée de l'en-tête à ces largeurs
+                est « Admin » (les onglets, eux, sont dans la barre du bas en version téléphone), et avec
                 lui la barre d'un administrateur élevé ne laissait plus la place d'écrire
                 « Accueil » sous le nom du club — 358 px occupés pour 358 disponibles sur un
                 téléphone de 390. La roue crantée seule suffit à cette taille : elle ne se confond
                 avec aucune autre icône de la barre, et le nom accessible du lien reste posé. */}
-            {!iconesSeules && <span className="hidden md:inline">{o.label}</span>}
+            {!iconesSeules && <span className="hidden ordi:inline">{o.label}</span>}
           </Link>
         );
       })}
@@ -61,7 +61,7 @@ export function NavEntete({ onglets, iconesSeules = false }: { onglets: Onglet[]
 
 /**
  * Barre d'onglets en bas de l'écran (téléphone) : icône + libellé à 16 px, cibles ≥ 56 px.
- * Cachée à partir de 768 px, là où les mêmes onglets passent dans l'en-tête.
+ * Cachée sur ordinateur, là où les mêmes onglets passent dans l'en-tête.
  */
 export function NavBas({ onglets }: { onglets: Onglet[] }) {
   const pathname = usePathname();
@@ -75,9 +75,9 @@ export function NavBas({ onglets }: { onglets: Onglet[] }) {
       // sans lui, l'application installée sur iPhone met la page en page dans une zone réduite et
       // la barre se décroche du bas de l'écran. Le repli `0px` garde la marge correcte partout où
       // la variable n'existe pas (navigateur de bureau, Android sans encoche).
-      className="fixed inset-x-0 bottom-0 z-10 border-t border-bordure/60 bg-surface pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] pt-2 shadow-nav md:hidden"
+      className="fixed inset-x-0 bottom-0 z-10 border-t border-bordure/60 bg-surface pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)] pt-2 shadow-nav ordi:hidden"
     >
-      <ul className="mx-auto flex max-w-3xl">
+      <ul className="mx-auto flex max-w-3xl tel:max-w-[40rem]">
         {onglets.map((o) => {
           const actif = estActif(pathname, o.href);
           return (

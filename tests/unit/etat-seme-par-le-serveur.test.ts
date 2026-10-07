@@ -238,6 +238,10 @@ const SEMES_SANS_MIROIR: Record<string, string> = {
   // libre ». Éditeur unique lui aussi, dans un formulaire à bouton « Enregistrer ».
   "src/components/gestion/SelecteurLieu.tsx::SelecteurLieu::choix": "éditeur unique de ce champ sur l'écran",
   "src/components/gestion/SelecteurLieu.tsx::SelecteurLieu::libre": "éditeur unique de ce champ sur l'écran",
+  // L'assistant « Proposer un atelier » du téléphone : une proposition neuve, semée par la seule
+  // identité de qui propose (« Moi » anime par défaut). Rien d'enregistré à suivre pendant la saisie.
+  "src/components/ateliers/AssistantAtelier.tsx::AssistantAtelier::saisie": "création : rien à suivre",
+  "src/components/ateliers/AssistantAtelier.tsx::AssistantAtelier::animePar": "création : rien à suivre",
 };
 
 /** Tous les `.tsx` du dossier `src`, du plus haut au plus bas. */

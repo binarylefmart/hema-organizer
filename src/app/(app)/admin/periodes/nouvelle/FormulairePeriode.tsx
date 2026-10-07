@@ -212,7 +212,7 @@ export function FormulairePeriode({
           </div>
           <div className="flex flex-col items-start rounded-xl bg-surface-douce px-4 py-3">
             <p aria-live="polite">
-              <span className="font-semibold">{valeurs.nom}</span> · du {dateDansPhrase(valeurs.dateDebut)} au {dateDansPhrase(valeurs.dateFin)}
+              <span className="font-semibold">{valeurs.nom}</span>&nbsp;· du {dateDansPhrase(valeurs.dateDebut)} au {dateDansPhrase(valeurs.dateFin)}
             </p>
             {ajuste && (
               <button type="button" onClick={() => setAjuste(null)} className="mt-1 min-h-12 font-semibold text-primaire underline underline-offset-4">

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Bouton } from "@/components/ui/Bouton";
 import { CLASSES_CONTROLE } from "@/components/ui/Champ";
 import { nommerAdministrateurs, type ResultatNomination } from "./actions";
+import { AdresseEmail } from "@/components/ui/AdresseEmail";
 import {
   cherchable,
   coches,
@@ -131,7 +132,7 @@ export function SelectionNomination({ candidats }: { candidats: Candidat[] }) {
                     />
                     <span>
                       <span className="font-semibold">{nomComplet(c)}</span>
-                      {c.email && <span className="text-texte-secondaire"> — {c.email}</span>}
+                      {c.email && <span className="text-texte-secondaire"> — <AdresseEmail email={c.email} /></span>}
                     </span>
                   </label>
                 </li>

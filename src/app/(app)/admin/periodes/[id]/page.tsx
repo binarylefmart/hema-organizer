@@ -280,8 +280,8 @@ export default async function PagePeriode({ params }: Props) {
         // d', et elle contredisait mot pour mot la confirmation du bouton juste en dessous, sur le
         // même écran. Activer n'envoie plus rien.
         <Alerte type="info" titre="Pour démarrer la période">
-          1. Vérifie les créneaux et instructeurs · 2. Génère les séances · 3.
-          Ajoute les membres · 4. Active : le trimestre s&apos;ouvre au travail
+          1. Vérifie les créneaux et instructeurs&nbsp;· 2. Génère les séances&nbsp;· 3.
+          Ajoute les membres&nbsp;· 4. Active : le trimestre s&apos;ouvre au travail
           de l&apos;équipe. Les liens personnels partent tout seuls trois jours
           avant le premier cours.
         </Alerte>
@@ -403,7 +403,7 @@ export default async function PagePeriode({ params }: Props) {
                     >
                       <span>
                         <strong>{JOURS_SEMAINE[c.jourSemaine]}</strong>{" "}
-                        {formatHeure(c.heureDebut)}–{formatHeure(c.heureFin)} ·{" "}
+                        {formatHeure(c.heureDebut)}–{formatHeure(c.heureFin)}&nbsp;·{" "}
                         {c.lieu}
                         {c.adresse && (
                           <span className="text-texte-secondaire">
@@ -567,7 +567,7 @@ export default async function PagePeriode({ params }: Props) {
                               celui qui encadre perdait au contraire la mention du bureau. Les deux
                               s'additionnent maintenant, comme les droits eux-mêmes. */}
                           <span className="ml-2 text-sm text-texte-secondaire">
-                            {[u.role === "INSTRUCTEUR" ? "instructeur" : "", u.estAdmin ? "admin" : ""].filter(Boolean).join(" · ")}
+                            {[u.role === "INSTRUCTEUR" ? "instructeur" : "", u.estAdmin ? "admin" : ""].filter(Boolean).join("\u00a0· ")}
                           </span>
                           {u.email ? (
                             <div className="truncate text-sm text-texte-secondaire">

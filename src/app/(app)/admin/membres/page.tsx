@@ -26,9 +26,12 @@ import { SelecteurBureau } from "./SelecteurBureau";
 import { LIBELLE_BUREAU } from "./bureau";
 import { CaseMembre, ZoneSelection } from "./SelectionRoles";
 import { ChoixToutLeMonde } from "./ChoixToutLeMonde";
+import { HorsTelephone, RubriquesVolet } from "./RubriquesVolet";
+import { gestesTousProposes, type ChiffresTous, type GesteTous } from "./choix-geste";
 import { gestesFiche, type GesteFiche } from "./gestes-fiche";
 import { envoyerInvitationsEnMasse, reinitialiserAccesEnMasse, revoquerLienMembre, revoquerLiensEnMasse } from "./actions";
 import { DEJA_ENTRE, JAMAIS_ENTRE, lienVivant, perimetreToutLeMonde, RECOIT_INVITATION } from "./tout-le-monde";
+import { AdresseEmail } from "@/components/ui/AdresseEmail";
 import {
   texteConfirmationInvitationsTous,
   texteConfirmationReinitialisationTous,
@@ -85,6 +88,13 @@ function initiale(personne: { prenom: string; nom: string }): string {
 }
 
 type Props = { searchParams: Promise<{ q?: string; inactifs?: string; tout?: string }> };
+
+/**
+ * **Cochée dans la sélection multiple, au téléphone** : la ligne prend le fond doux et un contour de la
+ * couleur principale, lus sur sa case (`:has`) — la page reste rendue côté serveur.
+ */
+const LIGNE_COCHEE =
+  "tel:rounded-xl tel:has-[[data-case-selection]:checked]:bg-primaire-doux tel:has-[[data-case-selection]:checked]:ring-2 tel:has-[[data-case-selection]:checked]:ring-inset tel:has-[[data-case-selection]:checked]:ring-primaire";
 
 export default async function PageMembres({ searchParams }: Props) {
   const acteur = await requirePermission("members.view");
@@ -328,14 +338,140 @@ export default async function PageMembres({ searchParams }: Props) {
     soiMeme: membres.some((m) => m.id === acteur.id),
     bureau: membres.filter((m) => m.estAdmin && !reglable(m) && m.id !== acteur.id).length,
   };
+  /*
+   * **Les gestes « Pour tout le monde », composés une fois pour leurs deux présentations** : le volet
+   * de l'ordinateur sous la recherche, et le volet « + Ajouter » du téléphone. Mêmes chiffres, mêmes
+   * actions liées, mêmes confirmations.
+   */
+  const chiffresTous: ChiffresTous = {
+    inviter: tousInvitation,
+    dejaEntres: tousDejaEntres,
+    renvoyer: tousRenvoi,
+    revoquer: tousRevocation,
+    reinitialiser: tousReinit,
+    reinitialiserEmails: tousReinitEmails,
+    jamaisEntres: tousJamaisEntres,
+    desactiver: peutGererLesAdmins ? aDesactiver : 0,
+    reactiver: peutGererLesAdmins ? aReactiver : 0,
+    periode: periodeLien?.nom ?? null,
+  };
+  const actionsTous: Partial<Record<GesteTous, () => Promise<unknown>>> = {
+    ...(periodeLien && tousRenvoi > 0 ? { renvoyer: renvoyerTousLesLiens.bind(null, periodeLien.id, retour) } : {}),
+    ...(periodeLien && tousRevocation > 0 ? { revoquer: revoquerLiensEnMasse.bind(null, { periodId: periodeLien.id, tous: true }) } : {}),
+    ...(periodeLien && tousInvitation > 0 ? { inviter: envoyerInvitationsEnMasse.bind(null, { periodId: periodeLien.id, tous: true }) } : {}),
+    ...(tousReinit > 0 ? { reinitialiser: reinitialiserAccesEnMasse.bind(null, { tous: true }) } : {}),
+    ...(peutGererLesAdmins && aDesactiver > 0 ? { desactiver: definirActifTous.bind(null, false, retour) } : {}),
+    ...(peutGererLesAdmins && aReactiver > 0 ? { reactiver: definirActifTous.bind(null, true, retour) } : {}),
+  };
+  const confirmationsTous: Partial<Record<GesteTous, string>> = {
+    ...(periodeLien ? { renvoyer: texteConfirmationRenvoiTous(tousRenvoi, periodeLien.nom) } : {}),
+    ...(periodeLien ? { revoquer: texteConfirmationRevocationTous(tousRevocation, periodeLien.nom) } : {}),
+    inviter: texteConfirmationInvitationsTous(tousInvitation, tousDejaEntres),
+    reinitialiser: texteConfirmationReinitialisationTous(tousReinit, tousReinitEmails, tousJamaisEntres),
+    desactiver: `Désactiver ${aDesactiver} compte${aDesactiver > 1 ? "s" : ""}, administrateurs compris ? Le vôtre et le compte de connexion du portail restent actifs. Chacun perdra l'accès immédiatement et son lien personnel cessera de fonctionner.`,
+    reactiver: `Réactiver ${aReactiver} compte${aReactiver > 1 ? "s" : ""} ? Chacun retrouvera l'accès et son lien personnel fonctionnera de nouveau.`,
+  };
+  const gestesTous = gestesTousProposes(chiffresTous, actionsTous, confirmationsTous);
+  // La portée de ces gestes, dite au-dessus d'eux dans les deux volets.
+  const porteeTous = (
+    <>
+      Tout l&apos;annuaire, pas seulement la liste affichée. Le compte du portail n&apos;est jamais touché, et le tien seulement par le renvoi du lien.
+      {periodeLien && <> Les liens sont ceux de « {periodeLien.nom} ».</>}
+    </>
+  );
+  /*
+   * **Les deux formulaires d'ajout, écrits une fois** : sous la liste sur ordinateur, dans le volet
+   * « + Ajouter » au téléphone. Un seul exemplaire dans la page à la fois (`HorsTelephone`, et le
+   * volet qui ne se rend qu'ouvert) : leurs champs portent des `id`.
+   */
+  const formulaireAjout = (
+    <FormulaireAction action={creerMembre} bouton="Ajouter le membre" enCours="Ajout…">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Champ label="Prénom" name="prenom" required maxLength={60} autoComplete="off" />
+        <Champ label="Nom" name="nom" required maxLength={60} autoComplete="off" />
+      </div>
+      <Champ
+        label="Email (facultatif)"
+        name="email"
+        type="email"
+        autoComplete="off"
+        aide="Sans adresse, ce membre n'aura pas de lien personnel : l'équipe cochera sa présence pour lui."
+      />
+      {/* Pas d'« Administrateur » ici : un compte d'administration se crée (ou se nomme
+          parmi les personnes déjà là) dans l'onglet « Comptes admin », avec ce qu'il faut
+          sous les yeux — qui les a, leur double authentification, le journal.
+          La liste du dépôt (`ChampListe`), plus la liste native de `Select` : son champ caché
+          porte `role` dans le `FormData` exactement comme le faisait le `<select>`. L'`id`
+          est explicite parce que `role` tout court est un identifiant trop banal pour une
+          page qui en pose un par ligne (`role-<id>`, `SelecteurRole`). */}
+      <ChampListe
+        label="Rôle"
+        name="role"
+        id="nouveau-membre-role"
+        valeur="MEMBRE"
+        entrees={[
+          { valeur: "MEMBRE", libelle: "Membre" },
+          { valeur: "INSTRUCTEUR", libelle: "Instructeur" },
+        ]}
+      />
+      <fieldset>
+        <legend className="mb-1 font-semibold">Inscrire aux périodes</legend>
+        {periodesOuvertes.length === 0 ? (
+          <p className="text-sm text-texte-secondaire">Aucune période ouverte : la personne s&apos;inscrira à la prochaine.</p>
+        ) : (
+          periodesOuvertes.map((p) => (
+            <label key={p.id} className="flex min-h-11 cursor-pointer items-center gap-3">
+              <input key={`periode-${p.id}-${p.statut}`} type="checkbox" name="periodIds" value={p.id} defaultChecked={p.statut === "ACTIVE"} className="size-6 accent-primaire" />
+              {p.nom} <span className="text-sm text-texte-secondaire">{p.statut === "ACTIVE" ? "(active)" : "(brouillon)"}</span>
+            </label>
+          ))
+        )}
+      </fieldset>
+    </FormulaireAction>
+  );
+  const importCsv = <ImportCsv periodes={periodesOuvertes} />;
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-3xl">Membres</h1>
-        {/* Le total, pas le nombre de lignes affichées : c'est la réponse à « combien sommes-nous ? » */}
-        <p className="text-texte-secondaire">
-          {total} compte{total > 1 ? "s" : ""} {inactifs ? "(actifs et inactifs)" : "actifs"}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl">Membres</h1>
+          {/* Le total, pas le nombre de lignes affichées : c'est la réponse à « combien sommes-nous ? » */}
+          <p className="text-texte-secondaire">
+            {total} compte{total > 1 ? "s" : ""} {inactifs ? "(actifs et inactifs)" : "actifs"}
+          </p>
+        </div>
+        {/*
+          **Au téléphone, un seul bouton plein en tête : « + Ajouter »**. Les deux formulaires d'ajout
+          et les gestes sur tout le club ne sont plus sous la liste — quatre-vingts lignes plus bas —
+          mais dans un volet du bas, chacun derrière son entrée. Rien n'est réécrit : ce sont les
+          formulaires de l'ordinateur, mêmes champs et mêmes actions.
+        */}
+        {(peutCreer || gestesTous.length > 0) && (
+          <RubriquesVolet
+            libelle="Ajouter"
+            icone="plus"
+            variante="primaire"
+            titre="Ajouter"
+            rubriques={
+              peutCreer
+                ? [
+                    // Une clé sur chaque contenu : ils voyagent dans un tableau jusqu'au composant client.
+                    { cle: "personne", libelle: "Une personne", contenu: <Fragment key="personne">{formulaireAjout}</Fragment> },
+                    { cle: "csv", libelle: "Un fichier CSV", contenu: <Fragment key="csv">{importCsv}</Fragment> },
+                  ]
+                : []
+            }
+            gestes={gestesTous}
+            idGestes="geste-tous-telephone"
+            ancre={peutCreer ? { id: "ajouter", cle: "personne" } : undefined}
+            enTeteGestes={
+              <div key="gestes-tous" className="flex flex-col gap-1 pt-3">
+                <h3 className="text-lg font-bold">Gestes sur tout le club</h3>
+                <p className="text-base text-texte-secondaire">{porteeTous}</p>
+              </div>
+            }
+          />
+        )}
       </div>
 
       {/*
@@ -373,47 +509,14 @@ export default async function PageMembres({ searchParams }: Props) {
           suppression efface les comptes et leur historique, et ne se fait qu'en les désignant.
         */}
         {(tousRenvoi > 0 || tousRevocation > 0 || tousInvitation > 0 || tousReinit > 0 || (peutGererLesAdmins && (aDesactiver > 0 || aReactiver > 0))) && (
-          <div className="mt-3 flex justify-end">
+          <div className="mt-3 flex justify-end tel:hidden">
             <Volet libelle="Pour tout le monde" libelleOuvert="Fermer" titre="Pour tout le monde" largeur="sm:w-96" groupe="membre">
               <div className="flex flex-col gap-3">
-                <p className="text-sm text-texte-secondaire">
-                  Tout l&apos;annuaire, pas seulement la liste affichée. Le compte du portail n&apos;est jamais touché, et le tien seulement par le
-                  renvoi du lien.
-                  {periodeLien && <> Les liens sont ceux de « {periodeLien.nom} ».</>}
-                </p>
+                <p className="text-sm text-texte-secondaire">{porteeTous}</p>
                 {/* **Une question, un geste, un bouton** — le motif de la barre de sélection, avec les
                     chiffres de tout l'annuaire comptés ci-dessus. Seuls les gestes qui toucheraient
                     quelqu'un sont proposés, et chacun garde sa confirmation chiffrée. */}
-                <ChoixToutLeMonde
-                  chiffres={{
-                    inviter: tousInvitation,
-                    dejaEntres: tousDejaEntres,
-                    renvoyer: tousRenvoi,
-                    revoquer: tousRevocation,
-                    reinitialiser: tousReinit,
-                    reinitialiserEmails: tousReinitEmails,
-                    jamaisEntres: tousJamaisEntres,
-                    desactiver: peutGererLesAdmins ? aDesactiver : 0,
-                    reactiver: peutGererLesAdmins ? aReactiver : 0,
-                    periode: periodeLien?.nom ?? null,
-                  }}
-                  actions={{
-                    ...(periodeLien && tousRenvoi > 0 ? { renvoyer: renvoyerTousLesLiens.bind(null, periodeLien.id, retour) } : {}),
-                    ...(periodeLien && tousRevocation > 0 ? { revoquer: revoquerLiensEnMasse.bind(null, { periodId: periodeLien.id, tous: true }) } : {}),
-                    ...(periodeLien && tousInvitation > 0 ? { inviter: envoyerInvitationsEnMasse.bind(null, { periodId: periodeLien.id, tous: true }) } : {}),
-                    ...(tousReinit > 0 ? { reinitialiser: reinitialiserAccesEnMasse.bind(null, { tous: true }) } : {}),
-                    ...(peutGererLesAdmins && aDesactiver > 0 ? { desactiver: definirActifTous.bind(null, false, retour) } : {}),
-                    ...(peutGererLesAdmins && aReactiver > 0 ? { reactiver: definirActifTous.bind(null, true, retour) } : {}),
-                  }}
-                  confirmations={{
-                    ...(periodeLien ? { renvoyer: texteConfirmationRenvoiTous(tousRenvoi, periodeLien.nom) } : {}),
-                    ...(periodeLien ? { revoquer: texteConfirmationRevocationTous(tousRevocation, periodeLien.nom) } : {}),
-                    inviter: texteConfirmationInvitationsTous(tousInvitation, tousDejaEntres),
-                    reinitialiser: texteConfirmationReinitialisationTous(tousReinit, tousReinitEmails, tousJamaisEntres),
-                    desactiver: `Désactiver ${aDesactiver} compte${aDesactiver > 1 ? "s" : ""}, administrateurs compris ? Le vôtre et le compte de connexion du portail restent actifs. Chacun perdra l'accès immédiatement et son lien personnel cessera de fonctionner.`,
-                    reactiver: `Réactiver ${aReactiver} compte${aReactiver > 1 ? "s" : ""} ? Chacun retrouvera l'accès et son lien personnel fonctionnera de nouveau.`,
-                  }}
-                />
+                <ChoixToutLeMonde chiffres={chiffresTous} actions={actionsTous} confirmations={confirmationsTous} />
               </div>
             </Volet>
           </div>
@@ -655,7 +758,7 @@ export default async function PageMembres({ searchParams }: Props) {
                         sur deux lignes au lieu d'une. */}
                     <Ligne
                       palier={PALIER_TABLEAU}
-                      className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 [&>td]:px-0 lg:[&>td]:px-3 lg:[&>td]:py-1 ${
+                      className={`group/ligne grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 [&>td]:px-0 lg:[&>td]:px-3 lg:[&>td]:py-1 tel:relative ${LIGNE_COCHEE} ${
                         m.actif ? "" : "text-texte-secondaire"
                       }`}
                     >
@@ -676,7 +779,14 @@ export default async function PageMembres({ searchParams }: Props) {
                         {/* Le nom et ses pastilles sur une même ligne, qui se replie si besoin : ce
                             sont deux lectures d'une seule chose (« qui », et « à quel titre »). */}
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <Link href={`/admin/membres/${m.id}`} className="inline-flex min-h-12 min-w-0 items-center gap-2">
+                          {/* **Au téléphone, toute la ligne mène à la fiche** : le lien s'étend à la
+                              ligne entière (`after:inset-0`). Sauf quand la ligne porte sa case — la
+                              sélection multiple est allumée : toucher la ligne la coche alors
+                              (`ZoneCochable`), et seul le nom reste le lien de la fiche. */}
+                          <Link
+                            href={`/admin/membres/${m.id}`}
+                            className="inline-flex min-h-12 min-w-0 items-center gap-2 tel:after:absolute tel:after:inset-0 tel:after:rounded-xl tel:group-has-[[data-case-selection]]/ligne:after:hidden"
+                          >
                             <PastillePersonne id={m.id} couleur={m.couleur} />
                             {/* **Plus de coupe par trois points** : le nom a sa colonne maintenant, et
                                 un nom coupé est une information perdue (`CLAUDE.md`). Il revient à la
@@ -722,11 +832,13 @@ export default async function PageMembres({ searchParams }: Props) {
                         range à gauche** quand deux se repoussent aux deux bords. C'est ce qui garde
                         l'adresse et la pastille alignées sur le nom, comme hier.
                       */}
-                      <Cellule palier={PALIER_TABLEAU} className="col-span-3 col-start-1 row-start-2 text-sm text-texte-secondaire">
+                      {/* Au téléphone, l'adresse part dans la fiche : une ligne par personne. */}
+                      <Cellule palier={PALIER_TABLEAU} className="col-span-3 col-start-1 row-start-2 text-sm text-texte-secondaire tel:hidden">
                         <span className="sr-only lg:hidden">Email : </span>
-                        {/* `break-all` : une adresse coupée par trois points ne se recopie pas, et
-                            c'est l'adresse qu'on vient vérifier ici. Elle revient à la ligne. */}
-                        {m.email ? <span className="break-all">{m.email}</span> : "sans email"}
+                        {/* Pas de points de suspension : une adresse coupée par trois points ne se
+                            recopie pas, et c'est l'adresse qu'on vient vérifier ici. Elle revient à
+                            la ligne après « @ » (`AdresseEmail`). */}
+                        {m.email ? <AdresseEmail email={m.email} /> : "sans email"}
                       </Cellule>
                       {/*
                         **L'état du lien, en colonne** (« l'état du lien devient une
@@ -735,22 +847,33 @@ export default async function PageMembres({ searchParams }: Props) {
                         balaie la colonne pour trouver. L'infobulle porte la phrase entière : le mot
                         court tient dans la colonne, il ne dit pas tout (`etat-lien.ts`).
                       */}
-                      <Cellule palier={PALIER_TABLEAU} title={etatLien.detail} className="col-span-3 col-start-1 row-start-3 text-sm lg:whitespace-nowrap">
+                      {/* Au téléphone, l'état du lien remonte sous le nom, en petit : la seule
+                          seconde ligne de la personne. */}
+                      <Cellule
+                        palier={PALIER_TABLEAU}
+                        title={etatLien.detail}
+                        className="col-span-3 col-start-1 row-start-3 text-sm lg:whitespace-nowrap tel:col-span-1 tel:col-start-2 tel:row-start-2 tel:-mt-2"
+                      >
                         <span className="sr-only lg:hidden">État du lien : </span>
                         <Pastille ton={etatLien.ton}>{etatLien.libelle}</Pastille>
                       </Cellule>
                       {/* « Gérer » retrouve le bout de la première ligne, là où le bureau l'a appris
                           (il y était en `ml-auto` avant le tableau), et la dernière colonne sur PC. */}
                       <Cellule palier={PALIER_TABLEAU} className="col-start-3 row-start-1">
+                        {/* Au téléphone, plus de « Gérer » : la ligne entière ouvre la fiche, et le
+                            chevron le dit. Le volet reste celui de l'ordinateur et de la tablette. */}
+                        <span aria-hidden className="text-texte-secondaire ordi:hidden">
+                          <Icone nom="fleche" taille={20} />
+                        </span>
                         {aDesGestes && (
-                          <div className="flex lg:justify-end">
+                          <div className="flex lg:justify-end tel:hidden">
                             {/* Repli natif (<details>) : accessible au clavier, ouvrable sans script, et
                                 un seul ouvert à la fois dans la liste (attribut `name`). */}
                             <Volet libelle="Gérer" libelleOuvert="Fermer" titre={`${m.prenom} ${m.nom}`} largeur="sm:w-80" groupe="membre">
                               <div className="flex flex-col gap-3">
                                 <p className="text-sm text-texte-secondaire">
-                                  {m.email ? <span className="break-all">{m.email}</span> : "Sans adresse email"}
-                                  {periodesEnCours.length > 0 && <> · {periodesEnCours.map((p) => p.period.nom).join(", ")}</>}
+                                  {m.email ? <AdresseEmail email={m.email} /> : "Sans adresse email"}
+                                  {periodesEnCours.length > 0 && <>&nbsp;· {periodesEnCours.map((p) => p.period.nom).join(", ")}</>}
                                   {/* **L'état du lien n'est plus répété ici** : il a sa colonne, et
                                       le volet s'ouvre depuis la ligne qui la porte. Sur téléphone,
                                       où le panneau couvre la ligne, l'adresse et les périodes
@@ -853,63 +976,22 @@ export default async function PageMembres({ searchParams }: Props) {
         </ZoneSelection>
       </Carte>
 
+      {/* Sur téléphone, ces deux cartes vivent dans le volet « + Ajouter » (en tête d'écran). */}
       {peutCreer && (
-        <div className="grid gap-5 lg:grid-cols-2">
-          {/* **« Ajouter un membre »**. Le bouton suit le titre — un formulaire qui s'appelle
-              « Ajouter un membre » et dont le bouton dit « Ajouter la personne » fait douter qu'ils
-              parlent de la même chose. Le mot « personne » n'est pas remplacé ailleurs pour autant
-              : il garde son sens partout où il désigne un être humain par opposition à un compte
-              (« Sélectionner les 7 personnes », « agir sur plusieurs personnes à la fois »). */}
-          <Carte titre="Ajouter un membre" className="scroll-mt-20">
-            <div id="ajouter" />
-            <FormulaireAction action={creerMembre} bouton="Ajouter le membre" enCours="Ajout…">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Champ label="Prénom" name="prenom" required maxLength={60} autoComplete="off" />
-                <Champ label="Nom" name="nom" required maxLength={60} autoComplete="off" />
-              </div>
-              <Champ
-                label="Email (facultatif)"
-                name="email"
-                type="email"
-                autoComplete="off"
-                aide="Sans adresse, ce membre n'aura pas de lien personnel : l'équipe cochera sa présence pour lui."
-              />
-              {/* Pas d'« Administrateur » ici : un compte d'administration se crée (ou se nomme
-                  parmi les personnes déjà là) dans l'onglet « Comptes admin », avec ce qu'il faut
-                  sous les yeux — qui les a, leur double authentification, le journal.
-                  La liste du dépôt (`ChampListe`), plus la liste native de `Select` : son champ caché
-                  porte `role` dans le `FormData` exactement comme le faisait le `<select>`. L'`id`
-                  est explicite parce que `role` tout court est un identifiant trop banal pour une
-                  page qui en pose un par ligne (`role-<id>`, `SelecteurRole`). */}
-              <ChampListe
-                label="Rôle"
-                name="role"
-                id="nouveau-membre-role"
-                valeur="MEMBRE"
-                entrees={[
-                  { valeur: "MEMBRE", libelle: "Membre" },
-                  { valeur: "INSTRUCTEUR", libelle: "Instructeur" },
-                ]}
-              />
-              <fieldset>
-                <legend className="mb-1 font-semibold">Inscrire aux périodes</legend>
-                {periodesOuvertes.length === 0 ? (
-                  <p className="text-sm text-texte-secondaire">Aucune période ouverte : la personne s&apos;inscrira à la prochaine.</p>
-                ) : (
-                  periodesOuvertes.map((p) => (
-                    <label key={p.id} className="flex min-h-11 cursor-pointer items-center gap-3">
-                      <input key={`periode-${p.id}-${p.statut}`} type="checkbox" name="periodIds" value={p.id} defaultChecked={p.statut === "ACTIVE"} className="size-6 accent-primaire" />
-                      {p.nom} <span className="text-sm text-texte-secondaire">{p.statut === "ACTIVE" ? "(active)" : "(brouillon)"}</span>
-                    </label>
-                  ))
-                )}
-              </fieldset>
-            </FormulaireAction>
-          </Carte>
-          <Carte titre="Importer un fichier CSV">
-            <ImportCsv periodes={periodesOuvertes} />
-          </Carte>
-        </div>
+        <HorsTelephone>
+          <div className="grid gap-5 lg:grid-cols-2">
+            {/* **« Ajouter un membre »**. Le bouton suit le titre — un formulaire qui s'appelle
+                « Ajouter un membre » et dont le bouton dit « Ajouter la personne » fait douter qu'ils
+                parlent de la même chose. Le mot « personne » n'est pas remplacé ailleurs pour autant
+                : il garde son sens partout où il désigne un être humain par opposition à un compte
+                (« Sélectionner les 7 personnes », « agir sur plusieurs personnes à la fois »). */}
+            <Carte titre="Ajouter un membre" className="scroll-mt-20">
+              <div id="ajouter" />
+              {formulaireAjout}
+            </Carte>
+            <Carte titre="Importer un fichier CSV">{importCsv}</Carte>
+          </div>
+        </HorsTelephone>
       )}
 
     </div>

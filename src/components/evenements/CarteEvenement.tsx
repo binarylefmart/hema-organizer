@@ -6,7 +6,16 @@ import { LienBouton } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
 import { BandeauEvenement } from "./BandeauEvenement";
 import { DescriptionEvenement } from "./DescriptionEvenement";
-import { dateEvenement, horaireEvenement, libelleDuree, libellePrix, proximite, type EvenementAffiche } from "./libelles";
+import {
+  dateEvenement,
+  dateEvenementCourte,
+  horaireEvenement,
+  horaireEvenementCourt,
+  libelleDuree,
+  libellePrix,
+  proximite,
+  type EvenementAffiche,
+} from "./libelles";
 import { Pastille } from "@/components/ui/Pastille";
 
 type Props = {
@@ -50,6 +59,12 @@ export async function CarteEvenement({ evenement: e, aujourdHui, passe = false }
   const duree = libelleDuree(e.dureeNombre, e.dureeUnite);
   const quand = passe ? null : proximite(aujourdHui, e.dateDebut);
   const brouillon = e.publie === false;
+  // Les deux lignes de la carte resserrée du téléphone : « quand · où », puis « combien de temps ·
+  // combien ». Le plan et l'organisateur restent sur la fiche, à un toucher du titre.
+  const ligneQuand = [dateEvenementCourte(e.dateDebut, e.dateFin, aujourdHui), horaireEvenementCourt(e.heureDebut, e.heureFin), e.lieu]
+    .filter(Boolean)
+    .join("\u00a0· ");
+  const ligneCombien = [duree, libellePrix(e.prix, e.prixAdherent, { court: true })].filter(Boolean).join("\u00a0· ");
   return (
     /*
      * **La carte est un conteneur, et ses découpes internes le mesurent — jamais la fenêtre**.
@@ -71,8 +86,8 @@ export async function CarteEvenement({ evenement: e, aujourdHui, passe = false }
         brouillon ? "border-ocre/50" : quand ? "border-primaire/50" : "border-bordure/60"
       } ${passe ? "opacity-90" : ""}`}
     >
-      <BandeauEvenement src={e.imageUrl} nom={e.nom} ecu={club.ecu} />
-      <div className="flex flex-1 flex-col gap-3 p-4 @sm:p-5">
+      <BandeauEvenement src={e.imageUrl} nom={e.nom} ecu={club.ecu} resserre />
+      <div className="flex flex-1 flex-col gap-2 p-4 ordi:gap-3 @sm:p-5">
         <header className="flex flex-col gap-2">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
             <h2 className="min-w-0 text-xl font-bold">
@@ -83,7 +98,17 @@ export async function CarteEvenement({ evenement: e, aujourdHui, passe = false }
             {/* Un seul marqueur à la fois : le brouillon prime, c'est l'état qui demande une décision */}
             {brouillon ? <Pastille ton="ocre">Brouillon</Pastille> : quand && <Pastille ton="primaire">{quand}</Pastille>}
           </div>
-          <p className="flex flex-col gap-1 text-texte-secondaire">
+          {/*
+           * **En version téléphone, la carte se resserre** : les infos pratiques tiennent en
+           * deux lignes de texte, sans icônes. La bascule est en CSS — le serveur rend les deux
+           * blocs, la fenêtre choisit — puisqu'il n'y a ici aucun champ de formulaire à ne pas
+           * doubler. Sur ordinateur, rien ne change.
+           */}
+          <p className="flex flex-col text-texte-secondaire ordi:hidden" data-infos-resserrees>
+            <span className="font-semibold text-texte">{ligneQuand}</span>
+            <span>{ligneCombien}</span>
+          </p>
+          <p className="hidden flex-col gap-1 text-texte-secondaire ordi:flex">
             <Ligne icone="calendrier">
               <span className="font-semibold text-texte">{dateEvenement(e.dateDebut, e.dateFin)}</span>
               {horaire && <span className="block">{horaire}</span>}

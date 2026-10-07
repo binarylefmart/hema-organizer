@@ -188,8 +188,22 @@ const LIGNE_EVENEMENT = "Nouvel événement";
  * reste le bon ; la raison, elle, aurait envoyé le prochain lecteur sur une fausse piste — et une
  * raison fausse dans un commentaire finit par servir d'argument à quelqu'un.
  */
-function ligneMatrice(page: Page, intitule: string) {
-  return page.locator("tbody").filter({ hasText: intitule });
+async function ligneMatrice(page: Page, intitule: string) {
+  const ligne = page.locator("tbody").filter({ hasText: intitule });
+  /*
+   * **Au téléphone, la notification est repliée en une ligne** (`LigneNotification`) : ses cases
+   * sont dans le DOM mais cachées, et on ne coche pas une case cachée. On touche donc la ligne
+   * jusqu'à ce qu'elle se dise ouverte — un toucher arrivé avant l'hydratation ne fait rien, d'où la
+   * reprise. Au-delà de 768 px, le bouton n'est pas affiché et il n'y a rien à déplier.
+   */
+  const bouton = ligne.locator("button[data-deplier-notification]");
+  if (await bouton.isVisible()) {
+    await expect(async () => {
+      if ((await bouton.getAttribute("aria-expanded")) !== "true") await bouton.click();
+      await expect(bouton).toHaveAttribute("aria-expanded", "true", { timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+  }
+  return ligne;
 }
 
 /** Les annonces rendues par la route, à l'instant où on la lit. */
@@ -220,7 +234,7 @@ test("les annonces ne sortent que derrière les deux portes, et se retirent dans
 
   // ---- 3. La case de la notification : c'est la matrice qui décide du détail.
   await page.reload();
-  const ligne = ligneMatrice(page, LIGNE_EVENEMENT);
+  const ligne = await ligneMatrice(page, LIGNE_EVENEMENT);
   // La colonne était grisée et non tapable tant que la publication n'était pas ouverte : elle ne
   // s'active que maintenant, et c'est exactement ce que « deux portes » veut dire.
   await expect(ligne.getByLabel(CASE_SITE)).toBeEnabled({ timeout: 20_000 });
@@ -290,8 +304,8 @@ test("fermer la publication puis enregistrer la matrice ne vide pas les cases du
   await carte.getByRole("button", { name: "Enregistrer" }).click();
   await expect.poll(async () => (await request.get(ROUTE_ANNONCES)).status(), { timeout: 15_000 }).toBe(200);
   await page.reload();
-  await expect(ligne().getByLabel(CASE_SITE)).toBeEnabled({ timeout: 20_000 });
-  await ligne().getByLabel(CASE_SITE).check();
+  await expect((await ligne()).getByLabel(CASE_SITE)).toBeEnabled({ timeout: 20_000 });
+  await (await ligne()).getByLabel(CASE_SITE).check();
   await page.getByRole("button", { name: "Enregistrer les notifications" }).click();
   await expect.poll(async () => annoncesDe(await (await request.get(ROUTE_ANNONCES)).json()).length, { timeout: 15_000 }).toBeGreaterThan(0);
 
@@ -302,7 +316,7 @@ test("fermer la publication puis enregistrer la matrice ne vide pas les cases du
   await expect.poll(async () => (await request.get(ROUTE_ANNONCES)).status(), { timeout: 15_000 }).toBe(503);
   await page.reload();
   // La colonne est grisée **et** `disabled` : c'est là que le navigateur cesse d'envoyer la case.
-  await expect(ligne().getByLabel(CASE_SITE)).toBeDisabled({ timeout: 20_000 });
+  await expect((await ligne()).getByLabel(CASE_SITE)).toBeDisabled({ timeout: 20_000 });
   await page.getByRole("button", { name: "Enregistrer les notifications" }).click();
   await expect(page.getByText(/Notifications enregistrées/)).toBeVisible({ timeout: 20_000 });
 
@@ -314,10 +328,10 @@ test("fermer la publication puis enregistrer la matrice ne vide pas les cases du
     .poll(async () => annoncesDe(await (await request.get(ROUTE_ANNONCES)).json()).length, { timeout: 15_000 })
     .toBeGreaterThan(0);
   await page.reload();
-  await expect(ligne().getByLabel(CASE_SITE), "la case cochée avant la fermeture doit être retrouvée").toBeChecked();
+  await expect((await ligne()).getByLabel(CASE_SITE), "la case cochée avant la fermeture doit être retrouvée").toBeChecked();
 
   // ---- 4. L'état de départ est rendu : case décochée, publication fermée.
-  await ligne().getByLabel(CASE_SITE).uncheck();
+  await (await ligne()).getByLabel(CASE_SITE).uncheck();
   await page.getByRole("button", { name: "Enregistrer les notifications" }).click();
   await expect.poll(async () => annoncesDe(await (await request.get(ROUTE_ANNONCES)).json()).length, { timeout: 15_000 }).toBe(0);
   await page.reload();

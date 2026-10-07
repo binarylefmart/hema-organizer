@@ -38,24 +38,24 @@ const MAITRESSE_TROIS_RESULTATS = "Sélectionner les 3 résultats";
 const INVITE_SANS_SELECTION = "Coche des lignes pour agir sur plusieurs personnes à la fois";
 
 /**
- * Choisit un rôle dans la liste déroulante de la barre, puis applique.
+ * Choisit un rôle dans le volet de la barre, puis applique — au téléphone, seul format de la campagne.
  *
- * `ListeDeroulante` **n'est pas un `<select>` natif** — c'est un bouton et un panneau
- * `role="listbox"`, parce qu'un menu natif s'ouvrait vers le haut et sortait de l'écran au pied
- * d'une liste de cinquante lignes. `selectOption` ne peut donc rien en faire : on déplie, on clique
- * l'entrée, puis on appuie sur le bouton — qui est le seul à écrire (la liste n'applique rien au
- * `change` : un rôle effleuré écrirait sur tout le lot).
+ * La barre sombre du bas ouvre le volet « Que faire sur ces N comptes ? » ; on y choisit « Changer le
+ * rôle… », puis le rôle **en deux boutons** (Membre, Instructeur), puis on appuie sur le bouton du bas
+ * — **le seul qui écrit**. Choisir le rôle n'applique rien : un rôle effleuré écrirait sur tout le lot.
+ * Tant qu'aucun rôle n'est choisi, ce bouton dit « Appliquer le rôle » et reste inerte.
  */
 async function appliquerRole(page: import("@playwright/test").Page, libelle: string): Promise<void> {
   const barre = barreRoles(page);
-  // « Que veux-tu faire ? » → « Changer le rôle… », puis le rôle visé, puis le seul bouton qui écrit.
-  await barre.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
-  await page.getByRole("listbox").getByRole("option", { name: /^Changer le rôle/ }).click();
-  await barre.getByRole("combobox", { name: "Nouveau rôle" }).click();
-  const panneau = page.getByRole("listbox");
-  await expect(panneau).toBeVisible();
-  await panneau.getByRole("option", { name: libelle, exact: true }).click();
-  await barre.getByRole("button", { name: /^Passer \d+ comptes? en/ }).click();
+  await barre.getByRole("button", { name: /^Que faire sur ces \d+ comptes \?$/ }).click();
+  const volet = page.getByRole("dialog", { name: /^Que faire sur / });
+  await expect(volet).toBeVisible();
+  await volet.getByRole("button", { name: /^Changer le rôle/ }).click();
+  await expect(volet.getByRole("button", { name: "Appliquer le rôle" })).toBeDisabled();
+  const role = volet.getByRole("button", { name: libelle, exact: true });
+  await role.click();
+  await expect(role).toHaveAttribute("aria-pressed", "true");
+  await volet.getByRole("button", { name: /^Passer \d+ comptes? en/ }).click();
 }
 
 /** La barre d'action de l'annuaire (la jumelle de celle des présences). */
@@ -203,4 +203,32 @@ test("changer le rôle par lots : un compte du bureau garde sa case, et son bure
   await expect(pastilleRole(page, "Foxtrot 06", "Instructeur")).toHaveCount(0);
   // Son bureau, lui, n'a jamais bougé : aucun geste de l'annuaire ne le touche.
   await expect(pastilleRole(page, "Foxtrot 06", "admin")).toHaveCount(1);
+});
+
+/**
+ * **La fiche au téléphone : le rôle de base en deux boutons.** Même action que la liste déroulante de
+ * l'annuaire (`definirRoleMembre`), donc même journal et mêmes refus ; un appui sur l'autre rôle
+ * l'applique, et la pastille de la tête de fiche suit. On remet le rôle du seed en sortant.
+ */
+test("la fiche règle le rôle de base en deux boutons", async ({ page }) => {
+  test.setTimeout(120_000);
+  await connecter(page, COMPTES.admin, "/admin/membres?q=Foxtrot");
+  // Toute la ligne mène à la fiche : on la touche au bout, pas sur le nom.
+  const ligne = ligneCompte(page, "Foxtrot 08");
+  const boite = (await ligne.boundingBox())!;
+  await ligne.click({ position: { x: boite.width - 24, y: boite.height / 2 } });
+  await expect(page.getByRole("heading", { level: 1, name: /Foxtrot 08/ })).toBeVisible({ timeout: 30_000 });
+
+  const roles = page.getByRole("group", { name: "Rôle" });
+  await expect(roles.getByRole("button", { name: "Membre" })).toHaveAttribute("aria-pressed", "true");
+  await roles.getByRole("button", { name: "Instructeur" }).click();
+  await expect(roles.getByRole("button", { name: "Instructeur" })).toHaveAttribute("aria-pressed", "true");
+  // La tête de fiche est relue : sa pastille dit le nouveau rôle.
+  await expect(page.getByRole("heading", { level: 1 }).getByText("Instructeur", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.reload();
+  await expect(roles.getByRole("button", { name: "Instructeur" }), "le rôle est bien écrit en base").toHaveAttribute("aria-pressed", "true");
+
+  // Remise en état.
+  await roles.getByRole("button", { name: "Membre" }).click();
+  await expect(page.getByRole("heading", { level: 1 }).getByText("Membre", { exact: true })).toBeVisible({ timeout: 30_000 });
 });

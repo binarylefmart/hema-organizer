@@ -181,6 +181,18 @@ export const deplacerPartieSchema = z.object({
   versBloc: z.coerce.number().int().min(0).max(PARTIES_PAR_SEANCE_MAX + 1),
 });
 
+/**
+ * Poser un élément à une place précise (le glisser-déposer du téléphone) : dans la partie `versBloc`
+ * (de 1 à nbParties + 1, ramenée aux limites par l'action), juste avant `avantId`, ou en fin de
+ * partie quand `avantId` vaut `null`. Ici, pas de zéro : ce geste vise une partie qui existe ou la
+ * partie nouvelle, jamais « au-dessus de la première ».
+ */
+export const deplacerElementSchema = z.object({
+  partieId: partieIdSchema,
+  versBloc: z.coerce.number().int().min(1).max(PARTIES_PAR_SEANCE_MAX + 1),
+  avantId: partieIdSchema.nullable(),
+});
+
 export const themesSchema = z.object({
   texte: z.string().max(4000, "Liste trop longue."),
 });

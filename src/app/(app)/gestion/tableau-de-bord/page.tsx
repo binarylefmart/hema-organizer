@@ -83,7 +83,7 @@ async function TauxParSeance({ stats }: IlotProps) {
   const s = await stats;
   if (!s) return <Alerte type="info">Aucune période.</Alerte>;
   return (
-    <Carte titre={`Taux par séance — moyenne ${s.moyenne} %`}>
+    <Carte titre={`Taux par séance — moyenne ${s.moyenne}\u00a0%`}>
       {s.seances.length === 0 ? (
         <p className="text-texte-secondaire">Aucune séance.</p>
       ) : (
@@ -105,7 +105,7 @@ async function TauxParSeance({ stats }: IlotProps) {
               <div className="col-span-2 row-start-2 h-4 overflow-hidden rounded bg-surface-douce md:col-span-1 md:row-start-auto" role="presentation">
                 {!seance.annulee && <div className={`h-full rounded ${seance.passee ? "bg-jauge" : "bg-primaire/70"}`} style={{ width: `${seance.compteurs.pourcentage}%` }} />}
               </div>
-              <span className="text-right tabular-nums">{seance.annulee ? "annulée" : `${seance.compteurs.pourcentage} %`}</span>
+              <span className="text-right tabular-nums">{seance.annulee ? "annulée" : `${seance.compteurs.pourcentage}\u00a0%`}</span>
             </li>
           ))}
         </ol>

@@ -42,6 +42,7 @@ import {
   QUESTION_GESTE,
   varianteGeste,
   type Explication,
+  type GesteOffert,
 } from "@/components/ui/choix-geste";
 import { resumeGeste, type LigneGeste } from "./selection-gestes";
 import {
@@ -171,6 +172,21 @@ export function libelleBouton(geste: GesteSelection, nombre: number, role?: { li
     case "supprimer":
       return `Supprimer ${pluriel(nombre, "compte")}`;
   }
+}
+
+/**
+ * **Le bouton du volet, au téléphone** : celui de l'ordinateur, et — pour les trois gestes qui
+ * écrivent aux gens — **le nombre d'emails qui partent** à sa suite : « Renvoyer 3 liens (3 emails) ».
+ * Sur l'ordinateur, l'explication posée juste au-dessus du bouton le dit déjà ; dans le volet, elle
+ * peut être hors de vue au moment d'appuyer, et c'est le chiffre qu'on ne rattrape pas.
+ *
+ * Tant qu'aucun rôle n'est choisi, le geste du rôle dit « Appliquer le rôle », inerte.
+ */
+export function libelleBoutonVolet(geste: GesteSelection, nombre: number, lignes: readonly LigneChoix[], role?: { libelle: string; changent: number }): string {
+  if (geste === "role" && !role) return "Appliquer le rôle";
+  const base = libelleBouton(geste, nombre, role);
+  const emails = geste === "renvoyer" ? resumeLiens(lignes).emails : geste === "inviter" ? resumeInvitations(lignes).emails : geste === "reinitialiser" ? resumeReinitialisation(lignes).emails : null;
+  return emails === null ? base : `${base} (${pluriel(emails, "email")})`;
 }
 
 /** **En rouge, ce qui enlève quelque chose** : révoquer un lien, réinitialiser des accès, supprimer des comptes (`gesteRouge`). */
@@ -416,6 +432,36 @@ export function gestesTousApplicables(c: ChiffresTous): GesteTousApplicable[] {
  */
 export function messageApres(geste: GesteTous, res: unknown): { type: "ok" | "erreur"; texte: string } {
   return messageApresGeste(res, FAIT[geste]);
+}
+
+/**
+ * **Les gestes « Pour tout le monde », prêts à proposer** : ceux qui toucheraient quelqu'un et dont
+ * l'action est permise (et liée par la page), avec la confirmation que l'écran posait déjà. Une seule
+ * composition pour les deux présentations — le volet de l'ordinateur (`ChoixToutLeMonde`) et le volet
+ * « + Ajouter » du téléphone, qui reçoit la liste toute faite du serveur.
+ */
+export function gestesTousProposes<A>(
+  chiffres: ChiffresTous,
+  actions: Partial<Record<GesteTous, A>>,
+  confirmations: Partial<Record<GesteTous, string>>,
+): Array<GesteOffert & { action: A }> {
+  return gestesTousApplicables(chiffres).flatMap((g) => {
+    const action = actions[g.geste];
+    if (!action) return [];
+    return [
+      {
+        geste: g.geste,
+        libelle: g.libelle,
+        bouton: g.bouton,
+        explication: g.explication,
+        confirmation: confirmations[g.geste],
+        definitif: g.definitif,
+        // Le message d'après coup de ce volet (`messageApres`) : jamais vide, même quand l'action ne répond rien.
+        fait: messageApres(g.geste, undefined).texte,
+        action,
+      },
+    ];
+  });
 }
 
 const FAIT: Record<GesteTous, string> = {

@@ -362,16 +362,24 @@ describe("rangs et noms des parties", () => {
     expect(rangs[0].data.ordre).toBeUndefined();
   });
 
-  it("range dans une partie l'échauffement, puis les cours, puis les options", () => {
+  it("garde l'ordre d'une partie tel que l'équipe l'a réglé, quelle que soit la nature", () => {
+    // L'ordre d'une partie est libre : une option avant le cours n'est pas une maladie.
+    expect(
+      detecterRangsIncoherents([
+        part("c0", "s1", "Option", 0, 1, "OPTION"),
+        part("c1", "s1", "Cours", 1, 1, "COURS"),
+        part("e0", "s1", "Échauffement", 2, 1, "ECHAUFFEMENT"),
+      ]),
+    ).toEqual([]);
+    // Des rangs troués se referment **dans cet ordre-là**, sans rien retrier par nature.
     const rangs = detecterRangsIncoherents([
       part("c0", "s1", "Option", 0, 1, "OPTION"),
-      part("c1", "s1", "Cours", 1, 1, "COURS"),
-      part("e0", "s1", "Échauffement", 2, 1, "ECHAUFFEMENT"),
+      part("c1", "s1", "Cours", 3, 1, "COURS"),
+      part("e0", "s1", "Échauffement", 5, 1, "ECHAUFFEMENT"),
     ]);
-    // `c1` est déjà au rang 1 : il ne bouge pas.
     expect(rangs.map((r) => [r.id, r.data.ordre, r.data.libelle])).toEqual([
-      ["e0", 0, undefined],
-      ["c0", 2, undefined],
+      ["c1", 1, undefined],
+      ["e0", 2, undefined],
     ]);
   });
 

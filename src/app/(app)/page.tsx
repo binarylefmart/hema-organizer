@@ -74,8 +74,8 @@ function colonneDepliable(s: SeanceCarte): CoursFrise {
 function sousTitre(cr: CompteRendu): string | null {
   if (!cr.periode) return null;
   if (cr.seancesTotal === 0) return cr.periode.nom;
-  if (cr.seancesPassees === 0) return `${cr.periode.nom} · ${cr.seancesTotal} cours au programme`;
-  return `${cr.periode.nom} · ${cr.seancesPassees} cours sur ${cr.seancesTotal} déjà passés`;
+  if (cr.seancesPassees === 0) return `${cr.periode.nom}\u00a0· ${cr.seancesTotal}\u00a0cours au programme`;
+  return `${cr.periode.nom}\u00a0· ${cr.seancesPassees}\u00a0cours sur ${cr.seancesTotal} déjà passés`;
 }
 
 /**

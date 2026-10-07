@@ -279,7 +279,8 @@ model SessionPartie {
   description String @default("")
   /// Rang dans la séance, **contigu à partir de 0** : chaque écriture renumérote, sinon un trou
   /// finirait par décider de l'ordre à la place de l'équipe. L'ordre de lecture est
-  /// (bloc, rang de la nature dans `NATURES_ELEMENT`, ordre, id) — `ordre` le matérialise.
+  /// (bloc, ordre, id) — **libre** dans une partie, la nature n'y entre pas ; elle ne décide que
+  /// de la place par défaut d'un élément qui arrive (`ORDRE_DEFAUT_NATURES`).
   ordre     Int    @default(0)
   /// **Numéro de la partie** qui porte cet élément (« une gestion par partie, partie
   /// 1, 2, 3 ») — **contigu à partir de 1**. Une partie n'existe que par ses éléments : retirer le

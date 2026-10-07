@@ -7,7 +7,7 @@ import { formatDateHeure } from "@/lib/dates";
 import type { CasePlanning } from "@/lib/planning";
 import { Icone } from "@/components/ui/Icone";
 import { couleurPersonne } from "@/lib/couleurs";
-import { PastillePersonne } from "@/components/ui/Pastille";
+import { ChevronsNiveau, PastillePersonne } from "@/components/ui/Pastille";
 import { ListeDeroulante } from "@/components/ui/ListeDeroulante";
 import type { EntreeListe } from "@/components/ui/liste-deroulante";
 import { useListesCompletes, useOptionsCase } from "./ContexteOptions";
@@ -16,6 +16,8 @@ import { AUTRE, champsLus, personnesRendues, reglagesVides, themesDeNature, them
 import { auRepos, fileInitiale, pairesEgales, poser, retour, suivreServeur, type Envoi, type FileEnvoi, type Paire } from "./file-envoi";
 import { brancherGardeFermeture, marquerEnAttente } from "./garde-fermeture";
 import { paireImposee } from "./brouillon";
+import { BOUTONS_NIVEAU, niveauChoisi } from "./niveau-boutons";
+import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
 
 /**
  * Au-delà de ce délai, un enregistrement qui n'est toujours pas revenu cesse d'être passé sous
@@ -120,6 +122,8 @@ export function CaseEditeur({
   const brouillon = useBrouillon();
   // Listes complétées en arrière-plan une fois la page prête (voir ContexteOptions)
   const completes = useListesCompletes();
+  // En version téléphone, le niveau se choisit en quatre boutons (`niveau-boutons.ts`) ; la liste reste au-delà.
+  const telephone = useEcranTelephone();
   /*
    * **Une case qui se monte sur un brouillon en cours en part**, pas de la valeur du serveur : une
    * carte repliée puis dépliée remonte ses cases, et elles doivent montrer ce que la barre compte
@@ -176,7 +180,12 @@ export function CaseEditeur({
     marquerEnAttente(cle, !auRepos(nouvelle));
   };
 
-  /* La garde vit tant qu'une case est à l'écran ; au démontage, cette case-là n'a plus rien à perdre. */
+  /*
+   * La garde vit tant qu'une case est à l'écran ; au démontage, cette case-là n'a plus d'envoi à
+   * perdre. Ce qu'elle relâche, c'est **sa** clé — celle de ses envois en vol. Un réglage laissé dans
+   * le brouillon ne lui appartient plus : le brouillon le garde sous la sienne (`cleBrouillon`), et
+   * c'est lui qui retient la fermeture quand la ligne est repliée.
+   */
   useEffect(() => {
     const debrancher = brancherGardeFermeture();
     return () => {
@@ -381,6 +390,12 @@ export function CaseEditeur({
     setNiveau(n);
     sauver({ instructeurId, instructeurSecondId, theme: t, description: d, niveau: n });
   };
+  /** Le niveau, choisi dans la liste (ordinateur) ou d'un tap (téléphone) : un seul chemin d'écriture. */
+  const choisirNiveau = (v: string) => {
+    const n = niveauChoisi(v);
+    setNiveau(n);
+    sauver({ instructeurId, instructeurSecondId, theme, description, niveau: n });
+  };
 
   /**
    * **La case telle qu'un membre la lit** : les valeurs renseignées, chacune sous son nom, et rien
@@ -421,6 +436,7 @@ export function CaseEditeur({
               <dt className="shrink-0 text-[0.85em] text-texte-secondaire">{c.intitule}</dt>
               <dd className="flex min-w-0 items-baseline gap-1 break-words font-semibold">
                 {pastille[c.intitule] && <PastillePersonne id={pastille[c.intitule]!} taille={8} className="self-center" />}
+                {c.intitule === "Niveau" && <ChevronsNiveau niveau={valeur.niveau} />}
                 {c.valeur}
               </dd>
             </div>
@@ -640,20 +656,42 @@ export function CaseEditeur({
                 Niveau — {label}
               </label>
               <Intitule>Niveau</Intitule>
-              <ListeDeroulante
-                id={`${partieId}-niveau`}
-                libelleId={`${partieId}-niveau-libelle`}
-                libelle={`Niveau — ${label}`}
-                className={classeChampSecond}
-                valeur={niveau}
-                entrees={entreesNiveau}
-                {...deplier("niveaux")}
-                onChoisir={(v) => {
-                  const n = (NIVEAUX as readonly string[]).includes(v) ? (v as Niveau) : NIVEAU_DEFAUT;
-                  setNiveau(n);
-                  sauver({ instructeurId, instructeurSecondId, theme, description, niveau: n });
-                }}
-              />
+              {telephone ? (
+                /* **Quatre boutons côte à côte** : quatre valeurs fixes se touchent mieux qu'elles ne se
+                   déroulent. Le groupe garde le nom de la liste (« Niveau — … ») et l'identifiant du
+                   champ ; le bouton choisi est plein et le dit (`aria-pressed`). 48 px de haut même en
+                   `compact` : c'est une cible tactile, pas une ligne de lecture. */
+                <div id={`${partieId}-niveau`} role="group" aria-labelledby={`${partieId}-niveau-libelle`} className="grid grid-cols-4 gap-1">
+                  {BOUTONS_NIVEAU.map((b) => {
+                    const actif = b.niveau === niveau;
+                    return (
+                      <button
+                        key={b.niveau}
+                        type="button"
+                        aria-pressed={actif}
+                        aria-label={b.nom}
+                        onClick={() => choisirNiveau(b.niveau)}
+                        className={`min-h-12 min-w-0 rounded-lg border-2 px-1 text-sm font-semibold ${
+                          actif ? "border-primaire bg-primaire text-primaire-texte shadow-bouton" : "border-bordure bg-surface text-texte"
+                        }`}
+                      >
+                        {b.court}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <ListeDeroulante
+                  id={`${partieId}-niveau`}
+                  libelleId={`${partieId}-niveau-libelle`}
+                  libelle={`Niveau — ${label}`}
+                  className={classeChampSecond}
+                  valeur={niveau}
+                  entrees={entreesNiveau}
+                  {...deplier("niveaux")}
+                  onChoisir={choisirNiveau}
+                />
+              )}
             </>
           )}
         </div>

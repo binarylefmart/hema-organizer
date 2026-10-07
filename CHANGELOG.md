@@ -2,6 +2,47 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.73.0
+
+### Nouveautés
+
+- **planning** : sur ordinateur, ↑ ↓ déplacent d'une place dans l'ordre de lecture
+- **telephone** : bascule au doigt ou à la petite largeur, et une seule façon de faire partout
+- **telephone** : annuaire en lignes, fiche d'un membre en boutons, tuile de présence dans l'historique
+- **selection** : la sélection multiple au format téléphone
+- **telephone** : événements, profil, périodes et notifications resserrés
+- **planning** : sur téléphone, le niveau se choisit en quatre boutons — et le bandeau des séances perd sa phrase
+- **planning** : la barre d'édition s'allège — l'explication passe derrière un « i »
+- **admin** : sur téléphone, menu en liste et présences en trois boutons
+- **ateliers** : sur téléphone, deux boutons pour décider et un assistant pour proposer
+- **seances** : sur téléphone, la carte d'une séance se resserre
+- **planning** : sur téléphone, le mode modification se règle aux gestes
+- **planning** : l'ordre dans une partie devient libre — l'atelier se pose avant l'option à l'ajout
+- **planning** : le niveau se lit en chevrons — un, deux ou trois, seulement s'il y a un niveau
+- **planning** : un petit écu par nature d'élément — fasce ondée, sautoir, chevron, croix
+
+### Corrections
+
+- **telephone** : barre de sélection claire comme la barre d'édition, et le titre « Modification » revient
+- **telephone** : barre d'édition sans vide, « Valider » sous une ligne réglée, toutes les réponses sur la carte
+- **suivi** : la taille de la fenêtre se relit à chaque trame
+- **suivi** : la barre des captures suit la passe là où elle tourne
+- **suivi** : la barre des captures suit la passe en cours
+- **affichage** : défauts relevés sur les captures
+- seconde relecture — bascule sans trou, ancre mal formée, volet des ateliers, flèches
+- **2fa** : à la première activation par la connexion, les codes de secours s'affichent enfin
+- corrections des relectures de bugs et de sécurité
+- **suivi** : les portes se mesurent à côté — le tableau ne se fige plus
+- **deploiement** : la stack se retrouve par son nom — supprimer et recréer depuis le modèle ne casse plus le déploiement
+- **deploiement** : une image inchangée garde son conteneur — le test ne l'attend plus redémarrer
+
+### Autres changements
+
+- **etat** : la journée téléphone
+- **deploiement** : script de déploiement partagé et flux « Test du déploiement »
+- **etat** : déploiement automatique
+- **deploiement** : redéploiement automatique sur Portainer par un runner auto-hébergé, sauvegarde avant migration
+
 ## 0.72.2
 
 ### Nouveautés

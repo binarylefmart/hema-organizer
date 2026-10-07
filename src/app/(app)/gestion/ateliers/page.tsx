@@ -74,12 +74,15 @@ export default async function PageGestionAteliers({ searchParams }: Props) {
       <div>
         <h1 className="text-3xl">Ateliers</h1>
       </div>
-      <div className="flex flex-wrap gap-2">
+      {/* Sur téléphone, les filtres tiennent sur **une** ligne qui défile du doigt, au lieu de passer
+          sur deux ou trois lignes au-dessus de la file ; sur ordinateur, ils passent à la ligne
+          comme avant. Le `py-1` laisse au contour de focus la place de se dessiner dans la bande. */}
+      <div className="-my-1 flex gap-2 overflow-x-auto py-1 tel:flex-nowrap ordi:flex-wrap ordi:overflow-visible">
         {ATELIER_STATUTS.map((s) => (
           <Link
             key={s}
             href={`/gestion/ateliers?statut=${s}`}
-            className={`flex min-h-12 items-center rounded-full border-2 px-4 text-sm font-semibold no-underline ${s === filtre ? "border-primaire bg-primaire text-primaire-texte shadow-bouton" : "border-bordure bg-surface text-texte"}`}
+            className={`flex min-h-12 shrink-0 items-center whitespace-nowrap rounded-full border-2 px-4 text-base font-semibold no-underline ordi:text-sm ${s === filtre ? "border-primaire bg-primaire text-primaire-texte shadow-bouton" : "border-bordure bg-surface text-texte"}`}
           >
             {ATELIER_LABELS[s]} ({nb(s)})
           </Link>
@@ -118,7 +121,7 @@ export default async function PageGestionAteliers({ searchParams }: Props) {
                 <div>
                   <h2 className="text-xl font-bold">{a.titre}</h2>
                   <p className="text-sm text-texte-secondaire">
-                    Par {a.proposePar.prenom} {a.proposePar.nom} · le{" "}
+                    Par {a.proposePar.prenom} {a.proposePar.nom}&nbsp;· le{" "}
                     {formatDateCourte(toIsoDate(a.createdAt))}
                   </p>
                 </div>

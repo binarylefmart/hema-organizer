@@ -25,8 +25,8 @@ import { FormulaireDeuxFa } from "./FormulaireDeuxFa";
 import { BoutonDeconnexion } from "./BoutonDeconnexion";
 import { SelecteurTheme } from "./SelecteurTheme";
 import { EncartMiseAJour } from "./EncartMiseAJour";
-import { choixOuDefaut } from "@/lib/themes";
-import { formatDateHeure } from "@/lib/dates";
+import { choixOuDefaut, nomDuChoix, THEMES } from "@/lib/themes";
+import { capitale, formatDateHeure } from "@/lib/dates";
 import { NB_CODES_SECOURS, nombreCodesRestants } from "@/lib/auth/codes-secours";
 import { etatLienPersonnel } from "@/lib/invitations";
 import { db } from "@/lib/db";
@@ -36,6 +36,7 @@ import { PageAvecSommaire, type SectionSommaire } from "@/components/ui/Sommaire
 import { PLEINE_LARGEUR_2XL } from "@/components/ui/pleine-largeur";
 import { DeuxPiles } from "@/components/ui/DeuxPiles";
 import { CarteEtatCompte } from "./CarteEtatCompte";
+import { GroupeListe, LigneDepliable, ListeGroupee } from "@/components/ui/ListeGroupee";
 import { etatCodesSecours, etatDeuxFa, etatMotDePasse, PASTILLE_LIEN, precisionLien } from "./etat-compte";
 
 export const metadata: Metadata = { title: "Mon profil" };
@@ -85,6 +86,25 @@ export default async function PageProfil({ searchParams }: Props) {
   const secretEnCours = !deuxFa && aDejaUnMotDePasse && !activationAFaire && user.email ? await lireReglage2fa(user.id) : null;
   const qr = secretEnCours ? await QRCode.toDataURL(urlOtpauth(secretEnCours, user.email, (await identite()).nomCourt), { margin: 1, width: 220, color: { dark: "#282828", light: "#fffdfa" } }) : null;
 
+  const choixTheme = choixOuDefaut(user.theme, (await identite()).theme);
+
+  /*
+   * **Les résumés des lignes du téléphone** (`ListeGroupee`) : l'état de chaque carte en un mot,
+   * quand il se lit d'un mot. Ils reprennent les mots des cartes et de « État de mon compte »
+   * (`etat-compte.ts`) plutôt que d'en inventer : la ligne et la carte qu'elle déplie disent la
+   * même chose.
+   */
+  const recus = lignes.filter((l) => (["email", "push"] as const).some((c) => l.club[c] && l.choix[c])).length;
+  const reglables = lignes.filter((l) => l.club.email || l.club.push).length;
+  const theme = THEMES.find((t) => t.id === choixTheme.id) ?? THEMES[0];
+  const resumes = {
+    informations: ROLE_LABELS[user.role as Role] ?? user.role,
+    appareil: appareils.length === 0 ? "Aucun appareil" : appareils.length === 1 ? "1 appareil" : `${appareils.length} appareils`,
+    notifications: reglables === 0 ? undefined : recus === reglables ? "Toutes" : recus === 0 ? "Aucune" : `${recus} sur ${reglables}`,
+    apparence: choixTheme.mode ? nomDuChoix(theme, choixTheme.mode) : "Automatique",
+    lien: ["actif", "expire", "revoque"].includes(lien.etat) ? capitale(PASTILLE_LIEN[lien.etat].texte.replace(/^Lien /, "")) : "Aucun",
+    securite: deuxFa ? "Mot de passe et code" : aDejaUnMotDePasse ? "Mot de passe" : admin ? "À régler" : "Lien seul",
+  };
 
   /**
    * **Le sommaire de la page** : les titres de ses sections, mot pour mot, dans l'ordre où elles se
@@ -236,60 +256,92 @@ export default async function PageProfil({ searchParams }: Props) {
 
             « Accès administrateur » reste **au-dessus**, sur toute la largeur : c'est une
             **porte**, pas un réglage, et la chercher dans une colonne serait la cacher. */}
-        <DeuxPiles
-          gauche={
-            <>
-              {/* **Une carte sans titre parmi des cartes titrées se lit comme un bout d'écran oublié**, et le
-                  sommaire ne pouvait pas l'annoncer : « Mes informations » nomme donc ce qu'elle montre. */}
-              <Carte id="informations" titre="Mes informations">
-                <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
-                  <dt className="text-texte-secondaire">Nom</dt>
-                  <dd className="font-semibold">
-                    {user.prenom} {user.nom}
-                  </dd>
-                  <dt className="text-texte-secondaire">Email</dt>
-                  <dd className="break-words">{user.email ?? "sans adresse email"}</dd>
-                  <dt className="text-texte-secondaire">Rôle</dt>
-                  <dd>{ROLE_LABELS[user.role as Role] ?? user.role}</dd>
-                </dl>
-              </Carte>
-              {/* Brancher l'appareil d'abord, choisir les messages ensuite : c'est l'ordre dans lequel on
-                  s'y prend, et la carte suivante le dit quand aucun appareil n'est encore abonné. */}
-              <ActiverPush
-                clePublique={clePush}
-                appareils={appareils.map((a) => ({ id: a.id, appareil: a.appareil, endpoint: a.endpoint, depuis: formatDateHeure(a.createdAt) }))}
-              />
-              <CarteNotifications lignes={lignes} obligatoires={obligatoires} typesEssentiels={TYPES_ESSENTIELS} pushBranche={appareils.length > 0} />
-              {/* Vérifier qu'on reçoit, sans attendre le prochain cours : un bouton par canal, chacun
-                  part seul. Le bloc est ici, au pied des réglages, parce que c'est le geste qui suit
-                  naturellement « j'ai coché des cases, est-ce que ça arrive vraiment ? ». */}
-              <TesterNotifications aUnEmail={Boolean(user.email)} pushBranche={appareils.length > 0} />
-            </>
-          }
-          droite={
-            <>
-              {/* Réglage personnel, au même titre que les notifications : il ne touche que ce compte. */}
-              <Carte id="apparence" titre="Apparence">
-                <SelecteurTheme valeur={choixOuDefaut(user.theme, (await identite()).theme)} />
-              </Carte>
-              {lien.etat !== "compte-de-service" && <CarteLien lien={lien} />}
-              <CarteSecurite
-                admin={admin}
-                activationAFaire={activationAFaire}
-                aUnEmail={!!user.email}
-                aUnLienPersonnel={lien.etat !== "compte-de-service"}
-                aDejaUnMotDePasse={aDejaUnMotDePasse}
-                deuxFa={deuxFa}
-                totpActiveAt={compte.totpActiveAt}
-                codesRestants={codesRestants}
-                qr={qr}
-                secretEnCours={secretEnCours}
-                erreur={erreur && ERREURS_SECURITE[erreur] ? ERREURS_SECURITE[erreur] : null}
-              />
-              <BoutonDeconnexion />
-            </>
-          }
-        />
+        {/* **Sur téléphone, une liste groupée** (`ListeGroupee`) : chaque carte devient une ligne
+            qui la déplie, et les groupes ne se voient que là — sur ordinateur, ils s'effacent
+            (`ordi:contents`) et l'écran est celui d'hier, piles comprises. Les groupes suivent l'ordre
+            des cartes, sans rien réordonner : les deux piles sont une coupure de cette liste, et
+            un tri du téléphone serait un tri de l'ordinateur. Une erreur de la carte « Sécuriser
+            mon compte » l'ouvre d'office : le message est dedans. */}
+        <ListeGroupee ouverteInitiale={erreur || codes === "epuises" ? "securite" : null}>
+          <DeuxPiles
+            gauche={
+              <>
+                <GroupeListe fonduSurOrdinateur titre="Mon compte">
+                  <LigneDepliable ancre="informations" titre="Mes informations" resume={resumes.informations}>
+                    {/* **Une carte sans titre parmi des cartes titrées se lit comme un bout d'écran oublié**, et le
+                        sommaire ne pouvait pas l'annoncer : « Mes informations » nomme donc ce qu'elle montre. */}
+                    <Carte id="informations" titre="Mes informations">
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
+                        <dt className="text-texte-secondaire">Nom</dt>
+                        <dd className="font-semibold">
+                          {user.prenom} {user.nom}
+                        </dd>
+                        <dt className="text-texte-secondaire">Email</dt>
+                        <dd className="break-words">{user.email ?? "sans adresse email"}</dd>
+                        <dt className="text-texte-secondaire">Rôle</dt>
+                        <dd>{ROLE_LABELS[user.role as Role] ?? user.role}</dd>
+                      </dl>
+                    </Carte>
+                  </LigneDepliable>
+                </GroupeListe>
+                <GroupeListe fonduSurOrdinateur titre="Notifications">
+                  {/* Brancher l'appareil d'abord, choisir les messages ensuite : c'est l'ordre dans lequel on
+                      s'y prend, et la carte suivante le dit quand aucun appareil n'est encore abonné. */}
+                  <LigneDepliable ancre="appareil" titre="Sur cet appareil" resume={resumes.appareil}>
+                    <ActiverPush
+                      clePublique={clePush}
+                      appareils={appareils.map((a) => ({ id: a.id, appareil: a.appareil, endpoint: a.endpoint, depuis: formatDateHeure(a.createdAt) }))}
+                    />
+                  </LigneDepliable>
+                  <LigneDepliable ancre="mes-notifications" titre="Mes notifications" resume={resumes.notifications}>
+                    <CarteNotifications lignes={lignes} obligatoires={obligatoires} typesEssentiels={TYPES_ESSENTIELS} pushBranche={appareils.length > 0} />
+                  </LigneDepliable>
+                  {/* Vérifier qu'on reçoit, sans attendre le prochain cours : un bouton par canal, chacun
+                      part seul. Le bloc est ici, au pied des réglages, parce que c'est le geste qui suit
+                      naturellement « j'ai coché des cases, est-ce que ça arrive vraiment ? ». */}
+                  <LigneDepliable ancre="tester-notifications" titre="Tester mes notifications">
+                    <TesterNotifications aUnEmail={Boolean(user.email)} pushBranche={appareils.length > 0} />
+                  </LigneDepliable>
+                </GroupeListe>
+              </>
+            }
+            droite={
+              <>
+                {/* Réglage personnel, au même titre que les notifications : il ne touche que ce compte. */}
+                <GroupeListe fonduSurOrdinateur titre="Affichage">
+                  <LigneDepliable ancre="apparence" titre="Thème" resume={resumes.apparence}>
+                    <Carte id="apparence" titre="Apparence">
+                      <SelecteurTheme valeur={choixTheme} />
+                    </Carte>
+                  </LigneDepliable>
+                </GroupeListe>
+                <GroupeListe fonduSurOrdinateur titre="Mon accès">
+                  {lien.etat !== "compte-de-service" && (
+                    <LigneDepliable ancre="lien" titre="Mon lien d'accès" resume={resumes.lien}>
+                      <CarteLien lien={lien} />
+                    </LigneDepliable>
+                  )}
+                  <LigneDepliable ancre="securite" titre="Sécuriser mon compte" resume={resumes.securite}>
+                    <CarteSecurite
+                      admin={admin}
+                      activationAFaire={activationAFaire}
+                      aUnEmail={!!user.email}
+                      aUnLienPersonnel={lien.etat !== "compte-de-service"}
+                      aDejaUnMotDePasse={aDejaUnMotDePasse}
+                      deuxFa={deuxFa}
+                      totpActiveAt={compte.totpActiveAt}
+                      codesRestants={codesRestants}
+                      qr={qr}
+                      secretEnCours={secretEnCours}
+                      erreur={erreur && ERREURS_SECURITE[erreur] ? ERREURS_SECURITE[erreur] : null}
+                    />
+                  </LigneDepliable>
+                </GroupeListe>
+                <BoutonDeconnexion />
+              </>
+            }
+          />
+        </ListeGroupee>
       </PageAvecSommaire>
     </div>
   );
@@ -382,8 +434,10 @@ function CarteSecurite(p: PropsSecurite) {
           côte à côte sur un écran large, finissent par diverger — c'est la leçon de
           `PLEINE_LARGEUR`, appliquée à des libellés. Ce qui reste propre à cette carte, c'est la
           **disposition** : ici l'intitulé est à côté de sa valeur (la colonne est large), là il est
-          au-dessus (20 rem ne suffisent pas à un vis-à-vis). */}
-      <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
+          au-dessus (20 rem ne suffisent pas à un vis-à-vis). Au téléphone aussi, l'intitulé passe
+          au-dessus : à côté de « Double authentification », la valeur n'avait plus que 120 px et
+          « depuis le … » s'y empilait sur trois lignes. */}
+      <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 tel:grid-cols-1 tel:gap-y-1">
         {[
           etatMotDePasse(p.aDejaUnMotDePasse),
           etatDeuxFa({ deuxFa: p.deuxFa, admin: p.admin, totpActiveAt: p.totpActiveAt }),
@@ -391,7 +445,7 @@ function CarteSecurite(p: PropsSecurite) {
         ].map((ligne) => (
           <Fragment key={ligne.intitule}>
             <dt className="text-texte-secondaire">{ligne.intitule}</dt>
-            <dd className="flex flex-wrap items-center gap-2">
+            <dd className="flex flex-wrap items-center gap-2 tel:mb-2">
               <Pastille ton={ligne.ton}>{ligne.valeur}</Pastille>
               {ligne.precision && <span className="text-texte-secondaire">{ligne.precision}</span>}
             </dd>

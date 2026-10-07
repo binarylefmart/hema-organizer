@@ -70,3 +70,33 @@ export function poserEnMasse(etat: EtatBrouillon, ecritures: readonly EcritureEn
 export function paireImposee(imposee: Imposee | null | undefined, tourVu: number): Paire | null {
   return imposee && imposee.tour !== tourVu ? imposee.paire : null;
 }
+
+/**
+ * **Ce que « Appliquer » envoie** : les cases du brouillon dont la partie est encore à l'écran, et
+ * les identifiants écartés à part.
+ *
+ * Un élément retiré pendant qu'il portait un réglage laissait son identifiant dans le brouillon, et
+ * le serveur — tout-ou-rien — refusait alors le lot entier (« Cette partie n'existe plus ») : la seule
+ * issue était « Annuler », qui jetait aussi tous les autres réglages. Le retrait oublie désormais la
+ * case ; ce tri est le filet, et ce qu'il écarte se dit à l'écran.
+ */
+export function casesAEnvoyer<T>(
+  modifiees: ReadonlyMap<string, T>,
+  affichees: Iterable<string>,
+): { cases: (T & { partieId: string })[]; ecartees: string[] } {
+  const connues = new Set(affichees);
+  const cases: (T & { partieId: string })[] = [];
+  const ecartees: string[] = [];
+  for (const [partieId, paire] of modifiees) {
+    if (connues.has(partieId)) cases.push({ partieId, ...paire });
+    else ecartees.push(partieId);
+  }
+  return { cases, ecartees };
+}
+
+/** La phrase qui dit ce que le tri a écarté (`casesAEnvoyer`). */
+export function texteEcartees(n: number): string {
+  return n > 1
+    ? `${n} réglages portaient sur des éléments retirés entre-temps : ils ont été écartés.`
+    : "1 réglage portait sur un élément retiré entre-temps : il a été écarté.";
+}

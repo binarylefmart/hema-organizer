@@ -176,7 +176,7 @@ async function ConfirmationDemande({ sessionId, statut, userId }: { sessionId: s
             <input type="hidden" name="sessionId" value={seance.id} />
             <input type="hidden" name="statut" value={statut} />
             <p className="text-texte-secondaire">
-              {formatHoraire(seance.heureDebut, seance.heureFin)} · {seance.lieu}
+              {formatHoraire(seance.heureDebut, seance.heureFin)}&nbsp;· {seance.lieu}
             </p>
             <p>
               Un appui, et c&apos;est noté : <strong>{vient ? "tu viens" : "tu ne viens plus"}</strong> à ce cours.
@@ -243,12 +243,11 @@ async function ActionsOrganisation({
   const { periodeLue, toutes } = await contenu;
   const id = periodeLue?.id ?? toutes[0]?.periodId;
   // En modification, un bandeau le dit — on ne doit jamais se demander dans quel mode on est — et
-  // la sortie est le bouton plein, à la place de l'entrée.
+  // la sortie est le bouton plein, à la place de l'entrée. Plus de phrase d'explication : le cadre
+  // primaire et « Terminer les modifications » suffisent à le dire ; le nom du bandeau reste pour
+  // la synthèse vocale.
   return (
-    <div role="status" className="flex w-full flex-col gap-3 rounded-xl border-2 border-primaire bg-surface p-4">
-      <p className="font-semibold">
-        Mode modification : les gestes de chaque séance sont au pied de sa carte ; « Sélection multiple » agit sur plusieurs à la fois. Tout s&apos;enregistre tout de suite.
-      </p>
+    <div role="status" aria-label="Mode modification" className="flex w-full flex-col gap-3 rounded-xl border-2 border-primaire bg-surface p-4">
       <div className="flex flex-wrap gap-2">
         <LienBouton href={lien({ modifier: "" })} className="w-full sm:w-auto">
           Terminer les modifications
@@ -288,7 +287,7 @@ async function Filtres({
   // n'a plus cours. Le résumé dit donc la date, en toutes lettres — sans l'année, que le nom du
   // trimestre porte déjà juste à côté, et parce que cette ligne est tronquée sur un téléphone.
   const filtreLisible = vue.date ? formatDateSansAnnee(vue.date).toLowerCase() : labels[vue.horizon].toLowerCase();
-  const resume = [periodeAffichee?.nom, filtreLisible, `${seances.length} cours`].filter(Boolean).join(" · ");
+  const resume = [periodeAffichee?.nom, filtreLisible, `${seances.length}\u00a0cours`].filter(Boolean).join("\u00a0· ");
   // Bornes du calendrier : le premier et le dernier jour des trimestres visibles par cette personne —
   // exactement ce que l'écran sait ouvrir. Borner sur les dates de séance serait plus serré mais
   // trompeur dans l'autre sens : un jour sans cours *dans* un trimestre se dit en une phrase, alors

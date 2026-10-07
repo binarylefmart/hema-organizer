@@ -50,9 +50,9 @@ describe("la barre d'action collante ne recouvre pas la barre d'onglets du tél�
     const code = source(PRESENCES);
     expect(code).toContain("bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)]");
     // Dès 768 px la barre d'onglets est cachée : la barre d'action reprend ses 8 px du bas.
-    expect(code).toContain("md:bottom-2");
+    expect(code).toContain("ordi:bottom-2");
     // Et surtout : plus de `bottom-2` inconditionnel, qui était tout le défaut — le seul qui reste
-    // est celui de `md:`, au-delà de la largeur où la barre d'onglets existe.
+    // est celui de `ordi:`, au-delà de la largeur où la barre d'onglets existe.
     expect(sansCommentaires(PRESENCES).match(/bottom-2/g) ?? []).toHaveLength(1);
   });
 
@@ -62,7 +62,7 @@ describe("la barre d'action collante ne recouvre pas la barre d'onglets du tél�
     const nav = source(NAVIGATION);
     expect(nav).toContain("fixed inset-x-0 bottom-0 z-10");
     expect(nav).toContain("pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]");
-    expect(nav).toContain("md:hidden");
+    expect(nav).toContain("ordi:hidden");
     expect(nav).toContain("min-h-14");
   });
 
@@ -72,7 +72,7 @@ describe("la barre d'action collante ne recouvre pas la barre d'onglets du tél�
     // (`barreDeMasseVisible`) : réserver la place d'une barre absente creuserait un trou.
     // `masseVisible` = interrupteur « Sélection multiple » allumé **et** `barreDeMasseVisible`.
     expect(source(PRESENCES)).toContain("const masseVisible = interrupteur && barreDeMasseVisible(selection);");
-    expect(source(PRESENCES)).toMatch(/masseVisible \? "pb-48 md:pb-0"/);
+    expect(source(PRESENCES)).toMatch(/masseVisible \? "pb-48 ordi:pb-0"/);
   });
 });
 
@@ -168,7 +168,9 @@ describe("ce que la sélection annonce est dit, y compris la première fois", ()
     // La condition d'existence est celle du module partagé, jamais un `selection.size > 0` recopié ici.
     // Elle passe aussi par l'interrupteur « Sélection multiple » (`masseVisible`) : éteint, ni case ni barre.
     expect(code).toContain("const masseVisible = interrupteur && barreDeMasseVisible(selection);");
-    expect(code).toMatch(/\{masseVisible \? \(\s*<div\s+role="group"/);
+    // La barre de l'ordinateur, et celle du téléphone (`BarreSelection`) : toutes deux sous `masseVisible`.
+    expect(code).toMatch(/\{masseVisible && !telephone \? \(\s*<div\s+role="group"/);
+    expect(code).toMatch(/\{masseVisible && telephone \? \(\s*<BarreSelection/);
     expect(sansCommentaires(PRESENCES)).not.toMatch(/\{selection\.size > 0 \? \(\s*<div\s+role="group"/);
     // Les quatre réponses ne sont plus inertes que le temps d'une écriture : sans sélection, elles
     // ne sont plus là du tout.

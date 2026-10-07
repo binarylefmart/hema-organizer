@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { couleurPersonne } from "@/lib/couleurs";
 import { niveauAffiche, NIVEAU_LABELS } from "@/lib/constants";
-import { Icone } from "@/components/ui/Icone";
 
 /**
  * Pastille de couleur d'une personne (identification rapide dans les listes et le planning).
@@ -33,6 +32,27 @@ export function Pastille({ children, ton = "neutre" }: { children: ReactNode; to
 }
 
 /**
+ * **Le niveau en chevrons** : un pour débutant, deux pour intermédiaire, trois pour avancé, comme des
+ * galons — plus il y en a, plus c'est relevé. Rien du tout quand le niveau est indifférent ou absent
+ * (`niveauAffiche`) : un chevron ne s'affiche que s'il y a un niveau à dire. Décoratif : le mot du
+ * niveau reste toujours à côté, les chevrons ne le remplacent jamais. À la couleur du texte voisin.
+ */
+const CHEVRONS_NIVEAU = { DEBUTANT: 1, INTERMEDIAIRE: 2, AVANCE: 3 } as const;
+
+export function ChevronsNiveau({ niveau, taille = 14 }: { niveau: string | null | undefined; taille?: number }) {
+  const n = niveauAffiche(niveau);
+  if (!n || n === "INDIFFERENT") return null;
+  const nombre = CHEVRONS_NIVEAU[n];
+  return (
+    <svg viewBox="0 0 20 16" width={(taille * 20) / 16} height={taille} aria-hidden="true" focusable="false" className="shrink-0 self-center">
+      {Array.from({ length: nombre }, (_, i) => (
+        <path key={i} d={`M3 ${13 - i * 4.5}l7-4 7 4`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+    </svg>
+  );
+}
+
+/**
  * **Niveau annoncé d'une case du planning** (« Débutant », « Intermédiaire », « Avancé »).
  *
  * Elle ne rend **rien du tout** quand le niveau est indifférent — le cas de l'immense majorité des
@@ -53,8 +73,8 @@ export function PastilleNiveau({ niveau, compact = false }: { niveau: string | n
         compact ? "px-1.5 py-0.5 text-xs" : "px-2 py-0.5 text-sm"
       }`}
     >
-      {/* L'étiquette dit « ceci qualifie ce qui précède » ; le mot reste, l'icône ne le remplace jamais */}
-      <Icone nom="etiquette" taille={compact ? 12 : 14} />
+      {/* Les chevrons disent le niveau d'un coup d'œil ; le mot reste, ils ne le remplacent jamais */}
+      <ChevronsNiveau niveau={n} taille={compact ? 12 : 14} />
       Niveau {NIVEAU_LABELS[n].toLocaleLowerCase("fr")}
     </span>
   );

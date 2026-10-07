@@ -9,13 +9,43 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
   test.setTimeout(90_000);
   await connecter(page, COMPTES.proposeur);
   await page.goto("/ateliers");
-  // Un formulaire vide est refusé gentiment
-  await page.getByRole("button", { name: "Envoyer ma proposition" }).click();
-  await expect(page.getByText("Écris au moins un titre ou une phrase.")).toBeVisible();
-  await page.getByLabel("Titre").fill("Jeu des trois touches");
-  await page.getByLabel("En quelques mots").fill("Assauts courts : le premier à trois touches gagne, on tourne toutes les deux minutes.");
-  await page.getByLabel("Équipement nécessaire").fill("masques, gants");
-  await page.getByRole("button", { name: "Envoyer ma proposition" }).click();
+  /*
+   * **Sur téléphone, la proposition est un assistant en quatre questions** (`AssistantAtelier`) : la
+   * page s'ouvre sur « Mes propositions », « + Proposer un atelier » ouvre l'assistant, et chaque
+   * étape refuse ce que le serveur refuserait. On y rejoue le même parcours — vide refusé gentiment,
+   * puis titre, description et équipement — en suivant ses écrans. Sur PC, le formulaire d'une traite.
+   */
+  const telephone = (page.viewportSize()?.width ?? 1280) < 768;
+  if (telephone) {
+    // Le bouton n'existe qu'après le montage (le serveur rend la version ordinateur).
+    await page.locator("[data-proposer-atelier]").click();
+    const assistant = page.locator("form[data-assistant-atelier]");
+    await expect(assistant.getByText("Étape 1 sur 4")).toBeVisible();
+    // Une première étape vide est refusée gentiment, et l'assistant n'avance pas
+    await assistant.getByRole("button", { name: "Suivant" }).click();
+    await expect(page.getByText("Écris au moins un titre ou une phrase.")).toBeVisible();
+    await expect(assistant.getByText("Étape 1 sur 4")).toBeVisible();
+    await page.locator("#assistant-titre").fill("Jeu des trois touches");
+    await page.locator("#assistant-description").fill("Assauts courts : le premier à trois touches gagne, on tourne toutes les deux minutes.");
+    await assistant.getByRole("button", { name: "Suivant" }).click();
+    // Étape 2 : « Qui anime ? » — « Moi » est coché d'office
+    await expect(assistant.getByText("Étape 2 sur 4")).toBeVisible();
+    await expect(assistant.getByRole("radio", { name: /^Moi / })).toBeChecked();
+    await assistant.getByRole("button", { name: "Suivant" }).click();
+    await expect(assistant.getByText("Étape 3 sur 4")).toBeVisible();
+    await assistant.getByLabel("Équipement nécessaire").fill("masques, gants");
+    await assistant.getByRole("button", { name: "Suivant" }).click();
+    await expect(assistant.getByText("Étape 4 sur 4")).toBeVisible();
+    await assistant.getByRole("button", { name: "Envoyer ma proposition" }).click();
+  } else {
+    // Un formulaire vide est refusé gentiment
+    await page.getByRole("button", { name: "Envoyer ma proposition" }).click();
+    await expect(page.getByText("Écris au moins un titre ou une phrase.")).toBeVisible();
+    await page.getByLabel("Titre").fill("Jeu des trois touches");
+    await page.getByLabel("En quelques mots").fill("Assauts courts : le premier à trois touches gagne, on tourne toutes les deux minutes.");
+    await page.getByLabel("Équipement nécessaire").fill("masques, gants");
+    await page.getByRole("button", { name: "Envoyer ma proposition" }).click();
+  }
   await page.waitForURL("**/ateliers?propose=ok");
   await expect(page.getByText("Proposition envoyée.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Jeu des trois touches" })).toBeVisible();
@@ -27,12 +57,12 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
   const carte = page.locator("section", { hasText: "Jeu des trois touches" }).first();
   await expect(carte).toBeVisible();
   await expect(carte.getByText("masques, gants")).toBeVisible();
-  // « Que veux-tu faire ? » → « Placer dans le planning » : la séance et le mot n'apparaissent
-  // qu'une fois le geste choisi (la forme commune de l'administration).
-  await carte.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
-  await page.getByRole("option", { name: "Placer dans le planning" }).click();
-  await carte.getByLabel(/Un mot pour/).fill("Bonne idée, on programme ça vite.");
   /*
+   * Sur PC : « Que veux-tu faire ? » → « Placer dans le planning » : la séance et le mot n'apparaissent
+   * qu'une fois le geste choisi (la forme commune de l'administration). Sur téléphone, une proposition
+   * en attente porte deux boutons, « Refuser… » et « Programmer » : ce dernier ouvre dans le volet du
+   * bas la même séance et le même mot, puis son bouton de confirmation.
+   *
    * **On choisit la deuxième séance proposée, pas celle d'office.** La liste de placement part de la
    * prochaine séance *au sens des ateliers* — le cours du soir même en fait partie, on peut encore y
    * caser un jeu à 20 h 05 —, là où le planning ne montre que ce qui n'a pas commencé. Placer sur
@@ -43,11 +73,22 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
    * La carte du planning se retrouve ensuite par le titre qu'elle porte (`article#seance-<id>`),
    * plutôt que par un rang dans la grille — une séance n'est pas toujours à la même place.
    */
-  await carte.getByRole("combobox", { name: "Séance" }).click();
+  if (telephone) {
+    // Les deux boutons n'existent qu'après le montage : on attend la forme téléphone de la carte.
+    await expect(carte.locator("[data-decision-telephone]")).toBeVisible();
+    await carte.getByRole("button", { name: "Programmer", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Programmer « Jeu des trois touches »" })).toBeVisible();
+  } else {
+    await carte.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
+    await page.getByRole("option", { name: "Placer dans le planning" }).click();
+  }
+  const zone = telephone ? page.getByRole("dialog") : carte;
+  await zone.getByLabel(/Un mot pour/).fill("Bonne idée, on programme ça vite.");
+  await zone.getByRole("combobox", { name: "Séance" }).click();
   const options = page.getByRole("option");
   expect(await options.count(), "il faut au moins deux séances à venir pour placer un atelier").toBeGreaterThan(1);
   await options.nth(1).click();
-  await carte.getByRole("button", { name: "Placer dans le planning" }).click();
+  await zone.getByRole("button", { name: telephone ? "Programmer" : "Placer dans le planning", exact: true }).click();
   // La proposition quitte aussitôt la file « En attente » (la liste est revalidée)
   await expect(page.locator("section", { hasText: "Jeu des trois touches" })).toHaveCount(0, { timeout: 15_000 });
   await page.goto("/gestion/ateliers?statut=PLANIFIE");

@@ -14,6 +14,7 @@ import { Carte } from "@/components/ui/Carte";
 import { FormulaireAtelier } from "@/components/ateliers/FormulaireAtelier";
 import { Pastille } from "@/components/ui/Pastille";
 import { DeuxColonnes, LARGEUR_PAGE } from "@/components/ui/DeuxColonnes";
+import { BasculeAteliers } from "./BasculeAteliers";
 
 export const metadata: Metadata = { title: "Proposer un atelier" };
 
@@ -65,30 +66,12 @@ export default async function PageAteliers({ searchParams }: Props) {
       />
     </Carte>
   );
-  return (
-    <div className={`flex flex-col gap-5 ${LARGEUR_PAGE}`}>
-      <div>
-        <h1 className="text-3xl">Proposer un atelier</h1>
-      </div>
-      {propose === "ok" && (
-        <Alerte type="succes">
-          Proposition envoyée. Les instructeurs te répondront par email.
-        </Alerte>
-      )}
-      {/*
-        * **Deux colonnes dès 1 280 px : la proposition à gauche, les siennes à droite**. Sur un
-        * grand écran, cet écran tenait 768 px au milieu de rien, et le formulaire était suivi de
-        * deux lignes de suivi.
-        *
-        * Le formulaire reste **à gauche et toujours déplié** : c'est le geste pour lequel on ouvre la
-        * page. Ses propositions passent à droite, où elles se lisent d'un coup d'œil — statut compris
-        * — sans pousser le formulaire hors de l'écran, ce qui était le défaut de l'empilement : avec
-        * trois propositions suivies, il fallait défiler pour en proposer une quatrième.
-        */}
-      <DeuxColonnes
-        principal={formulaire}
-        cote={
-          <>
+  /*
+   * « Mes propositions » : la colonne de droite sur ordinateur, et tout l'écran sur téléphone, où
+   * l'assistant de proposition s'ouvre par-dessus (`BasculeAteliers`).
+   */
+  const propositions = (
+    <>
             <h2 className="text-2xl font-bold">Mes propositions</h2>
             {!aDesPropositions && (
               <Alerte type="info">Tu n&apos;as encore rien proposé.</Alerte>
@@ -165,9 +148,43 @@ export default async function PageAteliers({ searchParams }: Props) {
           )}
         </Carte>
             ))}
-          </>
-        }
+    </>
+  );
+  return (
+    <div className={`flex flex-col gap-5 ${LARGEUR_PAGE}`}>
+      <div>
+        <h1 className="text-3xl">Proposer un atelier</h1>
+      </div>
+      {propose === "ok" && (
+        <Alerte type="succes">
+          Proposition envoyée. Les instructeurs te répondront par email.
+        </Alerte>
+      )}
+      {/*
+        * **Deux colonnes dès 1 280 px : la proposition à gauche, les siennes à droite**. Sur un
+        * grand écran, cet écran tenait 768 px au milieu de rien, et le formulaire était suivi de
+        * deux lignes de suivi.
+        *
+        * Le formulaire reste **à gauche et toujours déplié** : c'est le geste pour lequel on ouvre la
+        * page. Ses propositions passent à droite, où elles se lisent d'un coup d'œil — statut compris
+        * — sans pousser le formulaire hors de l'écran, ce qui était le défaut de l'empilement : avec
+        * trois propositions suivies, il fallait défiler pour en proposer une quatrième.
+        *
+        * Sur téléphone, la page s'ouvre sur ses propositions et le formulaire devient un assistant
+        * en quatre questions (`BasculeAteliers`). Une proposition envoyée (un identifiant neuf dans
+        * la liste) remonte les formulaires, et l'écran repart sur la liste, message de succès en
+        * tête ; en retirer une ne touche pas au brouillon en cours.
+        */}
+      <BasculeAteliers
+        idsPropositions={ateliers.map((a) => a.id)}
+        ordinateur={<DeuxColonnes principal={formulaire} cote={propositions} />}
+        propositions={propositions}
+        action={proposerAtelier}
+        seances={seances}
+        animateurs={animateurs}
+        moi={{ id: user.id, prenom: user.prenom, nom: user.nom }}
       />
     </div>
   );
 }
+

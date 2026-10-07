@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Paire } from "./file-envoi";
-import { marquerEnAttente } from "./garde-fermeture";
+import { brancherGardeFermeture, cleBrouillon, marquerEnAttente } from "./garde-fermeture";
 import { poserEnMasse, type EcritureEnMasse, type EtatBrouillon, type Imposee } from "./brouillon";
 
 /**
@@ -89,7 +89,7 @@ export function FournisseurBrouillon({ children }: { children: ReactNode }) {
      * une seule qui prévenait.
      */
     clesGardees.current.add(partieId);
-    marquerEnAttente(partieId, true);
+    marquerEnAttente(cleBrouillon(partieId), true);
     setEtat((avant) => {
       const modifiees = new Map(avant.modifiees);
       modifiees.set(partieId, paire);
@@ -99,7 +99,7 @@ export function FournisseurBrouillon({ children }: { children: ReactNode }) {
 
   const oublier = useCallback((partieId: string) => {
     clesGardees.current.delete(partieId);
-    marquerEnAttente(partieId, false);
+    marquerEnAttente(cleBrouillon(partieId), false);
     setEtat((avant) => {
       if (!avant.modifiees.has(partieId)) return avant;
       const modifiees = new Map(avant.modifiees);
@@ -115,11 +115,11 @@ export function FournisseurBrouillon({ children }: { children: ReactNode }) {
     const suite = poserEnMasse(dernier.current, ecritures, tour.current);
     for (const cle of suite.posees) {
       clesGardees.current.add(cle);
-      marquerEnAttente(cle, true);
+      marquerEnAttente(cleBrouillon(cle), true);
     }
     for (const cle of suite.oubliees) {
       clesGardees.current.delete(cle);
-      marquerEnAttente(cle, false);
+      marquerEnAttente(cleBrouillon(cle), false);
     }
     const prochain = { modifiees: suite.modifiees, imposees: suite.imposees };
     dernier.current = prochain;
@@ -129,11 +129,31 @@ export function FournisseurBrouillon({ children }: { children: ReactNode }) {
 
   const vider = useCallback(() => {
     // Appliqué : il n'y a plus rien à perdre, et la garde doit se taire tout de suite.
-    for (const cle of clesGardees.current) marquerEnAttente(cle, false);
+    for (const cle of clesGardees.current) marquerEnAttente(cleBrouillon(cle), false);
     clesGardees.current.clear();
     // Les imposées restent : vider n'impose rien, et les cases n'ont pas à repeindre l'ancien contenu
     // pendant que la page revient du serveur (voir `brouillon.ts`).
     setEtat((avant) => ({ ...avant, modifiees: new Map() }));
+  }, []);
+
+  /*
+   * **La garde de fermeture est tenue ici, pas par les cases.** Elle l'était par chaque `CaseEditeur`,
+   * branchée à son montage et relâchée à son démontage, avec la clé de sa partie. Or un réglage du
+   * brouillon survit à sa case : une ligne repliée (« Fermer », sur téléphone), le volet de la
+   * sélection multiple qui règle des lignes jamais dépliées, un trimestre replié sur ordinateur. Dans
+   * ces trois cas, plus aucune case n'écoutait, et fermer l'onglet perdait le brouillon sans une
+   * question. Le brouillon branche donc la garde tant qu'il n'est pas vide, sous ses propres clés
+   * (`cleBrouillon`), qu'aucune case ne peut relâcher.
+   */
+  const aPerdre = etat.modifiees.size > 0;
+  useEffect(() => (aPerdre ? brancherGardeFermeture() : undefined), [aPerdre]);
+  // Quitter l'adresse jette le brouillon (il n'a jamais touché la base) : ses clés partent avec lui.
+  useEffect(() => {
+    const cles = clesGardees.current;
+    return () => {
+      for (const cle of cles) marquerEnAttente(cleBrouillon(cle), false);
+      cles.clear();
+    };
   }, []);
 
   const valeur = useMemo<Brouillon>(

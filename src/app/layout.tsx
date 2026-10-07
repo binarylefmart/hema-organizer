@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import { IM_Fell_Great_Primer_SC } from "next/font/google";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { identite } from "@/lib/identite";
 import { choixOuDefaut } from "@/lib/themes";
 import { RelanceRendu } from "@/components/layout/RelanceRendu";
+import { FormatEcranConnu, MemoireEcran } from "@/components/ui/useEcranTelephone";
+import { COOKIE_ECRAN, lireFormatEcran } from "@/components/ui/ecran";
 import "./globals.css";
 import { poserFuseau } from "@/lib/fuseau";
 
@@ -75,7 +78,10 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // `getCurrentUser` et `identite` sont mis en cache pour la durée de la requête : la session est de
   // toute façon lue une fois par page, et l'identité l'est déjà par les métadonnées.
-  const [user, club] = await Promise.all([getCurrentUser(), identite()]);
+  const [user, club, jar] = await Promise.all([getCurrentUser(), identite(), cookies()]);
+  // **Le format retenu par l'appareil à sa visite précédente** (`src/components/ui/ecran.ts`) : les
+  // écrans qui ne peuvent pas tout rendre deux fois partent de lui, et ne sautent plus au montage.
+  const format = lireFormatEcran(jar.get(COOKIE_ECRAN)?.value);
   const theme = choixOuDefaut(user?.theme, club.theme);
   // Garde le fuseau du serveur aligné sur le réglage, même si un autre processus l'a changé.
   poserFuseau(club.fuseau);
@@ -95,7 +101,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       style={club.marque ? ({ "--marque": club.marque } as React.CSSProperties) : undefined}
     >
       <body>
-        {children}
+        <FormatEcranConnu format={format}>{children}</FormatEcranConnu>
+        <MemoireEcran />
         {/* Débloque une transition que React aurait laissée suspendue après une réponse du
             serveur (voir `src/lib/relance-rendu.ts`). Ne dessine rien. */}
         <RelanceRendu />

@@ -1,4 +1,4 @@
-import { formatDateLongue, formatHeure, formatHoraire, joursAvant, minuscule } from "@/lib/dates";
+import { capitale, formatDateLongue, formatHeure, formatHoraire, joursAvant, minuscule } from "@/lib/dates";
 
 /**
  * Un événement tel que le fil a besoin de le lire.
@@ -54,6 +54,34 @@ export function horaireEvenement(debut?: string | null, fin?: string | null): st
 }
 
 /**
+ * **La date de la carte resserrée du téléphone** : « Lun. 26 oct. », « 16–17 nov. »,
+ * « 30 oct. – 2 nov. ». Elle partage sa ligne avec l'horaire et le lieu, d'où l'abréviation ; la
+ * forme entière reste celle de la fiche et des partages (`dateEvenement`).
+ *
+ * L'année ne s'écrit que si elle n'est pas celle d'aujourd'hui : dans le fil du passé, un stage de
+ * l'an dernier ne doit pas se lire comme celui de cette année.
+ */
+export function dateEvenementCourte(debut: string, fin?: string | null, aujourdHui?: string): string {
+  const jour = (iso: string, options: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("fr-FR", { timeZone: "UTC", ...options }).format(new Date(`${iso}T12:00:00Z`));
+  const annee = (iso: string) => (aujourdHui && iso.slice(0, 4) !== aujourdHui.slice(0, 4) ? ` ${iso.slice(0, 4)}` : "");
+  const derniere = fin && fin > debut ? fin : null;
+  if (!derniere) return capitale(jour(debut, { weekday: "short", day: "numeric", month: "short" })) + annee(debut);
+  const memeMois = debut.slice(0, 7) === derniere.slice(0, 7);
+  const depart = memeMois ? jour(debut, { day: "numeric" }) : jour(debut, { day: "numeric", month: "short" });
+  const arrivee = jour(derniere, { day: "numeric", month: "short" }) + annee(derniere);
+  return memeMois ? `${depart}–${arrivee}` : `${depart} – ${arrivee}`;
+}
+
+/** « 10h00–17h30 », « Dès 14h00 », « Jusqu'à 17h00 » — la forme courte de `horaireEvenement`. */
+export function horaireEvenementCourt(debut?: string | null, fin?: string | null): string | null {
+  if (debut && fin) return `${formatHeure(debut)}–${formatHeure(fin)}`;
+  if (debut) return `Dès ${formatHeure(debut)}`;
+  if (fin) return `Jusqu'à ${formatHeure(fin)}`;
+  return null;
+}
+
+/**
  * Le tarif tel qu'on l'annonce — **la seule formulation** du prix dans l'application : la carte,
  * la fiche et la page publique appellent toutes celle-ci et disent donc la même chose.
  *
@@ -74,11 +102,13 @@ export function horaireEvenement(debut?: string | null, fin?: string | null): st
  * Le mot « adhérents » est écrit en toutes lettres : la ligne voyage aussi sans son icône (vignette
  * d'aperçu des réseaux, message WhatsApp), où un « / 35 € » seul serait illisible.
  */
-export function libellePrix(prix?: string | null, prixAdherent?: string | null): string {
+export function libellePrix(prix?: string | null, prixAdherent?: string | null, { court = false } = {}): string {
   const plein = prix?.trim();
   if (!plein) return "Gratuit";
   const adherent = prixAdherent?.trim();
-  return adherent ? `${plein} · ${adherent} pour les adhérents` : plein;
+  // La forme courte (« 35 € adhérents ») est celle de la carte resserrée du téléphone, où le tarif
+  // partage sa ligne avec la durée. Même règle, mêmes cas : seul le mot « pour les » tombe.
+  return adherent ? `${plein} · ${adherent} ${court ? "adhérents" : "pour les adhérents"}` : plein;
 }
 
 /**

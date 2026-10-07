@@ -73,7 +73,7 @@ describe("l'email du lien explique comment installer l'application", () => {
     expect(html).not.toContain("javascript:");
     expect(html).not.toMatch(/<button/i);
     // Le lien est cliquable (et donc « appuyable longuement ») là où il est écrit en entier
-    expect(html).toContain(`<a href="${BASE.url}" style="color:#9A3F26;">${BASE.url}</a>`);
+    expect(html).toContain(`<a href="${BASE.url}" style="color:#9A3F26;word-break:break-all;overflow-wrap:anywhere;">${BASE.url}</a>`);
   });
 
   it("la version texte reste lisible : pas de balise, le lien sur sa ligne", () => {

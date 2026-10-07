@@ -15,7 +15,7 @@ import { reglagesVides } from "@/components/planning/options";
 // de base, et la règle ne doit exister qu'une fois (voir l'en-tête de `rangement.ts`). La place d'un
 // élément dans sa partie (`placesDansPartie`) en vient aussi : le rang qui décide du nom est celui qui
 // s'affiche à côté.
-import { placesDansPartie, rangementsParties, type PartieARanger, type RangementPartie } from "@/components/planning/rangement";
+import { ordreDInsertion, ordreEntier, placesDansPartie, rangementsParties, type PartieARanger, type RangementPartie } from "@/components/planning/rangement";
 
 /**
  * Planning de cours : une colonne par séance, **autant de cases que la séance a de parties**,
@@ -616,9 +616,10 @@ export async function synchroniserSeance(sessionId: string): Promise<void> {
  *
  * 1. `bloc` redevient **contigu à partir de 1** : retirer le dernier élément d'une partie la fait
  *    disparaître, et les suivantes se renumérotent.
- * 2. `ordre` redevient **contigu à partir de 0**, dans l'ordre de lecture (partie, puis nature dans
- *    `NATURES_ELEMENT`, puis ordre d'avant, puis id). Sans cette renumérotation, c'est l'ordre
- *    d'insertion en base — le hasard — qui déciderait de l'affichage.
+ * 2. `ordre` redevient **contigu à partir de 0**, dans l'ordre de lecture (partie, puis ordre
+ *    d'avant, puis id — **jamais la nature** : l'ordre d'une partie est libre, l'équipe le règle).
+ *    Sans cette renumérotation, c'est l'ordre d'insertion en base — le hasard — qui déciderait de
+ *    l'affichage. Un élément qui arrive reçoit d'abord un rang intercalaire (`ordreDInsertion`).
  * 3. `libelle` redit la partie — quand la séance en a plusieurs — et le rang dans la nature
  *    (`libelleElement`) : « Partie 1 · Cours », « Partie 2 · Option 2 », ou « Cours » seul. Passer
  *    d'une à deux parties renomme donc toutes les lignes, et revenir à une seule retire le préfixe.
@@ -643,7 +644,8 @@ export async function synchroniserSeance(sessionId: string): Promise<void> {
  *
  * Le **calcul**, lui, vit dans `src/components/planning/rangement.ts` — module sans Prisma, pour que
  * le script de réparation puisse relever les invariants sans ouvrir de base. Le tri y est fait :
- * l'appelant exprime un déplacement en changeant simplement le `bloc` d'un élément.
+ * l'appelant exprime un déplacement en changeant le `bloc` d'un élément et en lui donnant un rang
+ * intercalaire (`ordreDInsertion`, `ordreAvant`).
  */
 export function rangerParties<R>(
   parties: ReadonlyArray<Omit<PartieARanger, "nature"> & { nature: string }>,
@@ -709,7 +711,8 @@ export function partieLibre(p: PartiePlacable): boolean {
  * 2. sinon une **option** libre — ce qui se tient en parallèle d'un cours, comme un atelier.
  * Dans chaque groupe, le premier dans l'ordre de lecture. Jamais un cours ni un échauffement : poser
  * un atelier à la place du cours principal serait un choix que personne n'a fait. Quand cette
- * fonction rend `null`, `placerAtelier` **crée un élément Atelier** dans la dernière partie.
+ * fonction rend `null`, `placerAtelier` **crée un élément Atelier** dans la dernière partie, à sa
+ * place par défaut (après les cours, avant les options : `ordreDInsertion`).
  */
 export function partieLibrePourAtelier(parties: readonly PartiePlacable[]): string | null {
   const libres = [...parties].sort((a, b) => a.ordre - b.ordre).filter(partieLibre);
@@ -720,10 +723,12 @@ export function partieLibrePourAtelier(parties: readonly PartiePlacable[]): stri
  * Place un atelier planifié dans le planning de sa séance (instructeur = animateur choisi dans la
  * proposition, à défaut le proposeur ; second instructeur = second animateur ; thème = titre).
  * Rend l'élément utilisé, qui passe en nature **ATELIER** (il était peut-être une option libre, ou
- * l'élément désigné à la main depuis la grille).
+ * l'élément désigné à la main depuis la grille) **sans changer de place** : changer de nature ne
+ * déplace rien, seul son nom suit.
  *
  * **Plus jamais `null` faute de place** : quand aucun élément n'est libre, un élément Atelier naît
- * dans la **dernière** partie de la séance (la partie 1 d'une séance qui n'en a aucune). Un atelier
+ * dans la **dernière** partie de la séance (la partie 1 d'une séance qui n'en a aucune), à la place
+ * par défaut d'un atelier — après les cours, avant les options (`ordreDInsertion`). Un atelier
  * validé par l'équipe doit se poser quelque part — le rendre invisible faute de case libre serait un
  * refus silencieux d'une décision déjà prise. (`null` ne subsiste que pour un élément explicitement
  * demandé qui n'existe plus.)
@@ -747,15 +752,21 @@ export async function placerAtelier(atelierId: string, sessionId: string, acteur
    */
   const cible = await db.$transaction(async (tx) => {
     let id = choisie;
+    // Le rang intercalaire de l'élément créé ici : la base n'en garde que la partie entière, le
+    // rangement ci-dessous reçoit le vrai (`ordreEntier`).
+    let creation: { id: string; ordre: number } | null = null;
     if (!id) {
-      const parties = await tx.sessionPartie.findMany({ where: { sessionId }, select: { bloc: true, ordre: true } });
+      const lues = await tx.sessionPartie.findMany({ where: { sessionId }, select: { id: true, bloc: true, ordre: true, nature: true } });
+      const parties = lues.map((p) => ({ ...p, nature: natureLue(p.nature) }));
       const derniere = parties.reduce((m, p) => Math.max(m, p.bloc), 0) || 1;
+      const ordre = ordreDInsertion(parties, derniere, "ATELIER");
       const creee = await tx.sessionPartie.create({
         // Libellé provisoire : `rangerParties`, juste en dessous, pose le vrai.
-        data: { sessionId, libelle: "", ordre: parties.length, bloc: derniere, nature: "ATELIER", modifieParId: acteurId },
+        data: { sessionId, libelle: "", ordre: ordreEntier(ordre), bloc: derniere, nature: "ATELIER", modifieParId: acteurId },
         select: { id: true },
       });
       id = creee.id;
+      creation = { id, ordre };
     }
     // L'atelier ne peut être que dans une seule case ; l'ancienne reste un élément Atelier vide.
     await tx.sessionPartie.updateMany({ where: { atelierId, id: { not: id } }, data: { atelierId: null } });
@@ -780,7 +791,9 @@ export async function placerAtelier(atelierId: string, sessionId: string, acteur
       },
     });
     const parties = await tx.sessionPartie.findMany({ where: { sessionId }, select: SELECTION_RANGEMENT });
-    for (const ecriture of rangerParties(parties, tx)) await ecriture;
+    const nee = creation;
+    const aRanger = nee ? parties.map((p) => (p.id === nee.id ? { ...p, ordre: nee.ordre } : p)) : parties;
+    for (const ecriture of rangerParties(aRanger, tx)) await ecriture;
     return id;
   });
   await synchroniserSeance(sessionId);

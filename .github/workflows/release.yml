@@ -240,3 +240,42 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" --title "Version ${VERSION}" --notes-file notes.md --verify-tag
           fi
+
+  # ── Déploiement automatique sur Portainer (dépôt du club seulement) ──────────────────────────────
+  # Il tourne sur un **runner auto-hébergé** posé sur le serveur du club (étiquette `hema-deploy`) : il
+  # va chercher le travail chez GitHub, rien n'est ouvert en entrée, et il parle à Portainer en local.
+  # **Garde : la variable de dépôt `PORTAINER_DEPLOY` doit valoir `true`.** Le miroir public reçoit ce
+  # fichier tel quel et n'a pas cette variable : le job y est simplement ignoré.
+  # Il fait l'équivalent de « Update the stack » + « Re-pull image » (même fichier, mêmes variables),
+  # puis attend que le conteneur tourne sur la **nouvelle version** et soit sain. La sauvegarde d'avant
+  # migration, elle, est faite par le conteneur au démarrage (docker/entrypoint.sh).
+  # Retour en arrière : à la main, comme avant — `APP_TAG` dans Portainer (docs/DEPLOIEMENT.md).
+  deploiement:
+    name: Déploiement sur Portainer
+    needs: image
+    if: vars.PORTAINER_DEPLOY == 'true'
+    runs-on: [self-hosted, hema-deploy]
+    permissions: {}
+    concurrency:
+      group: deploiement-portainer
+      cancel-in-progress: false
+    env:
+      PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+      PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
+      STACK_NAME: ${{ vars.PORTAINER_STACK_NAME }}
+      STACK_ID: ${{ vars.PORTAINER_STACK_ID }}
+      ENDPOINT_ID: ${{ vars.PORTAINER_ENDPOINT_ID }}
+      CONTENEUR: ${{ vars.PORTAINER_CONTENEUR || 'hema-organizer' }}
+      TLS_INSECURE: ${{ vars.PORTAINER_TLS_INSECURE || 'false' }}
+      VERSION_SAISIE: ${{ inputs.version }}
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/deployer-portainer.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Redéploiement de la stack et attente de la nouvelle version, saine
+        run: |
+          VERSION="${VERSION_SAISIE:-$GITHUB_REF_NAME}"
+          bash scripts/deployer-portainer.sh "$VERSION"

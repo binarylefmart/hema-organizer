@@ -245,6 +245,19 @@ describe("accord entre le catalogue et globals.css", () => {
     }
   });
 
+  // Le bouton « danger » est un contour rouge sur la surface, et non plus un aplat : dans « parchemin »,
+  // le rouge et la couleur principale sont la même teinte, et l'aplat se confondait avec « Refuser ».
+  it("garde le rouge lisible sur la surface, texte du bouton danger (WCAG AA)", () => {
+    for (const t of THEMES) {
+      for (const mode of [false, true]) {
+        const etiquette = `${t.id} / ${mode ? "sombre" : "clair"} : --rouge sur --surface`;
+        const rouge = variableDuTheme(t.id, "--rouge", mode);
+        const surface = variableDuTheme(t.id, "--surface", mode);
+        expect(contraste(rouge!, surface!), etiquette).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   it("garde lisibles les couleurs d'aperçu montrées dans la liste du profil", () => {
     for (const t of THEMES) {
       expect(contraste(t.apercu.texte, t.apercu.fond), `${t.id} / clair : texte sur fond`).toBeGreaterThanOrEqual(4.5);

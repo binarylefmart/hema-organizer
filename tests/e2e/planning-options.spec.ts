@@ -29,8 +29,35 @@ import { connecter, COMPTES } from "./helpers";
  * scénarios ne déplacent aucune partie, sinon « Partie 2 · Option » désignerait une autre ligne après coup.
  */
 
+/**
+ * **Sur téléphone, les réglages d'un élément se déplient en touchant sa ligne** : la ligne est
+ * retrouvée par son bouton « Retirer « … » », qui porte le nom complet de l'élément. Sur PC, rien à
+ * faire. Une ligne déjà dépliée n'est pas retouchée (ce serait la replier).
+ */
+async function deplierSurTelephone(page: Page, partie: string): Promise<void> {
+  if ((page.viewportSize()?.width ?? 1280) >= 768) return;
+  const ligne = page.locator("[data-ligne-id]", { has: page.getByRole("button", { name: `Retirer « ${partie} »`, exact: true }) }).first();
+  const bouton = ligne.locator("button[aria-expanded]").first();
+  await bouton.waitFor();
+  if ((await bouton.getAttribute("aria-expanded")) !== "true") await bouton.click();
+}
+
+/**
+ * **Le compte de la barre flottante.** Sur PC, la phrase entière (« 1 case modifiée, pas encore
+ * appliquée ») ; sur téléphone, « · 1 modifiée » suit le titre « Modification des séances » — la
+ * phrase longue est encore dans la page, mais cachée. Le compte reste la promesse vérifiée : un brouillon non
+ * vide se voit, un brouillon revenu à zéro ne compte plus rien.
+ */
+function compteurBarre(page: Page, n?: number): Locator {
+  const nb = n === undefined ? "\\d+" : String(n);
+  return (page.viewportSize()?.width ?? 1280) < 768
+    ? page.getByText(new RegExp(`^\\s*·\\s*${nb}\\s*modifiées?$`))
+    : page.getByText(new RegExp(`${nb} cases? modifiées?, pas encore appliquées?`));
+}
+
 /** Les deux listes d'une même case, et la boîte qui porte l'état d'enregistrement. */
 async function caseDe(page: Page, partie: string): Promise<{ theme: Locator; instructeur: Locator; boite: Locator }> {
+  await deplierSurTelephone(page, partie);
   const libelle = page.locator(`label:text-is("Thème — ${partie}")`).first();
   await expect(libelle).toBeAttached();
   const id = (await libelle.getAttribute("for"))!;
@@ -107,7 +134,7 @@ test("une case que l'on vient de remplir reste réglable, et c'est le dernier r�
   // **Rien n'est parti**, et l'écran le dit : la case se marque, la barre compte. Le silence
   // d'avant voudrait maintenant dire « enregistré », ce qui serait faux.
   await expect(page.getByText("Modifié — pas encore appliqué").first()).toBeVisible();
-  await expect(page.getByText(/1 case modifiée, pas encore appliquée/)).toBeVisible();
+  await expect(compteurBarre(page, 1)).toBeVisible();
 
   await page.getByRole("button", { name: "Appliquer les modifications" }).click();
   await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
@@ -138,7 +165,7 @@ test("une application qui échoue le dit, sans emporter la page ni le brouillon"
   await expect(instructeur).toBeEnabled();
   // …et surtout **le brouillon n'est pas perdu** : un refus ne doit rien coûter, on corrige et on
   // réessaie. Le vider sur échec serait la pire des réponses.
-  await expect(page.getByText(/1 case modifiée, pas encore appliquée/)).toBeVisible();
+  await expect(compteurBarre(page, 1)).toBeVisible();
 
   // Le serveur revient : le même geste passe, toujours sans recharger.
   await page.unroute("**/planning**");
@@ -184,6 +211,7 @@ test("fermer l'onglet sur des cases pas appliquées pose une question, et pas au
   // compteur ne doit pas garder une modification nulle.
   await choisirLibelle(page, theme, avant);
   await expect(page.getByText(/case modifiée, pas encore appliquée/)).toHaveCount(0);
+  await expect(compteurBarre(page)).toHaveCount(0);
   expect(await fermetureRetenue(page)).toBe(false);
 
   // Et après une application, la question ne se pose plus non plus.
@@ -191,4 +219,68 @@ test("fermer l'onglet sur des cases pas appliquées pose une question, et pas au
   await page.getByRole("button", { name: "Appliquer les modifications" }).click();
   await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
   expect(await fermetureRetenue(page)).toBe(false);
+});
+
+/**
+ * **Une ligne réglée puis repliée retient toujours la fermeture.** Sur téléphone, seule la ligne
+ * dépliée monte sa case : « Valider » la démonte. La case relâchait alors la garde, et fermer l'onglet
+ * perdait le brouillon sans une question — pendant que la barre comptait encore « 1 modifiée ».
+ */
+test("une ligne réglée puis repliée retient toujours la fermeture de l'onglet", async ({ page }) => {
+  test.skip((page.viewportSize()?.width ?? 1280) >= 768, "les lignes ne se replient qu'au téléphone");
+  const { theme } = await caseDe(page, "Cours");
+  // Une valeur autre que celle du serveur (le scénario d'avant a pu appliquer la première entrée).
+  const avant = ((await theme.textContent()) ?? "").trim();
+  if ((await choisir(page, theme, 1)) === avant) await choisir(page, theme, 2);
+  await expect(compteurBarre(page, 1)).toBeVisible();
+  expect(await fermetureRetenue(page)).toBe(true);
+
+  await page.locator("li[data-ligne-id]", { has: theme }).getByRole("button", { name: "Valider", exact: true }).click();
+  await expect(theme).toHaveCount(0);
+  await expect(compteurBarre(page, 1)).toBeVisible();
+  expect(await fermetureRetenue(page)).toBe(true);
+
+  // « Annuler » jette le brouillon : il n'y a plus rien à perdre.
+  page.once("dialog", (d) => void d.accept());
+  await page.getByRole("button", { name: "Annuler", exact: true }).click();
+  await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
+  expect(await fermetureRetenue(page)).toBe(false);
+});
+
+/**
+ * **Retirer un élément qui porte un réglage ne bloque pas « Appliquer ».** Son identifiant restait
+ * dans le brouillon, et le serveur refusait tout le lot (« Cette partie n'existe plus. Rien n'a été
+ * enregistré. ») : la seule issue était « Annuler ». Le retrait oublie maintenant son réglage.
+ */
+test("retirer un élément qui porte un réglage ne bloque pas « Appliquer »", async ({ page }) => {
+  const ajout = page.getByRole("combobox", { name: "Ajouter dans la partie 1" }).last();
+  const id = await ajout.evaluate((el) => el.closest("article")?.id ?? "");
+  const carte = page.locator(`article#${id}`);
+  const options = carte.getByRole("button", { name: /^Retirer « (Partie 1 · )?Option( \d+)? »$/ });
+  const avant = await options.count();
+  await ajout.click();
+  await page.getByRole("listbox").getByRole("option", { name: /^Option$/ }).click();
+  await expect(options).toHaveCount(avant + 1, { timeout: 20_000 });
+  const retirer = options.last();
+  const nom = (await retirer.getAttribute("aria-label"))!.replace(/^Retirer « (.*) »$/, "$1");
+
+  // Régler l'option ajoutée : elle entre dans le brouillon.
+  // `has` se lit depuis la ligne : le bouton est donc visé depuis la page, sans le préfixe de la carte.
+  const ligne = carte.locator("li[data-ligne-id]", { has: page.getByRole("button", { name: `Retirer « ${nom} »`, exact: true }) }).last();
+  if ((page.viewportSize()?.width ?? 1280) < 768) await ligne.locator("button[aria-expanded]").first().click();
+  const libelle = carte.locator(`label:text-is("Thème — ${nom}")`).first();
+  const theme = carte.locator(`#${(await libelle.getAttribute("for"))!}`);
+  await choisir(page, theme, 1);
+  await expect(compteurBarre(page, 1)).toBeVisible();
+
+  // La retirer : son réglage part avec elle.
+  page.once("dialog", (d) => void d.accept());
+  if ((page.viewportSize()?.width ?? 1280) < 768) await retirer.focus();
+  await retirer.click();
+  await expect(options).toHaveCount(avant, { timeout: 20_000 });
+  await expect(compteurBarre(page)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Appliquer les modifications" }).click();
+  await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
+  await expect(page.getByText(/Cette partie n'existe plus/)).toHaveCount(0);
 });

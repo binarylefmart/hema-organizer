@@ -6,8 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * Deux décisions de Delta tiennent ce fichier :
  *
  * 1. **Où il se pose** : un élément Atelier vide d'abord, sinon une option libre, sinon **un élément
- *    Atelier de plus dans la dernière partie** — jamais `null` faute de place, jamais à la place d'un
- *    cours. L'élément choisi passe en nature ATELIER, et la séance est rangée (son nom change).
+ *    Atelier de plus dans la dernière partie**, à sa place par défaut (avant les options) — jamais
+ *    `null` faute de place, jamais à la place d'un cours. L'élément choisi passe en nature ATELIER
+ *    **sans changer de place**, et la séance est rangée (son nom change).
  * 2. **Retirer un atelier vide la case, il ne la supprime pas** : l'élément reste, Atelier et vide,
  *    prêt pour le suivant.
  */
@@ -166,6 +167,29 @@ describe("placerAtelier", () => {
     expect(lue("c3")?.libelle).toBe("Partie 2 · Atelier 1");
     // Le cours principal n'a pas été touché.
     expect(lue("c0")).toMatchObject({ theme: "Messer", atelierId: null, nature: "COURS" });
+  });
+
+  it("pose l'élément créé à sa place par défaut : après les cours, **avant** les options", async () => {
+    poser([
+      { id: "c0", ordre: 0, bloc: 1, theme: "Messer" },
+      { id: "c1", ordre: 1, bloc: 2, theme: "Épée longue" },
+      { id: "c2", ordre: 2, bloc: 2, nature: "OPTION", theme: "Dague" },
+      { id: "c3", ordre: 3, bloc: 2, nature: "OPTION", theme: "Bâton" },
+    ]);
+    const posee = await placerAtelier("at-1", "s1", "u-admin");
+    const lus = [...faux.parties].sort((x, y) => x.ordre - y.ordre).map((p) => `${p.id === posee?.id ? "neuf" : p.id}:${p.ordre}`);
+    expect(lus).toEqual(["c0:0", "c1:1", "neuf:2", "c2:3", "c3:4"]);
+    expect(posee?.libelle).toBe("Partie 2 · Atelier");
+  });
+
+  it("l'option choisie devient un atelier **sans changer de place**", async () => {
+    poser([
+      { id: "o1", ordre: 0, bloc: 1, nature: "OPTION" },
+      { id: "c0", ordre: 1, bloc: 1, theme: "Messer" },
+    ]);
+    await placerAtelier("at-1", "s1", "u-admin");
+    expect(lue("o1")).toMatchObject({ ordre: 0, nature: "ATELIER", libelle: "Atelier" });
+    expect(lue("c0")?.ordre).toBe(1);
   });
 
   it("crée l'élément dans la partie 1 d'une séance qui n'a rien", async () => {

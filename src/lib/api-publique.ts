@@ -60,8 +60,8 @@ export type SeancePublique = {
   /** L'alternative seule, pour qui veut la mettre en forme autrement */
   alternative: string;
   /**
-   * Le programme, élément par élément, dans l'ordre de lecture de la séance (partie, puis nature, puis
-   * rang) : `ordre`, `partie` (le numéro, 1, 2, 3…), `nature` (`ECHAUFFEMENT` | `COURS` | `OPTION` |
+   * Le programme, élément par élément, dans l'ordre de lecture de la séance (partie, puis rang — l'ordre
+   * qu'a réglé l'équipe) : `ordre`, `partie` (le numéro, 1, 2, 3…), `nature` (`ECHAUFFEMENT` | `COURS` | `OPTION` |
    * `ATELIER`), `libelle` (« Partie 1 · Cours », « Partie 2 · Option 2 » — calculé, jamais saisi), le
    * titre, le niveau annoncé et la **description** — **jamais l'animateur**, ni le premier ni le second.
    *

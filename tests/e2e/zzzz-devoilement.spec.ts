@@ -49,8 +49,12 @@ test("une longue liste de personnes se dévoile vingt par vingt, avec son compte
   const total = Number((await poignee.innerText()).match(/\((\d+)\)/)?.[1] ?? "0");
   expect(total, "le jeu « grand club » invite bien plus de vingt personnes").toBeGreaterThan(20);
 
-  // Une ligne = une liste de réponse (`ListeDeroulante`, un bouton `combobox`, plus un `<select>`).
-  const lignes = page.locator('button[role="combobox"][id^="presence-"]');
+  // Une ligne = une liste de réponse sur PC (`ListeDeroulante`, un bouton `combobox`, plus un
+  // `<select>`), un groupe de trois boutons ✓ ? ✕ « Réponse de … » sur téléphone.
+  const lignes =
+    (page.viewportSize()?.width ?? 1280) < 768
+      ? page.getByRole("group", { name: /^Réponse de / })
+      : page.locator('button[role="combobox"][id^="presence-"]');
   const compteur = page.getByText(new RegExp(`^\\d+ sur ${total}$`));
 
   // ---- À l'ouverture : vingt lignes, un compteur, et un bouton qui annonce la tranche suivante.
@@ -94,7 +98,12 @@ test("une longue liste de personnes se dévoile vingt par vingt, avec son compte
   await deplierEtSelectionner.click();
   await expect(lignes).toHaveCount(total);
   await expect(compteur).toHaveText(`${total} sur ${total}`);
-  await expect(page.getByRole("group", { name: "Modifier la réponse de plusieurs personnes à la fois" }).getByText(`${total} personnes sélectionnées`)).toBeVisible();
+  const barre = page.getByRole("group", { name: "Modifier la réponse de plusieurs personnes à la fois" });
+  await expect(barre.getByText(`${total} personnes sélectionnées`)).toBeVisible();
+  // Le bouton de la barre qui coche ce qui est affiché nomme sa portée, et n'a plus rien à prendre.
+  const affichees = barre.getByRole("button", { name: `Sélectionner les ${total} personnes` });
+  await expect(affichees).toHaveText(`Les ${total} affichées`);
+  await expect(affichees).toBeDisabled();
   // Tout est dévoilé : plus rien à afficher.
   await expect(page.getByRole("button", { name: /^Afficher les \d+ suivantes$/ })).toHaveCount(0);
 

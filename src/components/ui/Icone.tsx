@@ -42,6 +42,13 @@ const TRACES = {
   chevronBas: "M6 9l6 6 6-6",
   // Le pendant du chevron bas : il n'apparaît que sur un bloc déjà déplié (« Replier »).
   chevronHaut: "M18 15l-6-6-6 6",
+  // Poignée ⋮⋮ : deux colonnes de trois points, ce qu'on tient pour déplacer une ligne d'une liste.
+  // Des segments nuls : le bout rond du trait en fait des points (poser `strokeWidth` plus épais).
+  poignee: "M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01",
+  // Trois points en ligne (⋯) : « les autres gestes », derrière un bouton. Mêmes segments nuls que la poignée.
+  points: "M5 12h.01M12 12h.01M19 12h.01",
+  // Plus : ajouter quelque chose (« + Ajouter » de l'annuaire au téléphone).
+  plus: "M12 5v14M5 12h14",
   interdit: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8",
   // Sablier : la durée annoncée d'un événement (« 2 jours », « une demi-journée »). Volontairement
   // distinct de l'horloge, qui porte déjà l'horaire : une durée n'est pas une heure.

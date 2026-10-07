@@ -554,6 +554,107 @@ l'image : elles vivent dans les dossiers de l'hôte, que le nouveau conteneur re
 
 ---
 
+## 8 bis. Déploiement automatique (runner sur le serveur)
+
+Une fois réglé, **publier une version suffit** : le flux `Release` construit l'image, puis son dernier
+job, **« Déploiement sur Portainer »**, fait l'équivalent des étapes 4 à 7 du § 8 — même fichier de
+stack, mêmes variables, *Re-pull image* — et attend que le conteneur tourne sur **la nouvelle version**
+et soit *healthy* (6 minutes au plus). Le job est rouge sinon.
+
+**La sauvegarde de l'étape 1 est faite par le conteneur lui-même** : au démarrage, s'il y a des
+migrations en attente, il écrit `avant-migration-<date>-<heure>.db` dans le dossier des sauvegardes
+**avant** de les appliquer, et refuse de migrer si cette copie échoue (`docker/entrypoint.sh`). C'est
+elle qu'on restaure au § 10 si un retour en arrière l'exige.
+
+### Ce qui fait tourner le job
+
+Un **runner GitHub auto-hébergé** sur le serveur : un petit service qui va chercher le travail chez
+GitHub — rien n'est ouvert en entrée — et parle à Portainer en local, par son API. Il ne sert qu'au
+dépôt privé `hema-organizer` ; le miroir public n'a pas la variable `PORTAINER_DEPLOY` et ignore le job.
+
+1. **Un compte dédié sur le serveur**, sans droits Docker (le runner ne parle qu'à l'API de Portainer) :
+
+   ```bash
+   sudo useradd -m -s /bin/bash github-runner
+   sudo apt install -y curl jq        # adapter au gestionnaire de paquets du serveur
+   ```
+
+2. **Installer le runner** : GitHub → dépôt `hema-organizer` → *Settings* → *Actions* → *Runners* →
+   **New self-hosted runner** → *Linux* / *x64*. Copier les commandes affichées (elles portent la
+   version du runner et un jeton d'inscription valable une heure), en tant que `github-runner`, et à
+   l'étape `./config.sh` **ajouter l'étiquette** :
+
+   ```bash
+   ./config.sh --url https://github.com/<compte>/hema-organizer --token <jeton affiché> \
+     --labels hema-deploy --name serveur-club --unattended
+   ```
+
+   Puis l'installer comme service, pour qu'il survive aux redémarrages (depuis le dossier du runner) :
+
+   ```bash
+   sudo ./svc.sh install github-runner && sudo ./svc.sh start
+   ```
+
+   Il apparaît **Idle**, en vert, dans *Settings → Actions → Runners*.
+
+3. **Un jeton d'API Portainer** : Portainer → *My account* → *Access tokens* → **Add access token**
+   (« deploiement-github »). Il a les droits de l'utilisateur qui le crée : un administrateur, ou un
+   utilisateur qui a accès à la stack. Le copier : il ne se réaffiche pas.
+
+4. **Les identifiants de la stack** : ouvrir la stack dans Portainer ; l'adresse ressemble à
+   `…/#!/3/docker/stacks/hema-organizer?id=12&type=2…` — **3** est l'environnement (`endpointId`),
+   **12** la stack.
+
+5. **Dans GitHub** → dépôt `hema-organizer` → *Settings* → *Secrets and variables* → *Actions* :
+
+   | Nom | Où | Valeur |
+   |---|---|---|
+   | `PORTAINER_URL` | *Secrets* | l'adresse de Portainer **vue du serveur**, par ex. `https://localhost:9443` |
+   | `PORTAINER_TOKEN` | *Secrets* | le jeton de l'étape 3 |
+   | `PORTAINER_STACK_NAME` | *Variables* | **le nom de la stack** (`hema_organizer` au club) — elle est retrouvée par son nom, ce qui survit à « supprimer la stack et la recréer depuis le modèle », qui change son numéro |
+   | `PORTAINER_STACK_ID` | *Variables* | facultatif — le numéro de la stack (12 dans l'exemple), seulement si le nom n'est pas donné |
+   | `PORTAINER_ENDPOINT_ID` | *Variables* | l'environnement (3 dans l'exemple) |
+   | `PORTAINER_TLS_INSECURE` | *Variables* | `true` si Portainer répond en HTTPS avec son certificat auto-signé (cas de `:9443`) |
+   | `PORTAINER_CONTENEUR` | *Variables* | facultatif — le nom du conteneur, `hema-organizer` par défaut |
+   | `PORTAINER_DEPLOY` | *Variables* | **`true`** — c'est l'interrupteur |
+
+### Vérifier, sans attendre la prochaine version
+
+Depuis le serveur, en tant que `github-runner` — la même requête que le job, en lecture seule :
+
+```bash
+curl -fsS -k -H "X-API-Key: <jeton>" https://localhost:9443/api/stacks/<id> | jq '{Name, Status}'
+```
+
+Puis **le test de bout en bout, sans publier** : GitHub → *Actions* → **Test du déploiement** → *Run
+workflow*. Il redéploie la stack telle quelle (même image, retéléchargée) par **le même script** que la
+publication (`scripts/deployer-portainer.sh`) et attend que le conteneur ait redémarré et soit sain —
+quelques secondes d'interruption, comme un « Update the stack ».
+
+Ensuite, à chaque publication : suivre le job « Déploiement sur Portainer » dans GitHub
+(ou dans `scripts/suivi.sh`). **Ne pas** utiliser *Run workflow* pour « rejouer » une version déjà en
+production : ce déclenchement reconstruit l'image depuis l'état **actuel** de `main` et la publierait sous
+ce numéro et sous `latest`, code non publié compris.
+
+### « Supprimer la stack et la recréer depuis le modèle »
+
+Ce n'est plus nécessaire pour mettre à jour : le job fait déjà « Update the stack » avec *Re-pull image*.
+Si on le fait quand même (pour repartir d'un modèle modifié, par exemple), rien à reprendre côté GitHub :
+la stack est retrouvée **par son nom** (`PORTAINER_STACK_NAME`), et son nouveau numéro n'a pas
+d'importance — à condition de lui redonner **le même nom**.
+
+### Couper, revenir en arrière
+
+- **Suspendre le déploiement automatique** : passer `PORTAINER_DEPLOY` à `false` (ou la supprimer). Les
+  publications continuent de construire l'image ; on redéploie à la main (§ 8).
+- **Revenir en arrière** reste un geste à la main (§ 9) : `APP_TAG` épinglé. Tant qu'il l'est, le
+  déploiement automatique redéploie… la version épinglée, et son job finit **rouge** (« pas la nouvelle
+  version ») — c'est voulu : retirer `APP_TAG` pour repartir vers l'avant.
+- **Retirer le runner** : `sudo ./svc.sh stop && sudo ./svc.sh uninstall`, puis le supprimer dans
+  *Settings → Actions → Runners*.
+
+---
+
 ## 9. Revenir en arrière
 
 1. Portainer → **Stacks → hema-organizer → Editor**.

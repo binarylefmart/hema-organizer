@@ -62,7 +62,7 @@ export default async function PageThemesAdmin() {
              relisent l'une contre l'autre (un thème rangé dans la mauvaise liste se voit ici). Les
              lieux restent seuls à droite — trois cartes, deux piles, à peu près la même hauteur dès
              que la liste des cours est longue. Deux formulaires : enregistrer l'une ne touche pas
-             l'autre. L'échauffement d'abord, dans l'ordre de lecture d'une partie. */
+             l'autre. L'échauffement d'abord, comme dans l'ordre par défaut d'une partie. */
           <>
             <Carte titre="Thèmes d'échauffement">
               <FormulaireAction

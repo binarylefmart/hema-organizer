@@ -118,7 +118,7 @@ export function SelectionDates({ action, candidates }: { action: (prev: FormStat
                     <label className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-1 ${actif ? "" : "text-texte-secondaire line-through"}`}>
                       <input type="checkbox" name="dates" value={cle} checked={actif} onChange={() => basculer(cle)} className="size-6 shrink-0 accent-primaire" />
                       <span>
-                        {formatDateCourte(c.date)} <span className="text-sm text-texte-secondaire">{formatHeure(c.heureDebut)} · {c.lieu}</span>
+                        {formatDateCourte(c.date)} <span className="text-sm text-texte-secondaire">{formatHeure(c.heureDebut)}&nbsp;· {c.lieu}</span>
                       </span>
                     </label>
                   </li>
@@ -211,9 +211,9 @@ export function SeancesCreees({
                       <span>
                         {formatDateCourte(s.date)}{" "}
                         <span className="text-sm text-texte-secondaire">
-                          {formatHeure(s.heureDebut)} · {s.lieu}
-                          {s.annulee ? " · annulée" : ""}
-                          {s.reponses > 0 ? ` · ${s.reponses} réponse${s.reponses > 1 ? "s" : ""}` : ""}
+                          {formatHeure(s.heureDebut)}&nbsp;· {s.lieu}
+                          {s.annulee ? "\u00a0· annulée" : ""}
+                          {s.reponses > 0 ? `\u00a0· ${s.reponses}\u00a0réponse${s.reponses > 1 ? "s" : ""}` : ""}
                         </span>
                       </span>
                     </label>
@@ -230,8 +230,15 @@ export function SeancesCreees({
       {state.erreur && <Alerte type="erreur">{state.erreur}</Alerte>}
       {state.succes && <Alerte type="succes">{state.succes}</Alerte>}
       <BoutonEnvoi variante="danger" enCours="Suppression…" confirmation={confirmation} disabled={aRetirer.length === 0}>
-        <Icone nom="alerte" taille={18} />
-        Retirer {aRetirer.length} séance{aRetirer.length > 1 ? "s" : ""}
+        {/* Rien de coché pour le retrait : un libellé qui dit le geste plutôt que « Retirer 0 séance ». */}
+        {aRetirer.length === 0 ? (
+          "Aucune séance à retirer"
+        ) : (
+          <>
+            <Icone nom="alerte" taille={18} />
+            Retirer {aRetirer.length}&nbsp;séance{aRetirer.length > 1 ? "s" : ""}
+          </>
+        )}
       </BoutonEnvoi>
     </form>
   );

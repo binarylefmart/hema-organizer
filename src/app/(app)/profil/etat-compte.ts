@@ -132,7 +132,8 @@ export function etatCodesSecours(codesRestants: number, total: number): LigneEta
   return {
     intitule: "Codes de secours",
     ton: codesRestants > 0 ? "neutre" : "rouge",
-    valeur: `${codesRestants} sur ${total} restants`,
+    // Espaces insécables : la pastille ne se coupe pas entre un nombre et ce qu'il compte.
+    valeur: `${codesRestants}\u00a0sur ${total}\u00a0restants`,
   };
 }
 

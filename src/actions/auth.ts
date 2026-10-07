@@ -199,18 +199,23 @@ export async function verifierCode2fa(_prev: FormState, fd: FormData): Promise<F
     await audit({ id: user.id, email: user.email }, "connexion.code_secours_utilise", null, { restants: parCodeSecours });
   }
   let suite = cheminSuiteSur(attente.suite);
+  let codesAMontrer: { codes: string[]; apres: string } | null = null;
   if (!secretActif) {
     await activerTotp(user.id, secret);
     // Première activation : 8 codes de secours, montrés une seule fois juste après
     const codes = genererCodesSecours();
     await enregistrerCodesSecours(user.id, codes);
-    await ouvrirAffichageCodes(user.id, codes, suite);
+    codesAMontrer = { codes, apres: suite };
     suite = "/connexion/codes-secours";
     await audit({ id: user.id, email: user.email }, "deux_fa.activee");
   }
   await fermerAttente2fa();
   await oublierDestination(); // la destination a servi
   await destroySession(); // remplace une éventuelle session ouverte par lien
+  // **Les codes se posent APRÈS `destroySession`**, qui efface le cookie de passage des codes (un
+  // appareil partagé ne doit pas les garder) : posés avant, ils partaient avec lui, l'écran des
+  // codes ne trouvait rien, et les huit codes — gardés seulement hachés — étaient perdus.
+  if (codesAMontrer) await ouvrirAffichageCodes(user.id, codesAMontrer.codes, codesAMontrer.apres);
   /*
    * **Se connecter n'ouvre pas l'espace admin**.
    *

@@ -8,7 +8,7 @@ import {
 import { ATTENDANCE_STATUTS, type AttendanceStatut } from "@/lib/constants";
 import { STATUT_LABELS } from "@/lib/presences";
 import type { ParticipantStatut } from "@/lib/seances";
-import { Icone } from "@/components/ui/Icone";
+import { Icone, type NomIcone } from "@/components/ui/Icone";
 import { PastillePersonne } from "@/components/ui/Pastille";
 import { Bouton } from "@/components/ui/Bouton";
 import { ListeDeroulante, type EntreeListe } from "@/components/ui/ListeDeroulante";
@@ -21,6 +21,9 @@ import {
 } from "@/components/seances/listes";
 import { useDevoilement } from "@/components/seances/ListeRepliee";
 import { InterrupteurSelection } from "@/components/ui/InterrupteurSelection";
+import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
+import { BarreSelection } from "@/components/ui/BarreSelection";
+import { ZoneCochable } from "@/components/ui/ZoneCochable";
 import { selectionApresInterrupteur } from "@/components/ui/selection";
 import {
   ajouter,
@@ -93,6 +96,39 @@ const ENTREES_REPONSE: EntreeListe[] = [
   ...ATTENDANCE_STATUTS.map((v) => ({ valeur: v, libelle: STATUT_LABELS[v] })),
   { valeur: "", libelle: "Sans réponse" },
 ];
+
+/**
+ * **Sur le téléphone, trois boutons par personne au lieu de la liste déroulante** — un tap par
+ * correction, comme les trois grands boutons du membre (`BoutonsPresence`), dans le même ordre et
+ * les mêmes couleurs : le bouton de la réponse actuelle est **plein**, les deux autres gardent le
+ * fond neutre et l'icône colorée. La liste demandait deux taps et une lecture par ligne, au bout
+ * d'un registre qu'on corrige cinquante fois un soir de cours.
+ *
+ * L'icône est seule à l'écran (la place manque à côté d'un nom entier), mais jamais seule pour qui
+ * l'entend : chaque bouton porte « Présent — Prénom Nom » en nom accessible, et `aria-pressed` dit
+ * lequel est la réponse actuelle. Et les trois formes diffèrent — la couleur souligne, elle
+ * n'informe jamais seule.
+ */
+const BOUTONS_REPONSE: readonly {
+  statut: AttendanceStatut;
+  icone: NomIcone;
+  actif: string;
+  neutre: string;
+}[] = [
+  { statut: "PRESENT", icone: "check", actif: "border-vert bg-vert text-primaire-texte", neutre: "border-bordure bg-surface text-vert" },
+  { statut: "PEUT_ETRE", icone: "question", actif: "border-ocre bg-ocre text-primaire-texte", neutre: "border-bordure bg-surface text-ocre" },
+  { statut: "ABSENT", icone: "croix", actif: "border-rouge bg-rouge text-primaire-texte", neutre: "border-bordure bg-surface text-rouge" },
+];
+
+/**
+ * **Cochée, au téléphone** : la ligne prend le fond doux et un contour de la couleur principale — on
+ * voit d'un coup d'œil qui est dans le lot. L'état est lu sur la case (`:has`), qui reste seule à le porter.
+ */
+const LIGNE_COCHEE =
+  "tel:rounded-xl tel:px-1 tel:has-[[data-case-selection]:checked]:bg-primaire-doux tel:has-[[data-case-selection]:checked]:ring-2 tel:has-[[data-case-selection]:checked]:ring-inset tel:has-[[data-case-selection]:checked]:ring-primaire";
+
+/** L'ordre des réponses dans la barre du téléphone : celui des trois boutons de chaque ligne, puis « Sans réponse ». */
+const ORDRE_BARRE: readonly (AttendanceStatut | null)[] = [...BOUTONS_REPONSE.map((b) => b.statut), null];
 
 function couleur(statut: string | null): string {
   return statut && statut in COULEURS
@@ -173,6 +209,8 @@ export function PresencesEquipe({
     texte: string;
   } | null>(null);
   const [, startTransition] = useTransition();
+  /** Trois boutons en version téléphone, la liste déroulante sur ordinateur (voir `BOUTONS_REPONSE`). */
+  const telephone = useEcranTelephone();
   // Ce qu'on cherche. Combien de lignes sont montrées, lui, est au crochet de dévoilement ci-dessous.
   const [filtre, setFiltre] = useState("");
   /**
@@ -365,7 +403,10 @@ export function PresencesEquipe({
         });
         if (res.ok) {
           setModifs((m) => ({ ...m, [p.id]: res.statut }));
-          setMessage({ type: "ok", texte: `Réponse de ${nom} enregistrée.` });
+          setMessage({
+            type: "ok",
+            texte: res.statut === null ? `Réponse de ${nom} effacée.` : `Réponse de ${nom} enregistrée.`,
+          });
         } else {
           setModifs((m) => ({ ...m, [p.id]: precedent }));
           setMessage({ type: "erreur", texte: `${nom} : ${res.erreur}` });
@@ -630,7 +671,7 @@ export function PresencesEquipe({
             de l'écran et fait ~200 px de haut sur un téléphone de 390 px. Sans cette réserve, les
             dernières lignes de la liste — et les boutons de dévoilement qui les suivent — ne sortent
             de dessous la barre qu'au tout dernier pixel de défilement de la page, alors que ce sont
-            justement celles qu'on vient de cocher. Dès 768 px la barre d'onglets disparaît, la barre
+            justement celles qu'on vient de cocher. Sur ordinateur la barre d'onglets disparaît, la barre
             d'action redescend, et la réserve n'a plus d'objet. */}
         {/*
           **Deux colonnes de lignes quand le registre a la place, et la ligne plafonnée** (
@@ -650,119 +691,158 @@ export function PresencesEquipe({
           L'ordre du DOM ne bouge pas (donc l'ordre lu à l'oreille non plus) et reste celui du
           serveur : les sans-réponse d'abord. Le remplissage étant par rangées, deux voisins
           alphabétiques sont côte à côte — la liste se lit de gauche à droite, comme un listing. */}
-        <ul
-          className={`flex flex-col gap-1 @4xl:grid @4xl:grid-cols-2 @4xl:gap-x-8 ${masseVisible ? "pb-48 md:pb-0" : ""}`}
-        >
-          {montres.map((p) => {
-            const statut = statutAffiche(p);
-            const teinte = couleur(statut);
-            const occupe = enCours.includes(p.id);
-            return (
-              <li
-                key={p.id}
-                className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 border-b border-bordure/40 py-1.5 last:border-b-0 @4xl:max-w-xl"
-              >
-                {/* La case et le nom dans un même libellé : la cible tactile fait toute la largeur du
-                    nom, on coche en visant la ligne et non une case de 24 px. Pas d'imbrication avec
-                    le libellé de la liste déroulante, qui reste un frère (un `label` dans un `label`
-                    n'a pas d'accessible name fiable).
-                    Pas d'icône de statut ici : la liste déroulante dit « Présent » / « Absent » en
-                    toutes lettres, l'information ne repose donc jamais sur la seule couleur — et les
-                    ~30 px gagnés reviennent au nom, qui doit rester entier. */}
-                <label className="flex min-h-12 min-w-0 flex-1 cursor-pointer items-center gap-3">
-                  {interrupteur ? (
-                    <input
-                      type="checkbox"
-                      checked={selection.has(p.id)}
-                      disabled={occupe || lotEnVol}
-                      onChange={() => setSelection((s) => basculer(s, p.id))}
-                      className="size-6 shrink-0 accent-primaire"
-                    />
-                  ) : null}
-                  <PastillePersonne id={p.id} couleur={p.couleur} taille={10} />
-                  <span className="min-w-0">
-                    {p.prenom} {p.nom}
-                  </span>
-                </label>
-                <label id={`presence-${p.id}-libelle`} className="sr-only" htmlFor={`presence-${p.id}`}>
-                  Réponse de {p.prenom} {p.nom}
-                </label>
-                {/* La liste du dépôt, jamais un `<select>` nu : au pied d'un registre de quatre-vingts
-                    lignes, la liste native s'ouvrait vers le haut. Elle enregistre au choix comme le
-                    `<select>` au `change` ; rechoisir la réponse affichée ne part pas au serveur,
-                    `changer` s'arrête de lui-même quand rien ne change. L'enveloppe `shrink-0` tient
-                    la place de la liste dans la ligne `flex` : c'est elle, et non plus le déclencheur,
-                    qui est l'enfant de la ligne. */}
-                <div className="shrink-0">
-                  <ListeDeroulante
-                    id={`presence-${p.id}`}
-                    libelleId={`presence-${p.id}-libelle`}
-                    libelle={`Réponse de ${p.prenom} ${p.nom}`}
-                    valeur={statut ?? ""}
-                    entrees={ENTREES_REPONSE}
-                    disabled={occupe}
-                    onChoisir={(v) => changer(p, v)}
-                    className={[
-                      // 48 px et non 44 : c'est **la** cible de cet écran, celle qu'on vise cinquante
-                      // fois de suite un soir de cours, et le cahier des charges ne connaît qu'un chiffre.
-                      "min-h-12 w-36 rounded-xl border-2 bg-surface px-2 text-base font-semibold shadow-champ",
-                      "focus:border-primaire disabled:cursor-wait disabled:opacity-60",
-                      teinte,
-                    ].join(" ")}
-                  />
+        {/* Au téléphone, toucher une ligne la coche (`ZoneCochable`) — ses trois boutons gardent leur geste. */}
+        <ZoneCochable actif={telephone && interrupteur && !lotEnVol}>
+          <ul
+            className={`flex flex-col gap-1 @4xl:grid @4xl:grid-cols-2 @4xl:gap-x-8 ${masseVisible ? "pb-48 ordi:pb-0" : ""}`}
+          >
+            {montres.map((p) => {
+              const statut = statutAffiche(p);
+              const teinte = couleur(statut);
+              const occupe = enCours.includes(p.id);
+              return (
+                <li
+                  key={p.id}
+                  className={`flex w-full flex-wrap items-center gap-x-3 gap-y-1 tel:gap-x-2 border-b border-bordure/40 py-1.5 last:border-b-0 @4xl:max-w-xl ${LIGNE_COCHEE}`}
+                >
+                  {/* La case et le nom dans un même libellé : la cible tactile fait toute la largeur du
+                      nom, on coche en visant la ligne et non une case de 24 px. Pas d'imbrication avec
+                      le libellé de la liste déroulante, qui reste un frère (un `label` dans un `label`
+                      n'a pas d'accessible name fiable).
+                      Pas d'icône de statut ici : la liste déroulante dit « Présent » / « Absent » en
+                      toutes lettres, l'information ne repose donc jamais sur la seule couleur — et les
+                      ~30 px gagnés reviennent au nom, qui doit rester entier.
+                      Au téléphone, le libellé ne descend jamais sous son mot le plus long (`min-w-auto`) :
+                      le nom passe à la ligne entre les mots, et quand même un mot ne tient plus à côté
+                      des boutons, la ligne `flex-wrap` envoie les boutons dessous, calés à droite. */}
+                  <label className="flex min-h-12 min-w-0 flex-1 cursor-pointer items-center gap-3 tel:min-w-auto tel:gap-2">
+                    {interrupteur ? (
+                      <input
+                        type="checkbox"
+                        data-case-selection
+                        checked={selection.has(p.id)}
+                        disabled={occupe || lotEnVol}
+                        onChange={() => setSelection((s) => basculer(s, p.id))}
+                        className="size-6 shrink-0 accent-primaire"
+                      />
+                    ) : null}
+                    <PastillePersonne id={p.id} couleur={p.couleur} taille={10} />
+                    <span className="min-w-0 break-words tel:min-w-auto">
+                      {p.prenom} {p.nom}
+                    </span>
+                  </label>
+                  {telephone ? (
+                    /* **Effacer une réponse reste un geste du téléphone** : un appui sur le bouton déjà
+                       plein le relâche, et la ligne retombe sur « sans réponse » — l'entrée que la liste
+                       déroulante propose en dernier. C'est ce que dit `aria-pressed` : un bouton enfoncé
+                       se relâche. Le même `changer` que la liste, donc les mêmes verrous côté serveur,
+                       la même valeur optimiste et le même retour en cas d'erreur. */
+                    <div role="group" aria-label={`Réponse de ${p.prenom} ${p.nom}`} className="ml-auto flex shrink-0 gap-1">
+                      {BOUTONS_REPONSE.map((b) => {
+                        const plein = statut === b.statut;
+                        return (
+                          <button
+                            key={b.statut}
+                            type="button"
+                            aria-pressed={plein}
+                            aria-label={`${STATUT_LABELS[b.statut]} — ${p.prenom} ${p.nom}`}
+                            disabled={occupe}
+                            onClick={() => changer(p, plein ? "" : b.statut)}
+                            className={[
+                              "grid size-11 place-items-center rounded-xl border-2 shadow-champ transition active:scale-[0.97]",
+                              "disabled:cursor-wait disabled:opacity-60",
+                              plein ? b.actif : b.neutre,
+                            ].join(" ")}
+                          >
+                            <Icone nom={b.icone} taille={22} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <>
+                      <label id={`presence-${p.id}-libelle`} className="sr-only" htmlFor={`presence-${p.id}`}>
+                        Réponse de {p.prenom} {p.nom}
+                      </label>
+                      {/* La liste du dépôt, jamais un `<select>` nu : au pied d'un registre de quatre-vingts
+                          lignes, la liste native s'ouvrait vers le haut. Elle enregistre au choix comme le
+                          `<select>` au `change` ; rechoisir la réponse affichée ne part pas au serveur,
+                          `changer` s'arrête de lui-même quand rien ne change. L'enveloppe `shrink-0` tient
+                          la place de la liste dans la ligne `flex` : c'est elle, et non plus le déclencheur,
+                          qui est l'enfant de la ligne. */}
+                      <div className="shrink-0">
+                        <ListeDeroulante
+                          id={`presence-${p.id}`}
+                          libelleId={`presence-${p.id}-libelle`}
+                          libelle={`Réponse de ${p.prenom} ${p.nom}`}
+                          valeur={statut ?? ""}
+                          entrees={ENTREES_REPONSE}
+                          disabled={occupe}
+                          onChoisir={(v) => changer(p, v)}
+                          className={[
+                            // 48 px et non 44 : c'est **la** cible de cet écran, celle qu'on vise cinquante
+                            // fois de suite un soir de cours, et le cahier des charges ne connaît qu'un chiffre.
+                            "min-h-12 w-36 rounded-xl border-2 bg-surface px-2 text-base font-semibold shadow-champ",
+                            "focus:border-primaire disabled:cursor-wait disabled:opacity-60",
+                            teinte,
+                          ].join(" ")}
+                        />
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+            {/* Pas un bouton tant que tout tient : un club de douze retrouve sa liste entière, sans
+                repli ni compteur — c'est l'invariant du dossier des listes longues.
+                Deux boutons et non un seul : « Afficher les N suivantes » annonce **ce qu'il va
+                montrer** (vingt, puis sept sur la dernière tranche), et « Replier » ne paraît qu'après
+                le premier appui, pour ramener à la première tranche. C'est le patron de
+                `ListeRepliee` ; il n'est pas monté ici parce que ces lignes-là portent une case à
+                cocher et vivent dans le `<ul>` de ce composant. */}
+            {trouves.length > LIGNES_VISIBLES ? (
+              <li className="list-none pt-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  {restantes > 0 && (
+                    <Bouton
+                      variante="secondaire"
+                      taille="petite"
+                      className="flex-1 basis-48"
+                      disabled={lotEnVol}
+                      onClick={suivante}
+                    >
+                      <Icone nom="chevronBas" />
+                      {libelleAfficher(prochaine)}
+                    </Bouton>
+                  )}
+                  {!auDebut && (
+                    <Bouton
+                      variante="secondaire"
+                      taille="petite"
+                      className="flex-1 basis-32"
+                      disabled={lotEnVol}
+                      onClick={revenir}
+                    >
+                      <Icone nom="chevronHaut" />
+                      {LIBELLE_REPLIER}
+                    </Bouton>
+                  )}
+                  {/* **Le compteur est monté avec les boutons, avant le premier appui.** Une région
+                      `aria-live` créée en même temps que son contenu n'est pas annoncée : elle serait
+                      donc muette exactement à l'appui qui compte le plus, le premier. Il vit ici, au
+                      bas de la **liste**, et non dans la barre d'action collante — dévoiler et
+                      corriger ne sont pas le même geste. */}
+                  <p
+                    aria-live="polite"
+                    className="basis-full text-center text-sm tabular-nums text-texte-secondaire"
+                  >
+                    {libelleCompteur(affichees, trouves.length)}
+                  </p>
                 </div>
               </li>
-            );
-          })}
-          {/* Pas un bouton tant que tout tient : un club de douze retrouve sa liste entière, sans
-              repli ni compteur — c'est l'invariant du dossier des listes longues.
-              Deux boutons et non un seul : « Afficher les N suivantes » annonce **ce qu'il va
-              montrer** (vingt, puis sept sur la dernière tranche), et « Replier » ne paraît qu'après
-              le premier appui, pour ramener à la première tranche. C'est le patron de
-              `ListeRepliee` ; il n'est pas monté ici parce que ces lignes-là portent une case à
-              cocher et vivent dans le `<ul>` de ce composant. */}
-          {trouves.length > LIGNES_VISIBLES ? (
-            <li className="list-none pt-1">
-              <div className="flex flex-wrap items-center gap-2">
-                {restantes > 0 && (
-                  <Bouton
-                    variante="secondaire"
-                    taille="petite"
-                    className="flex-1 basis-48"
-                    disabled={lotEnVol}
-                    onClick={suivante}
-                  >
-                    <Icone nom="chevronBas" />
-                    {libelleAfficher(prochaine)}
-                  </Bouton>
-                )}
-                {!auDebut && (
-                  <Bouton
-                    variante="secondaire"
-                    taille="petite"
-                    className="flex-1 basis-32"
-                    disabled={lotEnVol}
-                    onClick={revenir}
-                  >
-                    <Icone nom="chevronHaut" />
-                    {LIBELLE_REPLIER}
-                  </Bouton>
-                )}
-                {/* **Le compteur est monté avec les boutons, avant le premier appui.** Une région
-                    `aria-live` créée en même temps que son contenu n'est pas annoncée : elle serait
-                    donc muette exactement à l'appui qui compte le plus, le premier. Il vit ici, au
-                    bas de la **liste**, et non dans la barre d'action collante — dévoiler et
-                    corriger ne sont pas le même geste. */}
-                <p
-                  aria-live="polite"
-                  className="basis-full text-center text-sm tabular-nums text-texte-secondaire"
-                >
-                  {libelleCompteur(affichees, trouves.length)}
-                </p>
-              </div>
-            </li>
-          ) : null}
-        </ul>
+            ) : null}
+          </ul>
+        </ZoneCochable>
 
         {/* **La barre d'action n'existe qu'avec une sélection** (sur les deux écrans de masse :
             « pour presence (admin) pareil, rends cette tuile visible uniquement si quelqu'un est
@@ -784,20 +864,20 @@ export function PresencesEquipe({
             comme une autre.
 
             **Elle se pose AU-DESSUS de la barre d'onglets du téléphone**. Elle était à `bottom-2`,
-            et la barre d'onglets du bas (`NavBas`, `fixed bottom-0 z-10`, cachée à partir de 768
-            px) fait 84 px avec sa marge de sécurité : à `z-index` égal, c'est le dernier peint qui
+            et la barre d'onglets du bas (`NavBas`, `fixed bottom-0 z-10`, cachée sur
+            ordinateur) fait 84 px avec sa marge de sécurité : à `z-index` égal, c'est le dernier peint qui
             gagne, et la barre de sélection est rendue après. Sur 390 px, ses quatre boutons en deux
             colonnes font ~200 px de haut : elle recouvrait la barre d'onglets **entière** — plus
             deux ou trois lignes de la liste qu'on est en train de cocher. Tant qu'une sélection
             était active, « Accueil / Séances / Profil » n'était plus tapable, sur l'écran même où
             l'on passe le plus de temps. Le décalage reprend la hauteur de la barre d'onglets
-            (`env(safe-area- inset-bottom)` comprise, comme elle) ; dès 768 px la barre d'onglets
+            (`env(safe-area- inset-bottom)` comprise, comme elle) ; sur ordinateur la barre d'onglets
             n'existe plus, et la barre d'action retrouve ses 8 px du bas. */}
-        {masseVisible ? (
+        {masseVisible && !telephone ? (
           <div
             role="group"
             aria-label="Modifier la réponse de plusieurs personnes à la fois"
-            className="sticky bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] z-10 flex flex-col gap-2 rounded-xl border-2 border-primaire/50 bg-surface p-3 shadow-carte md:bottom-2"
+            className="sticky bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] z-10 flex flex-col gap-2 rounded-xl border-2 border-primaire/50 bg-surface p-3 shadow-carte ordi:bottom-2"
           >
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
               {/* Sans `aria-live` : l'annonce est portée par la région permanente posée plus haut
@@ -843,6 +923,48 @@ export function PresencesEquipe({
               ))}
             </div>
           </div>
+        ) : null}
+        {/* **Au téléphone, la barre sombre commune** (`BarreSelection`) — sans volet : les quatre
+            réponses y sont directement, avec la même confirmation et le même appel que ci-dessous. */}
+        {masseVisible && telephone ? (
+          <BarreSelection
+            nom="Modifier la réponse de plusieurs personnes à la fois"
+            n={selection.size}
+            mots={MOTS_PERSONNES}
+            affichees={montres.length}
+            toutesCochees={etatCases === "toutes"}
+            libelleCocherAffichees={libelleToutSelectionner(montres.length, { recherche, replie })}
+            onCocherAffichees={() => setSelection((s) => ajouter(s, montres.map((p) => p.id)))}
+            onVider={() => setSelection(new Set())}
+            horsAffichage={horsAffichage}
+            enCours={lotEnVol}
+          >
+            <p className="text-base" aria-live="polite">
+              {lotEnVol ? "Enregistrement…" : "Mettre leur réponse à :"}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {ORDRE_BARRE.filter((c) => ciblesUtiles(lignesSelectionnees(stables, selection).map((p) => ({ id: p.id, statut: statutAffiche(p) }))).includes(c)).map((cible) => {
+                const bouton = BOUTONS_REPONSE.find((b) => b.statut === cible);
+                return (
+                  <button
+                    key={cible ?? "sans-reponse"}
+                    type="button"
+                    disabled={lotEnVol}
+                    aria-busy={lotEnVol}
+                    onClick={() => appliquerEnMasse(cible)}
+                    className={[
+                      "inline-flex min-h-12 w-full items-center justify-center gap-1.5 rounded-xl border-2 border-transparent bg-surface px-2",
+                      "text-base font-semibold transition active:scale-[0.98] disabled:cursor-wait disabled:opacity-60",
+                      TEINTES_EN_MASSE[cible ?? "SANS_REPONSE"],
+                    ].join(" ")}
+                  >
+                    {bouton && <Icone nom={bouton.icone} taille={18} />}
+                    {cible ? STATUT_LABELS[cible] : "Sans réponse"}
+                  </button>
+                );
+              })}
+            </div>
+          </BarreSelection>
         ) : null}
 
         <p className="min-h-6 text-sm" aria-live="polite">

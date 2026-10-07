@@ -157,7 +157,7 @@ export type PartieProgramme = PartieLue<LigneProgramme>;
  * lecture pour la fiche d'une séance (`partiesProgramme`) et pour les pages de partage, qui la
  * reprennent sur leurs propres cases (`CasePartage`, sans aucun nom).
  *
- * Les éléments arrivent déjà dans l'ordre de lecture (partie, nature, ordre — `rangerParties`) et déjà
+ * Les éléments arrivent déjà dans l'ordre de lecture (partie, puis ordre — `rangerParties`) et déjà
  * filtrés : une partie dont aucun élément ne parle **n'apparaît pas**, faute d'élément pour la
  * porter. Les numéros, eux, restent ceux de la séance — une séance dont les parties 1 et 3 sont
  * remplies affiche « Partie 1 » et « Partie 3 », comme le planning, et non « Partie 1 » et

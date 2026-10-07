@@ -7,7 +7,7 @@
  *
  * Produit previews/<scene>/<mobile|pc>-<clair|sombre>.jpg et previews/index.html (galerie).
  */
-import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 import path from "node:path";
@@ -410,6 +410,9 @@ function toutesLesScenes(): Scene[] {
         await page.getByLabel("Code à 6 chiffres").fill(await codeTotpFrais(cle));
         await page.getByRole("button", { name: "Activer et me connecter" }).click();
         await page.waitForURL("**/connexion/codes-secours");
+        // On attend la liste des codes, et non la seule adresse : l'écran peut s'y poser puis renvoyer
+        // ailleurs faute de codes à montrer, et la capture était alors une page blanche « réussie ».
+        await page.getByRole("list", { name: "Codes de secours" }).waitFor();
       },
       pleinePage: true,
       apres: restaurerCompteAdministration,
@@ -555,6 +558,15 @@ function toutesLesScenes(): Scene[] {
          * tout. Le suffixe `-theme` de l'identifiant, lui, ne dépend ni du rôle ARIA du jour ni du
          * nom de la partie (`<id de partie>-theme`).
          */
+        // Sur téléphone, les réglages d'un élément ne s'ouvrent qu'en touchant sa ligne : on referme
+        // la démonstration des gestes, puis on déplie la ligne du cours (celle d'un atelier n'a pas de
+        // liste de thèmes : son thème est le titre de l'atelier).
+        if (await estTelephone(page)) {
+          await fermerDemoGestes(page);
+          const ligne = page.locator("[data-ligne-id]", { has: page.getByText("Cours", { exact: true }) }).locator("button[aria-expanded]").first();
+          await ligne.evaluate((el) => el.scrollIntoView({ block: "center" }));
+          await ligne.click();
+        }
         const listes = page.locator('button[id$="-theme"]');
         await listes.first().waitFor();
         /*
@@ -590,16 +602,74 @@ function toutesLesScenes(): Scene[] {
     // à cette date » — un écran vide qui ressemble à une capture réussie.
     {
       nom: "planning-parties",
-      description: "Planning en modification : une séance découpée en parties — échauffement et cours en partie 1, option en partie 2, atelier en partie 3",
+      description: "Planning en modification : une séance découpée en parties — échauffement, cours et atelier en partie 1, option en partie 2",
       connexion: COMPTES.instructeur,
       chemin: "/planning?modifier=1",
       // La séance du jeu d'essai qui porte un échauffement : visée par **l'étiquette** de l'élément
       // (le mot figure aussi, caché, dans le menu d'ajout de chaque carte).
       avant: async (page) => {
+        // Sur téléphone, la démonstration des gestes couvrirait le haut de la carte : on la referme.
+        if (await estTelephone(page)) await fermerDemoGestes(page);
         const carte = page.locator("article", { has: page.locator("span", { hasText: /^Échauffement$/ }) }).first();
         await carte.waitFor();
         await carte.evaluate((el) => el.scrollIntoView({ block: "start" }));
         await page.evaluate(() => window.scrollBy(0, -90));
+      },
+    },
+    // **Le mode modification sur téléphone** : des lignes compactes et trois gestes. Sur PC, ces
+    // scènes montrent l'écran ordinaire, qui ne change pas.
+    {
+      nom: "planning-telephone",
+      description: "Planning en modification sur téléphone : une ligne par élément, la ligne touchée déplie ses réglages",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await fermerDemoGestes(page);
+        const carte = page.locator("article", { has: page.locator("[data-ligne-id]") }).first();
+        const ligne = carte.locator("[data-ligne-id] button[aria-expanded]").nth(1);
+        await ligne.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await page.evaluate(() => window.scrollBy(0, 200));
+        await ligne.click();
+        await page.evaluate(() => window.scrollBy(0, -120));
+      },
+    },
+    {
+      nom: "planning-glisse",
+      description: "Planning sur téléphone : une ligne glissée vers la gauche montre « Retirer », à toucher pour confirmer",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await fermerDemoGestes(page);
+        const ligne = page.locator("[data-ligne-id] button[aria-expanded]").first();
+        await ligne.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        const b = (await ligne.boundingBox())!;
+        await page.mouse.move(b.x + b.width - 30, b.y + b.height / 2);
+        await page.mouse.down();
+        for (let i = 1; i <= 8; i++) await page.mouse.move(b.x + b.width - 30 - i * 18, b.y + b.height / 2);
+        await page.mouse.up();
+        await page.locator("[data-retirer]").first().waitFor();
+      },
+    },
+    {
+      nom: "planning-deplace",
+      description: "Planning sur téléphone : la ligne tenue par sa poignée, et la place où elle tombera",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await fermerDemoGestes(page);
+        const carte = page.locator("article", { has: page.locator("[data-ligne-id]") }).first();
+        const ligne = carte.locator("[data-ligne-id]").first();
+        await ligne.evaluate((el) => el.scrollIntoView({ block: "start" }));
+        await page.evaluate(() => window.scrollBy(0, -120));
+        const b = (await ligne.boundingBox())!;
+        // La poignée est le premier enfant visible de la ligne, à gauche
+        await page.mouse.move(b.x + 20, b.y + 30);
+        await page.mouse.down();
+        for (let i = 1; i <= 10; i++) await page.mouse.move(b.x + 20, b.y + 30 + i * 14);
+        // On ne lâche pas : la capture montre le geste en cours
       },
     },
     {
@@ -754,6 +824,8 @@ function toutesLesScenes(): Scene[] {
       connexion: COMPTES.membre,
       chemin: "/profil",
       avant: async (page) => {
+        // Sur téléphone, la carte vit dans la ligne repliée « Thème » du profil : on la déplie d'abord.
+        if (await estTelephone(page)) await page.getByRole("button", { name: /^Thème/, expanded: false }).click();
         const titre = page.getByRole("heading", { name: /Apparence/i });
         await titre.waitFor();
         // La liste déroulante est le sujet de la scène : on attend qu'elle soit peinte avant de cadrer dessus.
@@ -795,6 +867,8 @@ function toutesLesScenes(): Scene[] {
         // Sur mobile, la barre d'onglets recouvre le bas de la liste : on ouvre la fiche par son adresse
         const href = await page.getByRole("link", { name: "Foxtrot 08" }).first().getAttribute("href");
         await allerA(page, `${BASE}${href}`);
+        // Sur téléphone, la carte vit dans la ligne repliée « Périodes et liens d'accès » : on la déplie.
+        if (await estTelephone(page)) await page.getByRole("button", { name: /^Périodes et liens/, expanded: false }).click();
         await page.getByRole("heading", { name: /Périodes et liens/ }).waitFor();
       },
       pleinePage: true,
@@ -806,6 +880,8 @@ function toutesLesScenes(): Scene[] {
       chemin: "/profil",
       pleinePage: true,
       avant: async (page) => {
+        // Sur téléphone, la carte vit dans la ligne repliée « Sécuriser mon compte » : on la déplie.
+        if (await estTelephone(page)) await page.getByRole("button", { name: /^Sécuriser mon compte/, expanded: false }).click();
         await page.locator("summary", { hasText: "Double authentification" }).click();
       },
     },
@@ -925,7 +1001,9 @@ function toutesLesScenes(): Scene[] {
         await allerA(page, `${BASE}/seances/${id}?modifier=1`);
         // La liste éditable est repliée par défaut (comme « Qui était là ? ») : on la déplie pour la photographier
         await page.locator("summary", { hasText: "Modifier les réponses" }).click();
-        await page.locator('button[role="combobox"][id^="presence-"]').first().waitFor();
+        // Sur téléphone, chaque personne a trois boutons ✓ ? ✕ au lieu de la liste déroulante.
+        if (await estTelephone(page)) await page.getByRole("group", { name: /^Réponse de / }).first().waitFor();
+        else await page.locator('button[role="combobox"][id^="presence-"]').first().waitFor();
         // Capture au cadre de la carte « Présences » plutôt qu'en pleine page : c'est elle que la scène montre
         await page.getByRole("heading", { name: "Présences", exact: true }).evaluate((el) => el.scrollIntoView({ block: "start" }));
       },
@@ -951,9 +1029,35 @@ function toutesLesScenes(): Scene[] {
       chemin: "/admin/presences",
       avant: async (page) => {
         // La liste des invités s'ouvre dépliée sur cet écran : on attend qu'elle soit là pour la photographier
-        await page.locator('button[role="combobox"][id^="presence-"]').first().waitFor();
+        // Sur téléphone, chaque personne a trois boutons ✓ ? ✕, posés une fois la page chargée.
+        if (await estTelephone(page)) await page.locator("button[aria-pressed]").first().waitFor();
+        else await page.locator('button[role="combobox"][id^="presence-"]').first().waitFor();
       },
       pleinePage: true,
+    },
+    {
+      nom: "ateliers-assistant",
+      description: "Proposer un atelier sur téléphone : l'assistant, une question par écran (étape 2, qui anime ?)",
+      connexion: COMPTES.membre,
+      chemin: "/ateliers",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await page.locator("[data-proposer-atelier]").first().click();
+        await page.locator("#assistant-titre").fill("Jeu du roi de la colline");
+        await page.locator("#assistant-description").fill("Un défenseur au centre, les autres tentent de le toucher à tour de rôle.");
+        await page.getByRole("button", { name: "Suivant" }).click();
+        await page.locator('fieldset[data-etape="2"]').waitFor();
+      },
+    },
+    {
+      nom: "admin-menu",
+      description: "Espace admin sur téléphone : le menu en liste groupée (sur PC, on arrive sur Périodes)",
+      connexion: COMPTES.admin,
+      chemin: "/admin",
+      avant: async (page) => {
+        if (await estTelephone(page)) await page.getByRole("link", { name: "Présences" }).first().waitFor();
+        else await page.waitForURL("**/admin/periodes");
+      },
     },
     {
       /*
@@ -970,15 +1074,10 @@ function toutesLesScenes(): Scene[] {
       connexion: COMPTES.admin,
       chemin: "/admin/presences",
       avant: async (page) => {
-        await page.locator('button[role="combobox"][id^="presence-"]').first().waitFor();
-        // Les cases de ligne sont dans les `<li>` de la liste ; la case maîtresse, elle, est au-dessus
-        // dans un `<div>` — on ne la coche pas, sinon la barre annonce « les 12 personnes » et l'image
-        // ne montre plus le geste courant (« j'en coche trois »).
-        const cases = page.locator('li input[type="checkbox"]');
-        const combien = Math.min(3, await cases.count());
-        if (combien === 0) throw new Error("aucune case à cocher sur /admin/presences : la sélection par lots a disparu de l'écran");
-        for (let i = 0; i < combien; i++) await cases.nth(i).check();
-        await page.getByRole("group", { name: "Modifier la réponse de plusieurs personnes à la fois" }).waitFor();
+        // Les cases n'existent qu'une fois l'interrupteur « Sélection multiple » allumé ; la case
+        // maîtresse, au-dessus de la liste, n'est pas cochée — sinon la barre annonce « les 12
+        // personnes » et l'image ne montre plus le geste courant (« j'en coche trois »).
+        await cocherPresencesMelees(page);
       },
       pleinePage: true,
     },
@@ -1008,36 +1107,9 @@ function toutesLesScenes(): Scene[] {
       connexion: COMPTES.admin,
       chemin: "/admin/membres",
       avant: async (page) => {
-        const cases = page.getByRole("checkbox", { name: /^Sélectionner (?!les |ce |cette )/ });
-        await cases.first().waitFor();
-        const combien = Math.min(3, await cases.count());
-        /*
-         * **On attend la barre après la PREMIÈRE case, pas à la fin**.
-         *
-         * Depuis que la barre ne se monte qu'avec une sélection, le premier clic **insère** deux cents
-         * pixels au-dessus de la liste : toutes les lignes descendent d'un coup. En cochant à la
-         * chaîne, le clic suivant visait une case que ce décalage venait de faire passer **sous la
-         * barre de navigation du bas** (`fixed bottom-0`), qui l'interceptait — soixante secondes
-         * d'essais, puis l'échec, sur un écran de 390 px seulement.
-         *
-         * Cocher d'abord une case, attendre que la barre soit là, puis cocher les autres : la mise en
-         * page ne bouge plus qu'une fois, et c'est aussi la façon dont un humain procède — il voit la
-         * barre apparaître avant de continuer.
-         */
-        await cases.first().check();
-        await page.getByRole("group", { name: "Agir sur plusieurs comptes à la fois" }).waitFor();
-        for (let i = 1; i < combien; i++) {
-          /*
-           * **Centrer la ligne avant de la cocher**, et c'est la correction qui porte. La barre
-           * d'action est `sticky top-20` : un défilement « au plus près » amène la case **sous
-           * elle**, où le clic est intercepté — définitivement, puisque la barre ne bouge plus. Le
-           * premier essai (cocher une case, attendre la barre, puis les autres) ne suffisait pas :
-           * ce n'était pas le décalage qui gênait, c'était la barre elle-même. Au centre, la case
-           * échappe aussi bien au sticky du haut qu'à la navigation fixe du bas.
-           */
-          await cases.nth(i).evaluate((el) => el.scrollIntoView({ block: "center" }));
-          await cases.nth(i).check();
-        }
+        // Les cases n'existent qu'une fois l'interrupteur « Sélection multiple » allumé.
+        await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner (?!les |ce |cette )/ }));
+        await page.getByRole("group", { name: "Agir sur plusieurs comptes à la fois" }).first().waitFor();
       },
       pleinePage: true,
     },
@@ -1139,6 +1211,291 @@ function toutesLesScenes(): Scene[] {
     { nom: "admin-apropos", description: "Administration → À propos : version, contenu de la base, sauvegardes, API publique", connexion: COMPTES.admin, chemin: "/admin/apropos", pleinePage: true },
     { nom: "admin-sessions", description: "Administration : sessions de connexion", connexion: COMPTES.admin, chemin: "/admin/sessions" },
     { nom: "admin-audit", description: "Administration : journal d'audit (filtres, dates, export CSV, raccourcis)", connexion: COMPTES.admin, chemin: "/admin/audit" },
+    /*
+     * **Les scènes d'action** : chaque geste de l'interface photographié au moment où il se fait —
+     * volet ouvert, cases cochées, étape d'un assistant. Elles s'arrêtent **avant** tout ce qui écrit
+     * dans la base : aucun bouton final n'est touché. Sur PC, quand le geste n'existe pas sous cette
+     * forme (volet du bas, démonstration des gestes…), la scène montre l'écran correspondant, sans échec.
+     */
+    {
+      nom: "action-planning-demo-geste-2",
+      description: "Planning en modification sur téléphone : la démonstration des gestes, à l'étape « Geste 2 sur 2 » (sur PC, pas de démonstration)",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await page.getByRole("button", { name: "Suivant", exact: true }).first().click();
+        await page.getByText("Geste 2 sur 2").waitFor();
+      },
+    },
+    {
+      nom: "action-planning-niveau",
+      description: "Planning en modification sur téléphone : une ligne de cours dépliée, et ses quatre boutons de niveau (Tous, Débutant, Interm., Avancé)",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await fermerDemoGestes(page);
+        await deplierLigneAvecNiveau(page);
+      },
+    },
+    {
+      nom: "action-planning-aide",
+      description: "Planning en modification : l'aide « i » de la barre d'édition ouverte — ce qui s'enregistre tout de suite",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        if (await estTelephone(page)) await fermerDemoGestes(page);
+        await page.getByRole("button", { name: "Ce qui s'enregistre tout de suite" }).click();
+        await page.locator("#barre-edition-aide").waitFor();
+      },
+    },
+    {
+      nom: "action-planning-selection",
+      description: "Planning en modification : la sélection multiple allumée, trois séances cochées et la barre sombre « Que faire sur ces 3 séances ? » (sur PC, la barre de l'ordinateur)",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        await selectionnerSeancesPlanning(page);
+      },
+    },
+    {
+      nom: "action-planning-volet",
+      description: "Planning sur téléphone : le volet « Que faire sur ces 3 séances ? » ouvert, avec ses gestes (sur PC, la barre de l'ordinateur)",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        await selectionnerSeancesPlanning(page);
+        await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+      },
+    },
+    {
+      nom: "action-planning-regler-elements",
+      description: "Planning sur téléphone : « Régler des éléments », première étape — les éléments des séances cochées, deux cases cochées (sur PC, la barre de l'ordinateur)",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        await selectionnerSeancesPlanning(page);
+        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        if (volet) await cocherElementsPlanning(volet);
+      },
+    },
+    {
+      nom: "action-planning-regler",
+      description: "Planning sur téléphone : « Régler des éléments », seconde étape — instructeur, thème et niveau, tous sur « Ne pas changer » (sur PC, la barre de l'ordinateur)",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        await selectionnerSeancesPlanning(page);
+        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        if (!volet) return;
+        await cocherElementsPlanning(volet);
+        await volet.getByRole("button", { name: /^Suivant : / }).click();
+        await volet.getByText("Niveau : ne pas changer").waitFor();
+      },
+    },
+    {
+      nom: "action-seances-selection",
+      description: "Séances en modification : trois séances cochées, et la barre de la sélection",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances?modifier=1",
+      avant: async (page) => {
+        await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }));
+        await page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first().waitFor();
+      },
+    },
+    {
+      nom: "action-seances-volet",
+      description: "Séances sur téléphone : le volet « Que faire sur ces 3 séances ? » ouvert (sur PC, la barre de l'ordinateur)",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances?modifier=1",
+      avant: async (page) => {
+        await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }));
+        await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+      },
+    },
+    {
+      nom: "action-presences-barre",
+      description: "Espace admin → Présences : la sélection allumée, trois personnes cochées (réponses mêlées) et la barre avec les quatre réponses",
+      connexion: COMPTES.admin,
+      chemin: "/admin/presences",
+      avant: async (page) => {
+        await cocherPresencesMelees(page);
+      },
+    },
+    {
+      nom: "action-membres-ajouter",
+      description: "Annuaire sur téléphone : le volet « + Ajouter » ouvert — une personne, un fichier CSV, les gestes sur tout le club (sur PC, les cartes d'ajout)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/membres",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) {
+          await page.getByRole("heading", { name: "Ajouter un membre" }).evaluate((el) => el.scrollIntoView({ block: "start" }));
+          return;
+        }
+        await page.getByRole("button", { name: "Ajouter", exact: true }).click();
+        await page.getByRole("dialog", { name: "Ajouter" }).waitFor();
+      },
+    },
+    {
+      nom: "action-membres-une-personne",
+      description: "Annuaire sur téléphone : le sous-écran « Une personne » du volet « + Ajouter », le formulaire d'ajout (sur PC, les cartes d'ajout)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/membres",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) {
+          await page.getByRole("heading", { name: "Ajouter un membre" }).evaluate((el) => el.scrollIntoView({ block: "start" }));
+          return;
+        }
+        await page.getByRole("button", { name: "Ajouter", exact: true }).click();
+        const volet = page.getByRole("dialog", { name: "Ajouter" });
+        await volet.getByRole("button", { name: "Une personne" }).click();
+        await volet.getByRole("heading", { name: "Une personne" }).waitFor();
+      },
+    },
+    {
+      nom: "action-membres-volet",
+      description: "Annuaire : trois comptes cochés, puis sur téléphone le volet « Que faire sur ces 3 comptes ? » ouvert (sur PC, la barre de l'ordinateur)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/membres",
+      avant: async (page) => {
+        await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner (?!les |ce |cette )/ }));
+        await page.getByRole("group", { name: "Agir sur plusieurs comptes à la fois" }).first().waitFor();
+        await ouvrirVoletSelection(page, /^Que faire sur ces 3 /);
+      },
+    },
+    {
+      nom: "action-membre-autres-gestes",
+      description: "Fiche d'un membre sur téléphone : le volet « ⋯ » ouvert — identité, bureau, et « Que veux-tu faire ? » (sur PC, la fiche)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/membres",
+      avant: async (page) => {
+        const href = await page.getByRole("link", { name: "India" }).first().getAttribute("href");
+        await allerA(page, `${BASE}${href}`);
+        if (!(await estTelephone(page))) return;
+        await page.getByRole("button", { name: "Autres gestes" }).click();
+        await page.getByRole("dialog").waitFor();
+      },
+    },
+    {
+      nom: "action-ateliers-programmer",
+      description: "Ateliers proposés sur téléphone : le volet « Programmer » ouvert — la séance où le placer et le mot joint (sur PC, la liste des propositions)",
+      connexion: COMPTES.admin,
+      chemin: "/gestion/ateliers?statut=PROPOSE",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await page.getByRole("button", { name: "Programmer", exact: true }).first().click();
+        await page.getByRole("dialog", { name: /^Programmer « / }).waitFor();
+      },
+    },
+    {
+      nom: "action-ateliers-refuser",
+      description: "Ateliers proposés sur téléphone, compte du bureau : le volet « Refuser… » ouvert, avec « Effacer sans répondre » en dessous (sur PC, la liste des propositions)",
+      connexion: COMPTES.admin,
+      chemin: "/gestion/ateliers?statut=PROPOSE",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await page.getByRole("button", { name: "Refuser…" }).first().click();
+        const volet = page.getByRole("dialog", { name: /^Refuser « / });
+        await volet.waitFor();
+        await volet.getByRole("button", { name: "Effacer sans répondre" }).evaluate((el) => el.scrollIntoView({ block: "end" }));
+      },
+    },
+    {
+      nom: "action-assistant-etape-1",
+      description: "Proposer un atelier sur téléphone : l'assistant, étape 1 (le titre et la phrase qui le décrit) — sur PC, le formulaire",
+      connexion: COMPTES.membre,
+      chemin: "/ateliers",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await page.locator("[data-proposer-atelier]").first().click();
+        await page.locator('fieldset[data-etape="1"]').waitFor();
+        await page.locator("#assistant-titre").fill("Jeu du roi de la colline");
+      },
+    },
+    {
+      nom: "action-assistant-erreur",
+      description: "Proposer un atelier sur téléphone : « Suivant » sur une étape 1 vide — le message « Écris au moins un titre ou une phrase. » (sur PC, le formulaire)",
+      connexion: COMPTES.membre,
+      chemin: "/ateliers",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await page.locator("[data-proposer-atelier]").first().click();
+        await page.locator('fieldset[data-etape="1"]').waitFor();
+        await page.getByRole("button", { name: "Suivant" }).click();
+        await page.getByText("Écris au moins un titre ou une phrase.").first().waitFor();
+      },
+    },
+    {
+      nom: "action-assistant-etape-3",
+      description: "Proposer un atelier sur téléphone : l'assistant, étape 3 (l'équipement nécessaire) — sur PC, le formulaire",
+      connexion: COMPTES.membre,
+      chemin: "/ateliers",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await avancerAssistant(page, 3);
+      },
+    },
+    {
+      nom: "action-assistant-etape-4",
+      description: "Proposer un atelier sur téléphone : l'assistant, étape 4 (la séance souhaitée) et « Envoyer ma proposition », non touché — sur PC, le formulaire",
+      connexion: COMPTES.membre,
+      chemin: "/ateliers",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        await avancerAssistant(page, 4);
+        // Le bouton d'envoi est au pied de la liste des séances : on le montre, sans le toucher.
+        await page.getByRole("button", { name: "Envoyer ma proposition" }).evaluate((el) => el.scrollIntoView({ block: "center" }));
+      },
+    },
+    {
+      nom: "action-profil-securite",
+      description: "Mon profil ouvert sur l'ancre #securite : la ligne « Sécuriser mon compte » dépliée toute seule",
+      connexion: COMPTES.membre,
+      chemin: "/profil#securite",
+      avant: async (page) => {
+        if (await estTelephone(page)) await page.getByRole("button", { name: /Sécuriser mon compte/, expanded: true }).waitFor();
+        await page.locator("#ligne-securite").evaluate((el) => el.scrollIntoView({ block: "start" }));
+        await page.evaluate(() => window.scrollBy(0, -90));
+      },
+    },
+    {
+      nom: "action-profil-notifications",
+      description: "Mon profil sur téléphone : la ligne « Mes notifications » dépliée, les messages type par type (sur PC, la carte)",
+      connexion: COMPTES.membre,
+      chemin: "/profil",
+      avant: async (page) => {
+        if (await estTelephone(page)) await page.getByRole("button", { name: /Mes notifications/, expanded: false }).click();
+        await page.locator("#ligne-mes-notifications").evaluate((el) => el.scrollIntoView({ block: "start" }));
+        await page.evaluate(() => window.scrollBy(0, -140));
+      },
+    },
+    {
+      nom: "action-admin-notification",
+      description: "Espace admin → Notifications sur téléphone : une notification dépliée, et ses canaux (sur PC, la matrice)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/notifications",
+      avant: async (page) => {
+        if (!(await estTelephone(page))) return;
+        const ligne = page.locator("[data-deplier-notification]").first();
+        await ligne.evaluate((el) => el.scrollIntoView({ block: "center" }));
+        await ligne.click();
+        const ouverte = page.locator("[data-deplier-notification][aria-expanded=true]").first();
+        await ouverte.waitFor();
+        // Dépliée, la ligne pousse la page : on la remet en haut, sous l'en-tête collant.
+        await ouverte.evaluate((el) => el.scrollIntoView({ block: "start" }));
+        await page.evaluate(() => window.scrollBy(0, -100));
+      },
+    },
+    {
+      nom: "action-admin-retour",
+      description: "Une page de l'espace admin sur téléphone : « ‹ Admin » en tête, qui ramène au menu (sur PC, les onglets)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/periodes",
+      avant: async (page) => {
+        if (await estTelephone(page)) await page.getByRole("link", { name: "Retour au menu Admin" }).waitFor();
+      },
+    },
     {
       nom: "email-atelier",
       description: "Email : atelier planifié",
@@ -1551,6 +1908,15 @@ async function capturer(browser: Browser, scene: Scene): Promise<string[]> {
       context.setDefaultTimeout(ACTION_MS);
       // Posés avant la première ouverture : le cookie du lien personnel est lu au rendu du serveur,
       // le poser après coup n'aurait plus d'effet sur la page déjà construite.
+      /*
+       * **Le format d'écran, tel qu'un appareil déjà venu le porte** (`ecran=tel|ordi`, lu par la
+       * mise en page racine). Sans lui, la session en cache — ouverte dans une fenêtre d'ordinateur —
+       * apportait `ecran=ordi` jusque dans le format téléphone : le serveur rendait la version
+       * ordinateur, et une scène qui photographiait vite saisissait l'écran avant que le navigateur
+       * ait basculé (planning en modification avec ↑ ↓ et réglages dépliés, `/admin` renvoyé vers les
+       * périodes).
+       */
+      await context.addCookies([{ name: "ecran", value: formatNom === "mobile" ? "tel" : "ordi", url: BASE }]);
       if (scene.cookies) await context.addCookies(scene.cookies.map((c) => ({ ...c, url: BASE })));
       const page = await context.newPage();
       try {
@@ -1563,6 +1929,22 @@ async function capturer(browser: Browser, scene: Scene): Promise<string[]> {
         // Posé après les gestes de la scène : une navigation en aurait emporté la balise.
         await page.addStyleTag({ content: MASQUE_TEMOIN_DEV }).catch(() => {});
         await page.evaluate(() => document.fonts.ready);
+        // Les transitions finies se terminent avant la photo : un chevron saisi au milieu de son demi-tour
+        // (ligne qu'on vient de déplier) passait pour un coin cassé. Les animations sans fin (attente)
+        // sont laissées de côté, et deux secondes bornent l'attente.
+        await page
+          .evaluate(() =>
+            Promise.race([
+              Promise.all(
+                document
+                  .getAnimations()
+                  .filter((a) => Number.isFinite(Number(a.effect?.getComputedTiming().endTime ?? Infinity)))
+                  .map((a) => a.finished.catch(() => undefined)),
+              ),
+              new Promise((r) => setTimeout(r, 2000)),
+            ]),
+          )
+          .catch(() => {});
         const fichier = path.join(dir, `${formatNom}-${themeNom}.jpg`);
         await page.screenshot({ path: fichier, fullPage: scene.pleinePage ?? false, type: "jpeg", quality: 82 });
         fichiers.push(fichier);
@@ -1800,6 +2182,113 @@ async function donnerMotDePasseDemo(): Promise<void> {
     await db.user.update({ where: { email: COMPTES.membre }, data: { passwordHash: await hashPassword(DEMO_MDP), deuxFaProposeeLe: null } });
   } finally {
     await db.$disconnect();
+  }
+}
+
+/** Vrai sur le format téléphone des captures (sous le palier `md`, comme `useEcranTelephone`). */
+async function estTelephone(page: Page): Promise<boolean> {
+  return (page.viewportSize()?.width ?? 1280) < 768;
+}
+
+/** Referme la démonstration des gestes du planning si elle est affichée (les trois premières entrées). */
+async function fermerDemoGestes(page: Page): Promise<void> {
+  // La bulle n'apparaît qu'après le montage (compteur lu dans le navigateur) : on lui laisse le temps
+  // d'arriver avant de conclure qu'elle n'est pas là.
+  const suivant = page.getByRole("button", { name: "Suivant", exact: true }).first();
+  const presente = await suivant.waitFor({ timeout: 4000 }).then(() => true, () => false);
+  if (!presente) return;
+  await suivant.click();
+  const compris = page.getByRole("button", { name: "Compris", exact: true }).first();
+  await compris.waitFor({ timeout: 4000 });
+  await compris.click();
+  await compris.waitFor({ state: "detached", timeout: 4000 }).catch(() => undefined);
+}
+
+/**
+ * **Allume « Sélection multiple » et coche quelques lignes**, une à une. Chaque case est d'abord
+ * amenée au milieu de la fenêtre : la barre de la sélection, collée en bas dès la première case, et
+ * l'en-tête collant en haut intercepteraient sinon le clic.
+ */
+async function cocherPlusieurs(page: Page, cases: Locator, indices: readonly number[] = [0, 1, 2]): Promise<void> {
+  await page.getByRole("switch", { name: "Sélection multiple" }).first().check();
+  await cases.first().waitFor();
+  const total = await cases.count();
+  for (const i of indices) {
+    const c = cases.nth(i < 0 ? total + i : i);
+    await c.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await c.check();
+  }
+}
+
+/** Le planning en modification, trois séances cochées (la démonstration des gestes refermée d'abord). */
+async function selectionnerSeancesPlanning(page: Page): Promise<void> {
+  if (await estTelephone(page)) await fermerDemoGestes(page);
+  await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }));
+  await page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first().waitFor();
+}
+
+/**
+ * Ouvre le volet du bas par le gros bouton de la barre sombre. Sur PC, ni barre sombre ni volet :
+ * rien à faire, la scène montre la barre de l'ordinateur.
+ */
+async function ouvrirVoletSelection(page: Page, question: RegExp): Promise<Locator | null> {
+  if (!(await estTelephone(page))) return null;
+  await page.getByRole("button", { name: question }).click();
+  const volet = page.getByRole("dialog", { name: question });
+  await volet.waitFor();
+  return volet;
+}
+
+/** « Régler des éléments », première étape : deux éléments réglables cochés. */
+async function cocherElementsPlanning(volet: Locator): Promise<void> {
+  await volet.getByRole("button", { name: /^Régler des éléments/ }).click();
+  const cases = volet.locator('input[type="checkbox"]:not([disabled])');
+  await cases.first().waitFor();
+  const n = Math.min(2, await cases.count());
+  for (let i = 0; i < n; i++) await cases.nth(i).check();
+}
+
+/**
+ * Déplie, sur téléphone, la première ligne de cours qui montre son niveau. Le niveau ne paraît que
+ * sur un élément déjà rempli (thème, description ou niveau) : on essaie les lignes une à une.
+ */
+async function deplierLigneAvecNiveau(page: Page): Promise<void> {
+  const lignes = page.locator("[data-ligne-id]", { has: page.getByText("Cours", { exact: true }) }).locator("button[aria-expanded]");
+  await lignes.first().waitFor();
+  const total = Math.min(8, await lignes.count());
+  for (let i = 0; i < total; i++) {
+    const ligne = lignes.nth(i);
+    await ligne.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await ligne.click();
+    const niveau = page.getByRole("group", { name: /^Niveau — / }).first();
+    if (await niveau.waitFor({ timeout: 1500 }).then(() => true, () => false)) {
+      await niveau.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      return;
+    }
+    await ligne.click();
+  }
+  throw new Error("aucune ligne de cours dépliée ne montre les quatre boutons du niveau");
+}
+
+/**
+ * Trois personnes cochées aux présences, **dont la première et la dernière** : la liste commence
+ * par les sans-réponse et finit par des réponses données — deux statuts différents, et la barre
+ * propose alors ses quatre réponses (elle tait celles qui ne changeraient rien).
+ */
+async function cocherPresencesMelees(page: Page): Promise<void> {
+  await cocherPlusieurs(page, page.locator("li input[data-case-selection]"), [0, 1, -1]);
+  await page.getByRole("group", { name: "Modifier la réponse de plusieurs personnes à la fois" }).first().waitFor();
+}
+
+/** L'assistant « Proposer un atelier », mené jusqu'à l'étape voulue (sans rien envoyer). */
+async function avancerAssistant(page: Page, etape: number): Promise<void> {
+  await page.locator("[data-proposer-atelier]").first().click();
+  await page.locator("#assistant-titre").fill("Jeu du roi de la colline");
+  await page.locator("#assistant-description").fill("Un défenseur au centre, les autres tentent de le toucher à tour de rôle.");
+  for (let e = 2; e <= etape; e++) {
+    await page.getByRole("button", { name: "Suivant" }).click();
+    await page.locator(`fieldset[data-etape="${e}"]`).waitFor();
+    if (e === 3) await page.locator("#assistant-materiel").fill("Masques et gants");
   }
 }
 

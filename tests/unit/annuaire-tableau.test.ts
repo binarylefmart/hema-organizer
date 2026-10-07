@@ -152,9 +152,10 @@ describe("l'annuaire range un tableau, sans second arbre", () => {
   it("ne tronque plus ni le nom ni l'adresse", () => {
     const code = source(ANNUAIRE);
     // Le nom et l'adresse ont chacun leur colonne : un nom coupé par trois points est une
-    // information perdue, et une adresse tronquée ne se recopie pas.
+    // information perdue, et une adresse tronquée ne se recopie pas. Elle revient à la ligne après
+    // « @ » (`AdresseEmail`), plus n'importe où.
     expect(nu(ANNUAIRE)).not.toContain("truncate");
-    expect(code).toContain("break-all");
+    expect(code).toContain("<AdresseEmail email={m.email} />");
   });
 
   it("confie l'état du lien à la règle partagée, jamais à des ternaires dans le JSX", () => {

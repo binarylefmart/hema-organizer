@@ -1,4 +1,4 @@
-import { libelleElement, rangNature, type NatureElement } from "@/lib/constants";
+import { libelleElement, rangDefautNature, type NatureElement } from "@/lib/constants";
 
 /**
  * **Les trois invariants d'une séance, calculés sans rien écrire.**
@@ -6,8 +6,9 @@ import { libelleElement, rangNature, type NatureElement } from "@/lib/constants"
  * 1. `bloc` (le numéro de partie) est **contigu à partir de 1** : retirer le dernier élément de la
  *    partie 2 fait de la partie 3 la nouvelle partie 2.
  * 2. `ordre` est **contigu à partir de 0**, dans l'ordre de lecture : partie par partie, et dans une
- *    partie l'échauffement, puis les cours, les options, les ateliers (`NATURES_ELEMENT`) ; à nature
- *    égale, l'ordre d'avant, puis l'identifiant (l'ordre de naissance d'un `cuid`).
+ *    partie **l'ordre d'avant**, puis l'identifiant (l'ordre de naissance d'un `cuid`). La nature
+ *    n'y entre pas : l'ordre d'une partie est **libre**, c'est l'équipe qui le règle. La nature ne
+ *    décide que de la place d'un élément **qui arrive** (`ordreDInsertion`).
  * 3. `libelle` redit la partie — quand la séance en a plusieurs — et le **rang dans la nature et la
  *    partie** (`libelleElement`) : « Partie 1 · Cours », « Partie 2 · Option 2 », ou « Cours » seul.
  *
@@ -28,8 +29,12 @@ export type RangementPartie = { id: string; data: { ordre?: number; bloc?: numbe
 /** La place d'un élément dans sa partie : son rang dans sa nature (à partir de 1) et le nombre de sa nature. */
 export type PlaceDansPartie = { rang: number; nombre: number };
 
-function comparer(a: PartieARanger, b: PartieARanger): number {
-  return a.bloc - b.bloc || rangNature(a.nature) - rangNature(b.nature) || a.ordre - b.ordre || a.id.localeCompare(b.id);
+/** Ce qu'il faut d'un élément pour le situer dans sa séance. */
+type ElementSitue = Pick<PartieARanger, "id" | "bloc" | "ordre">;
+
+/** L'ordre de lecture : la partie, puis le rang stocké, puis l'identifiant. Jamais la nature. */
+function comparer(a: ElementSitue, b: ElementSitue): number {
+  return a.bloc - b.bloc || a.ordre - b.ordre || a.id.localeCompare(b.id);
 }
 
 /** L'ordre dans lequel une séance se lit, identifiants en main, sans rien écrire. */
@@ -78,4 +83,63 @@ export function rangementsParties(parties: ReadonlyArray<PartieARanger>): Rangem
     if (p.libelle !== libelle) data.libelle = libelle;
     return data.ordre === undefined && data.bloc === undefined && data.libelle === undefined ? [] : [{ id: p.id, data }];
   });
+}
+
+/** Les éléments d'une partie, dans leur ordre de lecture. */
+function partieLue<T extends ElementSitue>(existantes: ReadonlyArray<T>, bloc: number): T[] {
+  return existantes.filter((p) => p.bloc === bloc).sort(comparer);
+}
+
+/** Un rang au-delà de toute la séance : la place d'un élément dans une partie encore vide. */
+function apresTout(existantes: ReadonlyArray<ElementSitue>): number {
+  return existantes.reduce((m, p) => Math.max(m, p.ordre), -1) + 1;
+}
+
+/**
+ * **Le rang qu'un élément qui arrive dans la partie `bloc` doit porter pour se poser à sa place par
+ * défaut** : juste après le dernier élément de la partie dont la nature vient avant la sienne ou
+ * avec elle dans `ORDRE_DEFAUT_NATURES` (échauffement, cours, atelier, option), sinon en tête de la
+ * partie. Un second cours se pose donc après le premier, un atelier avant les options, un
+ * échauffement tout en haut — **même si l'équipe a réordonné la partie à la main** : on cherche le
+ * dernier élément qui le précède par défaut, on ne retrie personne.
+ *
+ * La valeur rendue est **intercalaire** (un demi-rang, ou un rang hors de la partie) : c'est
+ * `rangementsParties` qui renumérote ensuite toute la séance. `existantes` ne doit pas contenir
+ * l'élément qu'on pose (celui qui change de partie en est retiré par l'appelant), et suppose des rangs
+ * distincts dans la partie — ce que chaque écriture rétablit.
+ */
+export function ordreDInsertion(existantes: ReadonlyArray<ElementSitue & { nature: NatureElement }>, bloc: number, nature: NatureElement): number {
+  const lus = partieLue(existantes, bloc);
+  let dernier = -1;
+  lus.forEach((p, i) => {
+    if (rangDefautNature(p.nature) <= rangDefautNature(nature)) dernier = i;
+  });
+  if (dernier === -1) return lus.length > 0 ? lus[0].ordre - 1 : apresTout(existantes);
+  const suivant = lus[dernier + 1];
+  return suivant ? (lus[dernier].ordre + suivant.ordre) / 2 : lus[dernier].ordre + 1;
+}
+
+/**
+ * **Le rang d'un élément posé à la main juste avant `avantId`** dans la partie `bloc`, ou en fin de
+ * partie quand `avantId` vaut `null` — le geste du glisser-déposer. Rend `null` si `avantId` n'est pas
+ * un élément de cette partie : l'écran a visé une place qui n'existe plus, l'appelant refuse.
+ * Mêmes conventions que `ordreDInsertion` (valeur intercalaire, élément déplacé absent d'`existantes`).
+ */
+export function ordreAvant(existantes: ReadonlyArray<ElementSitue>, bloc: number, avantId: string | null): number | null {
+  const lus = partieLue(existantes, bloc);
+  if (avantId === null) return lus.length > 0 ? lus[lus.length - 1].ordre + 1 : apresTout(existantes);
+  const i = lus.findIndex((p) => p.id === avantId);
+  if (i === -1) return null;
+  return i === 0 ? lus[0].ordre - 1 : (lus[i - 1].ordre + lus[i].ordre) / 2;
+}
+
+/**
+ * **Ce qu'on peut écrire en base en attendant le rangement** : la colonne `ordre` est entière, un
+ * rang intercalaire ne s'y stocke pas. L'appelant écrit donc la partie entière, et donne le rang
+ * intercalaire à `rangerParties` **dans la même transaction**. Les deux restent d'accord : un rang
+ * fractionnaire n'est jamais celui que le rangement attribue (il réécrit donc la ligne), et un rang
+ * entier est déjà ce que porte la base (il ne la réécrit que s'il doit la renuméroter).
+ */
+export function ordreEntier(ordre: number): number {
+  return Math.floor(ordre);
 }

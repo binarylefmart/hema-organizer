@@ -322,6 +322,15 @@ export function libelleJour(nom: string, n: number, complet = false): string {
   return n === 1 ? `Le ${nom} (1)` : `Tous les ${nom}s (${n})`;
 }
 
+/**
+ * **La puce d'un jour, au téléphone** : « Les mardis (4) », « Le vendredi (1) ». Elle remplace la
+ * liste « Sélectionner par jour » en version téléphone — une puce par jour, appuyée (`aria-pressed`) quand ses
+ * séances sont toutes cochées, et l'appuyer de nouveau les retire : le mot n'a donc pas à changer.
+ */
+export function libellePuceJour(nom: string, n: number): string {
+  return n === 1 ? `Le ${nom} (1)` : `Les ${nom}s (${n})`;
+}
+
 /** La liste des raccourcis : son intitulé, et l'entrée vide sur laquelle elle s'ouvre et revient. */
 export const LIBELLE_PAR_JOUR = "Sélectionner par jour";
 export const CHOIX_JOUR_VIDE = { valeur: "", libelle: "Choisir un jour…" } as const;

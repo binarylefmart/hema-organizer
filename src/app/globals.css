@@ -25,6 +25,48 @@
   }
 }
 
+/* **Version téléphone ou version ordinateur** (règle et raisons dans `src/components/ui/ecran.ts`) :
+   téléphone dès qu'on pilote au doigt, quelle que soit la largeur — une tablette couchée comprise —,
+   ou dès que la fenêtre passe sous 768 px. `tel:` et `ordi:` sont exactement complémentaires : c'est
+   la bascule de tout ce que le serveur rend des deux façons, sans un octet de script. Les `md:` qui
+   restent dans le code sont de la mise en page (grilles, tableaux) et ne parlent pas de l'appareil.
+   La largeur s'écrit en intervalle (`width < 48rem` / `width >= 48rem`) : avec `max-width: 767px` et
+   `min-width: 768px`, une fenêtre zoomée de 767,5 px ne répondait à aucune des deux et affichait les
+   deux versions à la fois.
+   La forme en bloc est obligatoire : en forme courte, la virgule de la première requête serait lue
+   comme une liste de sélecteurs. */
+@custom-variant tel {
+  @media (width < 48rem), (pointer: coarse) {
+    @slot;
+  }
+}
+@custom-variant ordi {
+  @media (width >= 48rem) and (not (pointer: coarse)) {
+    @slot;
+  }
+}
+
+/* **Les paliers larges sont ceux de l'ordinateur.** Une tablette couchée de 1 180 px reçoit la version
+   téléphone, dans une colonne de 40 rem (`src/app/(app)/layout.tsx`) ; or `lg:` mesure la fenêtre, pas
+   la colonne — laissé tel quel, il y déplierait les grilles à deux colonnes, les tableaux et
+   l'élargissement des pages (`PLEINE_LARGEUR`) dans 40 rem. Les trois paliers sont donc redéfinis à
+   l'identique, pointeur au doigt en moins : rien ne change sur un ordinateur. */
+@custom-variant lg {
+  @media (min-width: 64rem) and (not (pointer: coarse)) {
+    @slot;
+  }
+}
+@custom-variant xl {
+  @media (min-width: 80rem) and (not (pointer: coarse)) {
+    @slot;
+  }
+}
+@custom-variant 2xl {
+  @media (min-width: 96rem) and (not (pointer: coarse)) {
+    @slot;
+  }
+}
+
 /* ---- Charte « parchemin » (thème livré par défaut ; le club choisit le sien dans Identité) ----
    Fond parchemin #F4F0EE / #E8E1D8, tan #CAB8A2, encre #282828, gris chaud #928781,
    accent rouille #AF4B2F. Or de l'écu réservé à la jauge et au focus.
@@ -1344,5 +1386,23 @@
     * {
       transition: none !important;
     }
+  }
+}
+
+/* La démonstration du glissé « Retirer » (`ListePartiesTelephone`) : la première ligne part vers la
+   gauche, montre le bouton, et revient. Posée en `motion-safe:` seulement — sous
+   `prefers-reduced-motion`, la bulle explique sans rien faire bouger. La course est celle du bouton
+   (`LARGEUR_RETIRER_PX`). */
+@keyframes demo-glisse {
+  0%,
+  15% {
+    transform: translateX(0);
+  }
+  45%,
+  70% {
+    transform: translateX(-104px);
+  }
+  100% {
+    transform: translateX(0);
   }
 }

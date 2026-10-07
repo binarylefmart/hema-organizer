@@ -8,6 +8,7 @@ import { reinitialiserDeuxFaCompte } from "@/actions/admin";
 import { BoutonAction } from "@/components/ui/BoutonAction";
 import { Carte } from "@/components/ui/Carte";
 import { Cellule, Ligne, Tableau, type PalierTableau } from "@/components/ui/Tableau";
+import { AdresseEmail } from "@/components/ui/AdresseEmail";
 import { Pastille } from "@/components/ui/Pastille";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
 import { SelectionNomination } from "./SelectionNomination";
@@ -66,7 +67,7 @@ export default async function PageComptesAdmin() {
                   </div>
                 )}
               </Cellule>
-              <Cellule palier={PALIER_TABLEAU} label="Email" className="break-all">{a.email ?? <span className="text-texte-secondaire">sans adresse email</span>}</Cellule>
+              <Cellule palier={PALIER_TABLEAU} label="Email">{a.email ? <AdresseEmail email={a.email} /> : <span className="text-texte-secondaire">sans adresse email</span>}</Cellule>
               <Cellule palier={PALIER_TABLEAU} label="État">{a.actif ? <Pastille ton="vert">actif</Pastille> : <Pastille ton="rouge">désactivé</Pastille>}</Cellule>
               {/* **Le compte permanent n'a pas ce bouton**. Le serveur refusait déjà les deux
                   gestes — `reinitialiserDeuxFaCompte` et `reinitialiserAccesMembre` —, mais cette

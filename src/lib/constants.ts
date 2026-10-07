@@ -280,9 +280,10 @@ export function libelleDelaiDesistement(minutes = DELAI_DESISTEMENT_TARDIF_MIN):
  * proposé par un membre. Plusieurs éléments de même nature dans une partie, c'est permis : deux
  * cours en parallèle, deux ateliers.
  *
- * L'ordre de lecture d'une partie est **celui de cette liste** — l'échauffement d'abord, puis les
- * cours, les options et les ateliers —, et non l'ordre d'ajout : c'est un invariant de rangement
- * (`src/components/planning/rangement.ts`), que tous les écrans lisent tel quel.
+ * Cette liste est l'ordre **du menu d'ajout**, rien de plus. L'ordre de lecture d'une partie est
+ * **libre** : c'est la colonne `ordre`, que l'équipe règle (glisser, déposer, inverser deux
+ * éléments). Seule la place d'un élément **qui arrive** se déduit de sa nature
+ * (`ORDRE_DEFAUT_NATURES`).
  */
 export const NATURES_ELEMENT = ["ECHAUFFEMENT", "COURS", "OPTION", "ATELIER"] as const;
 export type NatureElement = (typeof NATURES_ELEMENT)[number];
@@ -307,9 +308,20 @@ export function estNatureElement(v: unknown): v is NatureElement {
   return typeof v === "string" && (NATURES_ELEMENT as readonly string[]).includes(v);
 }
 
-/** Rang d'une nature dans l'ordre de lecture d'une partie (0 = échauffement). */
-export function rangNature(n: NatureElement): number {
-  return NATURES_ELEMENT.indexOf(n);
+/**
+ * **Où un élément se pose quand il arrive dans une partie** : l'échauffement d'abord, puis les cours,
+ * les ateliers, et les options en dernier. Ce n'est qu'une place **par défaut** — à l'ajout, ou quand
+ * un élément change de partie — : l'équipe la déplace ensuite à sa guise, et le rangement garde ce
+ * qu'elle a décidé (`ordreDInsertion`, `src/components/planning/rangement.ts`).
+ *
+ * C'est aussi l'ordre dans lequel un écran présente des natures **comme on les lit** (la liste des
+ * éléments à régler en masse, par exemple). Le menu d'ajout, lui, garde `NATURES_ELEMENT`.
+ */
+export const ORDRE_DEFAUT_NATURES: readonly NatureElement[] = ["ECHAUFFEMENT", "COURS", "ATELIER", "OPTION"];
+
+/** Rang d'une nature dans `ORDRE_DEFAUT_NATURES` (0 = échauffement, 3 = option). */
+export function rangDefautNature(n: NatureElement): number {
+  return ORDRE_DEFAUT_NATURES.indexOf(n);
 }
 
 /**

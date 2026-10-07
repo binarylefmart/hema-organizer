@@ -27,6 +27,8 @@ const existe = (relatif: string) => fs.existsSync(path.join(RACINE, relatif));
 
 const LAYOUT_GESTION = "src/app/(app)/gestion/layout.tsx";
 const LAYOUT_ADMIN = "src/app/(app)/admin/layout.tsx";
+// Les rubriques de l'espace admin : une seule liste, lue par les onglets du layout et par le menu du téléphone.
+const MENU_ADMIN = "src/app/(app)/admin/menu-admin.ts";
 const PAGE_NOTIFICATIONS = "src/app/(app)/admin/notifications/page.tsx";
 const PAGE_ATELIERS = "src/app/(app)/gestion/ateliers/page.tsx";
 const PAGE_THEMES = "src/app/(app)/admin/themes/page.tsx";
@@ -72,8 +74,8 @@ describe("l'onglet Réglages a disparu", () => {
 
 describe("les notifications sont dans l'espace admin", () => {
   it("l'espace admin a son onglet Notifications", () => {
-    const code = lire(LAYOUT_ADMIN);
-    expect(code).toContain('{ href: "/admin/notifications", label: "Notifications" }');
+    expect(lire(LAYOUT_ADMIN)).toContain("rubriquesVisibles(user)");
+    expect(lire(MENU_ADMIN)).toContain('{ href: "/admin/notifications", label: "Notifications",');
   });
 
   it("l'écran des notifications exige la permission technique et porte les deux réglages", () => {
@@ -115,7 +117,7 @@ describe("les thèmes du planning sont dans l'espace admin", () => {
   it("l'espace admin a son onglet « Thèmes et lieux », et l'écran porte les deux formulaires", () => {
     // L'onglet a pris les **lieux** : les deux salles du club vivaient dans le code, adresses
     // postales comprises, ce qui rendait l'outil ininstallable par un autre club.
-    expect(lire(LAYOUT_ADMIN)).toContain('{ href: "/admin/themes", label: "Thèmes et lieux" }');
+    expect(lire(MENU_ADMIN)).toContain('{ href: "/admin/themes", label: "Thèmes et lieux",');
     const code = lire(PAGE_THEMES);
     expect(code).toContain("enregistrerThemes");
     expect(code).toContain("enregistrerLieux");
@@ -129,7 +131,7 @@ describe("les thèmes du planning sont dans l'espace admin", () => {
   });
 
   it("l'identité du club a son onglet et son écran, réservés au bureau", () => {
-    expect(lire(LAYOUT_ADMIN)).toContain('{ href: "/admin/identite", label: "Club" }');
+    expect(lire(MENU_ADMIN)).toContain('{ href: "/admin/identite", label: "Club",');
     const code = lire(PAGE_IDENTITE);
     // Les trois formulaires de l'écran depuis la coupure : ce que le club **est** (son nom, son
     // sigle), comment il **se montre** (thème, couleur), et sa part d'effectif.

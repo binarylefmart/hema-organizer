@@ -1,5 +1,5 @@
 import { effectifAttendu, palierEffectif, PALIER_LABELS, seuilEnPersonnes, type Compteurs } from "@/lib/presences";
-import { BADGE_PALIER } from "./RepartitionPresences";
+import { BADGE_PALIER, TEXTE_PALIER } from "./RepartitionPresences";
 
 /**
  * **Combien de personnes seront là** — le chiffre que tout le monde vient chercher, et qui doit se
@@ -96,7 +96,7 @@ export function BarreTaux({
             {/* L'estimation n'apparaît que si elle apprend quelque chose : sans « Peut-être » en
                 attente, elle répéterait le grand chiffre. Le tilde dit que c'est un ordre de
                 grandeur — c'est sur lui qu'on prépare le matériel, pas une promesse. */}
-            {attendus > c.presents && <span className="ml-1.5 whitespace-nowrap">· ~{attendus} attendus</span>}
+            {attendus > c.presents && <span className="whitespace-nowrap">&nbsp;· ~{attendus}&nbsp;attendus</span>}
           </span>
         </p>
         <span className="flex flex-wrap items-center gap-1.5">
@@ -139,10 +139,82 @@ export function BarreTaux({
           « Qui vient ? » juste en dessous les nomme un par un, groupe par groupe. */}
       {detail && (
         <p className="text-sm text-texte-secondaire">
-          {c.peutEtre > 0 && `${c.peutEtre} peut-être · `}
+          {c.peutEtre > 0 && `${c.peutEtre}\u00a0peut-être\u00a0· `}
           {c.enAttente} sans réponse
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * **La version resserrée de `BarreTaux`, pour la carte d'une séance sur téléphone** : une phrase à
+ * gauche (« 9 présents sur 12 · Bien rempli »), le taux à droite, la jauge fine en dessous. Elle
+ * remplace sous le palier `md` le grand chiffre, la pastille, la jauge épaisse **et** les trois
+ * tuiles de `RepartitionPresences` : une carte faisait un écran entier de téléphone, elle en fait
+ * maintenant la moitié, et deux cours se lisent sans faire défiler.
+ *
+ * Ce qui disparaît n'est pas perdu : le détail Présent / Peut-être / Absent est nommé personne par
+ * personne dans « Qui vient ? », juste en dessous.
+ *
+ * Mêmes règles que la grande barre : le nombre de présents reste vert (le vert veut dire
+ * « Présent »), la couleur du palier se pose **sur son mot**, jamais sur un nombre, et le trait du
+ * seuil ne se dessine que si ce mot peut l'accompagner. Aucun élément interactif, aucune région
+ * vivante : la carte peut donc rendre les deux versions et masquer l'une ou l'autre en CSS, sans
+ * rien annoncer deux fois (un nœud en `display: none` sort de l'arbre d'accessibilité).
+ */
+export function LigneTaux({ compteurs: c, partEffectifMin }: { compteurs: Compteurs; partEffectifMin: number }) {
+  const palier = palierEffectif(c, partEffectifMin);
+  const motDuPalier = PALIER_LABELS[palier];
+  const seuil = seuilEnPersonnes(partEffectifMin, c.invites);
+  const positionSeuil = c.invites > 0 ? (seuil / c.invites) * 100 : 0;
+  const seuilVisible = palier !== "indetermine";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 text-texte-secondaire">
+          <strong className="font-bold tabular-nums text-vert">{c.presents}</strong> présent{c.presents > 1 ? "s" : ""} sur {c.invites}
+          {motDuPalier && (
+            <>
+              {"\u00a0· "}
+              <span className={`font-semibold ${TEXTE_PALIER[palier]}`}>{motDuPalier}</span>
+            </>
+          )}
+        </span>
+        <strong className="shrink-0 font-bold tabular-nums text-texte">{c.pourcentage}&nbsp;%</strong>
+      </p>
+      {/* Le reste des réponses, sous les présents : ce que montraient les trois tuiles de
+          l'ordinateur, en une ligne. Un compte à zéro ne s'écrit pas. */}
+      {(c.peutEtre > 0 || c.absents > 0 || c.enAttente > 0) && (
+        <p className="flex flex-wrap gap-x-3 text-texte-secondaire">
+          {c.peutEtre > 0 && (
+            <span className="whitespace-nowrap">
+              <strong className="font-bold tabular-nums text-ocre">{c.peutEtre}</strong>&nbsp;peut-être
+            </span>
+          )}
+          {c.absents > 0 && (
+            <span className="whitespace-nowrap">
+              <strong className="font-bold tabular-nums text-rouge">{c.absents}</strong>&nbsp;absent{c.absents > 1 ? "s" : ""}
+            </span>
+          )}
+          {c.enAttente > 0 && (
+            <span className="whitespace-nowrap">
+              <strong className="font-bold tabular-nums text-texte">{c.enAttente}</strong>&nbsp;sans réponse
+            </span>
+          )}
+        </p>
+      )}
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={c.pourcentage}
+        aria-label={`${c.presents} présents sur ${c.invites} — ${c.pourcentage} %${seuilVisible ? ` (seuil : ${seuil} personnes)` : ""}`}
+        className="relative h-1.5 w-full overflow-hidden rounded-full bg-surface-douce"
+      >
+        <div className="h-full rounded-full bg-jauge" style={{ width: `${c.pourcentage}%` }} />
+        {seuilVisible && <span aria-hidden className="absolute inset-y-0 w-0.5 bg-texte/60" style={{ left: `${positionSeuil}%` }} />}
+      </div>
     </div>
   );
 }

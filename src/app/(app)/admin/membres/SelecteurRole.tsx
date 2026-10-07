@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { definirRoleMembre } from "@/actions/membres";
+import { Icone } from "@/components/ui/Icone";
 import { ListeDeroulante, type EntreeListe } from "@/components/ui/ListeDeroulante";
 
 /** Les deux rôles de base, dans l'ordre où la liste les a toujours montrés. */
@@ -21,11 +23,27 @@ const ENTREES_ROLE: EntreeListe[] = [
  *
  * Comme les cases du planning, il **ne dit rien quand tout va bien** — le rôle choisi est dans la
  * liste, c'est lui la confirmation — et ne parle que pour un refus.
+ *
+ * `presentation="boutons"` : la fiche d'une personne au téléphone montre les deux rôles en deux
+ * boutons (« Membre » / « Instructeur ») — même état, même miroir du serveur, même action, mêmes
+ * refus ; seul le dessin change. Un appui sur le rôle qui n'est pas le sien l'applique, comme un choix
+ * dans la liste. La fiche relit ensuite la page : sa pastille de rôle, en tête, doit suivre.
  */
-export function SelecteurRole({ userId, role, nom }: { userId: string; role: string; nom: string }) {
+export function SelecteurRole({
+  userId,
+  role,
+  nom,
+  presentation = "liste",
+}: {
+  userId: string;
+  role: string;
+  nom: string;
+  presentation?: "liste" | "boutons";
+}) {
   const [valeur, setValeur] = useState(role);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [, start] = useTransition();
+  const [enCours, start] = useTransition();
+  const router = useRouter();
   /**
    * **Le rôle du serveur reprend la main dès qu'il bouge** — même patron que les cases du planning
    * (`vuDuServeur`, dans `CaseEditeur`), et pour un défaut de la même famille, relevé après
@@ -59,6 +77,55 @@ export function SelecteurRole({ userId, role, nom }: { userId: string; role: str
     // Le refus qui parlait de l'ancien rôle n'a plus d'objet : le serveur en annonce un autre.
     setErreur(null);
   }
+  const choisir = (choix: string) => {
+    if (choix === valeur) return;
+    setValeur(choix);
+    setErreur(null);
+    start(async () => {
+      const res = await definirRoleMembre(userId, choix).catch(() => ({ erreur: "Changement impossible — vérifie ta connexion." }));
+      if (res?.erreur) {
+        setErreur(res.erreur);
+        setValeur(role);
+      } else if (presentation === "boutons") {
+        router.refresh();
+      }
+    });
+  };
+  const messageErreur = (
+    <span className="text-base font-semibold text-rouge empty:hidden" aria-live="polite">
+      {erreur ?? ""}
+    </span>
+  );
+  if (presentation === "boutons") {
+    return (
+      <div className="flex flex-col gap-1">
+        <p id={`role-${userId}-boutons`} className="font-semibold">
+          Rôle
+        </p>
+        <div role="group" aria-labelledby={`role-${userId}-boutons`} className="grid grid-cols-2 gap-2">
+          {ENTREES_ROLE.map((e) => {
+            const choisi = valeur === e.valeur;
+            return (
+              <button
+                key={e.valeur}
+                type="button"
+                aria-pressed={choisi}
+                disabled={enCours}
+                onClick={() => choisir(e.valeur)}
+                className={`inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl border-2 px-3 text-base font-semibold transition active:scale-[0.98] disabled:opacity-60 ${
+                  choisi ? "border-primaire bg-primaire text-primaire-texte" : "border-bordure/70 bg-surface text-texte"
+                }`}
+              >
+                {choisi && <Icone nom="check" taille={18} />}
+                {e.libelle}
+              </button>
+            );
+          })}
+        </div>
+        {messageErreur}
+      </div>
+    );
+  }
   return (
     // Un `div` et non plus un `span` : `ListeDeroulante` pose son propre `div` (le panneau s'ancre
     // dessus), qui n'a rien à faire dans un élément de texte.
@@ -79,18 +146,7 @@ export function SelecteurRole({ userId, role, nom }: { userId: string; role: str
         libelle={`Rôle de ${nom}`}
         valeur={valeur}
         entrees={ENTREES_ROLE}
-        onChoisir={(choix) => {
-          if (choix === valeur) return;
-          setValeur(choix);
-          setErreur(null);
-          start(async () => {
-            const res = await definirRoleMembre(userId, choix).catch(() => ({ erreur: "Changement impossible — vérifie ta connexion." }));
-            if (res?.erreur) {
-              setErreur(res.erreur);
-              setValeur(role);
-            }
-          });
-        }}
+        onChoisir={choisir}
         /* 48 px et 16 px, comme la case à cocher de la même ligne : cette liste déroulante faisait
             44 px avec un texte de 15 px, à côté d'une case qui venait de passer à 48 — deux cibles
             voisines de deux tailles, dans un tableau où l'on descend ligne à ligne. */
@@ -104,9 +160,7 @@ export function SelecteurRole({ userId, role, nom }: { userId: string; role: str
           message d'une case du planning, `CaseEditeur`), `empty:hidden` pour ne pas creuser la
           ligne du tableau quand tout va bien, et `text-base` parce que ce texte-là dit qu'un
           changement de rôle n'a **pas** eu lieu. */}
-      <span className="text-base font-semibold text-rouge empty:hidden" aria-live="polite">
-        {erreur ?? ""}
-      </span>
+      {messageErreur}
     </div>
   );
 }

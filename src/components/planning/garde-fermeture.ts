@@ -42,6 +42,20 @@ export function marquerEnAttente(cle: string, pasEncoreEcrit: boolean): void {
   else enAttente.delete(cle);
 }
 
+/**
+ * **La clé d'une case dans le brouillon du planning**, distincte de celle de ses envois en vol.
+ *
+ * Deux propriétaires, deux clés. Une case (`CaseEditeur`) tient l'identifiant nu tant qu'un envoi
+ * lui reste sur les bras, et le relâche à son démontage : elle n'a plus rien à envoyer. Le brouillon
+ * (`FournisseurBrouillon`) tient cette clé-ci tant que la case porte un réglage pas encore appliqué —
+ * et ce réglage, lui, **survit** au démontage de la case : une ligne repliée sur téléphone, une case
+ * réglée depuis le volet de la sélection multiple, un trimestre replié sur ordinateur. Partagée, la
+ * clé était relâchée par la case qui disparaissait, et fermer l'onglet perdait le brouillon sans un mot.
+ */
+export function cleBrouillon(partieId: string): string {
+  return `brouillon:${partieId}`;
+}
+
 /** Y a-t-il quelque chose à perdre en fermant maintenant ? */
 export function doitPrevenir(): boolean {
   return enAttente.size > 0;
@@ -69,7 +83,8 @@ const garde = (e: BeforeUnloadEvent): void => {
 };
 
 /**
- * Branche l'avertissement du navigateur tant qu'au moins une case du planning est à l'écran, et rend
+ * Branche l'avertissement du navigateur tant qu'au moins une case du planning est à l'écran — ou que
+ * le brouillon porte un réglage, que ses cases soient montées ou non —, et rend
  * de quoi le débrancher. Un seul écouteur pour toute la grille, quel que soit le nombre de cases —
  * une trentaine d'écouteurs identiques sur un trimestre complet ne rendrait pas la question plus
  * vraie. Sans `window` (rendu serveur, tests), la fonction ne fait rien et le dit en rendant une

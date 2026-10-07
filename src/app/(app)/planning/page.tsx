@@ -119,7 +119,7 @@ async function Filtres({ periodes, planning, choisie, temps, peutCreer }: IlotPl
   const labels = temps.quand === "passe" ? HORIZON_LABELS_PASSE : HORIZON_LABELS;
   // La date prend la place de la fenêtre dans le résumé : sur un jour nommé, la fenêtre ne dit plus rien.
   const quoi = temps.date ? formatDateSansAnnee(temps.date).toLowerCase() : labels[temps.horizon].toLowerCase();
-  const resume = [nom, quoi, `${compte} cours`].filter(Boolean).join(" · ");
+  const resume = [nom, quoi, `${compte}\u00a0cours`].filter(Boolean).join("\u00a0· ");
   return (
     <VoletFiltres resume={resume} ouvert={temps.horizon !== "periode" || temps.quand === "passe" || Boolean(temps.date)}>
       {/* Quoi regarder : la saison, puis le trimestre dedans — les filtres de temps, plus bas, disent jusqu'où */}

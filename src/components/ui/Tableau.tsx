@@ -115,6 +115,7 @@ export function Cellule({
   label,
   palier = "md",
   colSpan,
+  pleineLargeur = false,
 }: {
   children?: ReactNode;
   className?: string;
@@ -123,12 +124,17 @@ export function Cellule({
   palier?: PalierTableau;
   /** Une cellule qui tient toute la ligne (un repère alphabétique, un pied de liste). */
   colSpan?: number;
+  /**
+   * Sur la fiche du téléphone, la valeur prend toute la largeur de la ligne : une liste « Que veux-tu
+   * faire ? » sans intitulé, laissée à sa largeur de contenu, coupait son invite (« Choisir un… »).
+   */
+  pleineLargeur?: boolean;
 }) {
   const c = CLASSES[palier];
   return (
     <td className={`flex items-baseline justify-between gap-3 px-3 py-1 ${c.cellule} ${className}`} title={title} colSpan={colSpan}>
       {label !== undefined && <span className={`shrink-0 text-sm font-semibold text-texte-secondaire ${c.intitule}`}>{label}</span>}
-      <span className={`block min-w-0 ${c.valeur}`}>{children}</span>
+      <span className={`block min-w-0 ${pleineLargeur ? "flex-1" : ""} ${c.valeur}`}>{children}</span>
     </td>
   );
 }

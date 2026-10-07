@@ -8,7 +8,13 @@ export type Taille = "petite" | "normale" | "grande";
 const VARIANTES: Record<Variante, string> = {
   primaire: "bg-primaire text-primaire-texte hover:brightness-110 border-transparent shadow-bouton",
   secondaire: "bg-surface text-texte border-bordure/70 hover:bg-surface-douce shadow-carte",
-  danger: "bg-rouge text-primaire-texte hover:brightness-110 border-transparent shadow-bouton",
+  /*
+   * **Un contour rouge, pas un aplat** : dans « parchemin », le rouge et la couleur principale sont la
+   * même teinte, et « Effacer sans répondre » se confondait avec le bouton plein « Refuser » juste
+   * au-dessus. Le contour se lit autrement que l'aplat dans tous les thèmes, sans toucher à la couleur
+   * principale ; le rouge sur la surface reste AA (vérifié par `themes.test.ts`).
+   */
+  danger: "bg-surface text-rouge border-rouge hover:bg-rouge-doux shadow-carte",
   succes: "bg-vert text-primaire-texte hover:brightness-110 border-transparent shadow-bouton",
   discret: "bg-transparent text-lien border-transparent hover:bg-surface-douce",
 };

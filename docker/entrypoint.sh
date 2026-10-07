@@ -34,6 +34,7 @@ if [ -z "${SESSION_SECRET:-}" ] || [ "${#SESSION_SECRET}" -lt 32 ]; then
 fi
 
 # Dossier de la base : doit exister et être accessible en écriture (volume /data).
+DB_FILE=""
 case "${DATABASE_URL}" in
   file:*)
     DB_FILE="${DATABASE_URL#file:}"
@@ -59,6 +60,29 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Migrations
 # ---------------------------------------------------------------------------
+# ── Sauvegarde avant migration ────────────────────────────────────────────────────────────────
+# Depuis que la stack se redéploie toute seule après chaque publication (job « Déploiement » du flux
+# Release), plus personne ne sauvegarde /data à la main avant de basculer — et une migration peut
+# réécrire ou supprimer une colonne qu'un retour à l'image précédente ne remettrait pas. Le conteneur
+# le fait donc lui-même, **seulement s'il y a des migrations en attente** (`migrate status` rend 1) :
+# une copie cohérente par `VACUUM INTO`, comme les sauvegardes quotidiennes, nommée comme celle qui
+# précède une réparation (`avant-reparation-…`). Si elle échoue, on **refuse de migrer** : mieux vaut
+# un conteneur arrêté — on revient à l'image d'avant par `APP_TAG`, sur une base intacte — qu'une
+# migration sans filet. Base absente (première installation) : rien à sauvegarder.
+if [ -n "${DB_FILE}" ] && [ -s "${DB_FILE}" ]; then
+  if ! node "${PRISMA}" migrate status --schema "${SCHEMA}" >/dev/null 2>&1; then
+    CIBLE="${BACKUP_DIR}/avant-migration-$(date +%Y-%m-%d-%H%M%S).db"
+    log "Des migrations sont en attente : sauvegarde de la base avant de les appliquer (${CIBLE})…"
+    if ! echo "VACUUM INTO '${CIBLE}';" | node "${PRISMA}" db execute --stdin --schema "${SCHEMA}" >/dev/null; then
+      erreur "la sauvegarde d'avant migration a échoué : les migrations ne sont PAS appliquées."
+      erreur "Vérifier que ${BACKUP_DIR} est monté et accessible en écriture, puis relancer le conteneur."
+      exit 1
+    fi
+    chmod 0600 "${CIBLE}" 2>/dev/null || true
+    log "Sauvegarde écrite."
+  fi
+fi
+
 log "Application des migrations de la base…"
 if ! node "${PRISMA}" migrate deploy --schema "${SCHEMA}"; then
   erreur "impossible d'appliquer les migrations : base inaccessible ou incohérente."

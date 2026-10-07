@@ -78,7 +78,7 @@ const voletEvenements = cache(async (user: CurrentUser) => {
 /**
  * En-tête encre compact et navigation : à gauche, l'écu, le nom du club et le mot « Accueil »
  * dans un seul lien (`LienAccueil`) ; au centre-droit, trois onglets (Planning, Séances, Atelier)
- * en bas sur téléphone et dans l'en-tête dès 768 px ; les événements (volet déroulant), l'espace
+ * en bas sur téléphone et dans l'en-tête sur ordinateur ; les événements (volet déroulant), l'espace
  * instructeur et le profil en icônes dans l'en-tête, sur toutes les tailles d'écran.
  * Les libellés des onglets restent en icône + mot (≥ 16 px) ; l'en-tête garde la largeur du contenu (max-w-3xl),
  * les entrées secondaires sont donc en icônes pour que la barre tienne sans débordement jusqu'à 1280 px.
@@ -119,14 +119,14 @@ export async function Entete({ user }: { user: CurrentUser }) {
             en dessous : la barre se lit comme une enseigne, le bouton comme un bouton. Les deux
             éléments calés sous l'en-tête suivent : l'en-tête collant du planning et le volet des
             événements sur téléphone. */}
-        <div className="mx-auto flex h-20 max-w-3xl items-center gap-3 px-4">
+        <div className="mx-auto flex h-20 max-w-3xl items-center gap-3 px-4 tel:max-w-[40rem]">
           {/* L'écu, le nom du club et le mot « Accueil » : un seul lien, qui s'allume quand on
               y est (voir `LienAccueil`). C'est la porte de l'accueil — elle existait déjà, elle se
               nomme désormais. */}
           <LienAccueil sigle={user.sessionForte} identite={club} />
           <nav className="ml-auto flex items-center gap-1" aria-label="Menu">
-            {/* Onglets principaux : dans l'en-tête à partir de 768 px, en bas d'écran en dessous */}
-            <span className="hidden items-center gap-1 md:flex">
+            {/* Onglets principaux : dans l'en-tête sur ordinateur, en bas d'écran en version téléphone */}
+            <span className="hidden items-center gap-1 ordi:flex">
               <NavEntete onglets={onglets} />
               <span className="mx-1 h-6 w-px bg-encre-texte/30" aria-hidden />
             </span>

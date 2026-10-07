@@ -10,6 +10,7 @@ import { LienBouton } from "@/components/ui/Bouton";
 import { Cellule, Ligne, Tableau, type PalierTableau } from "@/components/ui/Tableau";
 import { Alerte } from "@/components/ui/Alerte";
 import { Pastille } from "@/components/ui/Pastille";
+import { GroupeListe, LigneLien } from "@/components/ui/ListeGroupee";
 
 export const metadata: Metadata = { title: "Périodes" };
 
@@ -23,6 +24,23 @@ type Props = { searchParams: Promise<{ supprimee?: string }> };
  * que l'annuaire : une seule écriture dans le fichier, pour qu'on ne puisse pas en déplier une moitié.
  */
 const PALIER_TABLEAU: PalierTableau = "lg";
+
+/** « 1 sept. » : le jour et le mois, sans le jour de la semaine — la ligne du téléphone est courte. */
+function jourMois(iso: string): string {
+  return new Intl.DateTimeFormat("fr-FR", { timeZone: "UTC", day: "numeric", month: "short" }).format(new Date(`${iso}T12:00:00Z`));
+}
+
+/** Les périodes rangées par saison, dans l'ordre reçu (les plus récentes d'abord). */
+function parSaison<P extends { dateDebut: string }>(periodes: readonly P[]): [string, P[]][] {
+  const groupes: [string, P[]][] = [];
+  for (const p of periodes) {
+    const saison = saisonDe(p.dateDebut);
+    const dernier = groupes.at(-1);
+    if (dernier && dernier[0] === saison) dernier[1].push(p);
+    else groupes.push([saison, [p]]);
+  }
+  return groupes;
+}
 
 export default async function PagePeriodes({ searchParams }: Props) {
   await requirePermission("periods.manage");
@@ -40,7 +58,33 @@ export default async function PagePeriodes({ searchParams }: Props) {
         </div>
         <LienBouton href="/admin/periodes/nouvelle">Nouvelle période</LienBouton>
       </div>
-      <Carte>
+      {/*
+       * **Sur téléphone, une ligne par période** : son nom, ses dates et ses séances,
+       * l'état en pastille à droite ; toucher la ligne ouvre la période, où tout se gère (séances,
+       * activer, clore). Le reste des colonnes — invités, liens activés — vit sur cette page-là.
+       * La bascule est en CSS : le serveur rend les deux, la fenêtre choisit, et il n'y a aucun
+       * champ de formulaire à ne pas doubler. Sur ordinateur, rien ne change.
+       */}
+      {periodes.length === 0 ? (
+        <p className="text-texte-secondaire ordi:hidden">Aucune période pour l&apos;instant.</p>
+      ) : (
+        <div className="flex flex-col gap-5 ordi:hidden" data-liste-periodes>
+          {parSaison(periodes).map(([saison, liste]) => (
+            <GroupeListe key={saison} titre={`Saison ${saison}`}>
+              {liste.map((p) => (
+                <LigneLien
+                  key={p.id}
+                  href={`/admin/periodes/${p.id}`}
+                  titre={p.nom}
+                  detail={`${jourMois(p.dateDebut)} → ${jourMois(p.dateFin)}\u00a0· ${p._count.sessions}\u00a0${p._count.sessions > 1 ? "séances" : "séance"}`}
+                  resume={<Pastille ton={TON[p.statut as keyof typeof TON] ?? "neutre"}>{LABEL[p.statut as keyof typeof LABEL] ?? p.statut}</Pastille>}
+                />
+              ))}
+            </GroupeListe>
+          ))}
+        </div>
+      )}
+      <Carte className="hidden ordi:block">
         {/*
          * **Le tableau attend le pixel où la page s'élargit**.
          *
@@ -53,8 +97,8 @@ export default async function PagePeriodes({ searchParams }: Props) {
          * pile de fiches rend l'information **entière**, le tableau la serre. Le tableau se déplie donc
          * au même pixel que la page s'élargit, et les deux décisions ne peuvent plus diverger.
          *
-         * **Un téléphone ne bouge pas d'un pixel** : en dessous des deux paliers, chaque ligne est
-         * déjà une fiche où chaque valeur porte son intitulé.
+         * **Entre 768 et 1 023 px**, en dessous des deux paliers, chaque ligne est une fiche où
+         * chaque valeur porte son intitulé. Sous 768 px, c'est la liste du dessus qui parle.
          *
          * Pas de `whitespace-nowrap` sur le nom, et c'est volontaire : le palier `lg` n'a **pas** de
          * défilement intérieur (voir `PalierTableau`), donc un nom long — le champ en accepte 60

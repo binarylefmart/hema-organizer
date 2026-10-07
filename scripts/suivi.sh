@@ -123,17 +123,53 @@ captures_etat() { # scènes complètes (4 images) / scènes comptées
     printf '%s %s %s %s' "$completes" "$total" "$vides" "$partielles"
     return
   fi
-  for d in "$RACINE"/previews/*/; do
+  # Le départ de la passe, c'est le **démarrage du processus de captures** — pas la date du journal,
+  # qui bouge à chaque ligne écrite (aucune image n'était alors « plus récente » : barre figée à 0 %).
+  local en_cours="" pid ecoule debut_passe racine_passe="$RACINE" seules="" arg
+  pid=$(pgrep -nf "^node .*scripts/preview-screenshots\.ts" 2>/dev/null)
+  if [ -n "$pid" ]; then
+    ecoule=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')
+    if [ -n "$ecoule" ]; then
+      debut_passe=$(date -d "@$(( $(date +%s) - ecoule ))" +%Y-%m-%dT%H:%M:%S); en_cours=1
+    fi
+    # **La passe se suit là où elle tourne** (une copie de l'app dans un autre dossier, par exemple
+    # pour capturer une ancienne version) et ne compte que les scènes qu'elle a demandées (`--only=`).
+    [ -d "/proc/$pid/cwd/previews" ] && racine_passe=$(readlink -f "/proc/$pid/cwd")
+    for arg in $(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null); do
+      case "$arg" in --only=*) seules="${arg#--only=}" ;; esac
+    done
+  fi
+  if [ -n "$en_cours" ] && [ -n "$seules" ]; then
+    local nom
+    for nom in ${seules//,/ }; do
+      total=$((total+1))
+      n=$(find "$racine_passe/previews/$nom" -maxdepth 1 -name '*.jpg' -newermt "$debut_passe" 2>/dev/null | wc -l)
+      if [ "$n" -ge 4 ]; then completes=$((completes+1))
+      elif [ "$n" -gt 0 ]; then partielles=$((partielles+1)); fi
+    done
+    printf '%s %s %s %s' "$completes" "$total" 0 "$partielles"
+    return
+  fi
+  for d in "$racine_passe"/previews/*/; do
     [ -d "$d" ] || continue
     # `previews/emails` n'est pas une scène : c'est la boîte aux lettres du développement, où
     # l'application dépose les emails qu'elle aurait envoyés.
     [ "$(basename "$d")" = "emails" ] && continue
     total=$((total+1))
-    n=$(ls "$d" 2>/dev/null | grep -c '\.jpg$')
+    # **Pendant une passe complète, seules comptent les images de cette passe** (plus récentes que
+    # son journal) : sinon la barre affichait les captures de la passe d'avant, et restait figée
+    # pendant toute la campagne en cours.
+    if [ -n "$en_cours" ]; then
+      n=$(find "$d" -maxdepth 1 -name '*.jpg' -newermt "$debut_passe" 2>/dev/null | wc -l)
+    else
+      n=$(ls "$d" 2>/dev/null | grep -c '\.jpg$')
+    fi
     if [ "$n" -ge 4 ]; then completes=$((completes+1))
     elif [ "$n" -eq 0 ]; then vides=$((vides+1))
     else partielles=$((partielles+1)); fi
   done
+  # Pendant la passe, « vide » veut dire « pas encore faite » : on ne l'annonce pas comme un défaut.
+  [ -n "$en_cours" ] && vides=0
   printf '%s %s %s %s' "$completes" "$total" "$vides" "$partielles"
 }
 # **Le total ne se devine pas dans la source du script de captures.** Une première version comptait
@@ -151,17 +187,35 @@ campagne_verdict() {
 
 # ── Les portes, mesurées seulement au calme ────────────────────────────────────────────────────
 P_LINT="—"; P_TC="—"; P_TESTS="—"; P_OK=0; P_TOT=0; P_QUAND=""; P_DERNIERE=0
-mesurer_portes() {
-  local n; n=$(npm run lint 2>&1 | grep -cE '[0-9]+:[0-9]+ +error')
-  [ "$n" -gt 0 ] && P_LINT="${R}${n} erreur(s)${Z}" || P_LINT="${V}vert${Z}"
-  if npm run typecheck >/dev/null 2>&1; then P_TC="${V}vert${Z}"; else P_TC="${R}erreurs${Z}"; fi
-  local ligne; ligne=$(npx vitest run --silent 2>&1 | grep -E '^ *Tests ' | tail -1)
-  P_OK=$(printf '%s' "$ligne" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+')
-  local ko; ko=$(printf '%s' "$ligne" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+')
-  P_OK=${P_OK:-0}; ko=${ko:-0}; P_TOT=$(( P_OK + ko ))
-  [ "$ko" -gt 0 ] && P_TESTS="${R}${ko} en échec${Z}" || P_TESTS="${V}tout passe${Z}"
-  P_QUAND=$(date +%H:%M:%S); P_DERNIERE=$(date +%s)
+# **La mesure tourne à côté, jamais dans la boucle d'affichage.** Lint, typecheck et tests prennent une
+# à deux minutes : mesurés dans la boucle, ils figeaient la fenêtre tout ce temps — une campagne qui
+# avance derrière un écran immobile, c'est exactement ce qu'un tableau de suivi ne doit pas montrer.
+# Le sous-processus écrit son verdict dans un fichier d'état ; la boucle le relit à chaque tour.
+# **Dans un dossier privé** (`mktemp -d`, 700) : la boucle **source** ce fichier, et son `.tmp` avait un
+# nom prévisible à côté d'un fichier de `/tmp` — un autre compte de la machine pouvait l'y poser avant
+# nous. Le dossier entier part en quittant.
+DOSSIER_PORTES=$(mktemp -d -t suivi-portes.XXXXXX) || exit 1
+ETAT_PORTES="$DOSSIER_PORTES/etat"; PID_PORTES=0
+mesurer_portes_fond() {
+  (
+    local n lint tc ligne ok ko
+    n=$(npm run lint 2>&1 | grep -cE '[0-9]+:[0-9]+ +error')
+    [ "$n" -gt 0 ] && lint="${R}${n} erreur(s)${Z}" || lint="${V}vert${Z}"
+    if npm run typecheck >/dev/null 2>&1; then tc="${V}vert${Z}"; else tc="${R}erreurs${Z}"; fi
+    ligne=$(npx vitest run --silent 2>&1 | grep -E '^ *Tests ' | tail -1)
+    ok=$(printf '%s' "$ligne" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+'); ok=${ok:-0}
+    ko=$(printf '%s' "$ligne" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+'); ko=${ko:-0}
+    {
+      printf 'P_LINT=%q\n' "$lint"; printf 'P_TC=%q\n' "$tc"
+      printf 'P_OK=%q\nP_TOT=%q\n' "$ok" "$(( ok + ko ))"
+      [ "$ko" -gt 0 ] && printf 'P_TESTS=%q\n' "${R}${ko} en échec${Z}" || printf 'P_TESTS=%q\n' "${V}tout passe${Z}"
+      printf 'P_QUAND=%q\n' "$(date +%H:%M:%S)"
+    } > "$ETAT_PORTES.tmp" && mv "$ETAT_PORTES.tmp" "$ETAT_PORTES"
+  ) >/dev/null 2>&1 &
+  PID_PORTES=$!
 }
+lire_portes() { [ -s "$ETAT_PORTES" ] && . "$ETAT_PORTES"; }
+portes_en_cours() { [ "$PID_PORTES" -gt 0 ] && kill -0 "$PID_PORTES" 2>/dev/null; }
 
 # ── Les constructions GitHub, lues chez GitHub ─────────────────────────────────────────────────
 # Après un tag, la question est « où en est l'image ? ». La réponse vient de l'API de GitHub (`gh`),
@@ -284,6 +338,11 @@ trap 'COLS=$(tput cols 2>/dev/null || echo 100); LIGNES=$(tput lines 2>/dev/null
 # lignes pour une trame de 55). On coupe donc la trame à la hauteur, on le dit sur la dernière ligne,
 # et la dernière ligne n'a pas de retour à la ligne, qui ferait à lui seul défiler l'écran d'un cran.
 afficher_trame() {
+  # **La taille se relit à chaque trame** : le gestionnaire de fenêtres redimensionne souvent la
+  # fenêtre juste après son ouverture, et le signal de redimensionnement n'arrivait pas toujours — la
+  # trame restait coupée à la hauteur du lancement, avec la moitié de la fenêtre vide dessous.
+  local taille; taille=$(stty size < /dev/tty 2>/dev/null)
+  [ -n "$taille" ] && { LIGNES=${taille% *}; COLS=${taille#* }; }
   local sortie=$'\e[H' n=0 total max=$(( LIGNES > 2 ? LIGNES - 1 : 1 )) l
   total=$(printf '%s' "$1" | grep -c '')
   while IFS= read -r l; do
@@ -297,8 +356,8 @@ afficher_trame() {
   sortie+=$'\e[J'
   printf '%s' "$sortie"
 }
-quitter() { printf '\e[?25h\e[?1049l'; exit 0; }
-trap quitter INT TERM
+quitter() { printf '\e[?25h\e[?1049l'; rm -rf "$DOSSIER_PORTES"; exit 0; }
+trap quitter INT TERM HUP
 printf '\e[?1049h\e[?25l'
 
 TRAME=""
@@ -345,12 +404,14 @@ while :; do
   # ── Portes ──
   titre "  PORTES"
   maintenant=$(date +%s)
-  if [ "$actifs" -eq 0 ] && [ $(( maintenant - P_DERNIERE )) -ge "$PORTES_MIN_S" ]; then
-    ligne "   ${J}mesure en cours…${Z}"
-    afficher_trame "$TRAME"   # on montre l'attente avant de bloquer une minute
-    mesurer_portes
-    TRAME=${TRAME%"   ${J}mesure en cours…${Z}"$'\n'}
+  lire_portes
+  # Jamais pendant une campagne Playwright : elle a besoin des cœurs, et une mesure lancée au milieu
+  # ralentissait les tests qu'on regardait.
+  if ! portes_en_cours && [ "$actifs" -eq 0 ] && ! pgrep -f "playwright test" >/dev/null 2>&1 \
+     && [ $(( maintenant - P_DERNIERE )) -ge "$PORTES_MIN_S" ]; then
+    mesurer_portes_fond; P_DERNIERE=$maintenant
   fi
+  portes_en_cours && ligne "   ${J}mesure en cours…${Z} ${GRIS}(l'affichage continue)${Z}"
   ligne "   $(pastille "$([ "$P_LINT" = "${V}vert${Z}" ] && echo vert || echo gris)") lint        ${P_LINT}"
   ligne "   $(pastille "$([ "$P_TC" = "${V}vert${Z}" ] && echo vert || echo gris)") typecheck   ${P_TC}"
   if [ "$P_TOT" -gt 0 ]; then

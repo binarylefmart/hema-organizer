@@ -105,7 +105,7 @@ export default async function PageGestionEvenements({ searchParams }: Props) {
                     (md). Sur téléphone, la cellule prend la largeur de la carte. Les droits sont lus
                     comme sur la page de l'annonce : la page exige déjà `evenements.creer_supprimer`,
                     `evenements.edit` est relue pour ne proposer que ce qui aboutit. */}
-                <Cellule className="md:w-72">
+                <Cellule className="md:w-72" pleineLargeur>
                   <GestesEvenement id={e.id} nom={e.nom} publie={e.publie} modifier={peutModifier} supprimer />
                 </Cellule>
               </Ligne>

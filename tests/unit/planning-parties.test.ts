@@ -51,6 +51,14 @@ const faux = vi.hoisted(() => ({
   permissions: [] as string[],
   parties: [] as Partie[],
   statutPeriode: "ACTIVE",
+  /** La séance est-elle annulée ? Une séance annulée verrouille son programme (`partiePourEcriture`). */
+  annulee: false,
+  /**
+   * **Ce qu'un autre écrivain fait juste avant que notre transaction ne prenne la main** — un retrait
+   * au même instant, typiquement. Un geste qui a lu la séance **hors** de la transaction ne le voit
+   * pas, et écrit sur une lecture périmée.
+   */
+  avantTransaction: null as (() => void) | null,
   users: [{ id: "u1", actif: true, service: false }, { id: "u2", actif: true, service: false }, { id: "u-service", actif: true, service: true }],
   audits: [] as Array<{ action: string; cible: string | null; details: unknown }>,
   ateliers: [] as Array<{ id: string; titre: string; statut: string; sessionId: string | null; commentaireInstructeur: string | null; proposePar: { id: string; prenom: string; nom: string; email: string } }>,
@@ -85,7 +93,7 @@ vi.mock("@/lib/db", () => {
           ...p,
           instructeur: nomFaux(p.instructeurId),
           instructeurSecond: nomFaux(p.instructeurSecondId),
-          session: { id: p.sessionId, date: "2126-10-01", period: { statut: faux.statutPeriode } },
+          session: { id: p.sessionId, date: "2126-10-01", annulee: faux.annulee, period: { statut: faux.statutPeriode } },
         };
       }),
       findMany: vi.fn(async ({ where }: { where: { sessionId: string } }) => faux.parties.filter((p) => p.sessionId === where.sessionId).map((p) => ({ ...p }))),
@@ -160,9 +168,12 @@ vi.mock("@/lib/db", () => {
      * **relire la séance dans** la transaction — sinon deux ajouts simultanés lisent la même
      * longueur et naissent au même rang.
      */
-    $transaction: vi.fn(async (arg: unknown) =>
-      typeof arg === "function" ? (arg as (c: typeof client) => Promise<unknown>)(client) : Promise.all(arg as Promise<unknown>[]),
-    ),
+    $transaction: vi.fn(async (arg: unknown) => {
+      const autre = faux.avantTransaction;
+      faux.avantTransaction = null;
+      autre?.();
+      return typeof arg === "function" ? (arg as (c: typeof client) => Promise<unknown>)(client) : Promise.all(arg as Promise<unknown>[]);
+    }),
   };
   return { db };
 });
@@ -190,7 +201,7 @@ vi.mock("@/lib/planning", async (original) => ({
 }));
 vi.mock("@/lib/notifications/ateliers", () => ({ notifierDecisionAtelier: vi.fn(async () => true) }));
 
-const { ajouterPartie, changerNaturePartie, deplacerPartie, enregistrerCase, retirerPartie } = await import("@/actions/planning");
+const { ajouterPartie, changerNaturePartie, deplacerElement, deplacerPartie, enregistrerCase, retirerPartie } = await import("@/actions/planning");
 const { db } = await import("@/lib/db");
 const { PARTIES_PAR_SEANCE_MAX } = await import("@/lib/validation/gestion");
 
@@ -269,6 +280,8 @@ beforeEach(() => {
   // quatre cas d'après tombaient sur « Cette personne n'existe plus » sans rien avoir demandé.
   faux.users = USERS_DEPART.map((u) => ({ ...u }));
   faux.statutPeriode = "ACTIVE";
+  faux.annulee = false;
+  faux.avantTransaction = null;
   faux.compteur = 0;
   faux.horloge = Date.parse("2026-09-30T20:14:00.000Z");
   poser(DEPART);
@@ -434,6 +447,20 @@ describe("ajouter un élément dans une partie", () => {
     expect(rangee()).toEqual(["Partie 1 · Cours", "Partie 1 · Option", "Partie 2 · Échauffement", "Partie 2 · Cours", "Partie 3 · Cours"]);
   });
 
+  it("pose l'élément à sa place par défaut — échauffement, cours, atelier, option — sans retrier les autres", async () => {
+    // Partie 1 réordonnée à la main : l'option d'abord, puis le cours.
+    poser([
+      [1, "OPTION"],
+      [1, "COURS"],
+    ]);
+    const cours = await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "COURS" });
+    expect(ordreIds()).toEqual(["c0", "c1", cours.partieId]);
+    const echauffement = await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ECHAUFFEMENT" });
+    expect(ordreIds()).toEqual([echauffement.partieId, "c0", "c1", cours.partieId]);
+    expect(rangs()).toEqual([0, 1, 2, 3]);
+    expect(rangee()).toEqual(["Échauffement", "Option", "Cours 1", "Cours 2"]);
+  });
+
   it("ouvre une partie nouvelle à la fin (`nbParties + 1`), et ramène un numéro trop grand à celle-là", async () => {
     await ajouterPartie({ sessionId: "s1", bloc: 4, nature: "OPTION" });
     expect(rangee().at(-1)).toBe("Partie 4 · Option");
@@ -461,7 +488,9 @@ describe("ajouter un élément dans une partie", () => {
     ]);
     await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ECHAUFFEMENT" });
     expect(rangs()).toEqual([0, 1, 2, 3]);
-    expect(rangee()).toEqual(["Partie 1 · Échauffement", "Partie 1 · Cours", "Partie 1 · Option", "Partie 2 · Cours"]);
+    // L'ordre stocké de la partie 1 (l'option au rang 0, le cours au rang 3) est gardé : il est libre.
+    // L'échauffement, lui, se pose en tête.
+    expect(rangee()).toEqual(["Partie 1 · Échauffement", "Partie 1 · Option", "Partie 1 · Cours", "Partie 2 · Cours"]);
   });
 
   it("écrit l'ajout **et** le rangement dans une seule transaction", async () => {
@@ -550,15 +579,23 @@ describe("changer la nature d'un élément", () => {
     expect(partie("c3")).toMatchObject({ bloc: 3, nature: "OPTION", libelle: "Partie 3 · Option" });
   });
 
-  it("met l'élément **en queue** de sa nouvelle nature, et numérote la partie", async () => {
+  it("**garde la place** de l'élément, et numérote la partie", async () => {
     await changerNaturePartie({ partieId: "c0", nature: "OPTION" });
-    expect(ordreIds()).toEqual(["c1", "c0", "c2", "c3"]);
+    expect(ordreIds()).toEqual(["c0", "c1", "c2", "c3"]);
+    expect(rangs()).toEqual([0, 1, 2, 3]);
     expect(rangee()).toEqual(["Partie 1 · Option 1", "Partie 1 · Option 2", "Partie 2 · Cours", "Partie 3 · Cours"]);
+  });
+
+  it("garde la place même quand la nouvelle nature se poserait ailleurs par défaut", async () => {
+    // L'option de la partie 1 devient un échauffement : par défaut, il irait en tête ; il reste second.
+    await changerNaturePartie({ partieId: "c1", nature: "ECHAUFFEMENT" });
+    expect(ordreIds()).toEqual(["c0", "c1", "c2", "c3"]);
+    expect(rangee()).toEqual(["Partie 1 · Cours", "Partie 1 · Échauffement", "Partie 2 · Cours", "Partie 3 · Cours"]);
   });
 
   it("renomme la voisine **sans** repeindre sa bulle, et n'horodate que l'élément du clic", async () => {
     await changerNaturePartie({ partieId: "c0", nature: "OPTION" });
-    expect(partie("c1")).toMatchObject({ libelle: "Partie 1 · Option 1", updatedAt: REMPLI_LE, modifieParId: null });
+    expect(partie("c1")).toMatchObject({ libelle: "Partie 1 · Option 2", updatedAt: REMPLI_LE, modifieParId: null });
     expect(partie("c0")!.updatedAt.getTime()).toBeGreaterThan(REMPLI_LE.getTime());
     expect(partie("c0")?.modifieParId).toBe("u-admin");
   });
@@ -654,7 +691,7 @@ describe("retirer un élément", () => {
 });
 
 describe("changer un élément de partie", () => {
-  it("descend un cours dans la partie suivante : il y arrive en queue, les deux se numérotent", async () => {
+  it("descend un cours dans la partie suivante : il se pose après le cours qui y était, les deux se numérotent", async () => {
     const res = await deplacerPartie({ partieId: "c0", versBloc: 2 });
     expect(res.succes).toBe("Élément déplacé.");
     expect(ordreIds()).toEqual(["c1", "c2", "c0", "c3"]);
@@ -683,6 +720,30 @@ describe("changer un élément de partie", () => {
     expect(faux.audits).toEqual([]);
   });
 
+  it("pose l'élément à sa place par défaut dans la partie d'arrivée : un échauffement en tête", async () => {
+    poser([
+      [1, "ECHAUFFEMENT"],
+      [1, "COURS"],
+      [2, "COURS"],
+      [2, "OPTION"],
+    ]);
+    await deplacerPartie({ partieId: "c0", versBloc: 2 });
+    expect(ordreIds()).toEqual(["c1", "c0", "c2", "c3"]);
+    expect(rangee()).toEqual(["Partie 1 · Cours", "Partie 2 · Échauffement", "Partie 2 · Cours", "Partie 2 · Option"]);
+  });
+
+  it("une option qui change de partie se pose après l'atelier, en fin de partie", async () => {
+    poser([
+      [1, "COURS"],
+      [1, "OPTION"],
+      [2, "COURS"],
+      [2, "ATELIER"],
+    ]);
+    await deplacerPartie({ partieId: "c1", versBloc: 2 });
+    expect(ordreIds()).toEqual(["c0", "c2", "c3", "c1"]);
+    expect(rangs()).toEqual([0, 1, 2, 3]);
+  });
+
   it("ramène un numéro hors de la séance à la partie nouvelle plutôt que de refuser", async () => {
     await deplacerPartie({ partieId: "c0", versBloc: PARTIES_PAR_SEANCE_MAX + 1 });
     expect(partie("c0")).toMatchObject({ bloc: 4, libelle: "Partie 4 · Cours" });
@@ -703,12 +764,147 @@ describe("changer un élément de partie", () => {
     for (const p of faux.parties) expect(p.updatedAt).toEqual(REMPLI_LE);
   });
 
-  it("journalise d'où à où, avec la nature", async () => {
+  it("journalise d'où à où, avec la nature — et le numéro demandé à part du numéro rangé", async () => {
+    // La partie 2 n'a qu'un cours : elle se vide, la partie 3 devient la 2, et la « partie 4 »
+    // demandée devient la 3 une fois rangée. Les deux numéros se lisent, chacun sous son nom.
     await deplacerPartie({ partieId: "c2", versBloc: 4 });
     expect(faux.audits.at(-1)).toMatchObject({
       action: "planning.partie.ordre",
-      details: { partie: "Partie 2 · Cours", nature: "COURS", de: 2, vers: 3 },
+      details: { partie: "Partie 2 · Cours", nature: "COURS", partieDepart: 2, versDemande: 4, partieArrivee: 3 },
     });
+    expect(faux.audits.at(-1)?.details).not.toHaveProperty("de");
+    expect(faux.audits.at(-1)?.details).not.toHaveProperty("vers");
+  });
+});
+
+describe("poser un élément à une place précise", () => {
+  /** Une partie de trois éléments, puis une partie d'un cours : de quoi glisser dans tous les sens. */
+  beforeEach(() =>
+    poser([
+      [1, "ECHAUFFEMENT"],
+      [1, "COURS"],
+      [1, "OPTION"],
+      [2, "COURS"],
+    ]),
+  );
+
+  it("inverse deux éléments d'une partie : l'option passe au-dessus du cours", async () => {
+    const res = await deplacerElement({ partieId: "c2", versBloc: 1, avantId: "c1" });
+    expect(res.succes).toBe("Élément déplacé.");
+    expect(ordreIds()).toEqual(["c0", "c2", "c1", "c3"]);
+    expect(rangs()).toEqual([0, 1, 2, 3]);
+    expect(rangee()).toEqual(["Partie 1 · Échauffement", "Partie 1 · Option", "Partie 1 · Cours", "Partie 2 · Cours"]);
+  });
+
+  it("pose en tête, et en fin de partie quand rien n'est visé", async () => {
+    await deplacerElement({ partieId: "c2", versBloc: 1, avantId: "c0" });
+    expect(ordreIds()).toEqual(["c2", "c0", "c1", "c3"]);
+    await deplacerElement({ partieId: "c2", versBloc: 1, avantId: null });
+    expect(ordreIds()).toEqual(["c0", "c1", "c2", "c3"]);
+  });
+
+  it("change de partie à la place visée, et ouvre une partie nouvelle (`nbParties + 1`)", async () => {
+    await deplacerElement({ partieId: "c0", versBloc: 2, avantId: "c3" });
+    expect(ordreIds()).toEqual(["c1", "c2", "c0", "c3"]);
+    expect(blocs()).toEqual([1, 1, 2, 2]);
+    await deplacerElement({ partieId: "c1", versBloc: 3, avantId: null });
+    expect(rangee()).toEqual(["Partie 1 · Option", "Partie 2 · Échauffement", "Partie 2 · Cours", "Partie 3 · Cours"]);
+  });
+
+  it("ne fait rien — sans se plaindre — quand le résultat rangé est le même", async () => {
+    expect((await deplacerElement({ partieId: "c1", versBloc: 1, avantId: "c2" })).succes).toBe("Rien à changer.");
+    expect((await deplacerElement({ partieId: "c1", versBloc: 1, avantId: "c1" })).succes).toBe("Rien à changer.");
+    expect((await deplacerElement({ partieId: "c3", versBloc: 2, avantId: null })).succes).toBe("Rien à changer.");
+    // L'élément seul de la dernière partie « posé » dans une partie nouvelle y retombe.
+    expect((await deplacerElement({ partieId: "c3", versBloc: 3, avantId: null })).succes).toBe("Rien à changer.");
+    expect(touchees()).toEqual([]);
+    expect(faux.audits).toEqual([]);
+  });
+
+  it("refuse un voisin d'une autre partie, d'une autre séance, ou disparu — sans rien écrire", async () => {
+    faux.parties.push({ ...ligne("x0", 1, "COURS", 0, "Cours"), sessionId: "s2" });
+    expect((await deplacerElement({ partieId: "c2", versBloc: 2, avantId: "c1" })).erreur).toMatch(/n'existe plus/);
+    expect((await deplacerElement({ partieId: "c2", versBloc: 1, avantId: "x0" })).erreur).toMatch(/n'existe plus/);
+    expect((await deplacerElement({ partieId: "c2", versBloc: 1, avantId: "disparu" })).erreur).toMatch(/n'existe plus/);
+    // Une partie nouvelle est vide : rien ne peut s'y trouver « avant ».
+    expect((await deplacerElement({ partieId: "c2", versBloc: 3, avantId: "c3" })).erreur).toMatch(/n'existe plus/);
+    expect(touchees()).toEqual([]);
+  });
+
+  it("refuse une partie hors bornes — zéro compris — par le schéma", async () => {
+    expect((await deplacerElement({ partieId: "c0", versBloc: 0, avantId: null })).erreur).toBeTruthy();
+    expect((await deplacerElement({ partieId: "c0", versBloc: PARTIES_PAR_SEANCE_MAX + 2, avantId: null })).erreur).toBeTruthy();
+    expect((await deplacerElement({ partieId: "c0", versBloc: 1, avantId: 3 as never })).erreur).toBeTruthy();
+    expect(touchees()).toEqual([]);
+  });
+
+  it("n'écrit que les lignes qui changent, et ne repeint la bulle de personne", async () => {
+    await deplacerElement({ partieId: "c2", versBloc: 1, avantId: "c1" });
+    expect(new Set(touchees())).toEqual(new Set(["c1", "c2"]));
+    for (const p of faux.parties) expect(p.updatedAt).toEqual(REMPLI_LE);
+  });
+
+  it("passe par planning.edit, refuse une période close, et resynchronise la séance", async () => {
+    synchronisations.length = 0;
+    await deplacerElement({ partieId: "c2", versBloc: 1, avantId: "c1" });
+    expect(faux.permissions).toEqual(["planning.edit"]);
+    expect(synchronisations).toEqual(["s1"]);
+    faux.statutPeriode = "CLOSE";
+    vi.clearAllMocks();
+    expect((await deplacerElement({ partieId: "c1", versBloc: 1, avantId: "c0" })).erreur).toMatch(/close/);
+    expect(touchees()).toEqual([]);
+  });
+
+  it("journalise sous la même action que ↑ ↓, avec d'où à où et la place d'arrivée", async () => {
+    await deplacerElement({ partieId: "c0", versBloc: 2, avantId: null });
+    expect(faux.audits).toEqual([
+      {
+        action: "planning.partie.ordre",
+        cible: "s1",
+        details: {
+          date: "2126-10-01",
+          partie: "Partie 1 · Échauffement",
+          bloc: 1,
+          nature: "ECHAUFFEMENT",
+          partieDepart: 1,
+          versDemande: 2,
+          partieArrivee: 2,
+          position: 2,
+        },
+      },
+    ]);
+  });
+});
+
+describe("les déplacements lisent et écrivent dans une seule transaction", () => {
+  it("refusent une séance annulée, sans rien écrire", async () => {
+    faux.annulee = true;
+    expect((await deplacerPartie({ partieId: "c0", versBloc: 2 })).erreur).toMatch(/annulée/);
+    expect((await deplacerElement({ partieId: "c1", versBloc: 1, avantId: "c0" })).erreur).toMatch(/annulée/);
+    expect((await deplacerElement({ partieId: "c1", versBloc: 1, avantId: "c1" })).erreur).toMatch(/annulée/);
+    expect(touchees()).toEqual([]);
+    expect(faux.audits).toEqual([]);
+  });
+
+  it("voient un retrait arrivé juste avant eux, et le disent au lieu d'écrire sur une lecture périmée", async () => {
+    const retirer = (id: string) => () => {
+      faux.parties = faux.parties.filter((p) => p.id !== id);
+    };
+    faux.avantTransaction = retirer("c0");
+    expect((await deplacerPartie({ partieId: "c0", versBloc: 2 })).erreur).toBe("Cette partie n'existe plus.");
+    faux.avantTransaction = retirer("c1");
+    expect((await deplacerElement({ partieId: "c1", versBloc: 2, avantId: null })).erreur).toBe("Cette partie n'existe plus.");
+    expect(touchees()).toEqual([]);
+    expect(faux.audits).toEqual([]);
+  });
+
+  it("une ligne disparue pendant l'écriture (P2025) donne une phrase, pas une exception", async () => {
+    vi.mocked(db.sessionPartie.update).mockImplementationOnce((async () => {
+      throw Object.assign(new Error("Record to update not found."), { code: "P2025" });
+    }) as never);
+    const res = await deplacerElement({ partieId: "c2", versBloc: 1, avantId: "c0" });
+    expect(res.erreur).toMatch(/changé entre-temps/);
+    expect(faux.audits).toEqual([]);
   });
 });
 
@@ -802,8 +998,8 @@ describe("la séance reste rangée, quoi qu'on lui fasse", () => {
     ]);
     await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ECHAUFFEMENT" });
     rangeeSelonLaRegle();
-    // Les parties 2 et 5 deviennent 2 et 3 derrière la partie 1 née ici ; dans la partie 2, le cours
-    // passe devant l'option.
-    expect(rangee()).toEqual(["Partie 1 · Échauffement", "Partie 2 · Cours", "Partie 2 · Option", "Partie 3 · Cours"]);
+    // Les parties 2 et 5 deviennent 2 et 3 derrière la partie 1 née ici ; dans la partie 2, l'option
+    // garde sa place devant le cours (rang 1 contre 5) : l'ordre d'une partie est libre.
+    expect(rangee()).toEqual(["Partie 1 · Échauffement", "Partie 2 · Option", "Partie 2 · Cours", "Partie 3 · Cours"]);
   });
 });

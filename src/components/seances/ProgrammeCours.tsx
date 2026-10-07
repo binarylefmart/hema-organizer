@@ -2,6 +2,7 @@ import type { ProgrammeSeance } from "@/lib/planning";
 import { Icone } from "@/components/ui/Icone";
 import { PastilleNiveau } from "@/components/ui/Pastille";
 import { couleurNature, lignesProgramme, partiesProgramme, programmeMuet, texteLibre, type LigneProgramme, type PartieProgramme } from "./programme-cours";
+import { EcuNature } from "./EcuNature";
 
 /**
  * **Ce qu'on va travailler** — le programme d'un cours en lecture seule : le thème de chaque partie,
@@ -123,7 +124,10 @@ function LigneCase({ ligne: l, compact }: { ligne: LigneProgramme; compact: bool
         <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {/* `break-words` : un nom doit pouvoir se couper plutôt que de déborder de la fiche sur
               un téléphone de 390 px. */}
-          <span className={`min-w-0 self-start break-words rounded-md px-1.5 py-0.5 text-xs font-semibold ${couleurNature(l.nature)}`}>{l.nom}</span>
+          <span className={`inline-flex min-w-0 items-center gap-1 self-start break-words rounded-md px-1.5 py-0.5 text-xs font-semibold ${couleurNature(l.nature)}`}>
+            <EcuNature nature={l.nature} taille={14} />
+            {l.nom}
+          </span>
           <Contenu ligne={l} compact />
         </p>
         {description}
@@ -132,7 +136,10 @@ function LigneCase({ ligne: l, compact }: { ligne: LigneProgramme; compact: bool
   }
   return (
     <div className="flex flex-col gap-1">
-      <span className={`self-start rounded-lg px-2 py-0.5 text-sm font-semibold ${couleurNature(l.nature)}`}>{l.nom}</span>
+      <span className={`inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-0.5 text-sm font-semibold ${couleurNature(l.nature)}`}>
+        <EcuNature nature={l.nature} />
+        {l.nom}
+      </span>
       <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
         <Contenu ligne={l} compact={false} />
       </span>

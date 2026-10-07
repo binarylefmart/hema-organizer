@@ -1,17 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { ajouterPartie, deplacerPartie, retirerPartie } from "@/actions/planning";
+import { useState } from "react";
+
+import { ajouterPartie, deplacerElement, retirerPartie } from "@/actions/planning";
 import { enParallele, nomElement, nomPartie, partiesNommees } from "@/lib/constants";
 import type { CasePlanning } from "@/lib/planning";
 import { Icone } from "@/components/ui/Icone";
 import { Bouton } from "@/components/ui/Bouton";
 import { ListeDeroulante } from "@/components/ui/ListeDeroulante";
 import { couleurNature } from "@/components/seances/programme-cours";
+import { EcuNature } from "@/components/seances/EcuNature";
 import { CaseEditeur } from "./CaseEditeur";
+import { ListePartiesTelephone } from "./ListePartiesTelephone";
+import { useActionPartie } from "./useActionPartie";
+import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
 import { useOptionsCase } from "./ContexteOptions";
+import { useBrouillon } from "./ContexteBrouillon";
 import { champsLus } from "./options";
-import { blocsVoisins, confirmationRetrait, entreesAjout, grouperParPartie, lireAjout, nombreDeParties } from "./parties-carte";
+import { confirmationRetrait, pasVoisins, entreesAjout, grouperParPartie, lireAjout, nombreDeParties, type PasVoisin } from "./parties-carte";
 
 /**
  * **Le programme d'une séance, partie par partie, et les gestes qui le font bouger.**
@@ -19,8 +25,8 @@ import { blocsVoisins, confirmationRetrait, entreesAjout, grouperParPartie, lire
  * Une séance se lit « Partie 1 », « Partie 2 »… (demande de Delta : « fais une gestion
  * par partie, partie 1, 2, 3. Et dans chaque partie ajouter (via un menu déroulant) un échauffement,
  * un cours, une option (et/ou atelier si proposé) »). Chaque partie porte ses **éléments**, dans
- * l'ordre que le serveur rend (`sequenceRangee` : échauffement, cours, options, ateliers) — la carte
- * le **découpe** (`grouperParPartie`), elle ne le recalcule pas.
+ * l'ordre que le serveur rend (la colonne `ordre`, libre et réglée par l'équipe) — la carte le
+ * **découpe** (`grouperParPartie`), elle ne le recalcule pas.
  *
  * **Le nom d'un élément ne se saisit pas** : « Cours », « Option 2 » (`nomElement`, numéroté
  * seulement quand la partie en porte plusieurs), à la couleur de sa nature (`couleurNature`). Ce qui
@@ -33,11 +39,13 @@ import { blocsVoisins, confirmationRetrait, entreesAjout, grouperParPartie, lire
  * en place, vide, prêt à être rempli. Retirer, c'est dire que la partie ne le compte plus : le geste
  * est rare, irréversible, et demande donc une confirmation.
  *
- * **On change de partie en montant et en descendant, pas en glissant.** Cet écran se tient surtout
- * sur un téléphone, souvent debout dans une salle : un glisser-déposer y est une loterie, et il n'a
- * aucun équivalent au clavier. ↑ passe dans la partie précédente, ↓ dans la suivante (ou en ouvre
- * une nouvelle après la dernière) — à l'intérieur d'une partie, l'ordre est celui des natures, il ne
- * se règle pas.
+ * **Sur ordinateur, ↑ et ↓ déplacent d'une place dans l'ordre de lecture** (`pasVoisins`) : devant
+ * le voisin du dessus, ou derrière celui du dessous, dans la partie ; en tête ou en fin de partie,
+ * l'élément passe dans la partie voisine (à la fin de la précédente, au début de la suivante, ou dans
+ * une nouvelle après la dernière). L'ordre d'une partie est libre (colonne `ordre`, `deplacerElement`) :
+ * c'est le même geste que le glisser-déposer du téléphone, une place à la fois, et il a son
+ * équivalent au clavier. Sur un téléphone, en modification, la liste se règle par gestes
+ * (`ListePartiesTelephone`), où une poignée dédiée tient lieu de glisser.
  *
  * **Les intitulés « Partie N » ne se montrent que s'il y a plusieurs parties** (avenant,
  * `partiesNommees`) : en modification, on compte les parties **réelles** de la séance ; en lecture,
@@ -56,6 +64,24 @@ import { blocsVoisins, confirmationRetrait, entreesAjout, grouperParPartie, lire
  */
 export function ListeParties({ sessionId, parties, compact = false }: { sessionId: string; parties: CasePlanning[]; compact?: boolean }) {
   const { modifiable } = useOptionsCase();
+  const telephone = useEcranTelephone();
+  /*
+   * **Sur un téléphone, en modification, la liste se règle par gestes** (`ListePartiesTelephone`) :
+   * une ligne compacte par élément, qu'on touche pour la régler, qu'on glisse pour la retirer, qu'on
+   * déplace par sa poignée. Les ↑ ↓ Retirer ci-dessous restent ceux de l'ordinateur, et la lecture
+   * ne change nulle part. Le menu d'ajout et « Ajouter une partie » sont les mêmes des deux côtés.
+   */
+  if (modifiable && telephone) {
+    return (
+      <ListePartiesTelephone
+        sessionId={sessionId}
+        parties={parties}
+        compact={compact}
+        ajout={(bloc) => <AjouterDansPartie sessionId={sessionId} bloc={bloc} />}
+        pied={<PiedCarte sessionId={sessionId} bloc={nombreDeParties(parties) + 1} />}
+      />
+    );
+  }
   if (parties.length === 0 && !modifiable) return <p className="text-texte-secondaire">Programme à venir.</p>;
   const nbParties = nombreDeParties(parties);
   const gestes = modifiable;
@@ -102,7 +128,8 @@ export function ListeParties({ sessionId, parties, compact = false }: { sessionI
                     <ReglagesElement partie={partie} parties={parties} gestes={gestes} />
                   ) : (
                     // En lecture, le nom est une simple étiquette : rien à régler, rien à annoncer
-                    <span className={`self-start rounded-lg px-2 py-1 text-sm font-semibold ${couleurNature(partie.nature)}`}>
+                    <span className={`inline-flex items-center gap-1.5 self-start rounded-lg px-2 py-1 text-sm font-semibold ${couleurNature(partie.nature)}`}>
+                      <EcuNature nature={partie.nature} />
                       {nomElement(partie.nature, partie.rang, partie.nombre)}
                     </span>
                   )}
@@ -125,22 +152,21 @@ export function ListeParties({ sessionId, parties, compact = false }: { sessionI
  *
  * **La nature se choisit à l'ajout, et ne change plus après coup** (décision, voir
  * `CLAUDE.md`) : le menu « Ajouter dans la partie N… » la décide, et l'étiquette ne fait que la
- * montrer, exactement comme la lit un membre. Pour changer d'avis, on retire et on ajoute l'autre :
- * une ligne qui changerait de nature changerait aussi de place sous le doigt, puisqu'une partie se lit
- * échauffement, cours, options, ateliers.
+ * montrer, exactement comme la lit un membre. Pour changer d'avis, on retire et on ajoute l'autre.
  */
 function ReglagesElement({ partie, parties, gestes }: { partie: CasePlanning; parties: CasePlanning[]; gestes: boolean }) {
   // Un seul verrou et un seul message pour les gestes de la ligne : ils portent tous sur le même
   // élément, ils ne peuvent donc pas se chevaucher, et un échec se dit une fois.
   const [enVol, start, erreur] = useActionPartie();
-  const voisins = blocsVoisins(partie, parties);
+  const voisins = pasVoisins(partie, parties);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1">
-        <span className={`inline-flex min-h-12 shrink-0 items-center rounded-lg px-3 text-sm font-semibold ${couleurNature(partie.nature)}`}>
+        <span className={`inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold ${couleurNature(partie.nature)}`}>
+          <EcuNature nature={partie.nature} taille={20} />
           {nomElement(partie.nature, partie.rang, partie.nombre)}
         </span>
-        {gestes && <BoutonsElement partie={partie} haut={voisins.haut} bas={voisins.bas} nouvelle={voisins.nouvelle} enVol={enVol} start={start} />}
+        {gestes && <BoutonsElement partie={partie} haut={voisins.haut} bas={voisins.bas} enVol={enVol} start={start} />}
       </div>
       <p className="text-base font-semibold text-rouge empty:hidden" aria-live="polite">
         {erreur}
@@ -161,42 +187,41 @@ function BoutonsElement({
   partie,
   haut,
   bas,
-  nouvelle,
   enVol,
   start,
 }: {
   partie: CasePlanning;
-  /** Partie visée par ↑, `null` sur la première */
-  haut: number | null;
-  /** Partie visée par ↓ (le nombre de parties + 1 en ouvre une nouvelle), `null` quand rien ne changerait */
-  bas: number | null;
-  /** ↓ ouvre-t-il une partie qui n'existe pas encore ? */
-  nouvelle: boolean;
+  /** Le pas de ↑ (`pasVoisins`), `null` quand rien ne changerait */
+  haut: PasVoisin | null;
+  /** Le pas de ↓, `null` quand rien ne changerait */
+  bas: PasVoisin | null;
   enVol: boolean;
-  start: (action: () => Promise<{ erreur?: string } | undefined>) => void;
+  start: (action: () => Promise<{ erreur?: string } | undefined>, apres?: (succes: boolean) => void) => void;
 }) {
+  const brouillon = useBrouillon();
   const classe = "inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-bordure/70 bg-surface text-texte shadow-carte hover:bg-surface-douce disabled:opacity-40";
-  const titreBas = bas === null ? "Déjà seul dans la dernière partie" : nouvelle ? "Passer dans une nouvelle partie" : `Passer dans la partie ${bas}`;
-  const titreHaut = haut === null ? "Déjà dans la première partie" : `Passer dans la partie ${haut}`;
+  const titreHaut = haut?.titre ?? "Déjà en tête de la séance";
+  const titreBas = bas?.titre ?? "Déjà seul dans la dernière partie";
+  // **Figées jusqu'à la nouvelle liste** : `enVol` retombe avant que la séance rangée n'arrive, et un
+  // second clic visait alors l'ancienne place (« Rien à changer », ou une partie renumérotée). Les
+  // flèches restent grisées tant que leurs pas sont ceux du clic ; un échec, ou un délai, les rend.
+  const cle = `${haut?.versBloc}:${haut?.avantId}|${bas?.versBloc}:${bas?.avantId}`;
+  const [figee, setFigee] = useState<string | null>(null);
+  const bloquee = enVol || figee === cle;
+  const deplacer = (pas: PasVoisin) => {
+    setFigee(cle);
+    start(
+      () => deplacerElement({ partieId: partie.id, versBloc: pas.versBloc, avantId: pas.avantId }),
+      (ok) => (ok ? window.setTimeout(() => setFigee(null), 4000) : setFigee(null)),
+    );
+  };
   return (
     <>
       <span className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          className={classe}
-          disabled={enVol || haut === null}
-          title={titreHaut}
-          onClick={() => haut !== null && start(() => deplacerPartie({ partieId: partie.id, versBloc: haut }))}
-        >
+        <button type="button" className={classe} disabled={bloquee || haut === null} title={titreHaut} onClick={() => haut && deplacer(haut)}>
           <Icone nom="chevronHaut" titre={`${titreHaut} : « ${partie.libelle} »`} />
         </button>
-        <button
-          type="button"
-          className={classe}
-          disabled={enVol || bas === null}
-          title={titreBas}
-          onClick={() => bas !== null && start(() => deplacerPartie({ partieId: partie.id, versBloc: bas }))}
-        >
+        <button type="button" className={classe} disabled={bloquee || bas === null} title={titreBas} onClick={() => bas && deplacer(bas)}>
           <Icone nom="chevronBas" titre={`${titreBas} : « ${partie.libelle} »`} />
         </button>
       </span>
@@ -215,7 +240,12 @@ function BoutonsElement({
              partout ailleurs dans l'application (`BoutonAction`). Le journal d'audit garde ce qui
              est perdu (`planning.partie.retrait`), et la décision d'atelier (`atelier.decision`). */
           if (!window.confirm(confirmationRetrait(partie.libelle, partie.atelier))) return;
-          start(() => retirerPartie({ partieId: partie.id }));
+          // Un élément retiré n'a plus de réglage à appliquer : laissé au brouillon, il ferait refuser
+          // tout le lot par le serveur (« Cette partie n'existe plus »).
+          start(
+            () => retirerPartie({ partieId: partie.id }),
+            (ok) => ok && brouillon?.oublier(partie.id),
+          );
         }}
       >
         {/* Rouge, avec le pictogramme d'alerte : comme tout ce qui retire quelque chose. */}
@@ -294,29 +324,4 @@ function PiedCarte({ sessionId, bloc }: { sessionId: string; bloc: number }) {
       </p>
     </div>
   );
-}
-
-function useActionPartie(): [boolean, (action: () => Promise<{ erreur?: string } | undefined>, apres?: (succes: boolean) => void) => void, string | null] {
-  const [, start] = useTransition();
-  const [enVol, setEnVol] = useState(false);
-  const [erreur, setErreur] = useState<string | null>(null);
-  // `apres` rend le verdict à l'appelant : le choix de nature montre l'état voulu avant la réponse,
-  // et doit savoir quand rendre la main au serveur.
-  const lancer = (action: () => Promise<{ erreur?: string } | undefined>, apres?: (succes: boolean) => void) => {
-    setErreur(null);
-    setEnVol(true);
-    start(async () => {
-      try {
-        const res = await action();
-        if (res?.erreur) setErreur(res.erreur);
-        apres?.(!res?.erreur);
-      } catch {
-        setErreur("Action impossible — vérifie ta connexion et recommence.");
-        apres?.(false);
-      } finally {
-        setEnVol(false);
-      }
-    });
-  };
-  return [enVol, lancer, erreur];
 }

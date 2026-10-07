@@ -94,7 +94,7 @@ function EnteteSeance({ c, gestion }: { c: ColonnePlanning; gestion: boolean }) 
         {gestion && <EnCours taille={14} />}
       </span>
       <span className="block text-base text-texte-secondaire">
-        {formatHeure(c.heureDebut)} · {c.lieu}
+        {formatHeure(c.heureDebut)}&nbsp;· {c.lieu}
       </span>
     </>
   );
@@ -310,7 +310,7 @@ export function GrillePlanning({
               restantes={decoupe.restantes}
               nbVisibles={Math.min(colonnes.length, SEANCES_VISIBLES)}
             />
-            <BarreEdition lienLecture={lienLecture} />
+            <BarreEdition lienLecture={lienLecture} partiesAffichees={colonnes.flatMap((c) => c.parties.map((x) => x.id))} />
           </div>
         </FournisseurBrouillon>
       ) : (
@@ -341,7 +341,8 @@ function CarteSeancePlanning({ c, gestion, modifiable, selection }: { c: Colonne
   return (
     <article
       id={`seance-${c.id}`}
-      className={`flex min-w-0 scroll-mt-24 flex-col gap-3 rounded-2xl border bg-surface p-4 shadow-carte ${c.annulee ? "border-rouge/30" : "border-bordure/60"}`}
+      // Cochée dans la sélection multiple, au téléphone : fond doux et bordure pleine, lus sur la case (`:has`).
+      className={`flex min-w-0 scroll-mt-24 flex-col gap-3 rounded-2xl border bg-surface p-4 shadow-carte tel:has-[[data-case-selection]:checked]:border-primaire tel:has-[[data-case-selection]:checked]:bg-primaire-doux ${c.annulee ? "border-rouge/30" : "border-bordure/60"}`}
     >
       {/* La date et le taux côte à côte, séparés du programme par un filet : c'est l'en-tête de la
           carte, et il doit se lire sans être confondu avec la première partie. */}

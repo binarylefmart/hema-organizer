@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { transitionAutorisee } from "@/lib/ateliers";
 import { gesteRouge } from "@/components/ui/choix-geste";
-import { gesteAvecMot, gestesAtelier, STATUT_VISE, type PropositionAtelier } from "@/app/(app)/gestion/ateliers/gestes-atelier";
+import { gesteAvecMot, gestesAtelier, ouvrirVolet, STATUT_VISE, type PropositionAtelier } from "@/app/(app)/gestion/ateliers/gestes-atelier";
 
 /**
  * **« Que veux-tu faire ? » sur une proposition d'atelier** : seulement les gestes que le statut
@@ -79,5 +79,18 @@ describe("les gestes d'une proposition", () => {
     const page = readFileSync(path.join(process.cwd(), "src/app/(app)/gestion/ateliers/page.tsx"), "utf8");
     expect(page).not.toContain("BoutonAction");
     expect(page).toContain("effacerProposition.bind(null, a.id)");
+  });
+});
+
+describe("le mot facultatif des volets du téléphone", () => {
+  it("chaque volet s'ouvre sur un mot vide", () => {
+    expect(ouvrirVolet("refuser")).toEqual({ panneau: "refuser", mot: "" });
+    expect(ouvrirVolet("placer")).toEqual({ panneau: "placer", mot: "" });
+  });
+  it("la carte n'ouvre ses volets que par là : le mot d'un geste ne part pas avec l'autre", () => {
+    const source = readFileSync(path.join(process.cwd(), "src/app/(app)/gestion/ateliers/DecisionAtelier.tsx"), "utf8");
+    expect(source).not.toMatch(/setPanneau\("(placer|refuser)"\)/);
+    expect(source).toContain('ouvrir("refuser")');
+    expect(source).toContain('ouvrir("placer")');
   });
 });

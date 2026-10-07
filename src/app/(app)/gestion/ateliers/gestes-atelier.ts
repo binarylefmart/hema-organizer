@@ -66,6 +66,15 @@ export function gesteAtelierApplicable(geste: GesteAtelier, p: PropositionAtelie
 /** Les gestes qui écrivent au membre : eux seuls ouvrent la case du mot facultatif. */
 export const gesteAvecMot = (geste: GesteAtelier | "") => geste === "placer" || geste === "refuser";
 
+/**
+ * **Ouvrir le volet d'un geste, sur téléphone : le mot repart vide.** « Programmer » et « Refuser… »
+ * partagent le même champ ; sans cette remise à zéro, un « désolé, pas cette fois » tapé dans le
+ * volet du refus, refermé sans décider, partait dans l'email de la programmation.
+ */
+export function ouvrirVolet(geste: "placer" | "refuser", motGarde = ""): { panneau: "placer" | "refuser"; mot: string } {
+  return { panneau: geste, mot: motGarde };
+}
+
 /** Un geste de la carte, prêt à proposer. */
 export type GesteAtelierOffert = {
   geste: GesteAtelier;

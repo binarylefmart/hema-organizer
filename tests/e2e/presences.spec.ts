@@ -25,10 +25,10 @@ test("le volet « Mon historique » de l'onglet Séances affiche toutes les pér
   await expect(page.getByRole("heading", { name: "Mon historique" })).toBeVisible();
   const periodes = page.getByRole("main").locator("section:has(> header)");
   await expect(periodes).toHaveCount(1); // la période en cours (« Rentrée 2026 »)
-  await expect(periodes.first().getByText(/\d+ % · \d+ présences? sur \d+ cours/)).toBeVisible();
+  await expect(periodes.first().getByText(/\d+\s%\s·\s\d+\sprésences? sur \d+ cours/)).toBeVisible();
   // La liste nominative est visible pour tous
   await periodes.first().getByText(/Qui était là \?/).first().click();
-  await expect(periodes.first().getByText(/Présents · \d+/).first()).toBeVisible();
+  await expect(periodes.first().getByText(/Présents\s·\s\d+/).first()).toBeVisible();
 });
 
 /**
@@ -45,7 +45,12 @@ test("le bouton « Programme de la séance » ouvre le planning sur cette séanc
 
   // La **dernière** carte visible, et non la première : la séance la plus proche occupe déjà le haut
   // du planning, si bien qu'un test posé sur elle passerait au vert même sans défilement du tout.
-  const bouton = page.getByRole("link", { name: "Programme de la séance" }).last();
+  //
+  // Sur téléphone, la carte resserrée remplace le bouton plein par un lien court « Programme › »
+  // (le bouton existe encore, caché : il n'est pas dans l'arbre d'accessibilité). Même adresse,
+  // même ancre : c'est la même promesse, on la vérifie sur le geste qu'on a sous le doigt.
+  const telephone = (page.viewportSize()?.width ?? 1280) < 768;
+  const bouton = page.getByRole("link", { name: telephone ? "Programme" : "Programme de la séance", exact: true }).last();
   await expect(bouton).toBeVisible();
   const href = await bouton.getAttribute("href");
   const ancre = href?.split("#")[1];

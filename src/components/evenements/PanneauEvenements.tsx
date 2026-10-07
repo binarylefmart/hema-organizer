@@ -221,7 +221,7 @@ function Apercu({ evenement: e, ecu, fermer }: { evenement: ApercuEvenement; ecu
         </span>
         <span className="text-sm text-texte-secondaire">
           {dateEvenement(e.dateDebut, e.dateFin)}
-          {horaire && ` · ${horaire}`}
+          {horaire && `\u00a0· ${horaire}`}
         </span>
         {(e.lieu || e.organisateur) && (
           <span className="truncate text-sm text-texte-secondaire">{[e.lieu, e.organisateur].filter(Boolean).join(" · ")}</span>

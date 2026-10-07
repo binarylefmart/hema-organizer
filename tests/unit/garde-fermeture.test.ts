@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { brancherGardeFermeture, doitPrevenir, marquerEnAttente, oublierTout, reglagesEnAttente } from "@/components/planning/garde-fermeture";
+import fs from "node:fs";
+import path from "node:path";
+import { brancherGardeFermeture, cleBrouillon, doitPrevenir, marquerEnAttente, oublierTout, reglagesEnAttente } from "@/components/planning/garde-fermeture";
 
 /**
  * **La garde ne doit retenir la fermeture que s'il y a vraiment quelque chose à perdre.**
@@ -81,5 +83,38 @@ describe("branchement de la garde", () => {
     const debrancher = brancherGardeFermeture();
     debrancher();
     expect(() => debrancher()).not.toThrow();
+  });
+});
+
+/**
+ * **Un réglage du brouillon survit à sa case, et la garde avec lui.**
+ *
+ * Sur téléphone, seule la ligne dépliée monte sa `CaseEditeur` : régler puis « Fermer » la démonte,
+ * le volet de la sélection multiple règle des lignes qui ne l'ont jamais été, et sur ordinateur
+ * replier le trimestre démonte les cartes. La case relâchait au démontage la clé de sa partie, la
+ * même que celle du brouillon, et retirait l'écouteur : fermer l'onglet perdait le brouillon sans une
+ * question.
+ */
+describe("la garde du brouillon ne dépend pas des cases montées", () => {
+  it("une case qui se démonte ne relâche pas le réglage que le brouillon garde pour elle", () => {
+    marquerEnAttente(cleBrouillon("partie-1a"), true);
+    // Le démontage de la case : elle relâche sa propre clé, celle de ses envois en vol.
+    marquerEnAttente("partie-1a", false);
+    expect(doitPrevenir()).toBe(true);
+    // C'est le brouillon qui la rend, quand la case revient à la valeur du serveur ou à l'application.
+    marquerEnAttente(cleBrouillon("partie-1a"), false);
+    expect(doitPrevenir()).toBe(false);
+  });
+
+  it("la clé du brouillon et celle des envois en vol ne se confondent pas", () => {
+    expect(cleBrouillon("partie-1a")).not.toBe("partie-1a");
+  });
+
+  it("c'est le fournisseur du brouillon qui branche l'écouteur, tant qu'il n'est pas vide", () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "src/components/planning/ContexteBrouillon.tsx"), "utf8");
+    expect(source).toContain("brancherGardeFermeture()");
+    expect(source).toMatch(/modifiees\.size > 0/);
+    // Et il n'écrit jamais au registre sous la clé nue d'une partie, celle que la case relâche.
+    expect(source).not.toMatch(/marquerEnAttente\((partieId|cle),/);
   });
 });

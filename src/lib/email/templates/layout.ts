@@ -106,9 +106,15 @@ export function renderEmailTexte(c: EmailContenu, club: Pick<Identite, "nomClub"
   return lignes.join("\n");
 }
 
+/**
+ * Les adresses du pied de page deviennent des liens, **coupables n'importe où** : un lien de
+ * réinitialisation porte un jeton de soixante caractères sans espace, qui élargissait l'email au-delà
+ * de l'écran — et la messagerie du téléphone dézoomait tout le message pour le faire tenir.
+ * `word-break` pour les clients qui l'ignorent sous `overflow-wrap`, et l'inverse.
+ */
 function linkify(texte: string): string {
   return escapeHtml(texte).replace(
     /(https?:\/\/[^\s]+)/g,
-    (url) => `<a href="${url}" style="color:#9A3F26;">${url}</a>`,
+    (url) => `<a href="${url}" style="color:#9A3F26;word-break:break-all;overflow-wrap:anywhere;">${url}</a>`,
   );
 }

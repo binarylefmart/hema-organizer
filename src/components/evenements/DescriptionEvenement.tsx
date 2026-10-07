@@ -5,8 +5,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 /**
  * Le texte d'une annonce, replié à quelques lignes.
  *
- * Une annonce se lit comme un message : quatre lignes suffisent à savoir si l'on est concerné, et
- * le fil garde son rythme — sinon la carte la plus bavarde pousse toutes les autres hors de l'écran.
+ * Une annonce se lit comme un message : quatre lignes (trois sur téléphone) suffisent à savoir si
+ * l'on est concerné, et le fil garde son rythme — sinon la carte la plus bavarde pousse toutes les autres hors de l'écran.
  * « Lire la suite » n'apparaît que si le texte dépasse vraiment : on le mesure après le rendu
  * (`scrollHeight` contre `clientHeight`) plutôt que de le deviner au nombre de caractères, qui
  * ignore les retours à la ligne et la largeur de l'écran.
@@ -27,7 +27,8 @@ export function DescriptionEvenement({ texte }: { texte: string }) {
 
   return (
     <div className="flex flex-col items-start gap-1">
-      <p ref={ref} className={`whitespace-pre-line ${ouvert ? "" : "line-clamp-4"}`}>
+      {/* Trois lignes sur téléphone (la carte resserrée), quatre au-delà. */}
+      <p ref={ref} className={`whitespace-pre-line ${ouvert ? "" : "line-clamp-3 ordi:line-clamp-4"}`}>
         {texte}
       </p>
       {(deborde || ouvert) && (

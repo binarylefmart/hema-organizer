@@ -23,6 +23,8 @@ import { cleValeurServeur } from "@/components/ui/valeur-serveur";
 import { Icone } from "@/components/ui/Icone";
 import { lienCanal } from "./liens";
 import { RAISON_NON_EMIS, raisonSansObjet } from "./raisons";
+import { LigneNotification } from "./LigneNotification";
+import { idsRangeesNotification, resumeCanaux, STYLE_LIGNES_NOTIFICATION } from "./ligne-notification";
 
 /**
  * **La matrice notification × canal : un vrai tableau**.
@@ -131,208 +133,228 @@ function CaseCouple({ type, canal, coche, etat }: { type: TypeNotification; cana
 /** Le tableau des couples, et le choix d'envoi de chaque notification. */
 export function MatriceNotifications({ prefs, etats, volume }: { prefs: PreferencesNotifications; etats: EtatsCanaux; volume: EstimationEnvois }) {
   return (
-    <table className="block w-full border-collapse break-words text-left lg:table lg:table-fixed">
-      <caption className="sr-only">Ce que le club envoie ou publie, notification par notification et canal par canal</caption>
-      <thead className="hidden lg:table-header-group">
-        <tr>
-          <th scope="col" className="w-72 px-2 pb-2 align-bottom text-sm font-semibold uppercase tracking-wide text-texte-secondaire">
-            Notification
-          </th>
-          {CANAUX.map((canal) => (
-            /* `cellule-<canal>` jusque dans l'en-tête : un canal décoché grise alors **sa colonne
-               entière**, titre compris, au lieu de laisser un en-tête net au-dessus de cases
-               éteintes. C'est la même règle `:has()`, aucune classe de plus. */
-            <th
-              key={canal}
-              scope="col"
-              className={`cellule-${canal} ${etats[canal].operationnel ? "" : "canal-non-configure"} px-2 pb-2 align-bottom text-center text-sm`}
-            >
-              <span className="block font-semibold uppercase tracking-wide text-texte-secondaire">{LIBELLES_CANAUX[canal]}</span>
-              {!etats[canal].operationnel && <span className="block font-semibold text-ocre">non configuré</span>}
+    <>
+      {/* Au téléphone, chaque notification se replie en une ligne (`LigneNotification`) : la règle
+          qui cache ses rangées repliées est écrite une fois, ici, hors du tableau. */}
+      <style>{STYLE_LIGNES_NOTIFICATION}</style>
+      <table className="block w-full border-collapse break-words text-left lg:table lg:table-fixed">
+        <caption className="sr-only">Ce que le club envoie ou publie, notification par notification et canal par canal</caption>
+        <thead className="hidden lg:table-header-group">
+          <tr>
+            <th scope="col" className="w-72 px-2 pb-2 align-bottom text-sm font-semibold uppercase tracking-wide text-texte-secondaire">
+              Notification
             </th>
-          ))}
-        </tr>
-      </thead>
-      {TYPES_NOTIFICATION.map((type) => (
-        /*
-         * **Un `tbody` par notification, et c'est lui qui fait la fiche.** La ligne des cases et la
-         * ligne « Envoi par email » appartiennent à la même notification : groupées, elles se
-         * séparent des voisines d'un seul filet (le `divide-y` des fiches d'avant), au doigt comme
-         * au-delà du palier.
-         */
-        <tbody
-          key={type}
-          /* `first-of-type` et non `first` : les enfants du tableau sont `caption, thead,
-              tbody` × une par notification, donc le premier `tbody` n'est **pas** `:first-child` — les deux classes ne
-              s'appliquaient jamais. `last:` fonctionnait, lui : le dernier `tbody` est bien le
-              dernier enfant. */
-          className="block border-t border-bordure/60 py-3 first-of-type:border-t-0 first-of-type:pt-0 last:pb-0 lg:table-row-group lg:py-0"
-        >
-          <tr className="block lg:table-row">
-            {/*
-              * **`aria-label` : l'en-tête de rangée ne vaut que le titre**. Un lecteur d'écran
-              * annonce le nom de l'en-tête de rangée **avant chacune des six cellules** de la
-              * ligne : avec la phrase « quand » dans le même `<th>`, c'étaient jusqu'à **65 mots de
-              * préambule, six fois, sur huit lignes** (l'alerte « peu de monde » à elle seule). La
-              * matrice en devenait impraticable à l'oreille — et c'est une régression du tableau :
-              * en cartes, la phrase était un `<p>`, lu une fois.
-              *
-              * Le nom se limite donc au titre, et la phrase **reste dans la cellule** : elle n'est
-              * plus répétée à chaque case, mais qui parcourt la ligne l'entend toujours. La seule
-              * autre façon de faire aurait été de la sortir dans une rangée à elle, ce qui aurait
-              * changé l'ordre de lecture sur un téléphone — la phrase décrit la notification, elle
-              * se lit avant ses interrupteurs.
-              */}
-            <th
-              scope="row"
-              aria-label={DESCRIPTIONS[type].titre}
-              className="block text-left align-top font-normal lg:table-cell lg:w-72 lg:py-3 lg:pr-4"
+            {CANAUX.map((canal) => (
+              /* `cellule-<canal>` jusque dans l'en-tête : un canal décoché grise alors **sa colonne
+                 entière**, titre compris, au lieu de laisser un en-tête net au-dessus de cases
+                 éteintes. C'est la même règle `:has()`, aucune classe de plus. */
+              <th
+                key={canal}
+                scope="col"
+                className={`cellule-${canal} ${etats[canal].operationnel ? "" : "canal-non-configure"} px-2 pb-2 align-bottom text-center text-sm`}
+              >
+                <span className="block font-semibold uppercase tracking-wide text-texte-secondaire">{LIBELLES_CANAUX[canal]}</span>
+                {!etats[canal].operationnel && <span className="block font-semibold text-ocre">non configuré</span>}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        {TYPES_NOTIFICATION.map((type) => {
+          const concernes = CANAUX.filter((canal) => CANAUX_PAR_NOTIFICATION[type].includes(canal));
+          const [idCases, idMode] = idsRangeesNotification(type);
+          return (
+            /*
+             * **Un `tbody` par notification, et c'est lui qui fait la fiche.** La ligne des cases et la
+             * ligne « Envoi par email » appartiennent à la même notification : groupées, elles se
+             * séparent des voisines d'un seul filet (le `divide-y` des fiches d'avant), au doigt comme
+             * au-delà du palier.
+             *
+             * **Le `tbody` est rendu par `LigneNotification`**, qui y ajoute la ligne repliable du
+             * téléphone ; les classes et les rangées restent écrites ici, telles quelles.
+             */
+            <LigneNotification
+              key={type}
+              type={type}
+              titre={DESCRIPTIONS[type].titre}
+              canaux={concernes.map((canal) => ({ id: `${type}-${canal}`, libelle: LIBELLES_CANAUX[canal] }))}
+              resume={resumeCanaux(
+                concernes.filter((canal) => prefs.notifications[type][canal]).map((canal) => LIBELLES_CANAUX[canal]),
+                concernes.length,
+              )}
+              /* `first-of-type` et non `first` : les enfants du tableau sont `caption, thead,
+                  tbody` × une par notification, donc le premier `tbody` n'est **pas** `:first-child` — les deux classes ne
+                  s'appliquaient jamais. `last:` fonctionnait, lui : le dernier `tbody` est bien le
+                  dernier enfant. */
+              className="block border-t border-bordure/60 py-3 first-of-type:border-t-0 first-of-type:pt-0 last:pb-0 lg:table-row-group lg:py-0"
             >
-              <span className="block font-semibold">{DESCRIPTIONS[type].titre}</span>
-              <span className="block text-sm text-texte-secondaire">{DESCRIPTIONS[type].quand}</span>
-            </th>
-            {CANAUX.map((canal) => {
-              const concerne = CANAUX_PAR_NOTIFICATION[type].includes(canal);
-              if (!concerne) {
-                /* **« Sans objet » dit toujours pourquoi.** L'infobulle annonçait « message
-                   personnel : envoyé par email uniquement » pour *toutes* les cellules vides, ce
-                   qui était faux dès la deuxième (« période suivante » n'est pas un message
-                   personnel, c'est une affaire de bureau) — et franchement trompeur avec la colonne
-                   « Site du club », dont les absences ont chacune leur raison (`RAISON_API_EXCLUE`,
-                   affichée telle quelle : un réglage absent sans explication passe pour un oubli, et
-                   quelqu'un finit par l'« ajouter »). La raison reste sur la **cellule** : elle est
-                   la même pour qui la survole au doigt ou à la souris. */
-                return (
-                  /* **Pas de `cellule-<canal>` ici, et c'est voulu** : la règle `:has()` qui grise un
-                     canal décoché pose aussi `pointer-events: none`, ce qui emporterait l'infobulle
-                     avec l'opacité — la raison deviendrait illisible pour la seule raison que le
-                     canal est coupé, alors qu'elle n'a rien à voir avec ce réglage (ces couples
-                     n'existent pas, quoi qu'on coche). C'était déjà le cas avant le tableau. */
-                  /* **Vide, et `hidden` sous le palier** : « sans objet » ne s'écrit plus, et une
-                      cellule vide qui garderait son `py-3` laisserait 24 px de blanc par canal
-                      absent dans la fiche d'un téléphone — jusqu'à quatre par notification, pour ne
-                      rien dire. Au-delà du palier elle reste en place : c'est une colonne de
-                      tableau, le vide y est l'information. */
-                  <td
-                    key={canal}
-                    className="hidden lg:table-cell lg:px-2 lg:py-3 lg:text-center lg:align-middle"
-                    title={raisonSansObjet(type, canal)}
-                  />
-                );
-              }
-              const etat = etats[canal];
-              return (
-                <td
-                  key={canal}
-                  /* `canal-non-configure` : la colonne reste grisée, mais garde ses événements —
-                     sinon l'infobulle qui dit pourquoi la case est morte et le lien qui la ranime
-                     deviennent tous deux inatteignables (voir `CSS_CANAL_COUPE`, côté page). */
-                  className={`cellule-${canal} ${etat.operationnel ? "" : "canal-non-configure"} block lg:table-cell lg:px-2 lg:py-3 lg:text-center lg:align-middle`}
+              <tr className="block lg:table-row">
+                {/*
+                  * **`aria-label` : l'en-tête de rangée ne vaut que le titre**. Un lecteur d'écran
+                  * annonce le nom de l'en-tête de rangée **avant chacune des six cellules** de la
+                  * ligne : avec la phrase « quand » dans le même `<th>`, c'étaient jusqu'à **65 mots de
+                  * préambule, six fois, sur huit lignes** (l'alerte « peu de monde » à elle seule). La
+                  * matrice en devenait impraticable à l'oreille — et c'est une régression du tableau :
+                  * en cartes, la phrase était un `<p>`, lu une fois.
+                  *
+                  * Le nom se limite donc au titre, et la phrase **reste dans la cellule** : elle n'est
+                  * plus répétée à chaque case, mais qui parcourt la ligne l'entend toujours. La seule
+                  * autre façon de faire aurait été de la sortir dans une rangée à elle, ce qui aurait
+                  * changé l'ordre de lecture sur un téléphone — la phrase décrit la notification, elle
+                  * se lit avant ses interrupteurs.
+                  */}
+                <th
+                  id={idCases}
+                  scope="row"
+                  aria-label={DESCRIPTIONS[type].titre}
+                  className="block text-left align-top font-normal lg:table-cell lg:w-72 lg:py-3 lg:pr-4"
                 >
-                  {/* `coche` dit ce que la **base** porte, sans le masquer quand le canal est
-                      débranché : une case décochée à l'écran alors qu'elle est vraie en base, c'est
-                      un envoi — ou une publication sur Internet — qui repart dès qu'on branche le
-                      canal, sans que personne l'ait voulu. La case reste `disabled` : la montrer
-                      juste ne permet rien de plus. */}
-                  <CaseCouple type={type} canal={canal} coche={prefs.notifications[type][canal] ?? false} etat={etat} />
-                  {!etat.operationnel && (
-                    /* Le renvoi reste **sous la case**, là où la question se pose. Au-delà du palier,
-                       le nom du canal est déjà en tête de colonne : seul « Configurer » s'affiche,
-                       mais le lien garde son libellé entier pour qui l'entend lire. */
-                    <Link
-                      href={lienCanal(canal)}
-                      className="mb-2 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-lien lg:mb-0 lg:min-h-0 lg:py-1"
+                  <span className="titre-notification block font-semibold">{DESCRIPTIONS[type].titre}</span>
+                  <span className="block text-sm text-texte-secondaire">{DESCRIPTIONS[type].quand}</span>
+                </th>
+                {CANAUX.map((canal) => {
+                  const concerne = CANAUX_PAR_NOTIFICATION[type].includes(canal);
+                  if (!concerne) {
+                    /* **« Sans objet » dit toujours pourquoi.** L'infobulle annonçait « message
+                       personnel : envoyé par email uniquement » pour *toutes* les cellules vides, ce
+                       qui était faux dès la deuxième (« période suivante » n'est pas un message
+                       personnel, c'est une affaire de bureau) — et franchement trompeur avec la colonne
+                       « Site du club », dont les absences ont chacune leur raison (`RAISON_API_EXCLUE`,
+                       affichée telle quelle : un réglage absent sans explication passe pour un oubli, et
+                       quelqu'un finit par l'« ajouter »). La raison reste sur la **cellule** : elle est
+                       la même pour qui la survole au doigt ou à la souris. */
+                    return (
+                      /* **Pas de `cellule-<canal>` ici, et c'est voulu** : la règle `:has()` qui grise un
+                         canal décoché pose aussi `pointer-events: none`, ce qui emporterait l'infobulle
+                         avec l'opacité — la raison deviendrait illisible pour la seule raison que le
+                         canal est coupé, alors qu'elle n'a rien à voir avec ce réglage (ces couples
+                         n'existent pas, quoi qu'on coche). C'était déjà le cas avant le tableau. */
+                      /* **Vide, et `hidden` sous le palier** : « sans objet » ne s'écrit plus, et une
+                          cellule vide qui garderait son `py-3` laisserait 24 px de blanc par canal
+                          absent dans la fiche d'un téléphone — jusqu'à quatre par notification, pour ne
+                          rien dire. Au-delà du palier elle reste en place : c'est une colonne de
+                          tableau, le vide y est l'information. */
+                      <td
+                        key={canal}
+                        className="hidden lg:table-cell lg:px-2 lg:py-3 lg:text-center lg:align-middle"
+                        title={raisonSansObjet(type, canal)}
+                      />
+                    );
+                  }
+                  const etat = etats[canal];
+                  return (
+                    <td
+                      key={canal}
+                      /* `canal-non-configure` : la colonne reste grisée, mais garde ses événements —
+                         sinon l'infobulle qui dit pourquoi la case est morte et le lien qui la ranime
+                         deviennent tous deux inatteignables (voir `CSS_CANAL_COUPE`, côté page). */
+                      className={`cellule-${canal} ${etat.operationnel ? "" : "canal-non-configure"} block lg:table-cell lg:px-2 lg:py-3 lg:text-center lg:align-middle`}
                     >
-                      Configurer <span className="lg:sr-only">{LIBELLES_CANAUX[canal]}</span>
-                      <Icone nom="fleche" taille={16} />
-                    </Link>
+                      {/* `coche` dit ce que la **base** porte, sans le masquer quand le canal est
+                          débranché : une case décochée à l'écran alors qu'elle est vraie en base, c'est
+                          un envoi — ou une publication sur Internet — qui repart dès qu'on branche le
+                          canal, sans que personne l'ait voulu. La case reste `disabled` : la montrer
+                          juste ne permet rien de plus. */}
+                      <CaseCouple type={type} canal={canal} coche={prefs.notifications[type][canal] ?? false} etat={etat} />
+                      {!etat.operationnel && (
+                        /* Le renvoi reste **sous la case**, là où la question se pose. Au-delà du palier,
+                           le nom du canal est déjà en tête de colonne : seul « Configurer » s'affiche,
+                           mais le lien garde son libellé entier pour qui l'entend lire. */
+                        <Link
+                          href={lienCanal(canal)}
+                          className="mb-2 inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-lien lg:mb-0 lg:min-h-0 lg:py-1"
+                        >
+                          Configurer <span className="lg:sr-only">{LIBELLES_CANAUX[canal]}</span>
+                          <Icone nom="fleche" taille={16} />
+                        </Link>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/*
+               * **« Envoi par email » reste SOUS la ligne, et pas dans une septième colonne.** Essayé
+               * dans une colonne : la liste déroulante fait 14 rem à elle seule et sa phrase d'aide est
+               * une phrase — « Un email par personne — aujourd'hui 12 destinataires à chaque envoi », ou
+               * l'adresse de la liste et le lien pour la changer. Dans une colonne de 7 rem, elle
+               * repousse les six canaux à la largeur d'une case et fait des lignes de huit lignes de
+               * haut : on perdrait exactement ce qu'on vient de gagner. Une cellule qui s'étend sur
+               * toute la largeur, en revanche, se lit comme ce qu'elle est — un réglage de la ligne du
+               * dessus, à l'intérieur du même `tbody`, avec un fond légèrement appuyé pour qu'on ne la
+               * rattache pas à la notification suivante.
+               */}
+              <tr className="block lg:table-row">
+                <td id={idMode} colSpan={CANAUX.length + 1} className="block lg:table-cell lg:rounded-xl lg:bg-surface-douce/50 lg:px-2 lg:py-2">
+                  {/* **« Par membre » ou « Liste de distribution »** : le réglage qui décide si l'email
+                      part en N exemplaires ou en un seul. Il ne concerne que l'email — le téléphone reste
+                      personnel dans tous les cas, et les salons ont toujours été collectifs. */}
+                  {estRoutable(type) ? (
+                    <div
+                      /* `canal-non-configure` ici aussi, et c'est le même défaut une ligne plus bas :
+                          en production **sans SMTP**, `#canal-email` est rendu décoché, donc ces quatre
+                          lignes devenaient inertes — avec le lien « Enregistrer l'adresse sur la page
+                          du canal Email », c'est-à-dire **le geste qui sort de cette situation**.
+                          Trouvé par la relecture adverse, à l'endroit que la première correction
+                          n'avait pas atteint. */
+                      className={`cellule-email ${etats.email.operationnel ? "" : "canal-non-configure"} mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 lg:mt-0`}
+                    >
+                      {/* **La liste du dépôt, et son libellé reste EN LIGNE.** `ChampListe` pose le sien
+                          au-dessus de la liste ; ici la ligne se lit « Envoi par email : [Par membre] »,
+                          donc le libellé de `ChampListe` est réservé aux lecteurs d'écran
+                          (`libelleMasque`) et celui qu'on voit est un simple texte, `aria-hidden` pour
+                          que la synthèse ne le lise pas deux fois.
+                          Non pilotée : son miroir du serveur reprend la valeur enregistrée après un
+                          « Enregistrer » (le rôle qu'avait la clé de remontage de la liste native), et
+                          son champ caché poste `champMode(type)` comme avant. La phrase d'aide
+                          ci-dessous reste reliée à la liste (`decritPar`), comme elle l'était à la liste
+                          native par `aria-describedby`. */}
+                      <span aria-hidden className="font-semibold">
+                        Envoi par email :
+                      </span>
+                      <ChampListe
+                        label="Envoi par email"
+                        libelleMasque
+                        id={`mode-${type}`}
+                        name={champMode(type)}
+                        valeur={prefs.modes[type]}
+                        decritPar={`mode-${type}-aide`}
+                        entrees={MODES_ENVOI.map((mode) => ({ valeur: mode, libelle: LIBELLES_MODE[mode] }))}
+                      />
+                      {/* **Où se règle l'adresse, dit DANS la ligne**. Le renvoi existait en bas de
+                          l'écran, après la liste entière des notifications : on choisit « Liste de
+                          distribution » ici, et la seule question qui vient ensuite — *quelle* adresse
+                          ? — trouvait sa réponse dix tuiles plus loin. Il est donc **sur la ligne du
+                          choix**, et il insiste quand aucune adresse n'est encore enregistrée : ce
+                          réglage-là n'enverrait nulle part. */}
+                      <p id={`mode-${type}-aide`} className="basis-full text-sm text-texte-secondaire lg:basis-auto">
+                        {prefs.modes[type] === "liste" ? (
+                          <>
+                            {prefs.adresseListe ? (
+                              <>Un message à {prefs.adresseListe}.</>
+                            ) : (
+                              <span className="font-semibold text-ocre">Aucune adresse de liste n&apos;est encore enregistrée : rien ne partira.</span>
+                            )}{" "}
+                            Les refus individuels ne s&apos;y appliquent plus : c&apos;est le serveur mail du club qui gère les départs.{" "}
+                            <Link href={lienCanal("email")} className="font-semibold text-lien">
+                              {prefs.adresseListe ? "Changer l'adresse" : "Enregistrer l'adresse"} sur la page du canal Email
+                            </Link>
+                            .
+                          </>
+                        ) : (
+                          `Un email par personne — aujourd'hui ${volume.lignes.find((l) => l.type === type)?.parEnvoi ?? 0} destinataires à chaque envoi.`
+                        )}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-sm text-texte-secondaire lg:mt-0">
+                      <span className="font-semibold">Toujours « {LIBELLES_MODE.individuel} »</span> — {RAISON_ROUTAGE_FIXE[type]}
+                    </p>
                   )}
                 </td>
-              );
-            })}
-          </tr>
-          {/*
-           * **« Envoi par email » reste SOUS la ligne, et pas dans une septième colonne.** Essayé
-           * dans une colonne : la liste déroulante fait 14 rem à elle seule et sa phrase d'aide est
-           * une phrase — « Un email par personne — aujourd'hui 12 destinataires à chaque envoi », ou
-           * l'adresse de la liste et le lien pour la changer. Dans une colonne de 7 rem, elle
-           * repousse les six canaux à la largeur d'une case et fait des lignes de huit lignes de
-           * haut : on perdrait exactement ce qu'on vient de gagner. Une cellule qui s'étend sur
-           * toute la largeur, en revanche, se lit comme ce qu'elle est — un réglage de la ligne du
-           * dessus, à l'intérieur du même `tbody`, avec un fond légèrement appuyé pour qu'on ne la
-           * rattache pas à la notification suivante.
-           */}
-          <tr className="block lg:table-row">
-            <td colSpan={CANAUX.length + 1} className="block lg:table-cell lg:rounded-xl lg:bg-surface-douce/50 lg:px-2 lg:py-2">
-              {/* **« Par membre » ou « Liste de distribution »** : le réglage qui décide si l'email
-                  part en N exemplaires ou en un seul. Il ne concerne que l'email — le téléphone reste
-                  personnel dans tous les cas, et les salons ont toujours été collectifs. */}
-              {estRoutable(type) ? (
-                <div
-                  /* `canal-non-configure` ici aussi, et c'est le même défaut une ligne plus bas :
-                      en production **sans SMTP**, `#canal-email` est rendu décoché, donc ces quatre
-                      lignes devenaient inertes — avec le lien « Enregistrer l'adresse sur la page
-                      du canal Email », c'est-à-dire **le geste qui sort de cette situation**.
-                      Trouvé par la relecture adverse, à l'endroit que la première correction
-                      n'avait pas atteint. */
-                  className={`cellule-email ${etats.email.operationnel ? "" : "canal-non-configure"} mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 lg:mt-0`}
-                >
-                  {/* **La liste du dépôt, et son libellé reste EN LIGNE.** `ChampListe` pose le sien
-                      au-dessus de la liste ; ici la ligne se lit « Envoi par email : [Par membre] »,
-                      donc le libellé de `ChampListe` est réservé aux lecteurs d'écran
-                      (`libelleMasque`) et celui qu'on voit est un simple texte, `aria-hidden` pour
-                      que la synthèse ne le lise pas deux fois.
-                      Non pilotée : son miroir du serveur reprend la valeur enregistrée après un
-                      « Enregistrer » (le rôle qu'avait la clé de remontage de la liste native), et
-                      son champ caché poste `champMode(type)` comme avant. La phrase d'aide
-                      ci-dessous reste reliée à la liste (`decritPar`), comme elle l'était à la liste
-                      native par `aria-describedby`. */}
-                  <span aria-hidden className="font-semibold">
-                    Envoi par email :
-                  </span>
-                  <ChampListe
-                    label="Envoi par email"
-                    libelleMasque
-                    id={`mode-${type}`}
-                    name={champMode(type)}
-                    valeur={prefs.modes[type]}
-                    decritPar={`mode-${type}-aide`}
-                    entrees={MODES_ENVOI.map((mode) => ({ valeur: mode, libelle: LIBELLES_MODE[mode] }))}
-                  />
-                  {/* **Où se règle l'adresse, dit DANS la ligne**. Le renvoi existait en bas de
-                      l'écran, après la liste entière des notifications : on choisit « Liste de
-                      distribution » ici, et la seule question qui vient ensuite — *quelle* adresse
-                      ? — trouvait sa réponse dix tuiles plus loin. Il est donc **sur la ligne du
-                      choix**, et il insiste quand aucune adresse n'est encore enregistrée : ce
-                      réglage-là n'enverrait nulle part. */}
-                  <p id={`mode-${type}-aide`} className="basis-full text-sm text-texte-secondaire lg:basis-auto">
-                    {prefs.modes[type] === "liste" ? (
-                      <>
-                        {prefs.adresseListe ? (
-                          <>Un message à {prefs.adresseListe}.</>
-                        ) : (
-                          <span className="font-semibold text-ocre">Aucune adresse de liste n&apos;est encore enregistrée : rien ne partira.</span>
-                        )}{" "}
-                        Les refus individuels ne s&apos;y appliquent plus : c&apos;est le serveur mail du club qui gère les départs.{" "}
-                        <Link href={lienCanal("email")} className="font-semibold text-lien">
-                          {prefs.adresseListe ? "Changer l'adresse" : "Enregistrer l'adresse"} sur la page du canal Email
-                        </Link>
-                        .
-                      </>
-                    ) : (
-                      `Un email par personne — aujourd'hui ${volume.lignes.find((l) => l.type === type)?.parEnvoi ?? 0} destinataires à chaque envoi.`
-                    )}
-                  </p>
-                </div>
-              ) : (
-                <p className="mt-1 text-sm text-texte-secondaire lg:mt-0">
-                  <span className="font-semibold">Toujours « {LIBELLES_MODE.individuel} »</span> — {RAISON_ROUTAGE_FIXE[type]}
-                </p>
-              )}
-            </td>
-          </tr>
-        </tbody>
-      ))}
-    </table>
+              </tr>
+            </LigneNotification>
+          );
+        })}
+      </table>
+    </>
   );
 }

@@ -154,7 +154,7 @@ export function TableauMembres({ membres }: { membres: MembreAssiduite[] }) {
                   {/* `whitespace-nowrap` : sans lui, « 100 % / 12 » passait à la ligne quand
                       « 0 % / 12 » tenait, et les lignes ondulaient sur toute la hauteur du tableau. */}
                   <td className="whitespace-nowrap tabular-nums md:table-cell md:px-3 md:py-2.5 md:text-right md:align-middle">
-                    <strong>{m.pourcentage} %</strong> <span className="text-sm text-texte-secondaire">/ {m.seances}</span>
+                    <strong>{m.pourcentage}&nbsp;%</strong> <span className="text-sm text-texte-secondaire">/ {m.seances}</span>
                   </td>
                 </tr>
               ))}

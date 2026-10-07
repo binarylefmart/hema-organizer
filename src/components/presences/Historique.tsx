@@ -7,6 +7,7 @@ import { Icone, type NomIcone } from "@/components/ui/Icone";
 import { ListeParticipants } from "@/components/seances/ListeParticipants";
 import { ListeRepliee } from "@/components/seances/ListeRepliee";
 import { couper, COURS_HISTORIQUE_VISIBLES } from "@/components/seances/listes";
+import { Tuile } from "@/components/accueil/Indicateurs";
 import Link from "next/link";
 
 const PASTILLES: Record<AttendanceStatut, { icone: NomIcone; classes: string }> = {
@@ -44,12 +45,12 @@ function LigneSeance({ s }: { s: HistoriquePeriode["seances"][number] }) {
       <div className="flex items-start gap-3">
         <span className="flex min-w-0 flex-1 flex-col">
           <span className={`font-semibold ${s.annulee ? "text-texte-secondaire" : ""}`}>
-            {formatDateCourte(s.date)} · {formatHeure(s.heureDebut)}
+            {formatDateCourte(s.date)}&nbsp;· {formatHeure(s.heureDebut)}
           </span>
           <span className="text-texte-secondaire">
             {s.annulee
               ? s.motifAnnulation || "Séance annulée"
-              : `${[s.disciplines.join(" · "), s.theme].filter(Boolean).join(" — ") || s.lieu} · ${s.compteurs.presents} présent${s.compteurs.presents > 1 ? "s" : ""} sur ${s.compteurs.invites}`}
+              : `${[s.disciplines.join("\u00a0· "), s.theme].filter(Boolean).join(" — ") || s.lieu}\u00a0· ${s.compteurs.presents}\u00a0présent${s.compteurs.presents > 1 ? "s" : ""} sur ${s.compteurs.invites}`}
           </span>
         </span>
         <Pastille statut={s.statut} annulee={s.annulee} />
@@ -90,8 +91,21 @@ function LigneSeance({ s }: { s: HistoriquePeriode["seances"][number] }) {
  */
 export async function Historique({ userId, tout = false }: { userId: string; tout?: boolean }) {
   const periodes = await historiquePresences(userId, undefined, tout ? undefined : COURS_HISTORIQUE_VISIBLES);
+  /*
+   * **Au téléphone, « Ma présence ce trimestre » en tête** : le taux de la période en cours, **le
+   * chiffre même de son en-tête plus bas** (`historiquePresences`, qui borne déjà à la date
+   * d'arrivée) — rien n'est recompté ici, deux calculs finiraient par dire deux choses. La tuile est
+   * celle de l'accueil, et elle se retire dans le même cas : aucun cours compté, un taux à 0 % ne
+   * voudrait rien dire.
+   */
+  const enCours = periodes.find((p) => p.statut === "ACTIVE" && p.comptees > 0);
   return (
     <div className="flex flex-col gap-6">
+      {enCours && (
+        <ul className="ordi:hidden">
+          <Tuile valeur={`${enCours.pourcentage} %`} libelle="Ma présence ce trimestre" detail={`${enCours.presences} cours sur ${enCours.comptees}`} />
+        </ul>
+      )}
       {periodes.length === 0 && (
         <Alerte type="info" titre="Aucun cours passé pour l&apos;instant">
           Ton historique se remplira au fur et à mesure des cours.
@@ -106,7 +120,7 @@ export async function Historique({ userId, tout = false }: { userId: string; tou
             </h2>
             {p.comptees > 0 && (
               <p className="text-sm text-texte-secondaire">
-                <strong className="text-base text-texte">{p.pourcentage} %</strong> · {p.presences} présence{p.presences > 1 ? "s" : ""} sur {p.comptees}{" "}
+                <strong className="text-base text-texte">{p.pourcentage}&nbsp;%</strong>&nbsp;· {p.presences}&nbsp;présence{p.presences > 1 ? "s" : ""} sur {p.comptees}{" "}
                 cours
               </p>
             )}

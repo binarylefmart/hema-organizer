@@ -73,7 +73,7 @@ export default async function PageAudit({ searchParams }: Props) {
       <div>
         <h1 className="text-3xl">Journal d&apos;audit</h1>
         <p className="text-texte-secondaire">
-          {total} entrée{total > 1 ? "s" : ""} · conservées {retention} jours
+          {total}&nbsp;entrée{total > 1 ? "s" : ""}&nbsp;· conservées {retention}&nbsp;jours
         </p>
       </div>
       <Carte>

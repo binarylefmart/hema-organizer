@@ -1,0 +1,41 @@
+# **Test du déploiement** — à lancer à la main (Actions → « Test du déploiement » → Run workflow).
+#
+# Il redéploie la stack **telle quelle** (même image, retéléchargée), par le même script que le job
+# « Déploiement sur Portainer » du flux Release, et attend que le conteneur ait redémarré et soit sain.
+# Rien n'est construit ni publié : c'est la façon sûre d'éprouver le runner et les réglages Portainer
+# sans attendre une version. Coût : quelques secondes d'interruption, comme un « Update the stack ».
+# Même garde que la publication : la variable `PORTAINER_DEPLOY` doit valoir `true`.
+name: Test du déploiement
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploiement-portainer
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Redéploiement à l'identique
+    if: vars.PORTAINER_DEPLOY == 'true'
+    runs-on: [self-hosted, hema-deploy]
+    env:
+      PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+      PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
+      STACK_NAME: ${{ vars.PORTAINER_STACK_NAME }}
+      STACK_ID: ${{ vars.PORTAINER_STACK_ID }}
+      ENDPOINT_ID: ${{ vars.PORTAINER_ENDPOINT_ID }}
+      CONTENEUR: ${{ vars.PORTAINER_CONTENEUR || 'hema-organizer' }}
+      TLS_INSECURE: ${{ vars.PORTAINER_TLS_INSECURE || 'false' }}
+    steps:
+      - name: Récupération du dépôt
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/deployer-portainer.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Redéploiement et attente du conteneur sain
+        run: bash scripts/deployer-portainer.sh

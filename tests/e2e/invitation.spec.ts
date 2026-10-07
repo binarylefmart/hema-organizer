@@ -198,6 +198,8 @@ test("un administrateur régénère puis révoque le lien d'un membre", async ({
   await connecter(page, COMPTES.admin);
   await page.goto("/admin/membres");
   await page.getByRole("link", { name: "Foxtrot 08" }).click();
+  // Au téléphone, la carte des périodes est une ligne repliée de la liste groupée : on la déplie.
+  await page.getByRole("button", { name: /^Périodes et liens d'accès/ }).click();
   // Les périodes sont listées de la plus récente à la plus ancienne : la période en cours (celle du lien fixe) est la dernière ouverte
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Régénérer et renvoyer" }).last().click();

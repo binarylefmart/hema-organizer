@@ -15,8 +15,9 @@ import { PLEINE_LARGEUR } from "@/components/ui/pleine-largeur";
 function CarteEvenementSquelette() {
   return (
     <section className="overflow-hidden rounded-2xl border border-bordure/60 bg-surface shadow-carte">
-      <Bloc className="aspect-[16/9] w-full rounded-none" />
-      <div className="flex flex-col gap-3 p-4 sm:p-5">
+      {/* Sur téléphone, le bandeau resserré de la carte (80 px) ; au-delà, l'affiche en 16/9. */}
+      <Bloc className="h-20 w-full rounded-none ordi:aspect-[16/9] ordi:h-auto" />
+      <div className="flex flex-col gap-2 p-4 sm:p-5 ordi:gap-3">
         <Bloc className="h-6 w-2/3" />
         <Bloc className="h-4 w-1/2" />
         <Bloc className="h-4 w-1/3" />

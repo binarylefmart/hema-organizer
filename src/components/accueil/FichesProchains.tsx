@@ -345,7 +345,7 @@ function FicheSeance({ seance: s, partEffectifMin, personnel }: { seance: Seance
         <p className="min-w-0">
           <span className={`font-semibold ${s.annulee ? "text-texte-secondaire line-through" : ""}`}>{formatDateCourte(s.date)}</span>
           <span className="text-texte-secondaire">
-            {" · "}
+            {"\u00a0· "}
             {formatHoraire(s.heureDebut, s.heureFin)}
           </span>
         </p>

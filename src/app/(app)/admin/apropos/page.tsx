@@ -188,7 +188,7 @@ export default async function PageAPropos() {
                   <span className="block text-texte-secondaire">
                     {sauvegardes.fichiers === 0
                       ? "aucune sauvegarde pour l'instant — la première part cette nuit (03:30)"
-                      : `${sauvegardes.fichiers} fichier${sauvegardes.fichiers > 1 ? "s" : ""}, ${taille(sauvegardes.octets)} · dernière le ${formatDateHeure(sauvegardes.dernier as Date)}`}
+                      : `${sauvegardes.fichiers} fichier${sauvegardes.fichiers > 1 ? "s" : ""}, ${taille(sauvegardes.octets)}\u00a0· dernière le ${formatDateHeure(sauvegardes.dernier as Date)}`}
                   </span>
                 </dd>
                 <dt className="text-texte-secondaire">Affiches et logos</dt>

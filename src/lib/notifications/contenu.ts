@@ -8,7 +8,6 @@ import {
   nomPartie,
   partiesNommees,
   parseDisciplines,
-  rangNature,
   type NatureElement,
   type Niveau,
 } from "@/lib/constants";
@@ -78,9 +77,9 @@ type ElementARanger = { ordre?: number; bloc: number; nature: string };
 
 /**
  * **Les éléments d'une séance dans l'ordre de lecture, chacun avec sa place dans sa partie** — partie,
- * puis nature (`NATURES_ELEMENT` : l'échauffement d'abord), puis `ordre`. C'est l'ordre que
- * `rangerParties` écrit en base ; on le redit ici parce que c'est cette fonction, et non la requête,
- * qui le promet à ses lecteurs (récap Discord, pages de partage, API publique).
+ * puis `ordre`, **jamais la nature** : l'ordre d'une partie est celui que l'équipe a réglé. C'est
+ * l'ordre que `rangerParties` écrit en base ; on le redit ici parce que c'est cette fonction, et non
+ * la requête, qui le promet à ses lecteurs (récap Discord, pages de partage, API publique).
  *
  * **Le rang et le nombre se comptent sur la séance entière, avant tout filtre** : les appelants
  * écartent ensuite les éléments sans titre, et compter sur ce qui reste appellerait « Cours » le
@@ -90,7 +89,7 @@ type ElementARanger = { ordre?: number; bloc: number; nature: string };
  */
 export function elementsRanges<T extends ElementARanger>(parties: ReadonlyArray<T>): Array<T & { nature: NatureElement; rang: number; nombre: number; nom: string }> {
   const typees = parties.map((p) => ({ ...p, nature: estNatureElement(p.nature) ? p.nature : ("COURS" as NatureElement) }));
-  const triees = typees.sort((a, b) => a.bloc - b.bloc || rangNature(a.nature) - rangNature(b.nature) || (a.ordre ?? 0) - (b.ordre ?? 0));
+  const triees = typees.sort((a, b) => a.bloc - b.bloc || (a.ordre ?? 0) - (b.ordre ?? 0));
   const places = placesDansPartie(triees);
   return triees.map((p, i) => ({ ...p, rang: places[i].rang, nombre: places[i].nombre, nom: nomElement(p.nature, places[i].rang, places[i].nombre) }));
 }

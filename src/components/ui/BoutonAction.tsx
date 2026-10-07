@@ -32,6 +32,10 @@ type Props = Omit<ComponentProps<typeof Bouton>, "onClick" | "type"> & {
  * se met à jour qu'à la fin de la transition, qui peut rester suspendue (défaut du React embarqué
  * par Next 15.5, voir `src/lib/relance-rendu.ts`) : tant que la promesse **ou** la transition
  * dure, le rendu est relancé, et au-delà d'un délai l'écran propose de recharger.
+ *
+ * **`pleineLargeur` étire aussi l'enveloppe** : le bouton vit dans un `<span>` qui porte les messages
+ * sous lui, et c'est ce `<span>` que voit la rangée qui le contient. Un `flex-1` passé au bouton ne
+ * l'étirait donc pas à côté de son voisin ; `pleineLargeur` prend toute la place que la rangée laisse.
  */
 export function BoutonAction({ action, confirmation, enCours = "Un instant…", children, ...props }: Props) {
   const [transition, start] = useTransition();
@@ -40,7 +44,7 @@ export function BoutonAction({ action, confirmation, enCours = "Un instant…", 
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
   return (
-    <span className="inline-flex flex-col gap-1">
+    <span className={props.pleineLargeur ? "flex min-w-0 flex-1 flex-col gap-1" : "inline-flex flex-col gap-1"}>
       <Bouton
         type="button"
         disabled={enVol}

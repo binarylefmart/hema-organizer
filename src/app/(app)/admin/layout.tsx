@@ -5,6 +5,8 @@ import { SousNav } from "@/components/layout/SousNav";
 import { Bouton } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
 import { LargeurEspaceAdmin } from "./LargeurEspaceAdmin";
+import { rubriquesVisibles } from "./menu-admin";
+import { RetourMenuAdmin } from "./RetourMenuAdmin";
 
 /**
  * **Les écrans d'administration qui rangent un tableau, et que la colonne de lecture tronque.**
@@ -66,50 +68,53 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           `/admin/activer`, qui sert justement à l'obtenir. Y afficher « connecté en tant
           qu'administrateur » serait faux, et proposer d'en sortir n'aurait aucun sens — on n'y est
           pas encore entré. Le bandeau suit donc l'élévation, pas l'URL. */}
+      {/* **Sur un téléphone, une ligne fine** (« Admin ouvert · se referme seul » et « Quitter ») : le
+          bandeau complet passait sur deux lignes et prenait, avec les dix onglets, un quart de
+          l'écran avant le premier mot de la page. Même bloc, même formulaire, même action : seuls
+          les mots raccourcissent et les marges se resserrent — un seul bouton « Quitter » dans la
+          page, jamais deux formulaires jumeaux. Sur ordinateur, rien ne change. */}
       {user.sessionForte && (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-marque/40 bg-marque/10 px-4 py-3">
-        <p className="flex items-center gap-2 font-semibold text-texte">
-          <Icone nom="bouclier" taille={20} className="text-marque" />
-          Connecté(e) en tant qu&apos;administrateur
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-marque/40 bg-marque/10 px-4 py-3 tel:flex-nowrap tel:gap-2 tel:rounded-xl tel:py-1 tel:pr-1">
+        <p className="flex min-w-0 items-center gap-2 font-semibold text-texte">
+          <Icone nom="bouclier" taille={20} className="text-marque tel:hidden" />
+          <span className="tel:hidden">Connecté(e) en tant qu&apos;administrateur</span>
+          {/* « Se referme seul » : la question que la ligne longue réglait — « suis-je encore admin
+              sur ce téléphone ? » — reçoit la même réponse en quatre mots. */}
+          <span className="ordi:hidden">
+            Admin ouvert&nbsp;· <span className="font-normal">se referme seul</span>
+          </span>
         </p>
         {/* Pas une déconnexion : on redescend au rang de membre, la session reste ouverte. Le mot
             « quitter » le dit mieux que « se déconnecter », qui ferait craindre de tout perdre — et
             le bouton est neutre pour la même raison : rien ne s'efface en sortant. */}
-        <form action={quitterEspaceAdmin}>
+        <form action={quitterEspaceAdmin} className="shrink-0">
           <Bouton type="submit" variante="secondaire" taille="petite">
             <Icone nom="sortie" taille={18} />
-            Quitter l&apos;espace admin
+            <span className="tel:hidden">Quitter l&apos;espace admin</span>
+            {/* Le nom entendu reste complet : « Quitter » seul ne dit pas quoi. */}
+            <span className="ordi:hidden">
+              Quitter<span className="sr-only"> l&apos;espace admin</span>
+            </span>
           </Bouton>
         </form>
       </div>
       )}
       {/* Même raison pour la sous-navigation : sans élévation, chacun de ces liens ne mènerait
           qu'à un renvoi vers le parcours de réglage. Une barre d'onglets dont aucun n'ouvre rien
-          n'informe pas, elle fait douter. */}
+          n'informe pas, elle fait douter.
+
+          **Les onglets sur l'ordinateur, « ‹ Admin » sur le téléphone.** Les dix onglets y passaient
+          sur quatre lignes ; ils sont remplacés par le menu en liste de `/admin` (mêmes rubriques,
+          même module : `menu-admin.ts`), et chaque page n'y porte plus qu'un lien de retour vers
+          lui. Les deux vivent ici, dans la mise en page, pour la raison de la largeur : la
+          navigation suit la largeur de l'enveloppe, jamais celle d'une page. */}
       {user.sessionForte && (
-        <SousNav
-          sujets={[
-            // Le trimestre en tête : c'est par lui que commence une saison, et c'est le seul de
-            // ces écrans qui parle d'organisation plutôt que de technique.
-            { href: "/admin/periodes", label: "Périodes" },
-            { href: "/admin/membres", label: "Membres" },
-            // Le registre d'un soir de cours : la séance, puis la réponse de chacun
-            { href: "/admin/presences", label: "Présences" },
-            // Les thèmes du planning : la liste déroulante des cases, décidée une fois pour tout le club
-            { href: "/admin/themes", label: "Thèmes et lieux" },
-            // Le club lui-même : son nom, son sigle, ses couleurs, son logo. Réglé une fois à
-            // l'installation et revu rarement, mais c'est ce qui donne son visage à l'application.
-            { href: "/admin/identite", label: "Club" },
-            { href: "/admin/notifications", label: "Notifications" },
-            { href: "/admin/comptes", label: "Comptes admin" },
-            { href: "/admin/sessions", label: "Sessions" },
-            // Le journal d'audit — qui a fait quoi — puis « À propos », qui dit ce que cette
-            // installation est et ce qu'elle contient. Ce qui *part* (emails, salons, téléphone,
-            // API publique) se règle dans Notifications, et nulle part ailleurs.
-            { href: "/admin/audit", label: "Journal d'audit" },
-            { href: "/admin/apropos", label: "À propos" },
-          ]}
-        />
+        <>
+          <div className="tel:hidden">
+            <SousNav sujets={rubriquesVisibles(user).map(({ href, label }) => ({ href, label }))} />
+          </div>
+          <RetourMenuAdmin />
+        </>
       )}
       {children}
     </LargeurEspaceAdmin>

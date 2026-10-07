@@ -33,7 +33,9 @@ describe("une page qui redirige garde, ou assume de ne pas garder", () => {
     // Sans ce contrôle, un instructeur recevait une 307 vers un écran chargé de lui dire non
     const admin = lire(PAGE_ADMIN);
     expect(admin).toContain('requirePermission("settings.technical")');
-    expect(admin.indexOf("requirePermission")).toBeLessThan(admin.indexOf('redirect("/admin/periodes")'));
+    // `/admin` ne redirige plus depuis le serveur : elle rend le menu du téléphone, et c'est le
+    // navigateur d'un ordinateur qui repart vers la première rubrique. La garde reste en tête.
+    expect(admin.indexOf("requirePermission")).toBeLessThan(admin.indexOf('<VersRubriqueSurOrdinateur vers="/admin/periodes" />'));
     const gestion = lire(PAGE_GESTION);
     expect(gestion).toContain('requirePermission("sessions.manage")');
     expect(gestion.indexOf("requirePermission")).toBeLessThan(gestion.indexOf('redirect("/gestion/ateliers")'));

@@ -26,6 +26,7 @@ import { Icone } from "@/components/ui/Icone";
 import { lienCanal } from "./liens";
 import { MatriceNotifications } from "./MatriceNotifications";
 import { Pastille } from "@/components/ui/Pastille";
+import { GroupeListe, LigneLien } from "@/components/ui/ListeGroupee";
 import { PageAvecSommaire, type SectionSommaire } from "@/components/ui/SommaireCollant";
 
 export const metadata: Metadata = { title: "Notifications" };
@@ -188,9 +189,26 @@ export default async function PageNotifications() {
       </Carte>
       <Carte id="canaux" titre="Canaux et notifications">
         <style>{`${CSS_CANAL_COUPE} { opacity: 0.45; pointer-events: none; }`}</style>
+        {/* **Au téléphone, les canaux sont une liste de liens** : une ligne par canal,
+            son état à droite, et le toucher mène à sa page. Rien à poster ici — ce sont des liens,
+            pas des champs —, d'où une bascule en CSS sans risque de doublon. La matrice, plus bas,
+            se replie de son côté (`LigneNotification`). */}
+        <div className="mb-4 ordi:hidden" data-canaux-telephone>
+          <GroupeListe titre="Canaux">
+            {CANAUX.map((canal) => (
+              <LigneLien
+                key={canal}
+                href={lienCanal(canal)}
+                nomAccessible="Configurer"
+                titre={LIBELLES_CANAUX[canal]}
+                resume={<Pastille ton={etats[canal].operationnel ? "vert" : "ocre"}>{etats[canal].operationnel ? "prêt" : "non configuré"}</Pastille>}
+              />
+            ))}
+          </GroupeListe>
+        </div>
         {/* Six canaux : trois par ligne se répartissent proprement, là où quatre colonnes
             laissaient une ligne de deux orpheline. */}
-        <ul className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="mb-4 grid gap-3 tel:hidden sm:grid-cols-2 lg:grid-cols-3">
           {CANAUX.map((canal) => {
             const etat = etats[canal];
             return (

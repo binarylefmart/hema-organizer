@@ -19,8 +19,22 @@ import { sourceImage } from "./libelles";
  * lecture de base n'a pas sa place dans un composant client — c'est l'appelant, côté serveur, qui
  * la fait. Sans propriété, l'écu livré avec le code : un bandeau décoratif ne vaut pas qu'une carte
  * disparaisse.
+ *
+ * `resserre` : la carte du fil en version téléphone réduit l'affiche à un bandeau de 80 px,
+ * recadré, et le repli à 64 px — l'annonce entière doit tenir sur un écran avec sa voisine. La
+ * fiche ne le passe pas : elle garde son affiche entière.
  */
-export function BandeauEvenement({ src, nom, ecu }: { src?: string | null; nom: string; ecu?: string }) {
+export function BandeauEvenement({
+  src,
+  nom,
+  ecu,
+  resserre = false,
+}: {
+  src?: string | null;
+  nom: string;
+  ecu?: string;
+  resserre?: boolean;
+}) {
   const [casse, setCasse] = useState(false);
   if (src && !casse) {
     return (
@@ -31,7 +45,7 @@ export function BandeauEvenement({ src, nom, ecu }: { src?: string | null; nom: 
         loading="lazy"
         decoding="async"
         onError={() => setCasse(true)}
-        className="aspect-[16/9] w-full bg-surface-douce object-cover"
+        className={`w-full bg-surface-douce object-cover ${resserre ? "h-20 ordi:aspect-[16/9] ordi:h-auto" : "aspect-[16/9]"}`}
       />
     );
   }
@@ -39,9 +53,13 @@ export function BandeauEvenement({ src, nom, ecu }: { src?: string | null; nom: 
     // `@sm:` et non `sm:` : la hauteur du repli est une question sur la **carte** (358 à 712 px
     // selon la fenêtre), pas sur l'écran. Les deux seuls appelants — la carte du fil et la fiche —
     // déclarent `@container` sur leur `<article>`.
-    <div className="flex h-24 w-full items-center justify-center border-b border-bordure/50 bg-surface-douce @sm:h-28">
+    <div
+      className={`flex w-full items-center justify-center border-b border-bordure/50 bg-surface-douce ${
+        resserre ? "h-16 ordi:h-24 ordi:@sm:h-28" : "h-24 @sm:h-28"
+      }`}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element -- écu déposé : dimensions inconnues à la compilation (voir `Logo`) */}
-      <img src={ecu ?? ECU_LIVRE} alt="" aria-hidden width={44} height={51} loading="lazy" decoding="async" className="h-auto w-11 opacity-55" />
+      <img src={ecu ?? ECU_LIVRE} alt="" aria-hidden width={44} height={51} loading="lazy" decoding="async" className={`h-auto opacity-55 ${resserre ? "w-9 ordi:w-11" : "w-11"}`} />
     </div>
   );
 }

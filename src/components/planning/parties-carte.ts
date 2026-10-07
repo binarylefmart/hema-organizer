@@ -24,7 +24,7 @@ export type GroupePartie<T> = { bloc: number; elements: T[] };
 
 /**
  * **Découpe la liste rangée en parties**, sans la retrier : deux éléments consécutifs du même `bloc`
- * vont dans le même paquet. La liste arrive triée par (bloc, nature, ordre) ; si elle ne l'était
+ * vont dans le même paquet. La liste arrive triée par (bloc, ordre) ; si elle ne l'était
  * pas, on verrait deux fois « Partie 2 » plutôt que des éléments déplacés en silence.
  */
 export function grouperParPartie<T extends { bloc: number }>(parties: readonly T[]): GroupePartie<T>[] {
@@ -55,6 +55,43 @@ export function blocsVoisins(element: { id: string; bloc: number }, parties: rea
   const seul = parties.every((p) => p.id === element.id || p.bloc !== element.bloc);
   const bas = element.bloc < n ? element.bloc + 1 : seul ? null : n + 1;
   return { haut: element.bloc > 1 ? element.bloc - 1 : null, bas, nouvelle: bas !== null && bas > n };
+}
+
+/** Un pas de ↑ ou ↓ : où poser l'élément (`deplacerElement`), et ce que le bouton annonce. */
+export type PasVoisin = { versBloc: number; avantId: string | null; titre: string };
+
+/**
+ * **Les flèches de l'ordinateur suivent l'ordre de lecture, une place à la fois.** L'ordre d'une
+ * partie est libre : ↑ fait passer l'élément devant son voisin du dessus, dans sa partie ; premier
+ * de sa partie, il passe à la **fin** de la précédente. ↓ fait l'inverse : derrière son voisin du
+ * dessous, puis au **début** de la partie suivante, et — dernier de la dernière partie sans y être
+ * seul — dans une partie nouvelle. Un seul geste pour « changer de place » et « changer de
+ * partie », au lieu de deux paires de flèches côte à côte.
+ *
+ * `parties` est la séance **dans l'ordre de lecture** (partie, puis `ordre`), telle qu'elle s'affiche.
+ * `null` quand le geste ne changerait rien (premier de la première partie ; seul dans la dernière).
+ */
+export function pasVoisins(element: { id: string; bloc: number }, parties: readonly { id: string; bloc: number }[]): { haut: PasVoisin | null; bas: PasVoisin | null } {
+  const n = nombreDeParties(parties);
+  const nommees = n > 1;
+  const memePartie = parties.filter((p) => p.bloc === element.bloc);
+  const i = memePartie.findIndex((p) => p.id === element.id);
+  const dans = nommees ? ` dans la partie ${element.bloc}` : "";
+
+  let haut: PasVoisin | null = null;
+  if (i > 0) haut = { versBloc: element.bloc, avantId: memePartie[i - 1].id, titre: `Monter d'une place${dans}` };
+  else if (element.bloc > 1) haut = { versBloc: element.bloc - 1, avantId: null, titre: `Passer à la fin de la partie ${element.bloc - 1}` };
+
+  let bas: PasVoisin | null = null;
+  if (i >= 0 && i < memePartie.length - 1) {
+    bas = { versBloc: element.bloc, avantId: memePartie[i + 2]?.id ?? null, titre: `Descendre d'une place${dans}` };
+  } else if (element.bloc < n) {
+    const suivante = parties.find((p) => p.bloc === element.bloc + 1);
+    bas = { versBloc: element.bloc + 1, avantId: suivante?.id ?? null, titre: `Passer au début de la partie ${element.bloc + 1}` };
+  } else if (memePartie.length > 1) {
+    bas = { versBloc: n + 1, avantId: null, titre: "Passer dans une nouvelle partie" };
+  }
+  return { haut, bas };
 }
 
 /** Le préfixe des entrées « atelier » du menu d'ajout (le reste est l'identifiant de l'atelier). */

@@ -257,7 +257,9 @@ describe("annuaire — cocher plusieurs comptes et changer leur rôle une fois",
     const code = source(SELECTION);
     // La condition vient du module partagé avec les présences, jamais d'un `selection.size` recopié.
     expect(code).toContain("barreDeMasseVisible(selection)");
-    expect(code).toMatch(/\{montrerBarre && \(\s*<div\s+role="group"/);
+    // La barre de l'ordinateur, et celle du téléphone (`BarreSelection`) : toutes deux sous `montrerBarre`.
+    expect(code).toMatch(/\{montrerBarre && !telephone && \(\s*<div\s+role="group"/);
+    expect(code).toMatch(/\{montrerBarre && telephone && \(\s*<BarreSelection/);
     // L'unique bouton est inerte tant qu'aucun geste n'est choisi, et pendant une écriture : sans
     // sélection, il n'y a plus de barre du tout. Le bouton est celui de la forme commune
     // (`ChoixGeste`), qui ajoute l'écriture en cours à l'inertie que l'écran lui passe.

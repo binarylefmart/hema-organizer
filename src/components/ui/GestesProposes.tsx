@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import type { ReactNode } from "react";
 import { ChoixGeste } from "./ChoixGeste";
+import { GestesVolet } from "./GestesVolet";
 import { gesteRetenu, messageApresGeste, varianteGeste, type GesteOffert } from "./choix-geste";
 
 /** Un geste prêt à partir : ses mots (composés par l'écran serveur) et l'action déjà liée. */
@@ -17,8 +19,22 @@ export type GestePret = GesteOffert & { action: () => Promise<unknown> };
  * - après le geste, le message reste et le choix revient à « Choisir une action… » — le geste suivant
  *   se choisit, il ne se rejoue pas ; si le serveur renvoie une page où le geste ne s'applique plus, le
  *   choix y revient aussi.
+ *
+ * `presentation="volet"` pose la même mécanique dans le volet du téléphone (`GestesVolet`, rendu dans
+ * un `VoletBas`) : mêmes gestes, mêmes confirmations, mêmes messages — seule la présentation change.
+ * `note` y passe en tête de la liste des gestes (ce que l'écran range à côté d'eux).
  */
-export function GestesProposes({ id, gestes }: { id: string; gestes: readonly GestePret[] }) {
+export function GestesProposes({
+  id,
+  gestes,
+  presentation = "liste",
+  note,
+}: {
+  id: string;
+  gestes: readonly GestePret[];
+  presentation?: "liste" | "volet";
+  note?: ReactNode;
+}) {
   const [choisi, setChoisi] = useState("");
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
@@ -47,6 +63,31 @@ export function GestesProposes({ id, gestes }: { id: string; gestes: readonly Ge
       }
     });
   };
+
+  if (presentation === "volet") {
+    return (
+      <GestesVolet
+        gestes={gestes}
+        valeur={geste}
+        onChoisir={(v) => {
+          setChoisi(gesteRetenu(v, gestes));
+          setMessage(null);
+        }}
+        rouge={(v) => {
+          const g = gestes.find((x) => x.geste === v);
+          return varianteGeste(g?.definitif, g?.bouton) === "danger";
+        }}
+        explication={retenu?.explication ?? null}
+        bouton={retenu?.bouton ?? "Appliquer"}
+        variante={varianteGeste(retenu?.definitif, retenu?.bouton)}
+        inerte={!retenu}
+        enCours={enCours}
+        onLancer={lancer}
+        message={message}
+        note={note}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">

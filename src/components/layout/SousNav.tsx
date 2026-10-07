@@ -18,16 +18,20 @@ export function BadgeSousNav({ children }: { children: ReactNode }) {
   return <span className="rounded-full bg-primaire px-2 py-0.5 text-xs text-primaire-texte">{children}</span>;
 }
 
-/** Navigation secondaire (gestion / administration) : les onglets passent à la ligne sur téléphone, rien n'est caché. */
+/**
+ * Navigation secondaire (gestion / administration). Sur ordinateur, les onglets passent à la ligne ;
+ * au téléphone, **une seule ligne qui défile** de côté, comme les filtres des ateliers : à 390 px,
+ * « Événements » tombait seul sous « Ateliers · Tableau de bord » et se lisait comme une autre rangée.
+ */
 export function SousNav({ sujets }: { sujets: Sujet[] }) {
   const pathname = usePathname();
   return (
     <nav aria-label="Sections">
-      <ul className="flex flex-wrap gap-x-1 gap-y-0 border-b border-bordure/60 pb-px">
+      <ul className="flex flex-wrap gap-x-1 gap-y-0 border-b border-bordure/60 pb-px tel:flex-nowrap tel:overflow-x-auto">
         {sujets.map((s) => {
           const actif = pathname === s.href || (s.href !== "/gestion" && s.href !== "/admin" && pathname.startsWith(s.href));
           return (
-            <li key={s.href}>
+            <li key={s.href} className="shrink-0">
               <Link
                 href={s.href}
                 aria-current={actif ? "page" : undefined}

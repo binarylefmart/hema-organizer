@@ -24,6 +24,12 @@ import {
   texteRepliees,
 } from "@/components/ui/selection";
 import { InterrupteurSelection } from "@/components/ui/InterrupteurSelection";
+import { BarreSelection, BoutonQueFaire, ReserveBarreSelection } from "@/components/ui/BarreSelection";
+import { GestesVolet } from "@/components/ui/GestesVolet";
+import { VoletBas } from "@/components/ui/VoletBas";
+import { ZoneCochable } from "@/components/ui/ZoneCochable";
+import { questionSelection } from "@/components/ui/barre-selection";
+import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
 import { CartesDevoilees } from "./ListeSeances";
 import { useDevoilement } from "./ListeRepliee";
 import { SEANCES_VISIBLES } from "./listes";
@@ -114,6 +120,9 @@ export function SelectionSeances({
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
   const caseMaitresse = useRef<HTMLInputElement>(null);
+  /** En version téléphone : la barre sombre du bas et le volet des gestes (`BarreSelection`, `VoletBas`). */
+  const telephone = useEcranTelephone();
+  const [voletOuvert, setVoletOuvert] = useState(false);
 
   const selectionnables = lignes.filter((l): l is LigneSeance => l !== null);
   // Ce qui a quitté la liste quitte le lot : voir l'en-tête.
@@ -183,6 +192,7 @@ export function SelectionSeances({
         }
         setMessage({ type: "ok", texte: res.succes ?? "C'est fait." });
         setSelection(new Set());
+        setVoletOuvert(false);
         remettreAZero();
         router.refresh();
       } catch (e) {
@@ -199,6 +209,96 @@ export function SelectionSeances({
   const horsAffichage = texteHorsAffichage(compterHorsAffichage(selection, affichees), MOTS_SEANCES);
   const sansCase = texteSansCaseSeances(lignes.length - selectionnables.length);
   const montrerBarre = actif && barreDeMasseVisible(selection);
+
+  /** Les réglages du geste choisi : les mêmes champs dans la barre de l'ordinateur et dans le volet du téléphone. */
+  const reglages = (
+    <>
+      {geste === "annuler" && (
+        <Champ
+          label="Motif (envoyé aux membres)"
+          name="motif"
+          id="motif-seances-en-masse"
+          value={motif}
+          onChange={(e) => setMotif(e.target.value)}
+          required
+          maxLength={200}
+          placeholder="ex. Salle indisponible"
+          aide="Le même motif pour chaque séance. Il est visible par tous, y compris sur le lien de partage : évite les noms."
+        />
+      )}
+      {geste === "lieu" && (
+        <div className="flex flex-col gap-3">
+          {lieux.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <label id="lieu-seances-en-masse-libelle" htmlFor="lieu-seances-en-masse" className="text-base font-semibold">
+                Nouveau lieu
+              </label>
+              <ListeDeroulante
+                id="lieu-seances-en-masse"
+                libelleId="lieu-seances-en-masse-libelle"
+                libelle="Nouveau lieu"
+                valeur={choixLieu}
+                entrees={[
+                  { valeur: LIEU_VIDE, libelle: "Choisir un lieu…" },
+                  ...lieux.map((l) => ({ valeur: l.cle, libelle: l.lieu })),
+                  { valeur: LIEU_AUTRE, libelle: "Autre lieu…" },
+                ]}
+                onChoisir={setChoixLieu}
+                className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
+              />
+              {lieuChoisi && <p className="text-sm text-texte-secondaire">{lieuChoisi.adresse}</p>}
+            </div>
+          )}
+          {choixLieu === LIEU_AUTRE && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Champ
+                label="Nom du lieu"
+                name="lieu"
+                id="lieu-libre-seances-en-masse"
+                value={lieuLibre.lieu}
+                onChange={(e) => setLieuLibre({ ...lieuLibre, lieu: e.target.value })}
+                required
+                maxLength={120}
+                placeholder="ex. Gymnase municipal"
+              />
+              <Champ
+                label="Adresse (pour la carte)"
+                name="adresse"
+                id="adresse-libre-seances-en-masse"
+                value={lieuLibre.adresse}
+                onChange={(e) => setLieuLibre({ ...lieuLibre, adresse: e.target.value })}
+                maxLength={200}
+                placeholder="ex. 1 rue du Stade, code postal et ville"
+              />
+            </div>
+          )}
+        </div>
+      )}
+      {geste === "horaire" && (
+        <div className="grid grid-cols-2 gap-3">
+          <Champ
+            label="Début"
+            name="heureDebut"
+            id="debut-seances-en-masse"
+            type="time"
+            value={horaire.heureDebut}
+            onChange={(e) => setHoraire({ ...horaire, heureDebut: e.target.value })}
+            required
+          />
+          <Champ
+            label="Fin"
+            name="heureFin"
+            id="fin-seances-en-masse"
+            type="time"
+            value={horaire.heureFin}
+            onChange={(e) => setHoraire({ ...horaire, heureFin: e.target.value })}
+            required
+            erreur={horaire.heureDebut && horaire.heureFin && horaire.heureFin <= horaire.heureDebut ? "La fin doit suivre le début." : undefined}
+          />
+        </div>
+      )}
+    </>
+  );
 
   return (
     <Selection.Provider value={{ actif, selection, basculer: (id) => setSelection((s) => basculer(s, id)) }}>
@@ -262,7 +362,7 @@ export function SelectionSeances({
           dépliée sur « Changer le lieu » (autre lieu, adresse) ou « Changer l'horaire », elle peut
           dépasser la hauteur d'un écran, et une barre collante plus haute que l'écran ne laisse jamais
           voir sa fin — son bouton compris. Celle du planning a montré le défaut. */}
-      {montrerBarre && (
+      {montrerBarre && !telephone && (
         <div
           role="group"
           aria-label="Agir sur plusieurs séances à la fois"
@@ -292,93 +392,56 @@ export function SelectionSeances({
             enCours={enCours}
             onLancer={lancer}
           >
-            {geste === "annuler" && (
-              <Champ
-                label="Motif (envoyé aux membres)"
-                name="motif"
-                id="motif-seances-en-masse"
-                value={motif}
-                onChange={(e) => setMotif(e.target.value)}
-                required
-                maxLength={200}
-                placeholder="ex. Salle indisponible"
-                aide="Le même motif pour chaque séance. Il est visible par tous, y compris sur le lien de partage : évite les noms."
-              />
-            )}
-            {geste === "lieu" && (
-              <div className="flex flex-col gap-3">
-                {lieux.length > 0 && (
-                  <div className="flex flex-col gap-1">
-                    <label id="lieu-seances-en-masse-libelle" htmlFor="lieu-seances-en-masse" className="text-base font-semibold">
-                      Nouveau lieu
-                    </label>
-                    <ListeDeroulante
-                      id="lieu-seances-en-masse"
-                      libelleId="lieu-seances-en-masse-libelle"
-                      libelle="Nouveau lieu"
-                      valeur={choixLieu}
-                      entrees={[
-                        { valeur: LIEU_VIDE, libelle: "Choisir un lieu…" },
-                        ...lieux.map((l) => ({ valeur: l.cle, libelle: l.lieu })),
-                        { valeur: LIEU_AUTRE, libelle: "Autre lieu…" },
-                      ]}
-                      onChoisir={setChoixLieu}
-                      className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
-                    />
-                    {lieuChoisi && <p className="text-sm text-texte-secondaire">{lieuChoisi.adresse}</p>}
-                  </div>
-                )}
-                {choixLieu === LIEU_AUTRE && (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Champ
-                      label="Nom du lieu"
-                      name="lieu"
-                      id="lieu-libre-seances-en-masse"
-                      value={lieuLibre.lieu}
-                      onChange={(e) => setLieuLibre({ ...lieuLibre, lieu: e.target.value })}
-                      required
-                      maxLength={120}
-                      placeholder="ex. Gymnase municipal"
-                    />
-                    <Champ
-                      label="Adresse (pour la carte)"
-                      name="adresse"
-                      id="adresse-libre-seances-en-masse"
-                      value={lieuLibre.adresse}
-                      onChange={(e) => setLieuLibre({ ...lieuLibre, adresse: e.target.value })}
-                      maxLength={200}
-                      placeholder="ex. 1 rue du Stade, code postal et ville"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-            {geste === "horaire" && (
-              <div className="grid grid-cols-2 gap-3">
-                <Champ
-                  label="Début"
-                  name="heureDebut"
-                  id="debut-seances-en-masse"
-                  type="time"
-                  value={horaire.heureDebut}
-                  onChange={(e) => setHoraire({ ...horaire, heureDebut: e.target.value })}
-                  required
-                />
-                <Champ
-                  label="Fin"
-                  name="heureFin"
-                  id="fin-seances-en-masse"
-                  type="time"
-                  value={horaire.heureFin}
-                  onChange={(e) => setHoraire({ ...horaire, heureFin: e.target.value })}
-                  required
-                  erreur={horaire.heureDebut && horaire.heureFin && horaire.heureFin <= horaire.heureDebut ? "La fin doit suivre le début." : undefined}
-                />
-              </div>
-            )}
+            {reglages}
           </ChoixGeste>
         </div>
       )}
+      {/* **Au téléphone, la barre sombre du bas et le volet des gestes** : mêmes gestes, mêmes
+          réglages, mêmes confirmations (`lancer`) — seule la présentation change. */}
+      {montrerBarre && telephone && (
+        <BarreSelection
+          nom="Agir sur plusieurs séances à la fois"
+          n={selection.size}
+          mots={MOTS_SEANCES}
+          affichees={affichees.length}
+          toutesCochees={etatCases === "toutes"}
+          libelleCocherAffichees={libelleToutesSeances(affichees.length)}
+          onCocherAffichees={() => setSelection((s) => ajouter(s, idsAffiches))}
+          onVider={() => setSelection(new Set())}
+          horsAffichage={horsAffichage}
+          enCours={enCours}
+        >
+          <BoutonQueFaire
+            libelle={questionSelection(selection.size, MOTS_SEANCES)}
+            onClick={() => {
+              // Le volet s'ouvre sur la liste des gestes ; les réglages déjà saisis sont gardés.
+              setGesteChoisi("");
+              setMessage(null);
+              setVoletOuvert(true);
+            }}
+          />
+        </BarreSelection>
+      )}
+      <VoletBas ouvert={telephone && montrerBarre && voletOuvert} titre={questionSelection(selection.size, MOTS_SEANCES)} onFermer={() => setVoletOuvert(false)}>
+        <GestesVolet
+          gestes={applicables}
+          valeur={geste}
+          onChoisir={(v) => {
+            setGesteChoisi(gesteRetenu(v, applicables));
+            setMessage(null);
+          }}
+          rouge={gesteSeancesDefinitif}
+          explication={geste === "" ? null : expliquerGesteSeances(geste, lot, reglage)}
+          bouton={geste === "" ? "Appliquer" : libelleBoutonSeances(geste, touchees.length)}
+          variante={geste === "" ? "primaire" : varianteGeste(gesteSeancesDefinitif(geste))}
+          inerte={inerte}
+          enCours={enCours}
+          onLancer={lancer}
+          message={message}
+        >
+          {reglages}
+        </GestesVolet>
+      </VoletBas>
 
       {/* Région vivante permanente : montée avant le premier appui, sans quoi il serait muet. */}
       <p className="sr-only" aria-live="polite">
@@ -388,7 +451,11 @@ export function SelectionSeances({
         {message ? <span className={message.type === "ok" ? "font-semibold text-vert" : "font-semibold text-rouge"}>{message.texte}</span> : null}
       </p>
 
-      <CartesDevoilees cartes={cartes} visibles={SEANCES_VISIBLES} devoilement={devoilement} />
+      {/* Au téléphone, toucher une carte la coche (`ZoneCochable`) : la case reste, pour le clavier. */}
+      <ZoneCochable actif={telephone && actif}>
+        <CartesDevoilees cartes={cartes} visibles={SEANCES_VISIBLES} devoilement={devoilement} />
+      </ZoneCochable>
+      {montrerBarre && telephone && <ReserveBarreSelection />}
     </Selection.Provider>
   );
 }
@@ -407,7 +474,7 @@ export function CaseSeance({ id, jour }: { id: string; jour: string }) {
   return (
     <label className="-my-2 -ml-2 inline-flex min-h-12 min-w-12 shrink-0 cursor-pointer items-center justify-center">
       <span className="sr-only">Sélectionner la séance du {jour}</span>
-      <input type="checkbox" checked={contexte.selection.has(id)} onChange={() => contexte.basculer(id)} className="size-6 accent-primaire" />
+      <input type="checkbox" data-case-selection checked={contexte.selection.has(id)} onChange={() => contexte.basculer(id)} className="size-6 accent-primaire" />
     </label>
   );
 }

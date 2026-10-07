@@ -18,6 +18,12 @@ import {
 } from "@/components/gestion/selection-presences";
 import { selectionApresInterrupteur } from "@/components/ui/selection";
 import { InterrupteurSelection } from "@/components/ui/InterrupteurSelection";
+import { BarreSelection, BoutonQueFaire } from "@/components/ui/BarreSelection";
+import { GestesVolet } from "@/components/ui/GestesVolet";
+import { VoletBas } from "@/components/ui/VoletBas";
+import { ZoneCochable } from "@/components/ui/ZoneCochable";
+import { questionSelection } from "@/components/ui/barre-selection";
+import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
 import {
   appliquerGesteEnMasse,
   definirRolesEnMasse,
@@ -36,6 +42,7 @@ import {
   gesteRetenu,
   gestesApplicables,
   libelleBouton,
+  libelleBoutonVolet,
   varianteBouton,
   type GesteSelection,
 } from "./choix-geste";
@@ -246,6 +253,9 @@ export function ZoneSelection({
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
   const caseMaitresse = useRef<HTMLInputElement>(null);
+  /** En version téléphone : la barre sombre du bas et le volet des gestes (`BarreSelection`, `VoletBas`). */
+  const telephone = useEcranTelephone();
+  const [voletOuvert, setVoletOuvert] = useState(false);
 
   const affiches = selectionnables.map((s) => s.id);
   const etatCases = etatToutCocher(selectionnables, selection);
@@ -338,6 +348,7 @@ export function ZoneSelection({
     setMessage({ type: "ok", texte: res.succes ?? "" });
     setGesteChoisi("");
     setRoleChoisi("");
+    setVoletOuvert(false);
     /*
      * **Le focus rentre à la case maîtresse avant que les boutons ne redeviennent actifs.** Ils sont
      * `disabled` le temps de l'écriture : le focus retombait sur `<body>`, si bien que la tabulation
@@ -618,7 +629,7 @@ export function ZoneSelection({
 
           Le bouton est `disabled` tant qu'aucun geste n'est choisi et le temps d'une écriture : sans
           sélection, il n'y a plus de barre du tout. */}
-      {montrerBarre && (
+      {montrerBarre && !telephone && (
         <div
           role="group"
           /* Le nom dit ce que la barre fait, pas ce qu'elle regarde : elle n'apparaît qu'avec une
@@ -688,11 +699,89 @@ export function ZoneSelection({
         {[compteurAnnonce, horsAffichage].filter(Boolean).join(" ")}
       </p>
 
-      <p className="min-h-6 text-base" aria-live="polite">
+      {/* Vide, la région ne réserve aucune hauteur (`empty:`) : ses 24 px laissaient une bande blanche
+          entre « Sélection multiple » et la liste. Elle reste montée, donc annoncée. */}
+      <p className="min-h-6 text-base empty:min-h-0" aria-live="polite">
         {message ? <span className={message.type === "ok" ? "font-semibold text-vert" : "font-semibold text-rouge"}>{message.texte}</span> : null}
       </p>
 
-      {children}
+      {/* **Au téléphone, la barre sombre du bas et le volet des gestes** : mêmes gestes, mêmes
+          confirmations (`lancer`) ; le rôle s'y choisit en deux boutons plutôt qu'en liste. */}
+      {montrerBarre && telephone && (
+        <BarreSelection
+          nom="Agir sur plusieurs comptes à la fois"
+          n={selection.size}
+          mots={MOTS_COMPTES}
+          affichees={selectionnables.length}
+          toutesCochees={etatCases === "toutes"}
+          libelleCocherAffichees={libelleToutSelectionner(selectionnables.length, { recherche, replie: restants > 0 })}
+          onCocherAffichees={() => setSelection((s) => ajouter(s, affiches))}
+          onVider={() => setSelection(new Set())}
+          horsAffichage={horsAffichage}
+          enCours={enCours}
+        >
+          <BoutonQueFaire
+            libelle={questionSelection(selection.size, MOTS_COMPTES)}
+            onClick={() => {
+              setGesteChoisi("");
+              setRoleChoisi("");
+              setMessage(null);
+              setVoletOuvert(true);
+            }}
+          />
+        </BarreSelection>
+      )}
+      <VoletBas ouvert={telephone && montrerBarre && voletOuvert} titre={questionSelection(selection.size, MOTS_COMPTES)} onFermer={() => setVoletOuvert(false)}>
+        <GestesVolet
+          gestes={applicables}
+          valeur={geste}
+          onChoisir={(v) => {
+            setGesteChoisi(gesteRetenu(v, applicables));
+            setRoleChoisi("");
+            setMessage(null);
+          }}
+          rouge={(g) => varianteBouton(g) === "danger"}
+          explication={explication}
+          bouton={geste === "" || !applicable ? "Appliquer" : libelleBoutonVolet(geste, applicable.nombre, lot, resumeRole ? { libelle: libelleRole(roleChoisi), changent: resumeRole.changent } : undefined)}
+          variante={varianteBouton(geste)}
+          inerte={boutonInerte}
+          enCours={enCours}
+          onLancer={lancer}
+          message={message}
+          note={texteCasesAbsentes ? <p className="text-base text-texte-secondaire">{texteCasesAbsentes}</p> : null}
+        >
+          {/* Le rôle en deux boutons : un appui choisit, le bouton du bas écrit — jamais au choix. */}
+          {geste === "role" && (
+            <div role="group" aria-labelledby="role-telephone-libelle" className="flex flex-col gap-1">
+              <p id="role-telephone-libelle" className="text-base font-semibold">
+                Nouveau rôle
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {ENTREES_ROLES.filter((e) => e.valeur !== "").map((e) => {
+                  const choisi = roleChoisi === e.valeur;
+                  return (
+                    <button
+                      key={e.valeur}
+                      type="button"
+                      aria-pressed={choisi}
+                      onClick={() => setRoleChoisi(choisi ? "" : e.valeur)}
+                      className={`inline-flex min-h-12 items-center justify-center gap-1.5 rounded-xl border-2 px-3 text-base font-semibold transition active:scale-[0.98] ${
+                        choisi ? "border-primaire bg-primaire text-primaire-texte" : "border-bordure/70 bg-surface text-texte"
+                      }`}
+                    >
+                      {choisi && <Icone nom="check" taille={18} />}
+                      {e.libelle}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </GestesVolet>
+      </VoletBas>
+
+      {/* Au téléphone, toucher une ligne la coche (`ZoneCochable`) : le nom reste le lien de la fiche. */}
+      <ZoneCochable actif={telephone && interrupteur}>{children}</ZoneCochable>
     </Selection.Provider>
   );
 }
@@ -720,7 +809,7 @@ export function CaseMembre({ id, nom }: { id: string; nom: string }) {
   return (
     <label className="inline-flex min-h-12 min-w-12 shrink-0 cursor-pointer items-center justify-center">
       <span className="sr-only">Sélectionner {nom}</span>
-      <input type="checkbox" checked={contexte.selection.has(id)} onChange={() => contexte.basculer(id)} className="size-6 accent-primaire" />
+      <input type="checkbox" data-case-selection checked={contexte.selection.has(id)} onChange={() => contexte.basculer(id)} className="size-6 accent-primaire" />
     </label>
   );
 }

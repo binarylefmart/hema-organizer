@@ -1,4 +1,4 @@
-import { AJOUT_NATURE, LIBELLE_VIDE, NIVEAU_DEFAUT, NOMS_NATURE, nomPartie, rangNature, type NatureElement, type Niveau } from "@/lib/constants";
+import { AJOUT_NATURE, LIBELLE_VIDE, NIVEAU_DEFAUT, NOMS_NATURE, nomPartie, rangDefautNature, type NatureElement, type Niveau } from "@/lib/constants";
 import { pluriel, type Explication } from "@/components/ui/choix-geste";
 import { texteInviteMasse, type MotsLignes } from "@/components/ui/selection";
 import { pairesEgales, type Paire } from "./file-envoi";
@@ -127,8 +127,10 @@ export type PartieProposee = { libelle: string; bloc: number; nature: NatureElem
 
 /**
  * **Les éléments qu'on peut choisir** : ceux qui existent dans au moins une séance cochée, par leur
- * nom calculé (« Partie 1 · Cours »), partie par partie et, dans une partie, dans l'ordre des natures
- * puis des rangs — l'ordre d'une carte.
+ * nom calculé (« Partie 1 · Cours »), partie par partie et, dans une partie, dans l'ordre par défaut
+ * des natures (`ORDRE_DEFAUT_NATURES` : l'atelier avant l'option) puis des rangs. Les séances cochées
+ * peuvent avoir réordonné leurs parties chacune à sa façon : la liste ne suit donc l'ordre d'aucune
+ * carte, elle suit celui où un élément se pose par défaut — le plus probable.
  * Le nombre compte les séances qui portent la partie, atelier compris : c'est ce que la carte montre.
  */
 export function partiesProposees(lot: readonly LignePlanning[]): PartieProposee[] {
@@ -143,7 +145,7 @@ export function partiesProposees(lot: readonly LignePlanning[]): PartieProposee[
       else parNom.set(p.libelle, { libelle: p.libelle, bloc: p.bloc, nature: p.nature, rang: p.rang, nombre: 1 });
     }
   }
-  return [...parNom.values()].sort((a, b) => a.bloc - b.bloc || rangNature(a.nature) - rangNature(b.nature) || a.rang - b.rang);
+  return [...parNom.values()].sort((a, b) => a.bloc - b.bloc || rangDefautNature(a.nature) - rangDefautNature(b.nature) || a.rang - b.rang);
 }
 
 /** « Partie 1 · Cours (5 séances) » : l'entrée de la liste des parties. */
@@ -376,3 +378,127 @@ export const ENTREES_TETE = [
   { valeur: NE_PAS_CHANGER, libelle: LIBELLE_NE_PAS_CHANGER },
   { valeur: "", libelle: LIBELLE_VIDE },
 ] as const;
+
+/* ------------------------------------------------------------------ */
+/* Au téléphone : régler des éléments, choisis un par un               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * **« Régler des éléments »**, la variante du téléphone de « Régler une partie ».
+ *
+ * Sur l'ordinateur, on choisit **un nom** (« Partie 1 · Cours ») et le réglage vise cet élément-là
+ * dans chaque séance cochée. Au téléphone, le volet montre toutes les séances cochées avec **leurs**
+ * éléments, et l'on coche ceux qu'on veut — le cours de mardi et l'option de vendredi ensemble, si
+ * c'est ce qu'on règle. Le réglage vise donc des **identifiants**, plus des noms. Le reste ne change
+ * pas : même `issueReglage` (les règles de la case), même point de départ (le brouillon s'il y a lieu,
+ * sinon le serveur), mêmes écritures — elles entrent dans le brouillon (`poserPlusieurs`), et c'est
+ * « Appliquer les modifications » qui les enregistre.
+ *
+ * Un atelier n'est pas cochable : son thème est son titre, figé côté serveur, et le réglage en masse
+ * l'a toujours laissé de côté.
+ */
+
+/** Les séances cochées, chacune avec ses éléments dans l'ordre de sa carte ; un atelier ne se coche pas. */
+export function elementsProposes(lot: readonly LignePlanning[]): { seance: LignePlanning; elements: { partie: PartieLigne; cochable: boolean }[] }[] {
+  return lot.map((seance) => ({ seance, elements: seance.parties.map((partie) => ({ partie, cochable: !partie.atelier })) }));
+}
+
+/** Les éléments cochés qui existent encore dans le lot (une séance décochée emporte les siens). */
+export function elementsRetenus(lot: readonly LignePlanning[], coches: ReadonlySet<string>): PartieLigne[] {
+  return lot.flatMap((l) => l.parties.filter((p) => !p.atelier && coches.has(p.id)));
+}
+
+/**
+ * **La liste de thèmes à proposer** pour des éléments cochés : celle de leur nature (`themesDeNature`
+ * — l'échauffement a la sienne, cours et options partagent l'autre). Quand les éléments mêlent un
+ * échauffement et un cours ou une option, **aucune** liste ne vaut pour tous : la fonction rend
+ * `null`, et l'écran ne propose que « Ne pas changer », le vide et un thème libre — plutôt que
+ * d'écrire sur un échauffement un thème de cours que sa case ne proposerait pas.
+ */
+export function natureDesThemes(elements: readonly PartieLigne[]): NatureElement | null {
+  const echauffement = elements.some((p) => p.nature === "ECHAUFFEMENT");
+  const autre = elements.some((p) => p.nature !== "ECHAUFFEMENT");
+  if (echauffement && autre) return null;
+  return echauffement ? "ECHAUFFEMENT" : "COURS";
+}
+
+/** Le plan d'un réglage d'éléments : comme `PlanReglage`, mais compté par élément. */
+export type PlanElements = { ecritures: EcritureEnMasse[]; deja: number; ecarts: Record<RaisonEcart, number> };
+
+/**
+ * **Le plan d'un réglage sur des éléments choisis** — `planReglage`, par identifiant. Chaque élément
+ * part de ce que le brouillon porte déjà, sinon du serveur ; un élément déjà au réglage n'est pas
+ * réécrit, et un réglage que sa case refuserait (second sans premier, même personne, niveau sans
+ * thème) le laisse de côté, compté.
+ */
+export function planReglageElements(elements: readonly PartieLigne[], r: ReglagePartie, brouillon: ReadonlyMap<string, Paire>): PlanElements {
+  const plan: PlanElements = { ecritures: [], deja: 0, ecarts: { absente: 0, atelier: 0, secondSansPremier: 0, memePersonne: 0, sansTheme: 0 } };
+  for (const partie of elements) {
+    if (partie.atelier) {
+      plan.ecarts.atelier += 1;
+      continue;
+    }
+    const base = brouillon.get(partie.id) ?? partie.serveur;
+    const issue = issueReglage(base, r);
+    if ("ecart" in issue) {
+      plan.ecarts[issue.ecart] += 1;
+      continue;
+    }
+    if (pairesEgales(issue.paire, base)) {
+      plan.deja += 1;
+      continue;
+    }
+    plan.ecritures.push({ partieId: partie.id, paire: issue.paire, serveur: partie.serveur });
+  }
+  return plan;
+}
+
+const PHRASES_ECART_ELEMENT: Record<RaisonEcart, [string, string]> = {
+  absente: ["n'existe plus", "n'existent plus"],
+  atelier: ["est un atelier : son thème est figé", "sont des ateliers : leur thème est figé"],
+  secondSansPremier: ["n'a personne qui mène : un second viendrait n'assister personne", "n'ont personne qui mène : un second viendrait n'assister personne"],
+  memePersonne: ["aurait la même personne pour mener et assister", "auraient la même personne pour mener et assister"],
+  sansTheme: ["n'a pas de thème : niveau et description l'attendent", "n'ont pas de thème : niveau et description l'attendent"],
+};
+
+/** « 2 éléments restent de côté : ils n'ont pas de thème… » — une phrase par raison. */
+export function phrasesEcartsElements(ecarts: Record<RaisonEcart, number>): string[] {
+  return (Object.keys(PHRASES_ECART_ELEMENT) as RaisonEcart[])
+    .filter((r) => ecarts[r] > 0)
+    .map((r) => {
+      const n = ecarts[r];
+      return n === 1 ? `1 élément reste de côté : il ${PHRASES_ECART_ELEMENT[r][0]}.` : `${n} éléments restent de côté : ils ${PHRASES_ECART_ELEMENT[r][1]}.`;
+    });
+}
+
+const nbElements = (n: number) => pluriel(n, "élément");
+
+/** Le bouton de la première étape : « Suivant : 4 éléments ». */
+export function libelleSuivantElements(n: number): string {
+  return n === 0 ? "Coche au moins un élément" : `Suivant : ${nbElements(n)}`;
+}
+
+/** Le bouton de la seconde : « Régler 4 éléments » — le nombre de cases qui changeront vraiment. */
+export function libelleReglerElements(n: number): string {
+  return n === 0 ? "Régler les éléments" : `Régler ${nbElements(n)}`;
+}
+
+/** Ce que dit le message, une fois les cases posées dans le brouillon. */
+export function messageElementsRegles(n: number): string {
+  if (n === 1) return "1 élément réglé, pas encore appliqué : « Appliquer les modifications » l'enregistre.";
+  return `${n} éléments réglés, pas encore appliqués : « Appliquer les modifications » les enregistre.`;
+}
+
+/** L'explication de la seconde étape, avant d'appuyer : même promesse que « Régler une partie ». */
+export function expliquerReglageElements(plan: PlanElements | null, retenus: number): Explication {
+  if (!plan) return { titre: `${nbElements(retenus)} : choisis ce qui change.`, phrases: ["Chaque réglage reste « Ne pas changer » tant que tu n'y touches pas ; « ---------- » vide le champ."] };
+  const n = plan.ecritures.length;
+  return {
+    titre: n === 0 ? "Aucune case ne changerait avec ce réglage." : `${n === 1 ? "1 élément est réglé" : `${n} éléments sont réglés`} dans le brouillon.`,
+    phrases: [
+      "Rien n'est encore enregistré : chaque case réglée dit « Modifié — pas encore appliqué », et « Appliquer les modifications » écrit tout d'un coup, avec ce que tu as réglé à la main.",
+      ...(plan.deja > 0 ? [`${nbElements(plan.deja)} ${plan.deja > 1 ? "portent" : "porte"} déjà ce réglage : rien n'y change.`] : []),
+      ...phrasesEcartsElements(plan.ecarts),
+    ],
+  };
+}

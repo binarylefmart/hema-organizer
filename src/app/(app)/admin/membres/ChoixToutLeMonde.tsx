@@ -1,7 +1,7 @@
 "use client";
 
 import { GestesProposes, type GestePret } from "@/components/ui/GestesProposes";
-import { gestesTousApplicables, messageApres, type ChiffresTous, type GesteTous } from "./choix-geste";
+import { gestesTousProposes, type ChiffresTous, type GesteTous } from "./choix-geste";
 
 /**
  * **Le volet « Pour tout le monde », sur le motif commun « Que veux-tu faire ? »** (`GestesProposes`) :
@@ -14,7 +14,8 @@ import { gestesTousApplicables, messageApres, type ChiffresTous, type GesteTous 
  * **chaque geste garde sa confirmation** : ils portent sur tout l'annuaire.
  *
  * Les actions arrivent **déjà liées** par la page (période, adresse de retour) : ce composant ne
- * choisit ni la population ni la période, il ne fait que demander laquelle des actions lancer.
+ * choisit ni la population ni la période, il ne fait que demander laquelle des actions lancer. La
+ * composition elle-même (`gestesTousProposes`) est partagée avec le volet « + Ajouter » du téléphone.
  */
 export function ChoixToutLeMonde({
   chiffres,
@@ -27,22 +28,6 @@ export function ChoixToutLeMonde({
   /** La question posée avant chaque geste — celle que l'écran posait déjà. */
   confirmations: Partial<Record<GesteTous, string>>;
 }) {
-  const gestes: GestePret[] = gestesTousApplicables(chiffres).flatMap((g) => {
-    const action = actions[g.geste];
-    if (!action) return [];
-    return [
-      {
-        geste: g.geste,
-        libelle: g.libelle,
-        bouton: g.bouton,
-        explication: g.explication,
-        confirmation: confirmations[g.geste],
-        definitif: g.definitif,
-        // Le message d'après coup de ce volet (`messageApres`) : jamais vide, même quand l'action ne répond rien.
-        fait: messageApres(g.geste, undefined).texte,
-        action,
-      },
-    ];
-  });
+  const gestes: GestePret[] = gestesTousProposes(chiffres, actions, confirmations);
   return <GestesProposes id="geste-tous" gestes={gestes} />;
 }

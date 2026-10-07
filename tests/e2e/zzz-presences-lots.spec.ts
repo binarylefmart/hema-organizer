@@ -36,8 +36,21 @@ const ACTION_AUDIT = "presence.modifiee_par_admin";
 /** Le nombre d'entrées du journal pour un filtre donné, lu dans le sous-titre « N entrées ». */
 async function entreesDuJournal(page: import("@playwright/test").Page, filtre: string): Promise<number> {
   await page.goto(`/admin/audit?q=${encodeURIComponent(filtre)}`);
-  const sousTitre = await page.getByText(/^\d+ entrées? · conservées/).innerText();
+  const sousTitre = await page.getByText(/^\d+\sentrées?\s·\sconservées/).innerText();
   return Number(sousTitre.match(/^(\d+)/)?.[1] ?? "0");
+}
+
+/** Chaque ligne du registre montre « Absent » : la liste sur PC, le bouton enfoncé sur téléphone. */
+async function attendreToutesAbsentes(page: import("@playwright/test").Page, invites: number): Promise<void> {
+  if ((page.viewportSize()?.width ?? 1280) < 768) {
+    await expect(page.getByRole("group", { name: /^Réponse de / })).toHaveCount(invites);
+    await expect(page.getByRole("button", { name: /^Absent — /, pressed: true })).toHaveCount(invites);
+    await expect(page.getByRole("button", { name: /^(Présent|Peut-être) — /, pressed: true })).toHaveCount(0);
+    return;
+  }
+  const reponses = page.locator('button[role="combobox"][id^="presence-"]');
+  await expect(reponses).toHaveCount(invites);
+  await expect(reponses).toHaveText(Array<string>(invites).fill("Absent"));
 }
 
 test("corriger les réponses par lots : une seule réponse, une entrée de journal par personne", async ({ page }) => {
@@ -84,6 +97,9 @@ test("corriger les réponses par lots : une seule réponse, une entrée de journ
 
   await expect(barre).toBeVisible();
   await expect(barre.getByText(`${invites} personnes sélectionnées`)).toBeVisible();
+  // Au téléphone, pas de volet : la barre du bas porte la question et les réponses directement.
+  await expect(barre.getByText("Mettre leur réponse à :")).toBeVisible();
+  await expect(barre.getByRole("button", { name: "Annuler la sélection" })).toBeVisible();
 
   // 3. La confirmation, interceptée pour être **lue** : c'est elle qui doit annoncer l'écrasement.
   let question = "";
@@ -114,18 +130,16 @@ test("corriger les réponses par lots : une seule réponse, une entrée de journ
   const modifiees = Number((await message.innerText()).match(/^(\d+) réponses?/)?.[1] ?? "0");
   expect(modifiees, "la moitié du club au moins n'était pas déjà « Absent »").toBeGreaterThan(0);
 
-  // Toutes les lignes affichées portent la réponse du lot. La liste de chaque ligne est celle du
-  // dépôt (`ListeDeroulante`) : un bouton `combobox` qui **écrit** la réponse choisie, pas un
-  // `<select>` dont on lirait `value` — on lit donc ce qu'il affiche, c'est-à-dire ce qu'on voit.
-  const reponses = page.locator('button[role="combobox"][id^="presence-"]');
-  await expect(reponses).toHaveCount(invites);
-  await expect(reponses).toHaveText(Array<string>(invites).fill("Absent"));
+  // Toutes les lignes affichées portent la réponse du lot. Sur PC, la liste de chaque ligne est celle
+  // du dépôt (`ListeDeroulante`) : un bouton `combobox` qui **écrit** la réponse choisie, pas un
+  // `<select>` dont on lirait `value` — on lit donc ce qu'il affiche, c'est-à-dire ce qu'on voit. Sur
+  // téléphone, chaque ligne porte trois boutons ✓ ? ✕ (un groupe « Réponse de … ») et la réponse
+  // actuelle est le bouton enfoncé : un groupe par invité, et autant de « Absent » enfoncés.
+  await attendreToutesAbsentes(page, invites);
   // Et elles y sont **en base** : le rechargement complet est la seule preuve qui compte, l'écran
   // affichant d'abord ses corrections optimistes.
   await page.reload();
-  const apresRechargement = page.locator('button[role="combobox"][id^="presence-"]');
-  await expect(apresRechargement).toHaveCount(invites);
-  await expect(apresRechargement).toHaveText(Array<string>(invites).fill("Absent"));
+  await attendreToutesAbsentes(page, invites);
 
   // 4. Une entrée de journal par personne réellement modifiée — ni une pour tout le lot, ni une par
   //    ligne cochée. Et sous le **même** mot que le geste unitaire.

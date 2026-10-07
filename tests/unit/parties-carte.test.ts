@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   blocsVoisins,
+  pasVoisins,
   confirmationRetrait,
   entreesAjout,
   grouperParPartie,
@@ -95,7 +96,8 @@ describe("l'écran", () => {
     expect(code).toContain("ajouterPartie({ sessionId, bloc, ...ajout })");
     expect(code).toContain('ajouterPartie({ sessionId, bloc, nature: "COURS" })');
     expect(code).not.toContain("changerNaturePartie");
-    expect(code).toContain("deplacerPartie({ partieId: partie.id, versBloc:");
+    // Les flèches déplacent d'une place dans l'ordre de lecture (`pasVoisins`), partie comprise.
+    expect(code).toContain("deplacerElement({ partieId: partie.id, versBloc: pas.versBloc, avantId: pas.avantId })");
     expect(code).toContain("retirerPartie({ partieId: partie.id })");
   });
 
@@ -116,5 +118,37 @@ describe("l'écran", () => {
     expect(code).toContain("{gestes && <AjouterDansPartie");
     expect(code).toContain("{gestes && <BoutonsElement");
     expect(code).toMatch(/\{modifiable && <PiedCarte /);
+  });
+});
+
+describe("pasVoisins — les flèches de l'ordinateur, une place à la fois", () => {
+  const seance = [
+    { id: "e1", bloc: 1 },
+    { id: "c1", bloc: 1 },
+    { id: "o1", bloc: 1 },
+    { id: "c2", bloc: 2 },
+  ];
+  it("monte devant le voisin du dessus, dans la partie", () => {
+    expect(pasVoisins(seance[2], seance).haut).toMatchObject({ versBloc: 1, avantId: "c1" });
+  });
+  it("descend derrière le voisin du dessous : devant celui d'après, ou en fin de partie", () => {
+    expect(pasVoisins(seance[0], seance).bas).toMatchObject({ versBloc: 1, avantId: "o1" });
+    expect(pasVoisins(seance[1], seance).bas).toMatchObject({ versBloc: 1, avantId: null });
+  });
+  it("en fin de partie, descend au début de la suivante ; en tête, monte à la fin de la précédente", () => {
+    expect(pasVoisins(seance[2], seance).bas).toMatchObject({ versBloc: 2, avantId: "c2" });
+    expect(pasVoisins(seance[3], seance).haut).toMatchObject({ versBloc: 1, avantId: null });
+  });
+  it("rien au-dessus du premier élément, rien sous le seul élément de la dernière partie", () => {
+    expect(pasVoisins(seance[0], seance).haut).toBeNull();
+    expect(pasVoisins(seance[3], seance).bas).toBeNull();
+  });
+  it("le dernier de la dernière partie, s'il n'y est pas seul, ouvre une partie nouvelle", () => {
+    const une = [
+      { id: "a", bloc: 1 },
+      { id: "b", bloc: 1 },
+    ];
+    expect(pasVoisins(une[1], une).bas).toMatchObject({ versBloc: 2, avantId: null, titre: "Passer dans une nouvelle partie" });
+    expect(pasVoisins(une[1], une).haut?.titre).toBe("Monter d'une place");
   });
 });

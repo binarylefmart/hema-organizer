@@ -1,6 +1,7 @@
 import { boutonClasses } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
 import { couleurNature, grouperParPartie } from "@/components/seances/programme-cours";
+import { EcuNature } from "@/components/seances/EcuNature";
 import { PastilleNiveau } from "@/components/ui/Pastille";
 import { lienCarte } from "@/lib/dates";
 import { LIBELLE_ANNULEE, lignesEvenement, lignesResume, type EvenementPartage, type LigneResume, type SeancePartagee } from "@/lib/partage";
@@ -59,7 +60,10 @@ export function ResumeSeance({ seance, compact = false }: { seance: SeancePartag
                           aucun nom de personne ne sort d'ici, pas même celui de l'instructeur (voir
                           l'en-tête). À la couleur de sa nature (`couleurNature`), comme sur la fiche
                           d'une séance dans l'application. */}
-                      <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${couleurNature(c.nature)}`}>{c.nom}</span>
+                      <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${couleurNature(c.nature)}`}>
+                        <EcuNature nature={c.nature} taille={14} />
+                        {c.nom}
+                      </span>
                       {/* **Un atelier se lit comme un cours** (avenant, « ne mets pas les
                           ateliers en surlignage ») : son titre est le thème de l'élément, écrit comme
                           tous les thèmes — ni vert ni mise en valeur à lui. Sous l'étiquette « Atelier »

@@ -29,11 +29,12 @@ import {
   setThemesEchauffement,
   synchroniserSeance,
 } from "@/lib/planning";
-import { rangementsParties, type PartieARanger } from "@/components/planning/rangement";
+import { ordreAvant, ordreDInsertion, ordreEntier, rangementsParties, type PartieARanger } from "@/components/planning/rangement";
 import { transitionAutorisee } from "@/lib/ateliers";
 import { can, estCompteDeService } from "@/lib/permissions";
 import {
   casePlanningSchema,
+  deplacerElementSchema,
   deplacerPartieSchema,
   lieuxSchema,
   naturePartieSchema,
@@ -62,9 +63,12 @@ function rafraichir(sessionId?: string) {
  * Toutes reçoivent un `partieId` (le nom de la partie n'est plus sa clé) : la séance et sa période
  * se retrouvent depuis la ligne, et non depuis ce que l'écran a bien voulu envoyer. Un identifiant
  * recopié dans une requête forgée ne peut donc pas faire écrire dans une autre séance que la sienne.
+ *
+ * `client` : la transaction de l'appelant quand le geste doit relire la partie **dans** celle-ci
+ * (les déplacements), la base sinon.
  */
-async function partiePourEcriture(partieId: string) {
-  const partie = await db.sessionPartie.findUnique({
+async function partiePourEcriture(partieId: string, client: Pick<Prisma.TransactionClient, "sessionPartie"> = db) {
+  const partie = await client.sessionPartie.findUnique({
     where: { id: partieId },
     include: {
       instructeur: { select: { prenom: true, nom: true } },
@@ -617,9 +621,11 @@ async function elementsARanger(client: Pick<Prisma.TransactionClient, "sessionPa
  * séances qui n'ont pas toutes le même nombre de parties — « ajouter un échauffement en partie 3 » à
  * une séance qui n'en a qu'une le pose dans une partie 2 nouvelle, plutôt que de laisser un trou.
  *
- * L'élément naît **dernier de sa nature dans sa partie** ; le rangement le met à sa place de lecture
- * (un échauffement passe devant le cours de sa partie) et recale les noms des voisins — le cours
- * seul d'une partie devient « Cours 1 » quand un second arrive.
+ * L'élément naît **à sa place par défaut dans sa partie** (`ordreDInsertion` : après le dernier
+ * élément dont la nature vient avant la sienne dans `ORDRE_DEFAUT_NATURES` — échauffement, cours,
+ * atelier, option —, sinon en tête) ; le rangement renumérote la séance et recale les noms des
+ * voisins — le cours seul d'une partie devient « Cours 1 » quand un second arrive. L'ordre que
+ * l'équipe a donné aux autres éléments n'est pas touché.
  */
 async function creerPartie(
   tx: Prisma.TransactionClient,
@@ -630,14 +636,15 @@ async function creerPartie(
   const existantes = await elementsARanger(tx, sessionId);
   if (existantes.length >= PARTIES_PAR_SEANCE_MAX) return null;
   const bloc = Math.min(Math.max(voulu.bloc, 1), nombreDeParties(existantes) + 1);
-  const ordre = existantes.reduce((m, p) => Math.max(m, p.ordre), -1) + 1;
+  const ordre = ordreDInsertion(existantes, bloc, voulu.nature);
   const nouvelle = await tx.sessionPartie.create({
-    // Libellé provisoire : `rangerParties`, juste en dessous, pose le vrai (et rien d'autre ne lit la
-    // ligne avant le commit).
-    data: { sessionId, libelle: "", bloc, nature: voulu.nature, ordre, modifieParId: auteurId },
+    // Libellé et rang provisoires : `rangerParties`, juste en dessous, pose les vrais (et rien d'autre
+    // ne lit la ligne avant le commit). La base ne prend qu'un rang entier, le rangement reçoit le
+    // rang intercalaire (`ordreEntier`).
+    data: { sessionId, libelle: "", bloc, nature: voulu.nature, ordre: ordreEntier(ordre), modifieParId: auteurId },
     select: SELECTION_RANGEMENT,
   });
-  for (const ecriture of rangerParties([...existantes, nouvelle], tx)) await ecriture;
+  for (const ecriture of rangerParties([...existantes, { ...nouvelle, ordre }], tx)) await ecriture;
   return tx.sessionPartie.findUniqueOrThrow({ where: { id: nouvelle.id }, select: { id: true, libelle: true, bloc: true, nature: true } });
 }
 
@@ -813,10 +820,11 @@ export async function ajouterPartiesEnMasse(input: {
  * **Changer la nature d'un élément** : échauffement, cours ou option (le menu de
  * l'élément le propose).
  *
- * L'élément reste dans **sa partie** et passe en queue de sa nouvelle nature ; `rangerParties`
- * recale sa place de lecture et les noms des voisins (le second cours qui devient une option fait
- * du premier « Cours » tout court) — **sans** toucher leur `updatedAt`. L'élément dont on change la
- * nature, lui, est horodaté : ce clic-là porte sur lui.
+ * L'élément **garde sa place** — sa partie et son rang : l'ordre d'une partie est celui que l'équipe
+ * a réglé, et changer de nature n'est pas déplacer. `rangerParties` ne recale que les noms (le second
+ * cours qui devient une option fait du premier « Cours » tout court) — **sans** toucher le
+ * `updatedAt` des voisins. L'élément dont on change la nature, lui, est horodaté : ce clic-là porte
+ * sur lui.
  *
  * **Refusé tant qu'un atelier occupe l'élément** (ses réglages, eux, s'enregistrent par
  * `enregistrerCase`, thème figé) : un atelier se retire depuis la gestion des ateliers ou en
@@ -850,15 +858,13 @@ export async function changerNaturePartie(input: {
       data: { nature, modifieParId: user.id },
     }),
     /*
-     * L'élément change de nature **dans la liste** avant le rangement, en queue de sa nouvelle série
-     * (`ordre` au-delà de tout), et avec un horodatage **neuf** : le rangement réécrit sa place et son
-     * nom, donc l'écrit une seconde fois après la ligne ci-dessus — en lui rendant son ancien
-     * `updatedAt`, il défairait la seule trace de ce clic.
+     * L'élément change de nature **dans la liste** avant le rangement, à son rang d'avant, et avec un
+     * horodatage **neuf** : le rangement peut réécrire son nom, donc l'écrire une seconde fois après
+     * la ligne ci-dessus — en lui rendant son ancien `updatedAt`, il défairait la seule trace de ce
+     * clic.
      */
     ...rangerParties(
-      toutes.map((p) =>
-        p.id === partieId ? { ...p, nature, ordre: Number.MAX_SAFE_INTEGER, updatedAt: maintenant } : p,
-      ),
+      toutes.map((p) => (p.id === partieId ? { ...p, nature, updatedAt: maintenant } : p)),
       db,
     ),
   ]);
@@ -951,14 +957,74 @@ export async function retirerPartie(input: {
 }
 
 /**
+ * **Le corps commun des deux déplacements**, dans une transaction : relire la partie et ses serrures
+ * (`partiePourEcriture`), relire la séance (`elementsARanger`), demander au geste où poser l'élément
+ * (`viser` : `null` pour « déjà là », une erreur pour une place qui n'existe plus), puis écrire la
+ * ligne et le rangement — **sans toucher `updatedAt`**, la place change, pas le contenu.
+ *
+ * « Rien à changer » se mesure sur le résultat **rangé** ; et une ligne disparue malgré tout pendant
+ * l'écriture (P2025) se dit en français plutôt que de remonter en exception.
+ */
+type PartieEcrite = Extract<Awaited<ReturnType<typeof partiePourEcriture>>, { partie: unknown }>["partie"];
+
+async function deplacerDansTransaction(
+  partieId: string,
+  viser: (partie: PartieEcrite, toutes: PartieARanger[]) => { vers: number; ordre: number } | { erreur: string } | null,
+): Promise<{ erreur: string } | { succes: string } | { partie: PartieEcrite; apresRangement: Map<string, string>; vers: number }> {
+  try {
+    return await db.$transaction(async (tx) => {
+      const ctx = await partiePourEcriture(partieId, tx);
+      if (ctx.erreur !== undefined) return { erreur: ctx.erreur };
+      const partie = ctx.partie;
+      const toutes = await elementsARanger(tx, partie.sessionId);
+      const vise = viser(partie, toutes);
+      if (vise === null) return { succes: "Rien à changer." } as const;
+      if ("erreur" in vise) return vise;
+      const { vers, ordre } = vise;
+      const voulues = toutes.map((p) => (p.id === partieId ? { ...p, bloc: vers, ordre } : p));
+      const avantRangement = placesApresRangement(toutes);
+      const apresRangement = placesApresRangement(voulues);
+      if ([...avantRangement].every(([id, place]) => apresRangement.get(id) === place)) return { succes: "Rien à changer." } as const;
+      // Le changement de place lui-même : `rangerParties` compare à la liste qu'on lui donne, où
+      // l'élément est **déjà** à sa nouvelle place — il n'écrirait donc pas ce `bloc`-là. Son
+      // horodatage est rendu tel quel. Le rangement qui suit peut encore renuméroter la partie : la
+      // dernière écriture gagne.
+      await tx.sessionPartie.update({ where: { id: partieId }, data: { bloc: vers, ordre: ordreEntier(ordre), updatedAt: partie.updatedAt } });
+      for (const ecriture of rangerParties(voulues, tx)) await ecriture;
+      return { partie, apresRangement, vers } as const;
+    });
+  } catch (e) {
+    if ((e as { code?: string } | null)?.code === "P2025")
+      return { erreur: "Un élément de cette séance a changé entre-temps : recharge la page, puis recommence." } as const;
+    throw e;
+  }
+}
+
+/**
+ * **Les numéros de partie d'un déplacement, pour le journal** — trois numéros, deux numérotations,
+ * et chacun nommé pour ce qu'il est : `partieDepart` (avant le geste, numérotation d'avant),
+ * `versDemande` (ce que l'écran a envoyé, tel quel) et `partieArrivee` (après rangement : une partie
+ * vidée disparaît et renumérote les suivantes, si bien que l'arrivée peut valoir un de moins que la
+ * demande). Les anciens `de` / `vers` mêlaient la première et la troisième sans le dire.
+ */
+function placesJournal(depart: number, versDemande: number, apresRangement: ReadonlyMap<string, string>, partieId: string, vers: number) {
+  return {
+    partieDepart: depart,
+    versDemande,
+    partieArrivee: Number((apresRangement.get(partieId) ?? `${vers}:0`).split(":")[0]),
+  };
+}
+
+/**
  * **Changer un élément de partie** : `versBloc` ∈ [1, nbParties + 1] — le bouton ↑ vise la partie
  * précédente, ↓ la suivante (ou une partie nouvelle, à la fin). Le numéro visé est ramené dans les
  * limites de la séance plutôt que refusé : un « monter » dans la partie 1 ne doit pas afficher
  * d'erreur, il ne doit rien faire.
  *
- * L'élément arrive **en queue de sa nature** dans la partie visée ; le rangement le pose à sa place
- * de lecture, recale les noms et — si l'élément était seul dans sa partie — fait disparaître celle-ci
- * en renumérotant les suivantes. **Sans toucher `updatedAt`** de personne : la place a changé, pas le
+ * L'élément arrive **à sa place par défaut** dans la partie visée (`ordreDInsertion`, comme un
+ * élément ajouté) ; le rangement renumérote, recale les noms et — si l'élément était seul dans sa
+ * partie — fait disparaître celle-ci en renumérotant les suivantes. Pour le poser ailleurs dans la
+ * partie, c'est `deplacerElement`. **Sans toucher `updatedAt`** de personne : la place a changé, pas le
  * contenu ; le geste se lit au journal (`planning.partie.ordre`, qui dit d'où à où).
  *
  * **« Rien à changer » se mesure sur le résultat rangé**, pas sur le numéro demandé : l'élément seul
@@ -974,26 +1040,19 @@ export async function deplacerPartie(input: {
   if (!parsed.success) return zodToFormState(parsed.error);
   const { partieId, versBloc } = parsed.data;
 
-  const ctx = await partiePourEcriture(partieId);
-  if ("erreur" in ctx) return ctx;
-  const partie = ctx.partie;
-
-  const toutes = await elementsARanger(db, partie.sessionId);
-  const vers = Math.min(Math.max(versBloc, 1), nombreDeParties(toutes) + 1);
-  if (vers === partie.bloc) return { succes: "Rien à changer." };
-  const voulues = toutes.map((p) => (p.id === partieId ? { ...p, bloc: vers, ordre: Number.MAX_SAFE_INTEGER } : p));
-  const avantRangement = placesApresRangement(toutes);
-  const apresRangement = placesApresRangement(voulues);
-  if ([...avantRangement].every(([id, place]) => apresRangement.get(id) === place)) return { succes: "Rien à changer." };
-
-  await db.$transaction([
-    // Le changement de partie lui-même : `rangerParties` compare à la liste qu'on lui donne, où
-    // l'élément est **déjà** dans sa nouvelle partie — il n'écrirait donc pas ce `bloc`-là. Son
-    // horodatage est rendu tel quel : c'est sa place qui change, pas son contenu. Le rangement qui
-    // suit, dans la même transaction, peut encore renuméroter la partie : la dernière écriture gagne.
-    db.sessionPartie.update({ where: { id: partieId }, data: { bloc: vers, updatedAt: partie.updatedAt } }),
-    ...rangerParties(voulues, db),
-  ]);
+  /*
+   * **Lu et écrit dans la même transaction**, comme l'ajout (`creerPartie`) : lue dehors, la séance
+   * pouvait changer entre la lecture et l'écriture — un retrait au même instant, et la mise à jour
+   * visait une ligne disparue (P2025, une exception au lieu d'une phrase). SQLite n'accepte qu'un
+   * écrivain à la fois : la transaction met réellement les deux gestes à la file.
+   */
+  const fait = await deplacerDansTransaction(partieId, (partie, toutes) => {
+    const vers = Math.min(Math.max(versBloc, 1), nombreDeParties(toutes) + 1);
+    if (vers === partie.bloc) return null;
+    return { vers, ordre: ordreDInsertion(toutes.filter((p) => p.id !== partieId), vers, natureLue(partie.nature)) };
+  });
+  if ("erreur" in fait || "succes" in fait) return fait;
+  const { partie, apresRangement, vers } = fait;
   // Indispensable ici : `disciplines` est la liste des thèmes **dans l'ordre des éléments**, et c'est
   // elle qu'on lit dans l'objet de l'email du soir. Déplacer un élément change donc ce qui part.
   await synchroniserSeance(partie.sessionId);
@@ -1002,8 +1061,68 @@ export async function deplacerPartie(input: {
     partie: partie.libelle,
     bloc: partie.bloc,
     nature: partie.nature,
-    de: partie.bloc,
-    vers: Number(apresRangement.get(partieId)?.split(":")[0] ?? vers),
+    ...placesJournal(partie.bloc, versBloc, apresRangement, partieId, vers),
+  });
+  rafraichir(partie.sessionId);
+  return { succes: "Élément déplacé." };
+}
+
+/**
+ * **Poser un élément à une place précise** — le glisser-déposer : dans la partie `versBloc` (de 1 à
+ * nbParties + 1, la dernière valeur ouvrant une partie nouvelle ; ramenée aux limites comme pour
+ * `deplacerPartie`), **juste avant** l'élément `avantId`, ou en fin de partie quand `avantId` vaut
+ * `null`. C'est le geste qui rend l'ordre d'une partie libre : on y inverse deux éléments, on remonte
+ * une option au-dessus d'un cours.
+ *
+ * `avantId` doit être un élément **de la même séance et de la partie visée** — sinon l'écran visait
+ * une place qui n'existe plus (un voisin retiré entre-temps), et le geste est refusé plutôt que posé
+ * au hasard. Viser l'élément lui-même ne déplace rien.
+ *
+ * Mêmes serrures et même écriture que `deplacerPartie` : `planning.edit`, `partiePourEcriture`
+ * (trimestre clos, séance annulée), une transaction avec `rangerParties`, **aucun `updatedAt`
+ * touché** — la place change, pas le contenu —, et le journal sous la **même action**
+ * (`planning.partie.ordre`) : un seul filtre retrouve tous les déplacements, d'où qu'ils viennent.
+ * « Rien à changer » se mesure, là aussi, sur le résultat rangé.
+ */
+export async function deplacerElement(input: { partieId: string; versBloc: number; avantId: string | null }): Promise<FormState> {
+  const user = await assertPermission("planning.edit");
+  const parsed = deplacerElementSchema.safeParse(input);
+  if (!parsed.success) return zodToFormState(parsed.error);
+  const { partieId, versBloc, avantId } = parsed.data;
+
+  // Lu et écrit dans la même transaction, pour la même raison que `deplacerPartie`.
+  const fait = await deplacerDansTransaction(partieId, (_partie, toutes) => {
+    // Viser l'élément lui-même ne déplace rien — les serrures, elles, sont déjà passées.
+    if (avantId === partieId) return null;
+    const vers = Math.min(versBloc, nombreDeParties(toutes) + 1);
+    const ordre = ordreAvant(
+      toutes.filter((p) => p.id !== partieId),
+      vers,
+      avantId,
+    );
+    // Un voisin d'une autre séance, d'une autre partie, ou retiré depuis : `ordreAvant` ne le trouve
+    // pas dans la partie visée de **cette** séance.
+    if (ordre === null) return { erreur: "Cette place n'existe plus : recharge la page, puis recommence." };
+    return { vers, ordre };
+  });
+  if ("erreur" in fait || "succes" in fait) return fait;
+  const { partie, apresRangement, vers } = fait;
+  // `disciplines` suit l'ordre des éléments : changer l'ordre change ce que l'email du soir annonce.
+  await synchroniserSeance(partie.sessionId);
+  const places = placesJournal(partie.bloc, versBloc, apresRangement, partieId, vers);
+  const ordreFinal = Number((apresRangement.get(partieId) ?? `${vers}:0`).split(":")[1]);
+  // La place d'arrivée dans sa partie, à partir de 1 : « 2e de la partie 3 » se relit sans la séance.
+  const position = [...apresRangement.values()].filter((place) => {
+    const [b, o] = place.split(":").map(Number);
+    return b === places.partieArrivee && o <= ordreFinal;
+  }).length;
+  await audit(user, "planning.partie.ordre", partie.sessionId, {
+    date: partie.session.date,
+    partie: partie.libelle,
+    bloc: partie.bloc,
+    nature: partie.nature,
+    ...places,
+    position,
   });
   rafraichir(partie.sessionId);
   return { succes: "Élément déplacé." };

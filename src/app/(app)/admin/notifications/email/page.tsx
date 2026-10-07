@@ -124,7 +124,7 @@ export default async function PageCanalEmail() {
                 </Pastille>
                 <span className="font-semibold">{l.type}</span>
                 <span className="text-texte-secondaire">
-                  {l.user ? `${l.user.prenom} ${l.user.nom}` : "—"} · {formatDateHeure(l.date)}
+                  {l.user ? `${l.user.prenom} ${l.user.nom}` : "—"}&nbsp;· {formatDateHeure(l.date)}
                 </span>
                 {l.erreur && <span className="basis-full break-words text-rouge">{l.erreur}</span>}
               </li>

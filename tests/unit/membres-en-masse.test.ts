@@ -190,9 +190,10 @@ describe("désactivation de tous les comptes", () => {
    */
   it("l'écran annonce les deux comptes qu'il épargne", () => {
     const page = fs.readFileSync(path.join(process.cwd(), "src/app/(app)/admin/membres/page.tsx"), "utf8");
-    // Les confirmations du volet « Pour tout le monde » sont rangées par geste (`confirmations=`) :
-    // celle de la désactivation est l'entrée `desactiver`.
-    const bloc = page.slice(page.indexOf("confirmations={{"));
+    // Les confirmations du volet « Pour tout le monde » sont rangées par geste (`confirmationsTous`,
+    // partagées par le volet de l'ordinateur et celui du téléphone) : celle de la désactivation est
+    // l'entrée `desactiver`.
+    const bloc = page.slice(page.indexOf("const confirmationsTous"));
     // La phrase est un gabarit (`${aDesactiver > 1 …}`) : on la découpe sur ses accents graves, pas
     // sur le premier `>`, qui tombe au milieu d'une interpolation.
     const debut = bloc.indexOf("desactiver: `");
