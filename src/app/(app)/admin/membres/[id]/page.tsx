@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/current-user";
+import { EncartCodesActivation } from "@/components/admin/EncartCodesActivation";
 import { db } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
 import { formatDateHeure } from "@/lib/dates";
@@ -337,6 +338,8 @@ export default async function PageMembre({ params }: Props) {
      * champs de ~340 px ; si la page s'élargissait un jour, les deux colonnes reviendraient d'elles-mêmes.
      */
     <div className="@container flex flex-col gap-5">
+      {/* Code d'activation d'une remise à zéro de l'accès, si cette personne est du bureau. */}
+      <EncartCodesActivation acteurId={acteur.id} />
       {/* **Au téléphone, les cartes en liste groupée** (`ListeGroupee`, celle de « Mon profil ») :
           chaque carte devient une ligne qui la déplie, une seule à la fois. Sur ordinateur, les
           groupes s'effacent (`ordi:contents`) et la fiche est celle d'hier. */}

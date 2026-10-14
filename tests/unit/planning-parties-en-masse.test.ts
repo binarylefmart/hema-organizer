@@ -60,7 +60,7 @@ vi.mock("@/lib/db", () => {
     session: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
         const s = faux.seances.find((x) => x.id === where.id);
-        return s ? { id: s.id, date: s.date, annulee: s.annulee, period: { statut: s.statut } } : null;
+        return s ? { id: s.id, date: s.date, heureDebut: "19:00", annulee: s.annulee, period: { statut: s.statut } } : null;
       }),
     },
   };

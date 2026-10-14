@@ -2,6 +2,30 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.77.0
+
+### Nouveautés
+
+- **auth** : code d'activation à usage unique, remis de vive voix, exigé pour activer la 2FA d'un membre du bureau
+- **auth** : 2FA obligatoire pour le bureau dès l'entrée, gérée dans l'espace admin, réinitialisation demandée au bureau depuis le profil
+- **notifications** : Planning modifié — une notification de téléphone par jour, suppressions annoncées à l'application seulement, thème ou instructeur principal comme seuls déclencheurs
+- **notifications** : « Planning modifié » annonce aussi les retraits, la description seulement avec le thème ou l'instructeur
+- **seances** : la séance du jour en tête, une séance commencée grisée et figée jusqu'au lendemain
+- **notifications** : « Planning modifié » prévient les instructeurs des ajouts et changements
+- **reparation** : contrôle des codes de secours jamais affichés
+
+### Corrections
+
+- **auth** : toute réinitialisation de 2FA d'un membre du bureau exige un code d'activation, la sienne comprise
+- corrections des relectures de bugs et de sécurité
+- **notifications** : « Supprimé » plutôt que « Retiré » dans Planning modifié
+- **auth** : la double authentification ne garde plus que l'espace admin
+
+### Autres changements
+
+- **guides** : PDF régénérés
+- **etat** : 2FA de l'espace admin, séance commencée, Planning modifié
+
 ## 0.76.0
 
 ### Corrections

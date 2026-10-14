@@ -116,6 +116,15 @@ export function estimerEnvois({ membresAvecEmail, coursParSemaine, instructeurs,
       parSemaine: null,
       cadence: "à chaque désistement de dernière minute",
     },
+    {
+      // Un message par enregistrement du planning (tout un lot compris), à chaque instructeur sauf l'auteur.
+      type: "planning_modifie",
+      titre: DESCRIPTIONS.planning_modifie.titre,
+      mode: mode("planning_modifie"),
+      parEnvoi: coutUnitaire(mode("planning_modifie"), Math.max(0, instructeurs - 1)),
+      parSemaine: null,
+      cadence: "à chaque modification du planning appliquée",
+    },
     { type: "evenement_nouveau", titre: DESCRIPTIONS.evenement_nouveau.titre, mode: mode("evenement_nouveau"), parEnvoi: evenement, parSemaine: null, cadence: "à chaque événement publié" },
   ];
   // Ceinture : l'ordre et le contenu des lignes suivent la constante, pour qu'une notification

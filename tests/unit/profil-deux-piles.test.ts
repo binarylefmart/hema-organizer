@@ -198,11 +198,11 @@ describe("l'état du compte dit l'état, et un champ vide ne s'affiche pas du to
     expect(lignesEtatCompte({ ...BASE, appareils: 3 }).find((l) => l.intitule === TITRE_APPAREILS_NOTIFIES)?.valeur).toBe("3 appareils");
   });
 
-  it("reproche la double authentification à un administrateur, jamais à un membre", () => {
-    // Pour un ADMIN elle est obligatoire (sans elle, pas de session forte) ; pour tous les autres
-    // c'est un supplément qu'on choisit, et une pastille d'alerte reprocherait un réglage facultatif.
-    const membre = lignesEtatCompte({ ...BASE, admin: false }).find((l) => l.intitule === "Double authentification");
-    expect(membre).toMatchObject({ valeur: "non activée", ton: "neutre" });
+  it("reproche la double authentification à un administrateur, et n'en parle pas à un membre", () => {
+    // Pour un ADMIN elle est obligatoire (sans elle, pas d'espace admin) ; un membre n'a rien à en
+    // faire, sauf s'il en a une d'avant — sa ligne reste alors, pour qu'il puisse la retirer.
+    expect(lignesEtatCompte({ ...BASE, admin: false }).find((l) => l.intitule === "Double authentification")).toBeUndefined();
+    expect(lignesEtatCompte({ ...BASE, admin: false, deuxFa: true }).find((l) => l.intitule === "Double authentification")).toMatchObject({ valeur: "active" });
     const bureau = lignesEtatCompte({ ...BASE, admin: true }).find((l) => l.intitule === "Double authentification");
     expect(bureau).toMatchObject({ valeur: "à activer", ton: "ocre" });
   });
@@ -210,7 +210,7 @@ describe("l'état du compte dit l'état, et un champ vide ne s'affiche pas du to
   it("ne date la double authentification que lorsqu'elle est active", () => {
     // `totpActiveAt` peut survivre à une réinitialisation : « non activée — depuis le … » serait faux.
     const quand = new Date("2026-09-01T10:00:00.000Z");
-    expect(lignesEtatCompte({ ...BASE, deuxFa: false, totpActiveAt: quand }).find((l) => l.intitule === "Double authentification")?.precision).toBe("");
+    expect(lignesEtatCompte({ ...BASE, admin: true, deuxFa: false, totpActiveAt: quand }).find((l) => l.intitule === "Double authentification")?.precision).toBe("");
     expect(lignesEtatCompte({ ...BASE, deuxFa: true, totpActiveAt: quand }).find((l) => l.intitule === "Double authentification")?.precision).toContain("depuis le");
   });
 
@@ -325,10 +325,11 @@ describe("la carte d'état ne contredit pas les cartes de réglage (relecture du
     expect(motDePasse?.ton, "le mot de passe d'un administrateur est obligatoire, lui aussi").toBe("ocre");
     expect(motDePasse?.valeur).toBe("à définir");
     expect(deuxFa?.ton).toBe("ocre");
-    // Et pour un membre, les deux restent neutres : ce sont des filets, pas des obligations.
+    // Et pour un membre, le mot de passe reste neutre (un filet, pas une obligation) et la double
+    // authentification n'apparaît pas.
     const membre = lignesEtatCompte({ ...BASE, admin: false, aDejaUnMotDePasse: false, deuxFa: false });
     expect(membre.find((l) => l.intitule === "Mot de passe")?.ton).toBe("neutre");
-    expect(membre.find((l) => l.intitule === "Double authentification")?.ton).toBe("neutre");
+    expect(membre.find((l) => l.intitule === "Double authentification")).toBeUndefined();
   });
 
   /**
@@ -352,9 +353,9 @@ describe("la carte d'état ne contredit pas les cartes de réglage (relecture du
    * double authentification restait sur « elle s'ajoute à un mot de passe », donc la 2FA était
    * **injoignable** sans un rechargement que rien ne suggérait.
    */
-  it("définir un mot de passe, ou retirer sa 2FA, rafraîchit la page", () => {
+  it("définir un mot de passe, ou demander la réinitialisation de sa 2FA, rafraîchit la page", () => {
     const actions = lire("src/actions/profil.ts");
-    for (const nom of ["changerMotDePasse", "reinitialiserMaDeuxFa"]) {
+    for (const nom of ["changerMotDePasse", "demanderReinitialisationDeuxFa"]) {
       const corps = actions.slice(actions.indexOf(`export async function ${nom}`));
       const fin = corps.indexOf("\nexport ");
       expect(corps.slice(0, fin === -1 ? undefined : fin), nom).toContain('revalidatePath("/profil")');

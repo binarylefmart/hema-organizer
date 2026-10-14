@@ -181,6 +181,14 @@ describe("modifier une séance : la liste déroulante « Période »", () => {
     expect(faux.misesAJour[0].data).not.toHaveProperty("periodId");
   });
 
+  it("refuse une séance commencée : elle reste affichée, figée, jusqu'au lendemain", async () => {
+    faux.seances[0] = { ...faux.seances[0], date: "2000-10-06" };
+    const etat = await modifierSeance("s1", {}, formulaireSeance("p1"));
+    expect(etat.erreur).toMatch(/déjà commencé/);
+    expect(faux.misesAJour).toEqual([]);
+    expect(faux.audits).toEqual([]);
+  });
+
   it("refuse le déplacement vers un autre trimestre, et le dit au lieu de l'ignorer", async () => {
     const etat = await modifierSeance("s1", {}, formulaireSeance("p2"));
     expect(etat.succes).toBeUndefined();

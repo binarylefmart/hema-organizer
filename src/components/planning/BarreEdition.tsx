@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { enregistrerCases } from "@/actions/planning";
+import { annoncerModificationsAppliquees, enregistrerCases, oublierModificationsNonAppliquees } from "@/actions/planning";
 import { Bouton } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
 import { useBrouillon } from "./ContexteBrouillon";
@@ -80,8 +80,16 @@ export function BarreEdition({
     return arreter;
   }, []);
 
+  /*
+   * Les suppressions s'écrivent tout de suite, mais ne s'annoncent aux instructeurs qu'à
+   * l'application : sans case à écrire, « Appliquer » le dit au serveur ; « Annuler » les fait oublier.
+   * Sans attente ni erreur affichée — l'annonce ne doit jamais retenir l'écran.
+   */
+  const annoncer = () => void annoncerModificationsAppliquees().catch(() => {});
+
   const enregistrer = () => {
     if (!brouillon || nb === 0) {
+      annoncer();
       router.push(lienLecture);
       return;
     }
@@ -96,6 +104,7 @@ export function BarreEdition({
     for (const id of ecartees) brouillon.oublier(id);
     const ecarte = ecartees.length > 0 ? texteEcartees(ecartees.length) : null;
     if (cases.length === 0) {
+      annoncer();
       setAvis(ecarte);
       return;
     }
@@ -143,6 +152,7 @@ export function BarreEdition({
     const perte = `${nb} case${nb > 1 ? "s" : ""} modifiée${nb > 1 ? "s" : ""} ne ${nb > 1 ? "seront" : "sera"} pas appliquée${nb > 1 ? "s" : ""}.`;
     if (nb > 0 && !window.confirm(`${perte} ${CE_QUI_PART}\n\nAnnuler les modifications ?`)) return;
     brouillon?.vider();
+    void oublierModificationsNonAppliquees().catch(() => {});
     router.push(lienLecture);
   };
 

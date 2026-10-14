@@ -20,8 +20,8 @@ import { BoutonCopierLien } from "./BoutonCopierLien";
  *      jamais nommer ni le stockage ni Safari : on y explique le geste, pas le mécanisme.
  *      Cette étape est **sautée** sur
  *      ordinateur et quand on est déjà dans l'application installée : la question n'a pas de sens là.
- *   2. « Veux-tu consolider ton compte ? » — un mot de passe, puis la double authentification.
- *      Facultatif de bout en bout : « Continuer avec mon lien » n'installe et ne configure rien.
+ *   2. « Veux-tu consolider ton compte ? » — un mot de passe. Pas de double authentification ici :
+ *      elle ne sert qu'à ouvrir l'espace admin. Facultatif de bout en bout : « Continuer avec mon lien » n'installe et ne configure rien.
  *
  * **Pas de clignotement** : la plateforme ne se connaît que dans le navigateur, donc le premier
  * rendu (serveur, puis hydratation) affiche un état d'attente neutre — jamais une version qui
@@ -32,7 +32,7 @@ import { BoutonCopierLien } from "./BoutonCopierLien";
  * « detection » : le premier rendu, avant de savoir sur quel appareil on est.
  * « fin » : on sort vers l'application ; aucune vue, juste la navigation.
  */
-type Etape = "detection" | "installer" | "guide" | "deja-installee" | "consolider" | "deux-fa" | "fin";
+type Etape = "detection" | "installer" | "guide" | "deja-installee" | "consolider" | "mot-de-passe-pose" | "fin";
 
 function surOrdinateurOuDejaInstallee(): boolean {
   if (typeof window === "undefined") return true;
@@ -51,10 +51,10 @@ type Props = {
   aDejaUnMotDePasse: boolean;
   aUnEmail: boolean;
   /**
-   * Administrateur dont le mot de passe ou la double authentification manquent. Pour lui les deux
-   * sont **obligatoires** (l'espace admin n'ouvre qu'avec), et se règlent d'un seul tenant sur
-   * `/admin/activer` — que `suite` porte déjà. Lui proposer ici « c'est facultatif, continue avec
-   * ton lien » serait lui mentir, et lui faire le même réglage deux fois.
+   * Membre du bureau dont le mot de passe ou la double authentification manquent. Pour lui les deux
+   * sont **obligatoires**, réglés d'un seul tenant sur `/admin/activer` — que `suite` porte alors.
+   * Lui proposer ici « c'est facultatif, continue avec ton lien » serait lui mentir, et lui faire le
+   * même réglage deux fois.
    */
   reglageAdminDu?: boolean;
 };
@@ -174,7 +174,7 @@ export function ParcoursAccueil({ prenom, lienPersonnel, suite, aDejaUnMotDePass
         </div>
         <section className="rounded-2xl border border-bordure/60 bg-surface p-5 shadow-carte">
           <h2 className="mb-3 text-xl font-bold">Me créer un mot de passe</h2>
-          <FormulaireMotDePasse aDejaUnMotDePasse={false} apresSucces={() => setEtape("deux-fa")} />
+          <FormulaireMotDePasse aDejaUnMotDePasse={false} apresSucces={() => setEtape("mot-de-passe-pose")} />
         </section>
         {lienPersonnel ? (
           <BoutonCopierLien
@@ -195,25 +195,18 @@ export function ParcoursAccueil({ prenom, lienPersonnel, suite, aDejaUnMotDePass
     );
   }
 
-  // etape === "deux-fa" : le mot de passe vient d'être posé, la double authentification s'ajoute (ou pas)
+  // etape === "mot-de-passe-pose" : le mot de passe vient d'être posé
   return (
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-3xl">Mot de passe enregistré</h1>
-        <p className="mt-2">
-          Tu peux maintenant te connecter avec ton adresse et ce mot de passe, depuis n&apos;importe quel appareil. Veux-tu ajouter une double authentification ? C&apos;est un
-          code à 6 chiffres donné par une application sur ton téléphone — facultatif, et réglable plus tard.
-        </p>
+        <p className="mt-2">Tu peux maintenant te connecter avec ton adresse et ce mot de passe, depuis n&apos;importe quel appareil.</p>
       </div>
-      <LienBouton href="/profil#securite" taille="grande" pleineLargeur>
-        <Icone nom="bouclier" taille={20} />
-        Activer la double authentification
-      </LienBouton>
-      <LienBouton href={suite} variante="secondaire" taille="grande" pleineLargeur>
+      <LienBouton href={suite} taille="grande" pleineLargeur>
         Entrer dans l&apos;application
       </LienBouton>
       <p className="text-center text-sm text-texte-secondaire">
-        Tu retrouveras ces réglages dans <Link href="/profil#securite">Mon profil → Sécuriser mon compte</Link>.
+        Tu retrouveras ce réglage dans <Link href="/profil#securite">Mon profil → Sécuriser mon compte</Link>.
       </p>
     </div>
   );

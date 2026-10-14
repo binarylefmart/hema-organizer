@@ -136,7 +136,7 @@ export default async function PageSeance({ params, searchParams }: Props) {
         {/* **En modification, pas de carte « Programme » : un seul bouton, pleine largeur.** Le programme se
             règle dans le planning, ouvert sur cette séance et déjà en modification ; une carte qui n'aurait
             porté que ce lien n'était qu'un cadre de plus autour d'un bouton. */}
-        {enEdition && !carte.annulee ? (
+        {enEdition && !carte.annulee && !commencee ? (
           <LienBouton href={`${lienPlanning({ periode: carte.periodId, date: carte.date }, true)}#seance-${id}`} pleineLargeur>
             <Icone nom="livre" taille={20} />
             Modifier le programme dans le planning
@@ -232,7 +232,14 @@ export default async function PageSeance({ params, searchParams }: Props) {
         </Carte>
       )}
 
-      {enEdition && (
+      {/* Un cours commencé ne se modifie plus (`seanceReglable`, refusé aussi par `modifierSeance`) :
+          on le dit en une phrase plutôt que de montrer un formulaire qui ne pourrait que refuser. */}
+      {enEdition && commencee && (
+        <Carte titre="Date, horaire et lieu">
+          <p className="text-texte-secondaire">Ce cours a déjà commencé : sa date, son horaire, son lieu et son programme ne se modifient plus.</p>
+        </Carte>
+      )}
+      {enEdition && !commencee && (
         <Carte titre="Date, horaire et lieu">
         <FormulaireSeance
           action={modifierSeance.bind(null, id)}

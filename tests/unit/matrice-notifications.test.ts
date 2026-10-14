@@ -126,10 +126,10 @@ describe("une case ou une raison, jamais les deux, jamais aucune", () => {
   const avecCase = couples.filter(({ type, canal }) => CANAUX_PAR_NOTIFICATION[type].includes(canal));
   const sansObjet = couples.filter(({ type, canal }) => !CANAUX_PAR_NOTIFICATION[type].includes(canal));
 
-  it("les 54 cellules se partagent en 32 cases et 22 « sans objet »", () => {
-    expect(couples).toHaveLength(54);
-    expect(avecCase).toHaveLength(32);
-    expect(sansObjet).toHaveLength(22);
+  it("les 60 cellules se partagent en 34 cases et 26 « sans objet »", () => {
+    expect(couples).toHaveLength(60);
+    expect(avecCase).toHaveLength(34);
+    expect(sansObjet).toHaveLength(26);
   });
 
   it.each(sansObjet.map(({ type, canal }) => [type, canal] as const))("%s × %s dit pourquoi, en une phrase entière", (type, canal) => {

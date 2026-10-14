@@ -1,11 +1,18 @@
 "use server";
 
+import { prevenirTitulaireDeuxFa } from "@/lib/auth/demande-deux-fa";
 import { revalidatePath } from "next/cache";
 import { audit } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
 import { assertPermission, exigerReauth } from "@/lib/auth/current-user";
-import { desactiverTotp } from "@/lib/auth/deux-fa";
-import { revokeAllSessions } from "@/lib/auth/session";
+import { desactiverTotp, genererSecretTotp, ouvrirAffichageCodes } from "@/lib/auth/deux-fa";
+import { afficherCodesActivation, fermerCodesActivationAffiches, remettreCodeActivation } from "@/lib/auth/activation-bureau";
+import { abaisserSessionCourante, revokeAllSessions } from "@/lib/auth/session";
+import { verifyPassword } from "@/lib/auth/password";
+import { enregistrerCodesSecours, genererCodesSecours } from "@/lib/auth/codes-secours";
+import { CHEMIN_ACTIVATION_ADMIN, compteAcces, deuxFaActive, ouvrirReglage2fa } from "@/lib/auth/acces-admin";
+import { CHEMIN_MA_DEUX_FA } from "@/lib/auth/demande-deux-fa";
+import { redirect } from "next/navigation";
 import { getDiscordWebhookUrl, setDiscordWebhookUrl, setSetting, CLES } from "@/lib/settings";
 import { estTypeDiscord, salonPour, setSalonDiscord } from "@/lib/notifications/webhooks";
 import { setAlertesActivees, setRetentionAuditJours } from "@/lib/alertes";
@@ -550,6 +557,140 @@ export async function reinitialiserDeuxFaCompte(userId: string): Promise<void> {
   await desactiverTotp(userId);
   await revokeAllSessions(userId, acteur.id === userId);
   await audit(acteur, "deux_fa.reinitialisee", userId, { email: cible.email });
+  /*
+   * **Un code d'activation naît avec la réinitialisation**, et s'affiche une fois à qui l'a faite :
+   * sans lui, la personne ne réactive rien — et qui tiendrait sa boîte email non plus. Il ne part
+   * pas dans l'avis ci-dessous : il se remet de vive voix ou en main propre, jamais par email.
+   */
+  await afficherCodesActivation(acteur.id, [await remettreCodeActivation(acteur, cible, "reinitialisation_2fa")]);
+  // La personne l'apprend elle-même : si ce n'est pas elle qui l'a demandé, elle peut alerter le bureau.
+  await prevenirTitulaireDeuxFa({ titulaire: cible, evenement: "reinitialisee", par: `${acteur.prenom} ${acteur.nom}`.trim(), dedupKey: `deux_fa_reinit_${userId}_${Date.now()}` });
+  revalidatePath("/admin/comptes");
+}
+
+/**
+ * **« Générer un code d'activation »** sur la ligne d'un membre du bureau dont le réglage est à faire
+ * (Comptes admin) : nommé avant l'existence du code, code expiré, ou perdu. Le nouveau code remplace
+ * le précédent, s'affiche une fois à qui l'a généré, et se remet de vive voix ou en main propre.
+ *
+ * Gardes : `admins.manage` (donc élévation), cible du bureau, **pas le compte du portail** (exempté :
+ * personne d'autre que lui ne touche à sa 2FA), **pas soi-même** (on ne se remet pas son propre code :
+ * c'est précisément le contrôle par un tiers que le code apporte), `canEditUser`, double
+ * authentification pas encore active (sinon le code n'a rien à débloquer), puis `exigerReauth`.
+ */
+export async function genererCodeActivationCompte(userId: string): Promise<FormState> {
+  const acteur = await assertPermission("admins.manage");
+  const cible = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true, totpSecret: true, totpActiveAt: true },
+  });
+  if (!cible || !cible.estAdmin) return { erreur: "Ce compte n'est pas administrateur." };
+  if (estCompteDeService(cible)) return { erreur: "Le compte du portail n'a pas de code d'activation : lui seul règle sa double authentification." };
+  if (cible.id === acteur.id) return { erreur: "Un code d'activation se remet par un autre membre du bureau, jamais à soi-même." };
+  if (!canEditUser(acteur, cible)) return { erreur: "Action non autorisée." };
+  if (!cible.actif) return { erreur: "Ce compte est désactivé : réactive-le d'abord." };
+  if (deuxFaActive(cible)) return { erreur: `La double authentification de ${cible.prenom} ${cible.nom} est déjà active : il n'y a rien à débloquer.` };
+  await exigerReauth(acteur, "/admin/comptes");
+  await afficherCodesActivation(acteur.id, [await remettreCodeActivation(acteur, cible, "demande")]);
+  revalidatePath("/admin/comptes");
+  return { succes: `Code d'activation généré pour ${cible.prenom} ${cible.nom} : il s'affiche en haut de la page.` };
+}
+
+/** « C'est transmis » : l'encart des codes d'activation se referme (le cookie d'affichage est effacé). */
+export async function masquerCodesActivation(): Promise<void> {
+  await assertPermission("admins.manage");
+  await fermerCodesActivationAffiches();
+  revalidatePath("/admin/comptes");
+  revalidatePath("/admin/membres");
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Ma double authentification (Comptes admin → « Ma double authentification »)                      */
+/* ------------------------------------------------------------------------------------------------ */
+
+/**
+ * **Régénérer ses codes de secours**, depuis l'espace admin : session forte (`admins.manage`, donc
+ * élévation), **mot de passe redemandé**, limiteur des vérifications de mot de passe. Les anciens
+ * codes cessent de valoir, les nouveaux s'affichent une fois (`/connexion/codes-secours`), puis on
+ * revient sur la rubrique.
+ *
+ * C'était un geste de « Mon profil » : il est dans l'espace admin parce que la double
+ * authentification ne sert qu'à lui — on la gère là où elle s'utilise, derrière la même porte.
+ */
+export async function regenererMesCodesSecours(_prev: FormState, fd: FormData): Promise<FormState> {
+  const acteur = await assertPermission("admins.manage");
+  // Ce formulaire vérifie un mot de passe : sans plafond, il devient un banc d'essai pour le deviner.
+  if (!(await checkRateLimit("totp_user", acteur.id))) return { erreur: "Trop d'essais. Réessaie dans un quart d'heure." };
+  const compte = await db.user.findUniqueOrThrow({ where: { id: acteur.id }, select: { role: true, actif: true, passwordHash: true, totpSecret: true, totpActiveAt: true } });
+  if (!deuxFaActive(compte)) return { erreur: "Ta double authentification n'est pas active : règle-la d'abord." };
+  if (!(await verifyPassword(compte.passwordHash, champ(fd, "motDePasse")))) {
+    return { erreur: "Mot de passe incorrect.", erreurs: { motDePasse: "Mot de passe incorrect." } };
+  }
+  const codes = genererCodesSecours();
+  await enregistrerCodesSecours(acteur.id, codes);
+  await ouvrirAffichageCodes(acteur.id, codes, CHEMIN_MA_DEUX_FA);
+  await audit(acteur, "deux_fa.codes_regeneres", acteur.id);
+  redirect("/connexion/codes-secours");
+}
+
+/**
+ * **Réinitialiser sa propre double authentification** (nouveau téléphone), depuis l'espace admin.
+ *
+ * Verrous : session forte, **code récent** (`exigerReauth` — un code de l'application ou un code de
+ * secours, comme pour réinitialiser celle d'un autre), **mot de passe redemandé**, limiteur. Puis :
+ * second facteur retiré, **autres sessions fermées**, élévation de celle-ci refermée (elle ne tient
+ * plus sans second facteur), et retour sur le parcours de réglage — un nouveau QR code à scanner,
+ * puis de nouveaux codes de secours. Le compte du portail est compris : c'est même la seule façon de
+ * réinitialiser la sienne depuis l'application.
+ */
+export async function reinitialiserMaDeuxFa(_prev: FormState, fd: FormData): Promise<FormState> {
+  const acteur = await assertPermission("admins.manage");
+  const compte = await compteAcces(acteur.id);
+  if (!compte || !deuxFaActive(compte)) return { erreur: "Ta double authentification n'est pas active : il n'y a rien à réinitialiser." };
+  // Le code récent d'abord : il ne dépend que de la session, et c'est la question qu'on pose à qui
+  // n'a pas confirmé depuis dix minutes — le mot de passe tapé ensuite n'est pas perdu en route.
+  await exigerReauth(acteur, CHEMIN_MA_DEUX_FA);
+  if (!(await checkRateLimit("totp_user", acteur.id))) return { erreur: "Trop d'essais. Réessaie dans un quart d'heure." };
+  if (!(await verifyPassword(compte.passwordHash, champ(fd, "motDePasse")))) {
+    return { erreur: "Mot de passe incorrect.", erreurs: { motDePasse: "Mot de passe incorrect." } };
+  }
+  await desactiverTotp(acteur.id);
+  const fermees = await revokeAllSessions(acteur.id, true);
+  await abaisserSessionCourante(acteur.sessionId);
+  await audit(acteur, "deux_fa.reinitialisee", acteur.id, { parSoiMeme: true, autresSessionsFermees: fermees });
+  // **Le réglage qui suit exige un code d'activation, comme toute réinitialisation** (décision de
+  // Delta) : un autre membre du bureau le génère dans Comptes admin et le remet de vive voix. Le
+  // compte du portail en reste exempté (`exigeCodeActivation`).
+  await ouvrirReglage2fa(acteur.id, genererSecretTotp());
+  revalidatePath("/admin/comptes");
+  redirect(CHEMIN_ACTIVATION_ADMIN);
+}
+
+/**
+ * **Retirer la double authentification d'un membre ou d'un instructeur** — celle qu'il avait activée
+ * quand elle était proposée à tous. Elle ne sert plus à rien (la connexion ne la demande pas, et elle
+ * n'ouvre aucun droit) : la retirer remet son compte au propre.
+ *
+ * Mêmes verrous que pour un administrateur (`reinitialiserDeuxFaCompte`) : `admins.manage`, cible
+ * vérifiée (**pas** du bureau — celle-là se réinitialise par la ligne du tableau —, pas le compte du
+ * portail), `canEditUser`, `exigerReauth` avant l'écriture, audit. **Ses sessions ne sont pas
+ * fermées** : ce second facteur ne gardait aucune d'elles, les fermer ne la mettrait dehors que pour
+ * rien.
+ */
+export async function retirerDeuxFaMembre(userId: string): Promise<void> {
+  const acteur = await assertPermission("admins.manage");
+  const cible = await db.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { id: true, prenom: true, email: true, role: true, estAdmin: true, actif: true, service: true, totpSecret: true, totpActiveAt: true },
+  });
+  if (cible.estAdmin) throw new Error("Ce compte est administrateur : sa double authentification se réinitialise par sa ligne dans le tableau.");
+  if (estCompteDeService(cible)) throw new Error("La double authentification du compte d'administration ne se réinitialise que par lui-même.");
+  if (!canEditUser(acteur, cible)) throw new Error("Action non autorisée.");
+  if (!deuxFaActive(cible)) return;
+  await exigerReauth(acteur, "/admin/comptes");
+  await desactiverTotp(userId);
+  await audit(acteur, "deux_fa.reinitialisee", userId, { email: cible.email, horsBureau: true });
+  await prevenirTitulaireDeuxFa({ titulaire: cible, evenement: "retiree", par: `${acteur.prenom} ${acteur.nom}`.trim(), dedupKey: `deux_fa_retrait_${userId}_${Date.now()}` });
   revalidatePath("/admin/comptes");
 }
 

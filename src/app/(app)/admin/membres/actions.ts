@@ -14,6 +14,7 @@ import { GESTES_MASSE, type GesteMasse } from "./selection-gestes";
 import { lienVivant, perimetreToutLeMonde } from "./tout-le-monde";
 import { aDejaUnAcces, CHAMPS_TEMOINS_ACCES, temoinsAcces } from "@/lib/membres";
 import { remettreAccesAZero } from "@/lib/reinitialisation-acces";
+import { afficherCodesActivation, remettreCodeActivation, type CodeActivationAffiche } from "@/lib/auth/activation-bureau";
 
 /**
  * **Changer le rôle de plusieurs personnes d'un coup**, depuis l'annuaire.
@@ -889,9 +890,12 @@ export async function reinitialiserAccesEnMasse(entree: unknown): Promise<Result
   await exigerReauth(acteur, "/admin/membres");
 
   const sansInvitation: string[] = [];
+  const codes: CodeActivationAffiche[] = [];
   let invitations = 0;
   for (const cible of concernes) {
     const issue = await remettreAccesAZero(cible);
+    // Membre du bureau remis à zéro : son code d'activation (comme à l'unité, `reinitialiserAccesMembre`).
+    if (cible.estAdmin && !cible.service) codes.push(await remettreCodeActivation(acteur, cible, "reinitialisation_acces"));
     if (issue.lienRenvoye) invitations++;
     else sansInvitation.push(nomDe(cible));
     await audit(acteur, "membre.acces_reinitialise", cible.id, {
@@ -916,5 +920,13 @@ export async function reinitialiserAccesEnMasse(entree: unknown): Promise<Result
     phrases.push(`Rien n'a pu être envoyé à ${sansInvitation.length === 1 ? "1 personne" : `${sansInvitation.length} personnes`} (sans adresse, compte désactivé ou pas inscrite à une période active) : ${sansInvitation.join(", ")}.`);
   }
   phrases.push(...sautes);
+  await afficherCodesActivation(acteur.id, codes);
+  if (codes.length > 0) {
+    phrases.push(
+      codes.length === 1
+        ? `${codes[0].nom} est du bureau : son code d'activation s'affiche en haut de la page, à transmettre de vive voix ou en main propre.`
+        : `${codes.map((c) => c.nom).join(", ")} sont du bureau : leurs codes d'activation s'affichent en haut de la page, à transmettre de vive voix ou en main propre.`,
+    );
+  }
   return { succes: phrases.join(" ") };
 }

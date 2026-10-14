@@ -4,7 +4,12 @@ import { requirePermission } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { formatDateHeure } from "@/lib/dates";
 import { retirerDroitsAdmin } from "@/actions/membres";
-import { reinitialiserDeuxFaCompte } from "@/actions/admin";
+import { genererCodeActivationCompte, reinitialiserDeuxFaCompte, retirerDeuxFaMembre } from "@/actions/admin";
+import { codeActivationEnCours } from "@/lib/auth/code-activation";
+import { EncartCodesActivation } from "@/components/admin/EncartCodesActivation";
+import { lireDemandesEnAttente } from "@/lib/auth/demande-deux-fa";
+import { NB_CODES_SECOURS, nombreCodesRestants } from "@/lib/auth/codes-secours";
+import { FormulaireMaDeuxFa } from "./FormulaireMaDeuxFa";
 import { BoutonAction } from "@/components/ui/BoutonAction";
 import { Carte } from "@/components/ui/Carte";
 import { Cellule, Ligne, Tableau, type PalierTableau } from "@/components/ui/Tableau";
@@ -24,6 +29,31 @@ export const metadata: Metadata = { title: "Comptes administrateurs" };
  */
 const PALIER_TABLEAU: PalierTableau = "lg";
 
+/** Ce que la réinitialisation de la 2FA d'un autre entraîne, dit avant d'agir. */
+function confirmationReinitialisation(nom: string): string {
+  return [
+    `Réinitialiser la double authentification de ${nom} ?`,
+    "",
+    "• Son application de codes et ses codes de secours ne servent plus.",
+    "• Toutes ses sessions sont fermées, sur tous ses appareils.",
+    "• À sa connexion suivante, il faudra scanner un nouveau QR code et noter de nouveaux codes de secours avant de continuer.",
+    "• Un code d'activation va s'afficher ici, une seule fois : transmets-le-lui de vive voix ou en main propre, jamais par email. Sans lui, sa double authentification ne se réactive pas.",
+    "",
+    "Vérifie d'abord avec la personne, de vive voix, que la demande vient bien d'elle.",
+  ].join("\n");
+}
+
+/** Ce que « Générer un code d'activation » entraîne, dit avant d'agir. */
+function confirmationCodeActivation(nom: string): string {
+  return [
+    `Générer un code d'activation pour ${nom} ?`,
+    "",
+    "• Le code précédent, s'il y en a un, cesse de valoir.",
+    "• Le nouveau s'affiche ici une seule fois, valable 48 heures et pour un seul usage.",
+    "• Transmets-le de vive voix ou en main propre, jamais par email ni par message.",
+  ].join("\n");
+}
+
 export default async function PageComptesAdmin() {
   const acteur = await requirePermission("admins.manage");
   /*
@@ -33,7 +63,7 @@ export default async function PageComptesAdmin() {
    * personnes nommables aurait proposé **tout le club, bureau compris**, invitant à nommer des gens
    * qui le sont déjà. Un écran vide se remarque ; une liste trop longue, non.
    */
-  const [admins, candidats, desactives] = await Promise.all([
+  const [admins, candidats, desactives, demandes, horsBureau, moi, mesCodes] = await Promise.all([
     db.user.findMany({ where: { estAdmin: true }, orderBy: [{ prenom: "asc" }, { nom: "asc" }], include: { authSessions: { orderBy: { lastSeenAt: "desc" }, take: 1 } } }),
     // Personnes déjà dans l'annuaire que l'on peut nommer : le bureau ne se donne pas depuis leur
     // fiche, il se donne ici. Leur **rôle de base**, lui, ne regarde pas cet écran : on ajoute un
@@ -43,7 +73,21 @@ export default async function PageComptesAdmin() {
     // carte explique pourquoi plutôt que de les faire disparaître sans un mot (le serveur les refuse
     // de toute façon — « réactive-le d'abord »).
     db.user.count({ where: { estAdmin: false, actif: false, service: false } }),
+    // **Les demandes de réinitialisation en attente**, lues au journal d'audit : la dernière demande
+    // d'une personne, postérieure à la dernière remise à zéro de son second facteur. Pas de colonne :
+    // le journal sait déjà tout, et une colonne de plus serait un second état à tenir juste.
+    lireDemandesEnAttente(),
+    // Membres et instructeurs qui gardent une double authentification d'avant : elle ne sert plus à
+    // rien, le bureau peut la retirer d'ici.
+    db.user.findMany({
+      where: { estAdmin: false, service: false, totpActiveAt: { not: null }, totpSecret: { not: null } },
+      orderBy: [{ prenom: "asc" }, { nom: "asc" }],
+      select: { id: true, prenom: true, nom: true, email: true, role: true },
+    }),
+    db.user.findUniqueOrThrow({ where: { id: acteur.id }, select: { totpActiveAt: true, totpSecret: true } }),
+    nombreCodesRestants(acteur.id),
   ]);
+  const maDeuxFa = !!moi.totpActiveAt && !!moi.totpSecret;
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -52,6 +96,32 @@ export default async function PageComptesAdmin() {
           Les comptes marqués « compte du portail » servent à se connecter à l&apos;administration : ce ne sont pas des personnes du club.
         </p>
       </div>
+      <EncartCodesActivation acteurId={acteur.id} />
+      {/* **Sa propre double authentification se gère ici**, derrière la même élévation que celle des
+          autres : codes de secours, nouveau téléphone. « Mon profil » n'en garde que l'état et le
+          bouton qui demande au bureau de la réinitialiser — la porte de qui n'entre plus ici. */}
+      <Carte id="ma-deux-fa" titre="Ma double authentification">
+        <p className="mb-4 flex flex-wrap items-center gap-2">
+          {maDeuxFa ? <Pastille ton="vert">active</Pastille> : <Pastille ton="ocre">à régler</Pastille>}
+          {maDeuxFa && moi.totpActiveAt && <span className="text-texte-secondaire">depuis le {formatDateHeure(moi.totpActiveAt)}</span>}
+          {maDeuxFa && (
+            <Pastille ton={mesCodes > 0 ? "neutre" : "rouge"}>
+              {mesCodes}&nbsp;sur {NB_CODES_SECOURS}&nbsp;codes de secours
+            </Pastille>
+          )}
+        </p>
+        {maDeuxFa ? (
+          <FormulaireMaDeuxFa codesRestants={mesCodes} />
+        ) : (
+          <p className="text-texte-secondaire">
+            Elle se règle sur{" "}
+            <Link href="/admin/activer" className="underline">
+              la page de réglage de ton accès
+            </Link>
+            .
+          </p>
+        )}
+      </Carte>
       <Carte>
         <Tableau palier={PALIER_TABLEAU} entetes={["Nom", "Email", "État", "Double authentification", "Dernière activité", "Droits admin"]}>
           {admins.map((a) => (
@@ -77,19 +147,67 @@ export default async function PageComptesAdmin() {
                   l'administration. La fiche d'un membre, elle, masquait déjà sa carte « Remettre
                   l'accès à zéro » (`peutReinitialiser`). */}
               <Cellule palier={PALIER_TABLEAU} label="2FA" className="text-sm">
-                {!a.totpActiveAt ? (
-                  <Pastille ton="ocre">à configurer à la 1ère connexion</Pastille>
+                {/* **La demande en attente se lit sur la ligne qu'elle concerne** : c'est là que se
+                    trouve le bouton qui y répond, et l'email du bureau y mène. Elle s'éteint d'elle-même
+                    à la réinitialisation. */}
+                {demandes.has(a.id) && a.totpActiveAt && (
+                  <div className="mb-2">
+                    <Pastille ton="ocre">réinitialisation demandée le {formatDateHeure(demandes.get(a.id)!)}</Pastille>
+                  </div>
+                )}
+                {!(a.totpActiveAt && a.totpSecret) ? (
+                  a.service ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Pastille ton="ocre">Réglage à faire</Pastille>
+                      <span className="text-texte-secondaire">lui seul la règle, sans code d&apos;activation</span>
+                    </span>
+                  ) : (
+                    /* **Réglage à faire : où en est son code d'activation.** Sans code valable, la
+                       personne ne peut pas finir son réglage — l'écran le dit et porte le bouton qui
+                       débloque. Le code lui-même ne se relit jamais ici : seule l'échéance est gardée. */
+                    <span className="flex flex-col items-start gap-2">
+                      <Pastille ton="ocre">Réglage à faire</Pastille>
+                      {(() => {
+                        const echeance = codeActivationEnCours(a);
+                        return echeance ? (
+                          <span className="text-texte-secondaire">code d&apos;activation valable jusqu&apos;au {formatDateHeure(echeance)}</span>
+                        ) : (
+                          <span className="font-semibold">aucun code valable</span>
+                        );
+                      })()}
+                      {a.id !== acteur.id && a.actif && (
+                        <BoutonAction
+                          action={genererCodeActivationCompte.bind(null, a.id)}
+                          variante="secondaire"
+                          taille="petite"
+                          aria-label={`Générer un code d'activation pour ${a.prenom} ${a.nom}`}
+                          confirmation={confirmationCodeActivation(`${a.prenom} ${a.nom}`)}
+                        >
+                          <Icone nom="bouclier" taille={18} />
+                          Générer un code d&apos;activation
+                        </BoutonAction>
+                      )}
+                    </span>
+                  )
+                ) : a.id === acteur.id ? (
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Pastille ton="vert">activée</Pastille>
+                    <Link href="#ma-deux-fa" className="text-texte-secondaire underline">
+                      la tienne se gère ci-dessus
+                    </Link>
+                  </span>
                 ) : a.service ? (
                   <span className="flex flex-wrap items-center gap-2">
                     <Pastille ton="vert">activée</Pastille>
-                    {/* Sa voie de secours n'est pas un bouton d'ici : c'est sa propre boîte email
-                        (lien de réinitialisation) et, à défaut, le redéploiement. */}
+                    {/* Sa voie de secours n'est pas un bouton d'ici : c'est lui-même, depuis cet
+                        écran (« Ma double authentification »), et à défaut la commande
+                        `npm run admin:reset-2fa` sur le serveur. */}
                     <span className="text-texte-secondaire">lui seul la réinitialise</span>
                   </span>
                 ) : (
                   <span className="flex flex-wrap items-center gap-2">
                     <Pastille ton="vert">activée</Pastille>
-                    <BoutonAction action={reinitialiserDeuxFaCompte.bind(null, a.id)} variante="danger" taille="petite" confirmation={`Réinitialiser la double authentification de ${a.prenom} ? Ses sessions seront fermées et un nouveau QR code lui sera proposé à sa prochaine connexion.`}>
+                    <BoutonAction action={reinitialiserDeuxFaCompte.bind(null, a.id)} variante="danger" taille="petite" confirmation={confirmationReinitialisation(`${a.prenom} ${a.nom}`)}>
                       <Icone nom="alerte" taille={18} />
                       Réinitialiser
                     </BoutonAction>
@@ -140,6 +258,43 @@ export default async function PageComptesAdmin() {
           avec le risque d'un second compte pour une personne déjà inscrite — et un compte neuf sans
           période, sans lien, sans historique. Pour un nouveau venu : l'ajouter d'abord dans
           « Membres », puis le nommer ici. */}
+      {/* **Les doubles authentifications hors du bureau** : celles que des membres ou des
+          instructeurs avaient activées quand elle était proposée à tous. Elles ne servent plus à
+          rien (la connexion ne la demande pas) ; la carte n'existe que s'il en reste. */}
+      {horsBureau.length > 0 && (
+        <Carte titre="Double authentification hors du bureau">
+          <p className="mb-3 text-texte-secondaire">
+            Ces comptes gardent une double authentification d&apos;avant : elle n&apos;a aucun effet sur leur connexion. La retirer remet leur compte au propre, sans les déconnecter.
+          </p>
+          <ul className="flex flex-col divide-y divide-bordure/60">
+            {horsBureau.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className="flex flex-col">
+                  <Link href={`/admin/membres/${m.id}`} className="inline-flex min-h-11 items-center font-semibold">
+                    {m.prenom} {m.nom}
+                  </Link>
+                  <span className="text-sm text-texte-secondaire">{ROLE_LABELS[m.role as Role]}</span>
+                  {demandes.has(m.id) && (
+                    <span className="mt-1">
+                      <Pastille ton="ocre">retrait demandé le {formatDateHeure(demandes.get(m.id)!)}</Pastille>
+                    </span>
+                  )}
+                </span>
+                <BoutonAction
+                  action={retirerDeuxFaMembre.bind(null, m.id)}
+                  variante="danger"
+                  taille="petite"
+                  aria-label={`Retirer la double authentification de ${m.prenom} ${m.nom}`}
+                  confirmation={`Retirer la double authentification de ${m.prenom} ${m.nom} ? Elle n'a aucun effet sur sa connexion, qui ne change pas.`}
+                >
+                  <Icone nom="alerte" taille={18} />
+                  Retirer
+                </BoutonAction>
+              </li>
+            ))}
+          </ul>
+        </Carte>
+      )}
       <Carte titre="Nommer un administrateur">
         {candidats.length === 0 ? (
           <p className="text-texte-secondaire">Tout le monde est déjà administrateur, ou il n&apos;y a personne d&apos;autre dans l&apos;annuaire.</p>

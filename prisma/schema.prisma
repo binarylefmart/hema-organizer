@@ -42,6 +42,14 @@ model User {
   totpDernierPas           Int?
   /// Codes de secours 2FA : tableau JSON des SHA-256 des codes restants (usage unique)
   codesSecours             String?
+  /// **Code d'activation à usage unique** du réglage `/admin/activer` (étape 2), remis **hors bande**
+  /// par un autre membre du bureau : sans lui, tenir la boîte email ou le lien personnel d'un membre
+  /// du bureau non réglé ne suffit plus à inscrire son propre téléphone. Seule son empreinte est
+  /// gardée (HMAC-SHA-256 avec `SESSION_SECRET`, liée au compte — voir src/lib/auth/code-activation.ts),
+  /// jamais le code. `null` = aucun code en cours ; consommé ou remplacé, il disparaît.
+  codeActivationHash       String?
+  /// Échéance du code d'activation (48 h après sa génération).
+  codeActivationExpireLe   DateTime?
   /// Mot de passe provisoire : l'app impose d'en choisir un nouveau à la première connexion
   doitChangerMotDePasse    Boolean   @default(false)
   actif                    Boolean   @default(true)

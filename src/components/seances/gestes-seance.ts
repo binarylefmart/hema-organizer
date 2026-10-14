@@ -33,6 +33,17 @@ export function seanceRetablissable({ annulee, passee }: { annulee: boolean; pas
   return !passee && annulee;
 }
 
+/**
+ * **Une séance commencée ne se modifie plus** — ni sa date, son horaire et son lieu, ni son programme
+ * (demande de Delta : « quand la séance commence à l'horaire, elle apparaît toujours mais grisée et
+ * non modifiable »). Même porte écrite une fois pour l'écran (carte, fiche, lot) et pour le serveur
+ * (`modifierSeance`, `appliquerGesteSeancesEnMasse`, `partiePourEcriture`). La correction du registre
+ * des présences par le bureau n'en dépend pas : « untel est venu sans répondre » se corrige après.
+ */
+export function seanceReglable({ passee }: { passee: boolean }): boolean {
+  return !passee;
+}
+
 export function gestesSeance({
   annulee,
   passee,

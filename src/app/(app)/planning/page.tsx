@@ -23,7 +23,8 @@ import { SelecteurPeriode, type PeriodeOption } from "@/components/filtres/Selec
 import { VoletFiltres } from "@/components/filtres/VoletFiltres";
 import { BasculeTemps } from "@/components/filtres/BasculeTemps";
 import { ChampDate } from "@/components/filtres/ChampDate";
-import { lienTemps, lireDateFiltre, lireQuand, seancesDuJour, selectionnerSeances, valeurQuand, type Quand } from "@/components/filtres/temps";
+import { lienTemps, lireDateFiltre, lireQuand, seanceCible, seancesDuJour, selectionnerSeances, valeurQuand, type Quand } from "@/components/filtres/temps";
+import { AllerALaSeanceCible } from "@/components/filtres/AllerALaSeanceCible";
 
 export const metadata: Metadata = { title: "Planning" };
 
@@ -37,7 +38,8 @@ type Temps = { quand: Quand; horizon: Horizon; date?: string; seances: string[];
 
 /**
  * Séances retenues : d'abord le sens (à venir par défaut, passé sur demande), puis la fenêtre
- * de temps, qui se lit dans ce sens-là. Un cours du jour déjà commencé est du côté « Passé ».
+ * de temps, qui se lit dans ce sens-là. Un cours du jour reste du côté « À venir » jusqu'au
+ * lendemain — grisé et figé dès qu'il a commencé (`selectionnerSeances`).
  *
  * Sauf si une date est cherchée : on rend alors **ce jour-là et rien d'autre**. Croiser la date
  * avec le sens du temps et la fenêtre ne pourrait que vider la grille sur un jour qui existe
@@ -258,12 +260,16 @@ async function CorpsPlanning({
     const autre = liens(p.periode.id, temps).quand(temps.quand === "passe" ? "avenir" : "passe");
     return <EtatVide quand={temps.quand} autre={autre} />;
   }
+  // La séance du jour, à défaut la prochaine — seulement sans cible explicite (séances choisies, date
+  // cherchée, position « Passé ») ; une ancre `#seance-…` passe encore devant, côté navigateur.
+  const cible = temps.quand === "avenir" && temps.seances.length === 0 && !temps.date ? seanceCible(colonnes, temps.aujourdHui) : null;
   return (
     <>
-      <GrillePlanning planning={p} gestion={gestion} colonnes={colonnes} modeEdition={modeEdition} lienLecture={lienLecture} />
+      <GrillePlanning planning={p} gestion={gestion} colonnes={colonnes} modeEdition={modeEdition} lienLecture={lienLecture} cibleId={cible?.id ?? null} />
       {/* Rendu **avec** la grille, donc monté une fois la ligne visée présente : c'est tout ce qui
           permet de suivre l'ancre `#seance-…` d'un bouton « Programme de la séance ». */}
       <AllerALAncre />
+      <AllerALaSeanceCible />
     </>
   );
 }

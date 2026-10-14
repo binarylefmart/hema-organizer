@@ -21,7 +21,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 /* `estAdmin` dit du bureau ; `role` reste le rôle de base, que la nomination ne touche pas. */
-type Compte = { id: string; prenom: string; nom: string; email: string | null; role: string; estAdmin: boolean; actif: boolean; service: boolean };
+type Compte = {
+  id: string;
+  prenom: string;
+  nom: string;
+  email: string | null;
+  role: string;
+  estAdmin: boolean;
+  actif: boolean;
+  service: boolean;
+  totpSecret?: string | null;
+  totpActiveAt?: Date | null;
+};
 
 const faux = vi.hoisted(() => ({
   acteur: { id: "u-admin", email: "delta@club.test", role: "MEMBRE", estAdmin: true, actif: true },
@@ -31,6 +42,20 @@ const faux = vi.hoisted(() => ({
   ecritures: [] as { id: string; estAdmin: boolean }[],
   audits: [] as { action: string; cible: string | null; details: unknown }[],
   reauths: [] as string[],
+  /** Empreintes de codes d'activation écrites en base, par compte */
+  codesEmis: [] as { id: string; codeActivationHash: string }[],
+  cookies: {} as Record<string, string>,
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (nom: string) => (nom in faux.cookies ? { name: nom, value: faux.cookies[nom] } : undefined),
+    set: (nom: string, valeur: string, options?: { maxAge?: number }) => {
+      if (options?.maxAge === 0) delete faux.cookies[nom];
+      else faux.cookies[nom] = valeur;
+    },
+  }),
+  headers: async () => new Headers(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -54,7 +79,10 @@ vi.mock("@/lib/db", () => ({
       // Ce qui est écrit est **relevé tel quel** : un `role` qui reviendrait ici serait une
       // rétrogradation silencieuse, et le test ci-dessous le verrait.
       update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-        faux.ecritures.push({ id: where.id, ...(data as { estAdmin: boolean }) });
+        // Le code d'activation s'écrit à part : on le relève à part, pour que l'écriture du bureau
+        // reste observable telle quelle.
+        if ("codeActivationHash" in data) faux.codesEmis.push({ id: where.id, codeActivationHash: data.codeActivationHash as string });
+        else faux.ecritures.push({ id: where.id, ...(data as { estAdmin: boolean }) });
         return { id: where.id };
       }),
     },
@@ -112,7 +140,12 @@ beforeEach(() => {
   faux.ecritures = [];
   faux.audits = [];
   faux.reauths = [];
+  faux.codesEmis = [];
+  faux.cookies = {};
 });
+
+/** Les entrées d'audit de la nomination elle-même (sans celles des codes d'activation). */
+const auditsNomination = () => faux.audits.filter((a) => a.action === "admin.droits_donnes");
 
 describe("nommer plusieurs administrateurs d'un coup", () => {
   it("ajoute le bureau à tout le lot, sans toucher aux rôles de base, en une seule transaction", async () => {
@@ -133,10 +166,35 @@ describe("nommer plusieurs administrateurs d'un coup", () => {
   it("journalise personne par personne, sous l'action du geste unitaire", async () => {
     faux.comptes = [compte("a"), compte("b", { role: "INSTRUCTEUR" })];
     await nommerAdministrateurs({ userIds: ["a", "b"] });
-    expect(faux.audits).toEqual([
+    expect(auditsNomination()).toEqual([
       { action: "admin.droits_donnes", cible: "a", details: { email: "a@club.test", roleDeBase: "MEMBRE", enMasse: true } },
       { action: "admin.droits_donnes", cible: "b", details: { email: "b@club.test", roleDeBase: "INSTRUCTEUR", enMasse: true } },
     ]);
+  });
+
+  /*
+   * **Un code d'activation par personne à régler**, affiché une fois à qui a nommé. En base, seule
+   * l'empreinte ; au journal, l'échéance et jamais le code ; dans le cookie, chiffré et à son nom.
+   */
+  it("génère un code d'activation par personne à régler, affiché à qui a nommé, jamais journalisé", async () => {
+    const { lireCodesActivationAffiches } = await import("@/lib/auth/activation-bureau");
+    faux.comptes = [compte("a"), compte("b"), compte("regle", { totpSecret: "s", totpActiveAt: new Date() })];
+    const res = await nommerAdministrateurs({ userIds: ["a", "b", "regle"] });
+    expect(res.succes).toContain("Leurs codes d'activation s'affichent en haut de la page");
+    // Déjà réglé (2FA d'avant toujours active) : rien à débloquer, donc pas de code
+    expect(faux.codesEmis.map((c) => c.id)).toEqual(["a", "b"]);
+    for (const c of faux.codesEmis) expect(c.codeActivationHash).toMatch(/^[0-9a-f]{64}$/);
+    const affiches = await lireCodesActivationAffiches("u-admin");
+    expect(affiches.map((c) => c.userId)).toEqual(["a", "b"]);
+    for (const c of affiches) expect(c.code).toMatch(/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/);
+    // Un autre administrateur sur le même navigateur ne lit rien
+    expect(await lireCodesActivationAffiches("u-autre")).toEqual([]);
+    // Le cookie ne porte pas le code en clair
+    for (const valeur of Object.values(faux.cookies)) for (const c of affiches) expect(valeur).not.toContain(c.code);
+    const journal = faux.audits.filter((a) => a.action === "deux_fa.code_activation_genere");
+    expect(journal.map((a) => a.cible)).toEqual(["a", "b"]);
+    const brut = JSON.stringify(faux.audits);
+    for (const c of affiches) expect(brut).not.toContain(c.code);
   });
 
   it("redemande le code récent avant d'écrire, et ramène à l'écran du clic", async () => {
@@ -206,14 +264,14 @@ describe("nommer une seule personne reste le geste d'avant", () => {
     faux.comptes = [compte("a", { prenom: "Chloé", nom: "Durand" })];
     const res = await nommerAdministrateurs({ userIds: ["a"] });
     expect(res.succes).toBe(
-      "Chloé Durand est administrateur. Mot de passe et double authentification lui seront demandés avant que l'administration s'ouvre.",
+      "Chloé Durand est administrateur. Mot de passe et double authentification lui seront demandés avant que l'administration s'ouvre. Son code d'activation s'affiche en haut de la page : transmets-le de vive voix ou en main propre, jamais par email.",
     );
   });
 
   it("laisse dans le journal l'entrée qu'il y laissait avant, sans mention de masse", async () => {
     faux.comptes = [compte("a")];
     await nommerAdministrateurs({ userIds: ["a"] });
-    expect(faux.audits).toEqual([{ action: "admin.droits_donnes", cible: "a", details: { email: "a@club.test", roleDeBase: "MEMBRE" } }]);
+    expect(auditsNomination()).toEqual([{ action: "admin.droits_donnes", cible: "a", details: { email: "a@club.test", roleDeBase: "MEMBRE" } }]);
   });
 
   it("n'ouvre pas de boîte de confirmation : une case, un bouton", () => {

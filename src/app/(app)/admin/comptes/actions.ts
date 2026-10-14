@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { assertPermission, exigerReauth } from "@/lib/auth/current-user";
 import { canEditUser, estCompteDeService } from "@/lib/permissions";
+import { afficherCodesActivation, remettreCodeActivation, type CodeActivationAffiche } from "@/lib/auth/activation-bureau";
 import { identifiantSchema, SELECTION_MAX } from "@/lib/validation/presences";
 
 /**
@@ -45,6 +46,11 @@ import { identifiantSchema, SELECTION_MAX } from "@/lib/validation/presences";
  *
  * **Aucune notification**, pas plus qu'à l'unité : le geste unitaire n'écrit à personne (la personne
  * nommée découvre l'espace admin à sa prochaine connexion, après mot de passe et 2FA).
+ *
+ * **Un code d'activation par personne à régler** (`remettreCodeActivation`) : affichés une fois, en
+ * tête de Comptes admin, à qui a nommé — à remettre de vive voix ou en main propre. Sans lui, l'étape
+ * 2 du réglage refuse : c'est ce qui empêche qui tient la boîte email d'une personne nommée d'ouvrir
+ * l'espace admin à sa place.
  */
 
 /** Le plafond et la forme d'un identifiant sont ceux des autres gestes de masse — une seule valeur à corriger. */
@@ -74,7 +80,7 @@ export async function nommerAdministrateurs(entree: unknown): Promise<ResultatNo
     orderBy: [{ prenom: "asc" }, { nom: "asc" }],
     // `estAdmin` compris : c'est le champ qui dit « déjà administrateur » (le rôle ne vaut plus jamais
     // « ADMIN ») et celui que `canEditUser` lit — un objet sans lui passe pour un compte ordinaire.
-    select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true },
+    select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true, totpSecret: true, totpActiveAt: true },
   });
 
   /*
@@ -136,6 +142,11 @@ export async function nommerAdministrateurs(entree: unknown): Promise<ResultatNo
     // `roleDeBase` et non `ancienRole` : le rôle n'est pas remplacé, la personne le garde.
     await audit(acteur, "admin.droits_donnes", cible.id, { email: cible.email, roleDeBase: cible.role, ...(enMasse ? { enMasse: true } : {}) });
   }
+  const codes: CodeActivationAffiche[] = [];
+  for (const cible of cibles) {
+    if (!(cible.totpSecret && cible.totpActiveAt)) codes.push(await remettreCodeActivation(acteur, cible, "nomination"));
+  }
+  await afficherCodesActivation(acteur.id, codes);
 
   // Les trois chemins que `rafraichir()` revalide à l'unité : le rôle se lit aussi dans l'annuaire et
   // dans les listes d'une période.
@@ -147,10 +158,16 @@ export async function nommerAdministrateurs(entree: unknown): Promise<ResultatNo
   // il ne doit pas changer d'allure parce que la carte sait maintenant en faire trois.
   const noms = cibles.map((c) => `${c.prenom} ${c.nom}`);
   const rappel = "Mot de passe et double authentification";
+  const suiteCodes =
+    codes.length === 0
+      ? ""
+      : codes.length === 1
+        ? " Son code d'activation s'affiche en haut de la page : transmets-le de vive voix ou en main propre, jamais par email."
+        : " Leurs codes d'activation s'affichent en haut de la page : transmets-les de vive voix ou en main propre, jamais par email.";
   return {
     succes:
       noms.length === 1
-        ? `${noms[0]} est administrateur. ${rappel} lui seront demandés avant que l'administration s'ouvre.`
-        : `${noms.length} comptes sont administrateurs : ${noms.join(", ")}. ${rappel} leur seront demandés avant que l'administration s'ouvre.`,
+        ? `${noms[0]} est administrateur. ${rappel} lui seront demandés avant que l'administration s'ouvre.${suiteCodes}`
+        : `${noms.length} comptes sont administrateurs : ${noms.join(", ")}. ${rappel} leur seront demandés avant que l'administration s'ouvre.${suiteCodes}`,
   };
 }

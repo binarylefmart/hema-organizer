@@ -73,8 +73,8 @@ describe("jetons signés (HMAC)", () => {
     const [data] = t.split(".");
     const charge = JSON.parse(Buffer.from(data, "base64url").toString());
     expect(charge.u).toBe("desinscription");
-    const forge = Buffer.from(JSON.stringify({ ...charge, u: "attente-2fa" })).toString("base64url");
-    expect(verifySignedPayload(`${forge}.${t.split(".")[1]}`, secret, "attente-2fa")).toBeNull();
+    const forge = Buffer.from(JSON.stringify({ ...charge, u: "reglage-2fa" })).toString("base64url");
+    expect(verifySignedPayload(`${forge}.${t.split(".")[1]}`, secret, "reglage-2fa")).toBeNull();
   });
 
   /**

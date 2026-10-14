@@ -94,7 +94,8 @@ export function texteConfirmation(lot: readonly Candidat[]): string {
   return (
     `Donner les droits d'administrateur à ${noms.length} personnes${qui} ?\n\n` +
     "Chacune pourra tout voir et tout modifier dans l'espace admin, y compris nommer d'autres administrateurs. " +
-    "Mot de passe et double authentification leur seront demandés avant que l'administration s'ouvre."
+    "Mot de passe et double authentification leur seront demandés avant que l'administration s'ouvre. " +
+    "Un code d'activation va s'afficher pour chacune, une seule fois : transmets-le de vive voix ou en main propre, jamais par email."
   );
 }
 

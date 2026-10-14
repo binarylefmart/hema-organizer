@@ -205,19 +205,16 @@ export async function destroySession(): Promise<void> {
   const { oublierLienPersonnel } = await import("@/lib/lien-personnel");
   await oublierLienPersonnel();
   /*
-   * **Les trois cookies de parcours s'en vont aussi**.
+   * **Les deux cookies de parcours s'en vont aussi**.
    *
-   * `hema_2fa` porte l'identité de qui vient de donner son mot de passe, en attente de son code ;
-   * `hema_codes` les codes de secours fraîchement engendrés ; `hema_activation` le secret TOTP
-   * provisoire. Tous les trois sont signés et chiffrés, tous les trois valent dix minutes — et aucun
-   * n'était effacé par la déconnexion. Sur un appareil partagé, celui du milieu est le plus cher :
-   * `hema_2fa` se convertit en session de douze heures d'un appui sur « Plus tard », sans mot de passe.
+   * `hema_codes` porte les codes de secours fraîchement engendrés ; `hema_activation` le secret TOTP
+   * provisoire. Signés et chiffrés, ils valent une demi-heure au plus — et ni l'un ni l'autre n'était
+   * effacé par la déconnexion.
    *
    * On les efface donc ici, comme le cookie de passage du lien personnel juste au-dessus, et pour la
    * même raison : on ne laisse pas une preuve d'identité derrière soi en partant.
    */
-  const { fermerAttente2fa, fermerAffichageCodes } = await import("./deux-fa");
-  await fermerAttente2fa();
+  const { fermerAffichageCodes } = await import("./deux-fa");
   await fermerAffichageCodes();
   const { fermerReglage2fa } = await import("./acces-admin");
   await fermerReglage2fa();

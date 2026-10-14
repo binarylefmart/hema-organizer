@@ -18,7 +18,6 @@ import { DUREE_SUITE_MS, SESSION_COOKIE, SUITE_COOKIE } from "@/lib/constants";
  */
 const CHEMINS_PUBLICS = [
   /^\/connexion$/,
-  /^\/connexion\/code$/,
   /^\/invitation\/[^/]+\/?$/,
   /^\/mot-de-passe-oublie$/,
   /^\/reinitialiser\/[^/]+\/?$/,

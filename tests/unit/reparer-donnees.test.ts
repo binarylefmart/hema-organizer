@@ -15,6 +15,10 @@ import { describe, expect, it } from "vitest";
 
 const RACINE = process.cwd();
 import {
+  activationSansAffichage,
+  detecterCodesJamaisVus,
+  FIN_CODES_JAMAIS_VUS,
+  type EvenementCodes,
   detecterTeintesManquantes,
   ArgumentInvalide,
   CONTROLES,
@@ -838,5 +842,65 @@ describe("contrôle « teintes » : enregistrer la teinte que l'écran lit déj�
 
   it("fait partie des contrôles", () => {
     expect([...CONTROLES]).toContain("teintes");
+  });
+});
+
+describe("contrôle « codes » : codes de secours enregistrés mais jamais affichés", () => {
+  const AVANT = new Date("2026-10-01T18:00:00.000Z");
+  const APRES = new Date("2026-10-09T18:00:00.000Z");
+  /** La forme exacte qu'écrivait la connexion : acteur seul, ni cible ni détails. */
+  const fautive = (userId: string, date = AVANT): EvenementCodes => ({ acteurId: userId, cible: null, action: "deux_fa.activee", details: null, date });
+  const ev = (userId: string, action: string, details: string | null, date: Date): EvenementCodes => ({ acteurId: userId, cible: userId, action, details, date });
+  const alice = { id: "u1", prenom: "Alice" };
+
+  it("désigne l'activation par la connexion d'avant le correctif, et elle seule", () => {
+    expect(activationSansAffichage(fautive("u1"))).toBe(true);
+    expect(activationSansAffichage({ ...fautive("u1"), details: "{}" })).toBe(true);
+    // Depuis le profil, les codes s'affichaient.
+    expect(activationSansAffichage(ev("u1", "deux_fa.activee", '{"depuis":"profil"}', AVANT))).toBe(false);
+    // Après le déploiement du correctif, la connexion les affiche aussi.
+    expect(activationSansAffichage(fautive("u1", APRES))).toBe(false);
+    expect(activationSansAffichage(fautive("u1", FIN_CODES_JAMAIS_VUS))).toBe(false);
+    // Un détail illisible n'est pas une signature : on n'efface pas sur un doute.
+    expect(activationSansAffichage({ ...fautive("u1"), details: "{pas du json" })).toBe(false);
+  });
+
+  it("relève un compte dont le dernier événement producteur de codes est l'activation fautive", () => {
+    expect(detecterCodesJamaisVus([alice], [fautive("u1")])).toEqual([{ userId: "u1", prenom: "Alice", activeeLe: AVANT }]);
+  });
+
+  it("épargne un compte qui a obtenu des codes affichés depuis, quel que soit le chemin", () => {
+    for (const [action, details] of [
+      ["deux_fa.codes_regeneres", null],
+      ["deux_fa.codes_generes", '{"nombre":8}'],
+      ["admin.codes_secours_generes", '{"nombre":8}'],
+      ["deux_fa.activee", '{"depuis":"profil"}'],
+    ] as const) {
+      expect(detecterCodesJamaisVus([alice], [fautive("u1"), ev("u1", action, details, new Date(AVANT.getTime() + 60_000))])).toEqual([]);
+    }
+    // Une réactivation par la connexion après le correctif : codes vus.
+    expect(detecterCodesJamaisVus([alice], [fautive("u1"), fautive("u1", APRES)])).toEqual([]);
+  });
+
+  it("garde une régénération antérieure sans effet : c'est l'activation fautive qui a écrit en dernier", () => {
+    expect(detecterCodesJamaisVus([alice], [ev("u1", "deux_fa.codes_regeneres", null, new Date("2026-09-25T10:00:00Z")), fautive("u1")])).toHaveLength(1);
+  });
+
+  it("à égalité d'horodatage, l'événement innocent l'emporte", () => {
+    expect(detecterCodesJamaisVus([alice], [fautive("u1"), ev("u1", "deux_fa.codes_generes", null, AVANT)])).toEqual([]);
+  });
+
+  it("ne touche ni un compte sans codes, ni un compte sans aucun événement, ni le compte d'un autre", () => {
+    // `comptes` ne porte que ceux dont `codesSecours` est non nul : sans lui, rien à effacer.
+    expect(detecterCodesJamaisVus([], [fautive("u1")])).toEqual([]);
+    expect(detecterCodesJamaisVus([alice], [])).toEqual([]);
+    expect(detecterCodesJamaisVus([alice], [fautive("u2")])).toEqual([]);
+    // Une réinitialisation par un admin (acteur = admin, cible = u1) n'est pas un événement producteur.
+    expect(detecterCodesJamaisVus([alice], [{ acteurId: "admin", cible: "u1", action: "deux_fa.reinitialisee", details: null, date: AVANT }])).toEqual([]);
+  });
+
+  it("fait partie des contrôles", () => {
+    expect([...CONTROLES]).toContain("codes");
+    expect([...lireArguments(["--seulement=codes"]).controles]).toEqual(["codes"]);
   });
 });

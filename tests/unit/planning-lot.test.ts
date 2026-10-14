@@ -129,6 +129,7 @@ vi.mock("@/lib/db", () => {
           session: {
             id: s.id,
             date: s.date,
+            heureDebut: "19:00",
             annulee: s.annulee,
             period: { statut: s.statutPeriode },
           },
@@ -550,6 +551,17 @@ describe("les verrous de la porte commune valent pour le lot", () => {
     );
     expect(erreur).toContain("Cette période est close");
     expect(erreur).toContain("Rien n'a été enregistré.");
+  });
+
+  it("une séance commencée refuse la case comme le lot : son programme est figé", async () => {
+    faux.seances = [{ id: S1, date: "2000-10-01", annulee: false, statutPeriode: "ACTIVE" }, ...faux.seances.slice(1)];
+    expect((await enregistrerCase(reglages("c1", { instructeurId: "u1", theme: "Messer" }))).erreur).toMatch(/déjà commencé/);
+    const lot = await refuse(
+      enregistrerCases({ cases: [reglages("c4", { instructeurId: "u1", theme: "Dague" }), reglages("c1", { instructeurId: "u1", theme: "Messer" })] }),
+    );
+    expect(lot).toContain("déjà commencé");
+    expect(lot).toContain("Rien n'a été enregistré.");
+    expect(faux.ecritures).toEqual([]);
   });
 
   it("rend exactement le verdict du geste unitaire sur une séance annulée", async () => {

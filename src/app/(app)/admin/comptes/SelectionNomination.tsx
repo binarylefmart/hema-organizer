@@ -98,7 +98,8 @@ export function SelectionNomination({ candidats }: { candidats: Candidat[] }) {
       <fieldset className="flex flex-col gap-2">
         <legend className="font-semibold">Personnes déjà dans l&apos;annuaire</legend>
         <p className="text-sm text-texte-secondaire">
-          Elles devront se donner un mot de passe et une double authentification avant que l&apos;administration s&apos;ouvre à elles.
+          Elles devront se donner un mot de passe et une double authentification avant que l&apos;administration s&apos;ouvre à elles. Un code
+          d&apos;activation s&apos;affichera pour chacune, une seule fois : transmets-le de vive voix ou en main propre, jamais par email.
         </p>
         <input
           type="search"

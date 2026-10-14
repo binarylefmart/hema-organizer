@@ -297,7 +297,7 @@ function commeConnecte(
   // compte pour l'ancienneté, et `null` — le cas de tout le monde — rend la main à `createdAt`.
   auClubDepuis: Date | null = null,
 ) {
-  return { ...u, estAdmin: u.estAdmin === true, service: false, email: null, rappelEmail: true, theme: "hema", createdAt, auClubDepuis, sessionId: "sess", sessionForte, elevationRetombee: false, elevationOuverteLe: null, reauthAt: null };
+  return { ...u, estAdmin: u.estAdmin === true, service: false, email: null, rappelEmail: true, theme: "hema", createdAt, auClubDepuis, sessionId: "sess", sessionForte, elevationRetombee: false, elevationOuverteLe: null, reauthAt: null, reglageAccesDu: false };
 }
 
 /**

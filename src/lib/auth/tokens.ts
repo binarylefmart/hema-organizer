@@ -26,7 +26,7 @@ export function isValidTokenFormat(token: unknown): token is string {
 }
 
 /**
- * **Les sept usages d'un jeton signé, et pourquoi chacun porte son nom.**
+ * **Les usages d'un jeton signé, et pourquoi chacun porte son nom.**
  *
  * Un seul secret (`SESSION_SECRET`) signe tout ce que l'application frappe : liens d'email, cookies
  * de passage, jeton d'élévation. Une signature qui ne couvre **que** les champs rend ces jetons
@@ -47,8 +47,6 @@ export function isValidTokenFormat(token: unknown): token is string {
  * Format : `<charge base64url>.<signature base64url>`, la charge portant `u: <usage>`.
  */
 export const USAGES_JETON = [
-  /** Cookie d'attente entre le mot de passe et le code TOTP (`hema_2fa`) */
-  "attente-2fa",
   /** Cookie qui montre une fois les codes de secours fraîchement engendrés */
   "codes-secours",
   /** Cookie du parcours d'activation d'un accès administrateur (secret TOTP provisoire) */
@@ -61,6 +59,8 @@ export const USAGES_JETON = [
   "desinscription",
   /** Lien « Annuler cette séance » envoyé aux instructeurs */
   "annulation-seance",
+  /** Cookie qui montre une fois, à l'administrateur qui les a générés, les codes d'activation à remettre de vive voix */
+  "code-activation",
 ] as const;
 export type UsageJeton = (typeof USAGES_JETON)[number];
 

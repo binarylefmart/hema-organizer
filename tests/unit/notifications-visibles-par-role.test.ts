@@ -16,13 +16,14 @@ describe("les notifications visibles selon le rôle", () => {
 
   it("un instructeur voit l'encadrement, pas le bureau", () => {
     const vus = typesVisiblesPour({ role: "INSTRUCTEUR", estAdmin: false });
-    expect(vus).toEqual(expect.arrayContaining(["effectif_faible", "desistement_tardif"]));
+    expect(vus).toEqual(expect.arrayContaining(["effectif_faible", "desistement_tardif", "planning_modifie"]));
     for (const t of TYPES_BUREAU) expect(vus).not.toContain(t);
   });
 
   it("un membre du bureau voit le bureau ; instructeur et bureau, il voit les deux", () => {
     expect(typesVisiblesPour({ role: "MEMBRE", estAdmin: true })).toEqual(expect.arrayContaining(["periode_suivante", "periode_non_activee"]));
     expect(typesVisiblesPour({ role: "MEMBRE", estAdmin: true })).not.toContain("desistement_tardif");
+    expect(typesVisiblesPour({ role: "MEMBRE", estAdmin: true })).not.toContain("planning_modifie");
     const tout = typesVisiblesPour({ role: "INSTRUCTEUR", estAdmin: true });
     for (const t of [...TYPES_ENCADREMENT, ...TYPES_BUREAU]) expect(tout).toContain(t);
   });

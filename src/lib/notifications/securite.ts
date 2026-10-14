@@ -85,3 +85,51 @@ export async function prevenirNouvelAppareilParPush(userId: string, dedupKey: st
     charge: () => chargeNouvelAppareilPush(),
   });
 }
+
+/** Type écrit dans `NotificationLog` pour une demande de réinitialisation de double authentification. */
+export const TYPE_DEMANDE_DEUX_FA = "DEMANDE_2FA";
+
+/**
+ * **« Une personne demande au bureau de réinitialiser sa double authentification »**, sur les
+ * téléphones des destinataires de l'email (`demanderReinitialisationDeuxFa`). Même règle que les
+ * alertes : **aucun nom** sur un écran verrouillé — qui demande se lit dans l'email ou dans
+ * « Comptes admin », où mène l'appui.
+ */
+export function chargeDemandeDeuxFaPush(): ChargePush {
+  return {
+    titre: "Double authentification à réinitialiser",
+    corps: "Une personne a perdu l'accès à son application de codes et demande au bureau de réinitialiser sa double authentification. Vérifie avec elle, puis ouvre Comptes admin.",
+    url: "/admin/comptes",
+  };
+}
+
+/** La demande sur les téléphones : une clé par destinataire, posée avant l'envoi, jamais d'échec qui remonte. */
+export async function prevenirDemandeDeuxFaParPush(destinataires: readonly { id: string }[], dedupKey: string): Promise<number> {
+  return notifierParPush({
+    type: TYPE_DEMANDE_DEUX_FA,
+    destinataires,
+    cle: (d) => `${dedupKey}_push_${d.id}`,
+    charge: () => chargeDemandeDeuxFaPush(),
+  });
+}
+
+/** Type écrit dans `NotificationLog` pour l'avis au titulaire d'une double authentification. */
+export const TYPE_DEUX_FA_TITULAIRE = "DEUX_FA_TITULAIRE";
+
+/** Le même avis que l'email au titulaire, sur ses appareils : ce qui est arrivé, sans détail. */
+export function chargeDeuxFaTitulairePush(): ChargePush {
+  return {
+    titre: "Ta double authentification",
+    corps: "Une demande ou une réinitialisation de ta double authentification vient d'avoir lieu. Si ce n'est pas toi, préviens le bureau.",
+    url: "/profil",
+  };
+}
+
+export async function prevenirTitulaireDeuxFaParPush(userId: string, dedupKey: string): Promise<number> {
+  return notifierParPush({
+    type: TYPE_DEUX_FA_TITULAIRE,
+    destinataires: [{ id: userId }],
+    cle: () => `${dedupKey}_push`,
+    charge: () => chargeDeuxFaTitulairePush(),
+  });
+}

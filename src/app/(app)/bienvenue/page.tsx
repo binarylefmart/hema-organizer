@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth/current-user";
 import { cheminSuiteSur } from "@/lib/validation/auth";
-import { accesAdminRegle, compteAcces, peutReglerSonAcces } from "@/lib/auth/acces-admin";
+import { CHEMIN_ACTIVATION_ADMIN, compteAcces, reglageAccesDu } from "@/lib/auth/acces-admin";
 import { ParcoursAccueil } from "./ParcoursAccueil";
 import { lienPersonnelDeLOuverture } from "@/lib/lien-personnel";
 
@@ -22,16 +22,17 @@ type Props = { searchParams: Promise<{ suite?: string }> };
  */
 export default async function PageBienvenue({ searchParams }: Props) {
   const user = await requireUser();
-  const suite = cheminSuiteSur((await searchParams).suite);
+  const demandee = cheminSuiteSur((await searchParams).suite);
   // Présent seulement si l'ouverture du lien vient de le transmettre **à cette personne-là** : le
   // cookie de passage est signé à son nom, pour qu'un appareil partagé ne tende pas la clé du
   // précédent visiteur au suivant (voir `src/lib/lien-personnel.ts`).
   const lienPersonnel = await lienPersonnelDeLOuverture(user.id);
   const compte = await compteAcces(user.id);
-  // Un administrateur nominatif à qui il manque le mot de passe ou la double authentification ne
-  // voit pas l'étape « consolider » : pour lui ce n'est pas une proposition mais une obligation, et
-  // elle se règle d'un seul tenant sur `/admin/activer` — où `suite` le dépose en sortant d'ici.
-  const reglageAdminDu = peutReglerSonAcces(compte) && !!compte && !accesAdminRegle(compte);
+  // Un membre du bureau à qui il manque le mot de passe ou la double authentification ne voit pas
+  // l'étape « consolider » : pour lui ce n'est pas une proposition mais une obligation, réglée d'un
+  // seul tenant sur `/admin/activer` — où il sort d'ici, quelle que soit la page demandée.
+  const reglageAdminDu = reglageAccesDu(compte);
+  const suite = reglageAdminDu ? CHEMIN_ACTIVATION_ADMIN : demandee;
   return (
     <ParcoursAccueil
       prenom={user.prenom}

@@ -151,9 +151,6 @@ export const SESSION_COOKIE = "hema_session";
  * `src/lib/auth/elevation.ts`.
  */
 export const ELEVATION_COOKIE = "hema_admin";
-/** Cookie temporaire entre le mot de passe et le code de double authentification (admins) */
-export const DEUX_FA_COOKIE = "hema_2fa";
-export const DUREE_DEUX_FA_MS = 10 * 60 * 1000;
 /**
  * Cookie temporaire mémorisant la page demandée avant la connexion (« suite ») : la personne
  * arrivée par un bouton d'email repasse souvent par sa boîte mail (lien personnel) avant de

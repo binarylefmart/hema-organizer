@@ -94,12 +94,26 @@ export function compteurPlanning(n: number): string {
   return n === 1 ? "1 séance sélectionnée" : `${n} séances sélectionnées`;
 }
 
-/** Les séances annulées n'ont pas de case : on le dit, sans quoi la case maîtresse semble compter faux. */
-export function texteSansCasePlanning(annulees: number): string | null {
-  if (annulees === 0) return null;
-  return annulees === 1
-    ? "1 séance annulée n'a pas de case : son programme ne se règle plus."
-    : `${annulees} séances annulées n'ont pas de case : leur programme ne se règle plus.`;
+/**
+ * Les séances annulées et les séances commencées n'ont pas de case : on le dit, sans quoi la case
+ * maîtresse semble compter faux. Une séance commencée reste affichée (grisée) parmi les cours à
+ * venir jusqu'au lendemain, mais son programme est verrouillé (`partiePourEcriture`).
+ */
+export function texteSansCasePlanning(annulees: number, commencees = 0): string | null {
+  const phrases: string[] = [];
+  if (annulees > 0)
+    phrases.push(
+      annulees === 1
+        ? "1 séance annulée n'a pas de case : son programme ne se règle plus."
+        : `${annulees} séances annulées n'ont pas de case : leur programme ne se règle plus.`,
+    );
+  if (commencees > 0)
+    phrases.push(
+      commencees === 1
+        ? "1 séance commencée n'a pas de case : son programme ne se modifie plus."
+        : `${commencees} séances commencées n'ont pas de case : leur programme ne se modifie plus.`,
+    );
+  return phrases.length > 0 ? phrases.join(" ") : null;
 }
 
 /* ------------------------------------------------------------------ */

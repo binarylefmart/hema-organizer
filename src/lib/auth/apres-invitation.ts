@@ -12,13 +12,11 @@ import { CHEMIN_ACTIVATION_ADMIN } from "./acces-admin";
  * revient ne se voit rien reproposer — lien ouvert, un appui, l'accueil — tandis qu'un **nouveau
  * lien** remet le parcours une fois, ce qui est exactement le moment où il redevient utile.
  *
- * **Le cas de l'administrateur.** Mot de passe et double authentification sont facultatifs pour les
- * membres et les instructeurs ; ils sont **obligatoires pour un ADMIN**, parce que l'espace admin ne
- * s'ouvre qu'avec les deux. Son lien le connecte comme tout le monde — c'est permis, sa session est
- * alors ordinaire —, mais tant que son réglage n'est pas terminé, c'est `/admin/activer` qui
- * l'attend au bout, et non la page qu'il demandait. Passé en `destination`, le réglage traverse
- * donc l'écran de bienvenue au lieu d'être écrasé par lui : on ne lui prend pas la question de
- * l'installation, qui parle de son téléphone et pas de ses droits.
+ * **Le cas du bureau.** Un membre du bureau dont l'accès n'est pas réglé (`reglageAccesDu`) doit faire
+ * le parcours `/admin/activer` avant tout le reste : son lien le connecte comme tout le monde, mais
+ * c'est ce parcours qui l'attend au bout, et non la page qu'il demandait. Passé en `destination`, le
+ * réglage traverse l'écran de bienvenue au lieu d'être écrasé par lui : on ne lui prend pas la
+ * question de l'installation, qui parle de son téléphone et pas de ses droits.
  *
  * **Ici et non dans `src/actions/auth.ts`** : dans un fichier `"use server"`, chaque
  * `export async function` est une route appelable depuis l'extérieur. Exposer cette règle de
@@ -27,8 +25,7 @@ import { CHEMIN_ACTIVATION_ADMIN } from "./acces-admin";
  * qu'il ne faut pas y ajouter.
  */
 export function apresInvitation(parcoursVuLe: Date | null, destination: string, reglageAdminDu = false): string {
-  // Le réglage administrateur prime sur la page demandée : elle serait de toute façon refusée si
-  // elle appartenait à l'espace admin, et un administrateur à moitié réglé n'en est pas un.
+  // Le réglage prime sur la page demandée : elle serait de toute façon renvoyée sur le parcours.
   const suite = reglageAdminDu ? CHEMIN_ACTIVATION_ADMIN : cheminSuiteSur(destination);
   if (parcoursVuLe) return suite;
   return suite === "/" ? "/bienvenue" : `/bienvenue?suite=${encodeURIComponent(suite)}`;

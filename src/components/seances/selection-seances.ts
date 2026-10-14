@@ -1,6 +1,6 @@
 import { pluriel, type Explication } from "@/components/ui/choix-geste";
 import { texteInviteMasse, type MotsLignes } from "@/components/ui/selection";
-import { seanceAnnulable, seanceRetablissable } from "./gestes-seance";
+import { seanceAnnulable, seanceReglable, seanceRetablissable } from "./gestes-seance";
 import { lienPlanning } from "@/components/planning/mode-edition";
 
 /**
@@ -16,7 +16,7 @@ import { lienPlanning } from "@/components/planning/mode-edition";
  * - **annuler** les séances ni annulées ni commencées — un motif commun, et **une annonce par
  *   séance** : c'est ce qui la distingue des quatre autres, et l'écran le dit avant ;
  * - **rétablir** les séances annulées, pas encore commencées ;
- * - **changer le lieu**, **changer l'horaire** — de toutes les séances cochées ;
+ * - **changer le lieu**, **changer l'horaire** — des séances cochées pas encore commencées ;
  * - **supprimer** — au bureau seulement, session forte (l'appelant le décide, comme pour la carte).
  *
  * Les règles « annulable » et « rétablissable » ne s'écrivent pas ici : elles sont celles de la carte
@@ -73,7 +73,9 @@ export function ciblesGeste(geste: GesteSeances, lot: readonly LigneSeance[]): L
   if (geste === "annuler") return lot.filter((l) => seanceAnnulable({ annulee: l.annulee, passee: l.commencee }));
   if (geste === "retablir") return lot.filter((l) => seanceRetablissable({ annulee: l.annulee, passee: l.commencee }));
   // Une séance annulée verrouille son programme (`partiePourEcriture`) : le planning ne l'ouvrirait pas.
-  if (geste === "programme") return lot.filter((l) => !l.annulee);
+  // Une séance commencée aussi, et sa date, son horaire et son lieu avec (`seanceReglable`).
+  if (geste === "programme") return lot.filter((l) => !l.annulee && seanceReglable({ passee: l.commencee }));
+  if (geste === "lieu" || geste === "horaire") return lot.filter((l) => seanceReglable({ passee: l.commencee }));
   return [...lot];
 }
 
@@ -167,6 +169,12 @@ export function reponsesPerdues(lot: readonly LigneSeance[]): number {
   return lot.reduce((total, l) => total + l.reponses, 0);
 }
 
+/** Les séances commencées laissées de côté : elles ne se modifient plus (`seanceReglable`). */
+function phraseCommencees(n: number): string | null {
+  if (n === 0) return null;
+  return n === 1 ? "1 séance commencée reste de côté : elle ne se modifie plus." : `${n} séances commencées restent de côté : elles ne se modifient plus.`;
+}
+
 /** Ce qui reste de côté pour annuler ou rétablir, et pourquoi. */
 function phraseEcartees(geste: "annuler" | "retablir", lot: readonly LigneSeance[]): string | null {
   const ecartees = lot.length - ciblesGeste(geste, lot).length;
@@ -190,12 +198,14 @@ export function expliquerGesteSeances(geste: GesteSeances, lot: readonly LigneSe
   const reste = (phrases: (string | null)[]) => phrases.filter((p): p is string => Boolean(p));
   switch (geste) {
     case "programme": {
-      const annulees = lot.length - n;
+      const annulees = lot.filter((l) => l.annulee).length;
+      const commencees = lot.filter((l) => !l.annulee && l.commencee).length;
       return {
         titre: `Le planning s'ouvre en modification, sur ${n === 1 ? "cette séance" : `ces ${n} séances`} seulement.`,
         phrases: reste([
           "Tu y règles cours, options, instructeurs et thèmes, puis « Appliquer les modifications » enregistre tout d'un coup.",
           annulees > 0 ? `${nbSeances(annulees)} annulée${annulees > 1 ? "s" : ""} reste${annulees > 1 ? "nt" : ""} de côté : une séance annulée ne se programme plus.` : null,
+          phraseCommencees(commencees),
         ]),
       };
     }
@@ -221,6 +231,7 @@ export function expliquerGesteSeances(geste: GesteSeances, lot: readonly LigneSe
         titre: `${quoi} change sur ${n === 1 ? "la séance" : `les ${n} séances`}.`,
         phrases: reste([
           deja > 0 ? `${nbSeances(deja)} y ${deja > 1 ? "sont" : "est"} déjà : rien n'y change.` : null,
+          phraseCommencees(lot.length - ciblesGeste(geste, lot).length),
           "Aucun email ne part, comme pour une séance modifiée seule : si le cours est proche, préviens le club toi-même.",
         ]),
       };

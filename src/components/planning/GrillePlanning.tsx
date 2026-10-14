@@ -144,7 +144,8 @@ function jourCase(date: string): string {
  * Rien de nominatif ne traverse ici : des identifiants, les mêmes que les cases ont déjà.
  */
 function lignePlanning(c: ColonnePlanning): LignePlanning | null {
-  if (c.annulee) return null;
+  // Une séance commencée non plus : elle reste affichée, grisée, mais son programme ne se modifie plus.
+  if (c.annulee || c.commencee) return null;
   return {
     id: c.id,
     date: c.date,
@@ -225,12 +226,15 @@ export function GrillePlanning({
   colonnes,
   modeEdition = false,
   lienLecture,
+  cibleId = null,
 }: {
   planning: Planning;
   gestion?: boolean;
   colonnes: ColonnePlanning[];
   modeEdition?: boolean;
   lienLecture?: string;
+  /** La séance du jour, à défaut la prochaine (`seanceCible`) : soulignée, et l'écran s'y rend. */
+  cibleId?: string | null;
 }) {
   // Le **droit** de remplir, qui ouvre le bouton ; et le **mode**, qui ouvre les cases.
   const peutModifier = p.modifiable;
@@ -272,8 +276,10 @@ export function GrillePlanning({
             c={c}
             gestion={gestion}
             modifiable={options.modifiable}
-            // La case de la sélection multiple : jamais sur une séance annulée, dont le programme est verrouillé.
-            selection={enEdition && !c.annulee ? <CaseSeancePlanning id={c.id} jour={jourCase(c.date)} /> : undefined}
+            options={options}
+            cible={c.id === cibleId}
+            // La case de la sélection multiple : jamais sur une séance annulée ni commencée, dont le programme est verrouillé.
+            selection={enEdition && !c.annulee && !c.commencee ? <CaseSeancePlanning id={c.id} jour={jourCase(c.date)} /> : undefined}
           />
         ),
       })),
@@ -310,8 +316,11 @@ export function GrillePlanning({
               cachees={decoupe.cachees}
               restantes={decoupe.restantes}
               nbVisibles={Math.min(colonnes.length, SEANCES_VISIBLES)}
+              commencees={colonnes.filter((c) => c.commencee && !c.annulee).length}
             />
-            <BarreEdition lienLecture={lienLecture} partiesAffichees={colonnes.flatMap((c) => c.parties.map((x) => x.id))} />
+            {/* Les éléments d'un cours commencé ne s'écrivent plus : un réglage resté au brouillon depuis
+                avant son début est écarté (et dit), au lieu de faire refuser tout le lot. */}
+            <BarreEdition lienLecture={lienLecture} partiesAffichees={colonnes.filter((c) => !c.commencee).flatMap((c) => c.parties.map((x) => x.id))} />
           </div>
         </FournisseurBrouillon>
       ) : (
@@ -336,14 +345,38 @@ export function GrillePlanning({
  * du haut, et on croit être tombé au mauvais endroit. Elle ne joue que parce que `AllerALAncre`
  * aligne le **haut** de la carte (`block: "start"`) : en centrage, une marge de bord n'a presque
  * aucun effet, et la valeur était inerte — voir le commentaire de ce composant.
+ *
+ * **Une séance commencée reste là, grisée et figée** jusqu'au lendemain (demande de Delta) : elle
+ * se lit comme les autres, mais ses parties sont rendues sous des options **non modifiables**, même
+ * en mode modification — le serveur refuse de son côté (`partiePourEcriture`).
+ * `cible` : la séance du jour, à défaut la prochaine — bordure de la marque et `data-seance-cible`,
+ * que `AllerALaSeanceCible` vise quand aucune ancre n'est demandée.
  */
-function CarteSeancePlanning({ c, gestion, modifiable, selection }: { c: ColonnePlanning; gestion: boolean; modifiable: boolean; selection?: ReactNode }) {
-  const parties = partiesVisibles(c, modifiable);
+function CarteSeancePlanning({
+  c,
+  gestion,
+  modifiable,
+  options,
+  cible = false,
+  selection,
+}: {
+  c: ColonnePlanning;
+  gestion: boolean;
+  modifiable: boolean;
+  options?: OptionsCase;
+  cible?: boolean;
+  selection?: ReactNode;
+}) {
+  const figee = c.commencee && !c.annulee;
+  const parties = partiesVisibles(c, modifiable && !figee);
+  const bordure = c.annulee ? "border-rouge/30" : cible && !figee ? "border-primaire/50" : "border-bordure/60";
   return (
     <article
       id={`seance-${c.id}`}
+      data-seance-cible={cible ? "" : undefined}
+      data-seance-figee={figee ? "" : undefined}
       // Cochée dans la sélection multiple, au téléphone : fond doux et bordure pleine, lus sur la case (`:has`).
-      className={`flex min-w-0 scroll-mt-24 flex-col gap-3 rounded-2xl border bg-surface p-4 shadow-carte tel:has-[[data-case-selection]:checked]:border-primaire tel:has-[[data-case-selection]:checked]:bg-primaire-doux ${c.annulee ? "border-rouge/30" : "border-bordure/60"}`}
+      className={`flex min-w-0 scroll-mt-24 flex-col gap-3 rounded-2xl border p-4 shadow-carte tel:has-[[data-case-selection]:checked]:border-primaire tel:has-[[data-case-selection]:checked]:bg-primaire-doux ${figee ? "bg-surface-douce text-texte-secondaire" : "bg-surface"} ${bordure}`}
     >
       {/* La date et le taux côte à côte, séparés du programme par un filet : c'est l'en-tête de la
           carte, et il doit se lire sans être confondu avec la première partie. */}
@@ -352,11 +385,19 @@ function CarteSeancePlanning({ c, gestion, modifiable, selection }: { c: Colonne
           {selection}
           <EnteteSeance c={c} gestion={gestion} />
         </div>
-        <TauxColonne c={c} />
+        <div className="flex flex-wrap items-center gap-2">
+          {figee && <span className="rounded-md bg-surface px-2 py-0.5 text-sm font-semibold text-texte-secondaire">Commencé</span>}
+          <TauxColonne c={c} />
+        </div>
       </header>
       {c.annulee ? (
         // Une séance annulée n'a pas de programme à montrer : le motif prend toute la carte.
         <p className="rounded-xl bg-rouge-doux p-3">Séance annulée{c.motifAnnulation ? ` — ${c.motifAnnulation}` : ""}.</p>
+      ) : figee && modifiable && options ? (
+        // En mode modification, la séance commencée garde la lecture : mêmes listes, aucun contrôle.
+        <FournisseurOptions valeur={{ ...options, modifiable: false, peutProgrammer: false }}>
+          <ListeParties sessionId={c.id} parties={parties} />
+        </FournisseurOptions>
       ) : (
         <ListeParties sessionId={c.id} parties={parties} />
       )}

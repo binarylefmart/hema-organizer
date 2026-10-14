@@ -99,7 +99,7 @@ vi.mock("@/lib/db", () => {
           ...p,
           instructeur: nomFaux(p.instructeurId),
           instructeurSecond: nomFaux(p.instructeurSecondId),
-          session: { id: p.sessionId, date: "2126-10-01", annulee: faux.annulee, period: { statut: faux.statutPeriode } },
+          session: { id: p.sessionId, date: "2126-10-01", heureDebut: "19:00", annulee: faux.annulee, period: { statut: faux.statutPeriode } },
         };
       }),
       findMany: vi.fn(async ({ where }: { where: { sessionId: string; id?: { not: string } } }) =>
@@ -569,7 +569,7 @@ describe("ajouter un atelier en attente depuis le menu", () => {
   });
 
   it("refuse une séance passée, comme la grille et la file", async () => {
-    vi.mocked(db.session.findUnique).mockImplementation((async ({ where }: { where: { id: string } }) => ({
+    vi.mocked(db.session.findUnique).mockImplementationOnce((async ({ where }: { where: { id: string } }) => ({
       id: where.id,
       date: "2000-01-01",
       heureDebut: "19:00",
@@ -577,7 +577,8 @@ describe("ajouter un atelier en attente depuis le menu", () => {
       annulee: false,
       period: { statut: faux.statutPeriode },
     })) as never);
-    expect((await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ATELIER", atelierId: "at-1" })).erreur).toMatch(/à venir/);
+    // La porte commune refuse désormais avant même l'atelier : un cours commencé (a fortiori passé) est figé.
+    expect((await ajouterPartie({ sessionId: "s1", bloc: 1, nature: "ATELIER", atelierId: "at-1" })).erreur).toMatch(/déjà commencé/);
     expect(faux.parties).toHaveLength(4);
   });
 });

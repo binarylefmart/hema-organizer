@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * tous.
  *
  * Ce que ce fichier verrouille :
- * - qui a le droit de régler un accès fort (administrateur nominatif actif) et qui ne l'a pas
- *   (membre, instructeur, et le compte de service du portail, déjà réglé) ;
+ * - qui règle un accès fort (membre du bureau actif avec une adresse, compte du portail compris) et
+ *   qui ne le règle pas (membre, instructeur, bureau sans adresse) ;
+ * - **l'obligation** : un membre du bureau non réglé est déposé sur `/admin/activer` après la
+ *   connexion, et ramené sur ce parcours par `requireUser` ; ses server actions sont refusées ;
  * - l'ordre des trois étapes : mot de passe, double authentification, codes de secours ;
  * - la session en cours qui devient forte, rattachée à la bonne personne ;
  * - la connexion par mot de passe sur /connexion : ouverte à **quiconque s'en est donné un**, sans
@@ -46,6 +48,8 @@ const faux = vi.hoisted(() => ({
   sessions: [] as Record<string, unknown>[],
   audits: [] as { action: string; acteurId: string | null }[],
   cookies: {} as Record<string, string>,
+  /** Chemin de la requête, tel que le middleware le pose dans `x-chemin`. */
+  chemin: null as string | null,
 }));
 
 /* ---------------------------------------------------------------- */
@@ -63,7 +67,7 @@ vi.mock("next/headers", () => ({
       delete faux.cookies[nom];
     },
   }),
-  headers: async () => new Headers({ "user-agent": "vitest" }),
+  headers: async () => new Headers({ "user-agent": "vitest", ...(faux.chemin ? { "x-chemin": faux.chemin } : {}) }),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -128,11 +132,32 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const { definirMotDePasseAdmin, activerDeuxFaAdmin, passerDeuxFa, preparerDeuxFaAdmin, confirmerCodesSecours, seConnecter, verifierCode2fa } = await import("@/actions/auth");
-const { accesAdminRegle, compteAcces, DELAI_PROPOSITION_DEUX_FA_MS, etapeAcces, exigeDeuxFaConnexion, lireReglage2fa, ouvrirReglage2fa, peutOuvrirSessionForte, peutProposerDeuxFa, peutReglerSonAcces, peutSeConnecterParMotDePasse } =
-  await import("@/lib/auth/acces-admin");
-const { AccesRefuse, assertPermission } = await import("@/lib/auth/current-user");
+const authActions = await import("@/actions/auth");
+const { definirMotDePasseAdmin, activerDeuxFaAdmin, preparerDeuxFaAdmin, confirmerCodesSecours, seConnecter } = authActions;
+const {
+  accesAdminRegle,
+  cheminLibrePendantReglage,
+  compteAcces,
+  etapeAcces,
+  lireReglage2fa,
+  ouvrirReglage2fa,
+  peutOuvrirSessionForte,
+  peutReglerSonAcces,
+  peutSeConnecterParMotDePasse,
+  reglageAccesDu,
+} = await import("@/lib/auth/acces-admin");
+const { AccesRefuse, assertPermission, getCurrentUser, requireUser } = await import("@/lib/auth/current-user");
 const { lireAffichageCodes } = await import("@/lib/auth/deux-fa");
+const { emettreCodeActivation } = await import("@/lib/auth/activation-bureau");
+const { formaterCodeActivation } = await import("@/lib/auth/code-activation");
+
+/**
+ * **Code d'activation remis par un autre membre du bureau** (étape 2 des comptes nominatifs). Rendu
+ * sous sa forme affichée (`K7P-42M`) : la saisie tolère le tiret, c'est ce que la personne recopie.
+ */
+async function codeActivationPour(compte: { id: string }): Promise<string> {
+  return formaterCodeActivation((await emettreCodeActivation(compte.id)).code);
+}
 const { codeTotp } = await import("@/lib/auth/totp");
 const { chiffrer, dechiffrer } = await import("@/lib/crypto");
 
@@ -140,7 +165,7 @@ const { chiffrer, dechiffrer } = await import("@/lib/crypto");
 const SECRET_PORTAIL = "JBSWY3DPEHPK3PXP";
 const { generateToken, hashToken, signPayload } = await import("@/lib/auth/tokens");
 const { utiliserMagasinMemoire } = await import("@/lib/auth/rate-limit");
-const { DEUX_FA_COOKIE, SESSION_COOKIE } = await import("@/lib/constants");
+const { SESSION_COOKIE } = await import("@/lib/constants");
 
 const MOT_DE_PASSE = "grand-escrimeur-2026";
 
@@ -213,6 +238,7 @@ beforeEach(() => {
   faux.sessions = [];
   faux.audits = [];
   faux.cookies = {};
+  faux.chemin = null;
   utiliserMagasinMemoire();
   /*
    * **« Administrateur » n'est plus un rôle, c'est un supplément** : les acteurs du bureau portent
@@ -240,13 +266,49 @@ beforeEach(() => {
 /* ---------------------------------------------------------------- */
 
 describe("qui peut régler son accès administrateur", () => {
-  it("l'autorise à un administrateur nominatif actif, et à lui seul", () => {
+  it("l'autorise à un membre du bureau actif avec une adresse, compte du portail compris", () => {
     expect(peutReglerSonAcces(delta)).toBe(true);
+    expect(peutReglerSonAcces(portail)).toBe(true);
     expect(peutReglerSonAcces(instructeur)).toBe(false);
     expect(peutReglerSonAcces(membre)).toBe(false);
-    expect(peutReglerSonAcces(portail)).toBe(false); // compte du portail : déjà réglé
     expect(peutReglerSonAcces({ ...delta, actif: false })).toBe(false);
+    // Sans adresse, la connexion par mot de passe n'existe pas : rien à régler
+    expect(peutReglerSonAcces({ ...delta, email: null })).toBe(false);
     expect(peutReglerSonAcces(null)).toBe(false);
+  });
+
+  /**
+   * **La règle unique de l'obligation** (`reglageAccesDu`) : bureau actif, avec une adresse, accès
+   * pas encore réglé (mot de passe + 2FA). Le compte du portail y est soumis comme les autres.
+   */
+  it("oblige au réglage le bureau non réglé, et lui seul", () => {
+    expect(reglageAccesDu(delta)).toBe(true);
+    expect(reglageAccesDu({ ...delta, passwordHash: "$argon2id$x" })).toBe(true); // 2FA manquante
+    expect(reglageAccesDu({ ...delta, passwordHash: "$argon2id$x", totpSecret: "chiffre", totpActiveAt: new Date() })).toBe(false);
+    expect(reglageAccesDu(portail)).toBe(false); // réglé
+    expect(reglageAccesDu({ ...portail, totpSecret: null, totpActiveAt: null })).toBe(true);
+    expect(reglageAccesDu({ ...portail, doitChangerMotDePasse: true })).toBe(true);
+    // Membres et instructeurs : jamais, même sans rien
+    expect(reglageAccesDu(membre)).toBe(false);
+    expect(reglageAccesDu(instructeur)).toBe(false);
+    // Bureau sans adresse : pas d'obligation (il ne pourrait pas la terminer) ; compte désactivé non plus
+    expect(reglageAccesDu({ ...delta, email: null })).toBe(false);
+    expect(reglageAccesDu({ ...delta, actif: false })).toBe(false);
+    expect(reglageAccesDu(null)).toBe(false);
+  });
+
+  it("laisse ouverts le parcours, la bienvenue, le mot de passe provisoire et les codes, rien d'autre", () => {
+    expect(cheminLibrePendantReglage("/admin/activer")).toBe(true);
+    expect(cheminLibrePendantReglage("/admin/activer?erreur=expire")).toBe(true);
+    expect(cheminLibrePendantReglage("/bienvenue?suite=%2Fadmin%2Factiver")).toBe(true);
+    expect(cheminLibrePendantReglage("/nouveau-mot-de-passe")).toBe(true);
+    expect(cheminLibrePendantReglage("/connexion/codes-secours")).toBe(true);
+    expect(cheminLibrePendantReglage("/")).toBe(false);
+    expect(cheminLibrePendantReglage("/planning")).toBe(false);
+    expect(cheminLibrePendantReglage("/profil#securite")).toBe(false);
+    expect(cheminLibrePendantReglage("/admin")).toBe(false);
+    expect(cheminLibrePendantReglage("/admin/activer-tout")).toBe(false);
+    expect(cheminLibrePendantReglage("/connexion/admin")).toBe(false);
   });
 
   it("refuse le parcours à un membre et à un instructeur", async () => {
@@ -260,12 +322,40 @@ describe("qui peut régler son accès administrateur", () => {
     expect(faux.audits).toHaveLength(0);
   });
 
-  it("refuse le parcours au compte de service du portail, qui reste intact", async () => {
-    connecterParLien(portail.id); // (le portail ouvre normalement une session forte : on force le cas)
-    expect(await redirectionDe(definirMotDePasseAdmin({}, motsDePasse()))).toBe("/?acces=refuse");
-    expect(await redirectionDe(preparerDeuxFaAdmin())).toBe("/?acces=refuse");
+  it("ne rejoue rien sur le compte du portail déjà réglé", async () => {
+    connecterParLien(portail.id);
+    expect(await redirectionDe(definirMotDePasseAdmin({}, motsDePasse()))).toBe("/admin/activer");
+    expect(await redirectionDe(preparerDeuxFaAdmin())).toBe("/admin/activer");
     expect(portail.passwordHash).toBe("$argon2id$factice");
     expect(dechiffrer(portail.totpSecret!)).toBe(SECRET_PORTAIL);
+  });
+
+  /**
+   * **Le compte du portail fait le parcours comme tout le bureau** : son étape 1 est déjà faite (il
+   * a choisi son mot de passe sur `/nouveau-mot-de-passe`), il commence donc à la double
+   * authentification.
+   */
+  it("mène le compte du portail sans 2FA de l'étape 2 à la session forte", async () => {
+    const { hashPassword } = await import("@/lib/auth/password");
+    portail.passwordHash = await hashPassword(MOT_DE_PASSE);
+    portail.totpSecret = null;
+    portail.totpActiveAt = null;
+    const session = connecterParLien(portail.id);
+    expect(etapeAcces(portail)).toBe("deux-fa");
+    // L'étape 1 ne se rejoue pas : le mot de passe ne change pas par ici
+    const hash = portail.passwordHash;
+    expect(await redirectionDe(definirMotDePasseAdmin({}, motsDePasse("un-autre-mot-de-passe")))).toBe("/admin/activer");
+    expect(portail.passwordHash).toBe(hash);
+
+    expect(await redirectionDe(preparerDeuxFaAdmin())).toBe("/admin/activer");
+    const secret = await lireReglage2fa(portail.id);
+    expect(secret).toMatch(/^[A-Z2-7]{32}$/);
+    expect(await redirectionDe(activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: codeTotp(secret!) })))).toBe("/admin/activer");
+    expect(portail.totpActiveAt).toBeInstanceOf(Date);
+    expect((await lireAffichageCodes(portail.id))?.codes).toHaveLength(8);
+    expect(session.forte).toBe(true);
+    expect(accesAdminRegle(portail)).toBe(true);
+    expect(reglageAccesDu(portail)).toBe(false);
   });
 
   it("refuse le parcours sans session", async () => {
@@ -292,7 +382,9 @@ describe("parcours en trois étapes", () => {
     // 2. Double authentification : secret provisoire rattaché à ce compte, activé par un premier code juste
     const secret = await lireReglage2fa(delta.id);
     expect(secret).toMatch(/^[A-Z2-7]{32}$/);
-    const mauvais = await activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: "000000" }));
+    // Le code d'activation remis de vive voix par un autre membre du bureau (voir plus bas, sans lui)
+    const codeActivation = await codeActivationPour(delta);
+    const mauvais = await activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, codeActivation, code: "000000" }));
     expect(mauvais.erreurs?.code).toBeDefined();
     expect(delta.totpActiveAt).toBeNull();
 
@@ -305,7 +397,15 @@ describe("parcours en trois étapes", () => {
     expect(mauvaisMotDePasse.erreurs?.motDePasse).toBeDefined();
     expect(delta.totpActiveAt).toBeNull();
 
-    expect(await redirectionDe(activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: codeTotp(secret!) })))).toBe("/admin/activer");
+    // **Sans code d'activation, rien ne s'active** — même avec le bon mot de passe et le bon code TOTP
+    const sansCodeActivation = await activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: codeTotp(secret!) }));
+    expect(sansCodeActivation.erreurs?.codeActivation).toBeDefined();
+    expect(sansCodeActivation.erreur).toContain("Demande un code d'activation à un membre du bureau");
+    expect(delta.totpActiveAt).toBeNull();
+
+    expect(await redirectionDe(activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, codeActivation, code: codeTotp(secret!) })))).toBe("/admin/activer");
+    expect((delta as unknown as { codeActivationHash: string | null }).codeActivationHash).toBeNull(); // consommé
+    expect(faux.audits.map((a) => a.action)).toContain("deux_fa.code_activation_utilise");
     expect(delta.totpSecret).not.toBeNull();
     expect(dechiffrer(delta.totpSecret!)).toBe(secret); // secret chiffré en base, jamais en clair
     expect(delta.totpActiveAt).toBeInstanceOf(Date);
@@ -393,7 +493,7 @@ describe("réglage du compte d'un autre", () => {
   it("n'affiche pas les codes de secours de quelqu'un d'autre", async () => {
     connecterParLien(foxtrot.id);
     await redirectionDe(definirMotDePasseAdmin({}, motsDePasse()));
-    await redirectionDe(activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: codeTotp((await lireReglage2fa(foxtrot.id))!) })));
+    await redirectionDe(activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, codeActivation: await codeActivationPour(foxtrot), code: codeTotp((await lireReglage2fa(foxtrot.id))!) })));
     expect((await lireAffichageCodes(foxtrot.id))?.codes).toHaveLength(8);
     expect(await lireAffichageCodes(delta.id)).toBeNull();
   });
@@ -417,17 +517,6 @@ describe("connexion sur /connexion", () => {
     expect(peutSeConnecterParMotDePasse({ ...membre, passwordHash: "$argon2id$x", email: null })).toBe(false);
   });
 
-  it("n'exige le code que d'un administrateur, ou de qui a activé la double authentification", () => {
-    // Le code est demandé **à qui l'a configuré**, et à personne d'autre — le rôle n'entre pas dans
-    // cette règle-là. Un ADMIN qui n'a encore rien réglé se connecte donc au mot de passe comme un
-    // membre ; ce qui lui reste fermé, c'est l'espace admin.
-    expect(exigeDeuxFaConnexion(delta)).toBe(false);
-    expect(exigeDeuxFaConnexion(portail)).toBe(true); // le compte du portail, lui, a sa 2FA en place
-    expect(exigeDeuxFaConnexion(membre)).toBe(false);
-    expect(exigeDeuxFaConnexion(instructeur)).toBe(false);
-    expect(exigeDeuxFaConnexion({ ...instructeur, totpSecret: "chiffre", totpActiveAt: new Date() })).toBe(true);
-  });
-
   it("refuse l'administrateur nominatif avant son réglage, l'accepte après", async () => {
     const identifiants = formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE });
     const avant = await seConnecter({}, identifiants);
@@ -435,26 +524,13 @@ describe("connexion sur /connexion", () => {
 
     connecterParLien(delta.id);
     await redirectionDe(definirMotDePasseAdmin({}, motsDePasse()));
-    await redirectionDe(activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: codeTotp((await lireReglage2fa(delta.id))!) })));
+    await redirectionDe(activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, codeActivation: await codeActivationPour(delta), code: codeTotp((await lireReglage2fa(delta.id))!) })));
     // Il revient plus tard, sur un autre appareil : plus de session, plus de lien, juste ses identifiants
     faux.cookies = {};
     faux.sessions = [];
 
-    // Même parcours que le compte du portail : mot de passe, puis code de l'application
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    const secret = dechiffrer(delta.totpSecret!)!;
-    /*
-     * **Le code du pas SUIVANT, et pas celui de l'activation**. Ce test présentait ici les mêmes
-     * six chiffres qu'à l'activation, quelques lignes plus haut. Il passait, et c'était justement
-     * le défaut : un code TOTP ne se consommait nulle part, donc il resservait. Depuis, chaque
-     * porte retient le pas employé (`consommerCodeTotp`) et refuse tout pas inférieur ou égal —
-     * l'activation comprise, parce que le pas appartient au compte et non au secret provisoire du
-     * réglage. Ce scénario-ci reste ce qu'il a toujours voulu dire (« il revient plus tard, sur un
-     * autre appareil ») ; il le dit maintenant avec un code que son application lui donnerait
-     * vraiment plus tard. Le rejeu, lui, a son fichier : `tests/unit/totp-rejeu.test.ts`.
-     */
-    expect(await redirectionDe(verifierCode2fa({}, formulaire({ code: codeTotp(secret, Date.now(), 1) })))).toBe("/");
-
+    // Le mot de passe suffit pour entrer dans l'application : aucun code ici, 2FA réglée ou non
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE })))).toBe("/");
     /*
      * **Et la session obtenue est ordinaire**. Elle naissait « forte » ici même : se connecter au
      * mot de passe et au code ouvrait l'espace admin du même geste. Delta l'a signalé — « je viens
@@ -477,10 +553,9 @@ describe("connexion sur /connexion", () => {
     expect(faux.sessions).toHaveLength(0);
   });
 
-  it("connecte directement un membre à qui la double authentification a déjà été proposée", async () => {
+  it("connecte un membre au mot de passe seul, sans rien lui proposer", async () => {
     const { hashPassword } = await import("@/lib/auth/password");
     membre.passwordHash = await hashPassword(MOT_DE_PASSE);
-    membre.deuxFaProposeeLe = new Date(); // « Plus tard » cliqué récemment : on ne lui repose pas la question
 
     expect(await redirectionDe(seConnecter({}, formulaire({ email: membre.email, motDePasse: MOT_DE_PASSE })))).toBe("/");
     expect(faux.sessions).toHaveLength(1);
@@ -490,123 +565,138 @@ describe("connexion sur /connexion", () => {
     expect(faux.cookies[SESSION_COOKIE]).toBeDefined();
   });
 
-  it("demande son code au membre qui a activé la double authentification", async () => {
+  it("ne demande pas de code au membre qui avait activé la double authentification", async () => {
     const { hashPassword } = await import("@/lib/auth/password");
-    const { chiffrer } = await import("@/lib/crypto");
-    const secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
     membre.passwordHash = await hashPassword(MOT_DE_PASSE);
-    membre.totpSecret = chiffrer(secret);
+    membre.totpSecret = chiffrer("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
     membre.totpActiveAt = new Date();
 
-    // Le mot de passe ne suffit plus : il faut passer par le second temps
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: membre.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    expect(faux.sessions).toHaveLength(0);
-    // Un code faux n'ouvre rien
-    expect((await verifierCode2fa({}, formulaire({ code: "000000" }))).erreurs?.code).toBeDefined();
-    expect(faux.sessions).toHaveLength(0);
-    // Le bon code ouvre une session — ordinaire, toujours pas forte
-    expect(await redirectionDe(verifierCode2fa({}, formulaire({ code: codeTotp(secret) })))).toBe("/");
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: membre.email, motDePasse: MOT_DE_PASSE })))).toBe("/");
     expect(faux.sessions).toHaveLength(1);
     expect(faux.sessions[0].forte).toBe(false);
   });
 
-  it("laisse le compte du portail fonctionner comme avant", async () => {
+  it("connecte le compte du portail réglé au mot de passe seul, sans code et sans ouvrir l'espace admin", async () => {
     const { hashPassword } = await import("@/lib/auth/password");
     portail.passwordHash = await hashPassword(MOT_DE_PASSE);
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: portail.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: portail.email, motDePasse: MOT_DE_PASSE, suite: "/ateliers/proposer" })))).toBe("/ateliers/proposer");
+    expect(faux.sessions.filter((s) => s.forte)).toHaveLength(0);
+  });
+
+  it("dépose le compte du portail sans 2FA sur son réglage obligatoire", async () => {
+    const { hashPassword } = await import("@/lib/auth/password");
+    portail.passwordHash = await hashPassword(MOT_DE_PASSE);
+    portail.totpSecret = null;
+    portail.totpActiveAt = null;
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: portail.email, motDePasse: MOT_DE_PASSE, suite: "/planning" })))).toBe("/admin/activer");
+    expect(faux.sessions).toHaveLength(1);
+    expect(faux.sessions[0].forte).toBe(false);
+  });
+
+  /**
+   * **Un membre du bureau non réglé ne va pas où il voulait aller** : le parcours `/admin/activer`
+   * passe avant, dès la connexion (Delta : « oblige le setup […] à la connexion »). La session reste
+   * ordinaire ; c'est la fin du parcours qui l'élève.
+   */
+  it("dépose un administrateur non réglé sur /admin/activer, quelle que soit la page demandée", async () => {
+    const { hashPassword } = await import("@/lib/auth/password");
+    delta.passwordHash = await hashPassword(MOT_DE_PASSE);
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE, suite: "/planning" })))).toBe("/admin/activer");
+    expect(faux.sessions).toHaveLength(1);
+    expect(faux.sessions[0].forte).toBe(false);
+  });
+
+  it("ouvre la page demandée à un administrateur réglé, sans code", async () => {
+    const { hashPassword } = await import("@/lib/auth/password");
+    delta.passwordHash = await hashPassword(MOT_DE_PASSE);
+    delta.totpSecret = chiffrer("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
+    delta.totpActiveAt = new Date();
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE, suite: "/ateliers/proposer" })))).toBe("/ateliers/proposer");
+  });
+
+  it("n'envoie jamais un membre ni un instructeur sur le réglage", async () => {
+    const { hashPassword } = await import("@/lib/auth/password");
+    membre.passwordHash = await hashPassword(MOT_DE_PASSE);
+    instructeur.passwordHash = await hashPassword(MOT_DE_PASSE);
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: membre.email, motDePasse: MOT_DE_PASSE, suite: "/ateliers/proposer" })))).toBe("/ateliers/proposer");
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: instructeur.email, motDePasse: MOT_DE_PASSE, suite: "/ateliers/proposer" })))).toBe("/ateliers/proposer");
   });
 });
 
 /* ---------------------------------------------------------------- */
-/* La double authentification proposée, jamais imposée (sauf ADMIN)  */
+/* L'obligation tient aussi aux écrans et aux actions                */
 /* ---------------------------------------------------------------- */
 
-describe("proposition de la double authentification", () => {
-  it("ne la propose qu'à qui a un mot de passe, pas de 2FA, et pas déjà été sollicité ce trimestre", () => {
-    expect(peutProposerDeuxFa(membre)).toBe(false); // pas de mot de passe : on n'arrive jamais là
-    const avecMdp = { ...membre, passwordHash: "$argon2id$x" };
-    expect(peutProposerDeuxFa(avecMdp)).toBe(true);
-    expect(peutProposerDeuxFa({ ...avecMdp, actif: false })).toBe(false);
-    // Déjà proposée il y a peu : on se tait
-    expect(peutProposerDeuxFa({ ...avecMdp, deuxFaProposeeLe: new Date() })).toBe(false);
-    // …mais on la repropose un trimestre plus tard
-    expect(peutProposerDeuxFa({ ...avecMdp, deuxFaProposeeLe: new Date(Date.now() - DELAI_PROPOSITION_DEUX_FA_MS - 1) })).toBe(true);
-    // Déjà active : il n'y a rien à proposer, il y a un code à saisir
-    expect(peutProposerDeuxFa({ ...avecMdp, totpSecret: "chiffre", totpActiveAt: new Date() })).toBe(false);
-    // Le rôle n'entre pas dans cette règle : un ADMIN qui n'a pas encore réglé la sienne se la
-    // voit proposer comme tout le monde. Ce qui la lui **impose**, c'est son parcours
-    // `/admin/activer`, et la porte de l'espace admin — pas un écran de connexion.
-    expect(peutProposerDeuxFa({ ...delta, passwordHash: "$argon2id$x" })).toBe(true);
+/**
+ * **« Si je passe un user en bureau, à la prochaine connexion oblige le setup »** : la personne a
+ * peut-être déjà une session ouverte. Le drapeau `reglageAccesDu` est relu à chaque requête sur la
+ * ligne du compte ; `requireUser` (toutes les pages) la renvoie sur le parcours, `assertPermission`
+ * (les server actions) la refuse.
+ */
+describe("obligation de réglage pour une session déjà ouverte", () => {
+  it("renvoie sur /admin/activer depuis tout écran, sauf ceux du parcours", async () => {
+    connecterParLien(delta.id);
+    expect((await getCurrentUser())?.reglageAccesDu).toBe(true);
+    for (const chemin of ["/", "/planning", "/profil", "/admin"]) {
+      faux.chemin = chemin;
+      expect(await redirectionDe(requireUser())).toBe("/admin/activer");
+    }
+    for (const chemin of ["/admin/activer", "/admin/activer?erreur=expire", "/bienvenue?suite=%2Fadmin%2Factiver", "/nouveau-mot-de-passe"]) {
+      faux.chemin = chemin;
+      await expect(requireUser()).resolves.toMatchObject({ id: delta.id });
+    }
   });
 
-  it("la propose au membre après son mot de passe, et « Plus tard » ouvre quand même la session", async () => {
-    const { hashPassword } = await import("@/lib/auth/password");
-    membre.passwordHash = await hashPassword(MOT_DE_PASSE);
-
-    // Le mot de passe est accepté, mais on s'arrête pour proposer le second facteur
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: membre.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    expect(faux.sessions).toHaveLength(0);
-
-    // « Plus tard » : la session s'ouvre, rien n'est configuré, et la date est notée
-    expect(await redirectionDe(passerDeuxFa())).toBe("/");
-    expect(faux.sessions).toHaveLength(1);
-    expect(faux.sessions[0].userId).toBe(membre.id);
-    expect(faux.sessions[0].forte).toBe(false);
-    expect(membre.totpActiveAt).toBeNull();
-    expect(membre.deuxFaProposeeLe).toBeInstanceOf(Date);
-    expect(faux.audits.map((a) => a.action)).toContain("deux_fa.proposition_reportee");
-
-    // La fois suivante, on ne lui repose pas la question : session directe
-    faux.cookies = {};
-    faux.sessions = [];
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: membre.email, motDePasse: MOT_DE_PASSE })))).toBe("/");
-    expect(faux.sessions).toHaveLength(1);
+  it("rattrape un membre nommé au bureau en cours de session", async () => {
+    connecterParLien(membre.id);
+    faux.chemin = "/planning";
+    await expect(requireUser()).resolves.toMatchObject({ id: membre.id });
+    // Nommé au bureau entre deux requêtes : la requête suivante relit la ligne du compte
+    membre.estAdmin = true;
+    expect(await redirectionDe(requireUser())).toBe("/admin/activer");
   });
 
-  it("l'accepte : le membre active sa 2FA au vol, et repart avec une session ordinaire", async () => {
-    const { hashPassword } = await import("@/lib/auth/password");
-    membre.passwordHash = await hashPassword(MOT_DE_PASSE);
-    await redirectionDe(seConnecter({}, formulaire({ email: membre.email, motDePasse: MOT_DE_PASSE })));
-
-    const attente = await (await import("@/lib/auth/deux-fa")).lireAttente2fa();
-    const secret = attente!.secretProvisoire!;
-    // Les codes de secours passent en premier, comme pour un administrateur
-    expect(await redirectionDe(verifierCode2fa({}, formulaire({ code: codeTotp(secret) })))).toBe("/connexion/codes-secours");
-    expect(membre.totpActiveAt).toBeInstanceOf(Date);
-    expect(JSON.parse(membre.codesSecours!)).toHaveLength(8);
-    // Activer un second facteur n'élève rien : la session reste ordinaire
-    expect(faux.sessions).toHaveLength(1);
-    expect(faux.sessions[0].forte).toBe(false);
-  });
-
-  /** Le garde-fou : « Plus tard » ne doit jamais devenir la porte dérobée de l'administration. */
-  /**
-   * **Un administrateur se connecte à l'application comme tout le monde** : la 2FA lui est proposée
-   * s'il ne l'a pas, et « Plus tard » lui ouvre la session comme à un membre. Ce qui reste fermé,
-   * c'est l'espace admin — qui redemande, lui, mot de passe **et** code sur `/connexion/admin`, et
-   * n'accepte aucun « plus tard ».
-   */
-  it("laisse un administrateur entrer au mot de passe, et refuse le code à qui l'a configuré", async () => {
-    const { hashPassword } = await import("@/lib/auth/password");
-    delta.passwordHash = await hashPassword(MOT_DE_PASSE);
-
-    // Pas de 2FA configurée : elle est proposée, et « Plus tard » ouvre bien la session — mais
-    // comme son accès administrateur n'est pas réglé, il est déposé sur son parcours obligatoire
-    // au lieu de l'accueil. La session, elle, est bien ouverte : ce n'est pas un refus d'entrer.
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    expect(await redirectionDe(passerDeuxFa())).toBe("/admin/activer");
-    expect(faux.sessions).toHaveLength(1);
-    // Session **ordinaire** : entrer dans l'application n'ouvre aucun réglage
-    expect(faux.sessions[0].forte).toBe(false);
-    expect(delta.deuxFaProposeeLe).toBeInstanceOf(Date);
-
-    // 2FA configurée : le code est exigé, et « Plus tard » ne fonctionne plus — pour lui comme
-    // pour n'importe qui d'autre l'ayant activée.
-    const { chiffrer } = await import("@/lib/crypto");
+  it("refuse les server actions tant que le réglage est dû, et les rend une fois réglé", async () => {
+    connecterParLien(delta.id);
+    await expect(assertPermission("sessions.manage")).rejects.toBeInstanceOf(AccesRefuse);
+    delta.passwordHash = "$argon2id$x";
     delta.totpSecret = chiffrer("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
     delta.totpActiveAt = new Date();
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    expect(await redirectionDe(passerDeuxFa())).toBe("/connexion/code");
+    await expect(assertPermission("sessions.manage")).resolves.toMatchObject({ id: delta.id });
+  });
+
+  it("ne gêne ni un membre ni un instructeur", async () => {
+    connecterParLien(instructeur.id);
+    faux.chemin = "/planning";
+    await expect(requireUser()).resolves.toMatchObject({ id: instructeur.id });
+    await expect(assertPermission("sessions.manage")).resolves.toMatchObject({ id: instructeur.id });
+  });
+});
+
+/* ---------------------------------------------------------------- */
+/* La double authentification ne s'active que pour le bureau        */
+/* ---------------------------------------------------------------- */
+
+describe("double authentification : une seule porte d'activation", () => {
+  /*
+   * « Mon profil » n'active plus de double authentification : elle se règle par le parcours
+   * `/admin/activer`, réservé au bureau, et se gère ensuite dans l'espace admin. Les deux actions du
+   * profil ont disparu — un module `"use server"` qui les exporterait encore serait une route ouverte.
+   */
+  it("n'expose plus d'activation depuis le profil", () => {
+    expect("preparerMaDeuxFa" in authActions).toBe(false);
+    expect("activerMaDeuxFa" in authActions).toBe(false);
+  });
+
+  it("refuse le parcours d'activation à un membre, même muni d'un secret glissé à la main", async () => {
+    const { hashPassword } = await import("@/lib/auth/password");
+    membre.passwordHash = await hashPassword(MOT_DE_PASSE);
+    connecterParLien(membre.id);
+    expect(await redirectionDe(preparerDeuxFaAdmin())).toBe("/?acces=refuse");
+    expect(await lireReglage2fa(membre.id)).toBeNull();
+    await ouvrirReglage2fa(membre.id, "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
+    expect(await redirectionDe(activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: codeTotp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ") })))).toBe("/?acces=refuse");
+    expect(membre.totpActiveAt).toBeNull();
   });
 });
 
@@ -624,40 +714,19 @@ describe("proposition de la double authentification", () => {
  * `src/lib/auth/tokens.ts`).
  *
  * Ce test ne vérifie pas la primitive — `tests/unit/tokens.test.ts` croise les usages deux à deux. Il
- * vérifie **l'issue**, bout en bout : un jeton d'une autre famille présenté au cookie d'attente 2FA
- * n'ouvre aucune session. Un futur lecteur qui oublierait de nommer son usage rendrait ce test rouge.
+ * vérifie **l'issue** : un jeton d'une autre famille présenté aux cookies de parcours ne se lit pas.
+ * Un futur lecteur qui oublierait de nommer son usage rendrait ce test rouge.
  *
  * (La relecture de sécurité qui a motivé ce garde-fou est racontée dans `docs/ETAT.md`, qui ne quitte
  * pas ce dépôt.)
  */
 describe("un jeton signé d'un autre usage", () => {
-  it("ne se fait pas passer pour le cookie d'attente 2FA (jeton de désinscription)", async () => {
-    const { hashPassword } = await import("@/lib/auth/password");
-    membre.passwordHash = await hashPassword(MOT_DE_PASSE);
-
-    // Le jeton tel qu'il part dans le pied de l'email de rappel de Chloé, pas un jeton fabriqué :
-    // c'est la fonction de production qui le frappe, avec le secret de production.
-    const { jetonDesinscription } = await import("@/lib/notifications/desinscription");
-    faux.cookies[DEUX_FA_COOKIE] = jetonDesinscription(membre.id);
-
-    // Le cookie ne se lit même pas : ce n'est pas « périmé » ni « mal formé », c'est un autre usage.
-    expect(await (await import("@/lib/auth/deux-fa")).lireAttente2fa()).toBeNull();
-    // Et l'issue qui compte : aucune session n'est ouverte au nom de Chloé.
-    expect(await redirectionDe(passerDeuxFa())).toBe("/connexion?erreur=session");
-    expect(faux.sessions).toHaveLength(0);
-    expect(faux.cookies[SESSION_COOKIE]).toBeUndefined();
-
-    // Le jeton reste valable **pour ce qu'il est** : couper ses rappels, et rien d'autre.
-    const { lireJetonDesinscription } = await import("@/lib/notifications/desinscription");
-    expect(lireJetonDesinscription(jetonDesinscription(membre.id))).toBe(membre.id);
-  });
-
-  /** Dans l'autre sens, et sur les deux autres cookies : la portée se vérifie partout, pas au seul endroit trouvé. */
+  /** Sur les deux cookies de parcours : la portée se vérifie partout, pas au seul endroit trouvé. */
   it("ne se fait pas passer pour le cookie des codes de secours ni pour celui du réglage 2FA", async () => {
     const secret = process.env.SESSION_SECRET!;
     const charge = { uid: membre.id, exp: Date.now() + 60_000, codes: "", suite: "/", secret: "" };
 
-    faux.cookies["hema_codes"] = signPayload(charge, secret, "attente-2fa");
+    faux.cookies["hema_codes"] = signPayload(charge, secret, "elevation");
     expect(await lireAffichageCodes(membre.id)).toBeNull();
 
     faux.cookies["hema_activation"] = signPayload(charge, secret, "desinscription");
@@ -699,9 +768,8 @@ describe("session forte et administration technique", () => {
     instructeur.totpSecret = chiffrer(secret);
     instructeur.totpActiveAt = new Date();
 
-    // Connexion complète : mot de passe, puis code juste
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: instructeur.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    expect(await redirectionDe(verifierCode2fa({}, formulaire({ code: codeTotp(secret) })))).toBe("/");
+    // Connexion au mot de passe (aucun code n'est demandé pour entrer)
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: instructeur.email, motDePasse: MOT_DE_PASSE })))).toBe("/");
 
     // Sa session existe, elle est à lui… et elle n'est pas forte
     expect(faux.sessions).toHaveLength(1);
@@ -717,21 +785,16 @@ describe("session forte et administration technique", () => {
     await expect(assertPermission("sessions.manage")).resolves.toMatchObject({ id: instructeur.id });
   });
 
-  it("n'ouvre aucune session à un administrateur qui n'a pas donné son code", async () => {
+  it("n'ouvre jamais de session forte par la connexion, même à un administrateur réglé", async () => {
     const { hashPassword } = await import("@/lib/auth/password");
     delta.passwordHash = await hashPassword(MOT_DE_PASSE);
-    // Pas de 2FA configurée : le mot de passe ne l'exempte pas, il l'envoie sur la configuration guidée
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    expect(faux.sessions).toHaveLength(0);
-    expect(faux.cookies[SESSION_COOKIE]).toBeUndefined();
-
-    // Même une 2FA déjà active ne raccourcit rien : sans code, pas de session
-    const { chiffrer } = await import("@/lib/crypto");
     delta.totpSecret = chiffrer("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
     delta.totpActiveAt = new Date();
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    expect((await verifierCode2fa({}, formulaire({ code: "000000" }))).erreurs?.code).toBeDefined();
-    expect(faux.sessions).toHaveLength(0);
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: delta.email, motDePasse: MOT_DE_PASSE })))).toBe("/");
+    expect(faux.sessions).toHaveLength(1);
+    expect(faux.sessions[0].forte).toBe(false);
+    // L'espace admin reste fermé : il faut l'élévation (mot de passe + code sur /connexion/admin)
+    await expect(assertPermission("settings.technical")).rejects.toBeInstanceOf(AccesRefuse);
   });
 });
 
@@ -751,5 +814,145 @@ describe("état du réglage", () => {
     expect(etapeAcces(delta)).toBe("termine");
     expect(etapeAcces(delta, true)).toBe("codes-secours");
     expect((await compteAcces(delta.id))?.email).toBe(delta.email);
+  });
+});
+
+/* ---------------------------------------------------------------- */
+/* Code d'activation à l'étape 2 (remis hors bande)                  */
+/* ---------------------------------------------------------------- */
+
+/**
+ * **Le trou que le code ferme** : quiconque tient la boîte email ou le lien personnel d'un membre du
+ * bureau pas encore réglé choisit le mot de passe à l'étape 1 — il ne lui manquait plus que de
+ * scanner le QR code avec **son** téléphone. Le code d'activation, remis de vive voix par un autre
+ * membre du bureau, ne passe jamais par l'email : sans lui, l'étape 2 n'active rien.
+ */
+describe("code d'activation exigé à l'étape 2", () => {
+  /** Delta à l'étape 2 : session par lien, mot de passe choisi, QR code prêt. */
+  async function deltaALEtape2(): Promise<{ secret: string; session: FauxSession }> {
+    const session = connecterParLien(delta.id);
+    await redirectionDe(definirMotDePasseAdmin({}, motsDePasse()));
+    return { secret: (await lireReglage2fa(delta.id))!, session };
+  }
+  const activer = (champs: Record<string, string>) => activerDeuxFaAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, ...champs }));
+  const enBase = (compte: FauxCompte) => compte as unknown as { codeActivationHash: string | null; codeActivationExpireLe: Date | null };
+
+  it("refuse sans code, avec un message qui dit qui le donne, et n'active rien", async () => {
+    const { secret, session } = await deltaALEtape2();
+    const res = await activer({ code: codeTotp(secret) });
+    expect(res.erreur).toContain("Aucun code d'activation n'est en cours");
+    expect(res.erreur).toContain("Demande un code d'activation à un membre du bureau : il le génère dans Comptes admin");
+    expect(delta.totpActiveAt).toBeNull();
+    expect(session.forte).toBe(false);
+  });
+
+  it("refuse un code faux sans le consommer : le bon passe ensuite", async () => {
+    const { secret } = await deltaALEtape2();
+    const bon = await codeActivationPour(delta);
+    const faux2 = bon.startsWith("A") ? "BBB-BBB" : "AAA-AAA";
+    const res = await activer({ codeActivation: faux2, code: codeTotp(secret) });
+    expect(res.erreurs?.codeActivation).toBe("Code d'activation incorrect.");
+    expect(delta.totpActiveAt).toBeNull();
+    expect(enBase(delta).codeActivationHash).not.toBeNull();
+    expect(await redirectionDe(activer({ codeActivation: bon, code: codeTotp(secret) }))).toBe("/admin/activer");
+    expect(delta.totpActiveAt).toBeInstanceOf(Date);
+  });
+
+  it("tolère la casse, les espaces et l'absence de tiret à la saisie", async () => {
+    const { secret } = await deltaALEtape2();
+    const bon = await codeActivationPour(delta);
+    const saisie = ` ${bon.replace("-", " ").toLowerCase()} `;
+    expect(await redirectionDe(activer({ codeActivation: saisie, code: codeTotp(secret) }))).toBe("/admin/activer");
+    expect(delta.totpActiveAt).toBeInstanceOf(Date);
+  });
+
+  it("refuse un code expiré (48 h)", async () => {
+    const { secret } = await deltaALEtape2();
+    const bon = await codeActivationPour(delta);
+    enBase(delta).codeActivationExpireLe = new Date(Date.now() - 1000);
+    const res = await activer({ codeActivation: bon, code: codeTotp(secret) });
+    expect(res.erreurs?.codeActivation).toContain("expiré");
+    expect(delta.totpActiveAt).toBeNull();
+  });
+
+  it("un nouveau code invalide le précédent", async () => {
+    const { secret } = await deltaALEtape2();
+    const ancien = await codeActivationPour(delta);
+    const nouveau = await codeActivationPour(delta);
+    expect((await activer({ codeActivation: ancien, code: codeTotp(secret) })).erreurs?.codeActivation).toBeDefined();
+    expect(await redirectionDe(activer({ codeActivation: nouveau, code: codeTotp(secret) }))).toBe("/admin/activer");
+  });
+
+  it("ne sert qu'une fois : après usage il n'existe plus, même si la 2FA est à refaire", async () => {
+    const { secret } = await deltaALEtape2();
+    const bon = await codeActivationPour(delta);
+    expect(await redirectionDe(activer({ codeActivation: bon, code: codeTotp(secret) }))).toBe("/admin/activer");
+    expect(enBase(delta).codeActivationHash).toBeNull();
+    expect(enBase(delta).codeActivationExpireLe).toBeNull();
+    // Sa 2FA est remise à zéro sans nouveau code : l'ancien ne rouvre rien
+    delta.totpSecret = null;
+    delta.totpActiveAt = null;
+    await redirectionDe(preparerDeuxFaAdmin());
+    const res = await activer({ codeActivation: bon, code: codeTotp((await lireReglage2fa(delta.id))!) });
+    expect(res.erreurs?.codeActivation).toBeDefined();
+    expect(delta.totpActiveAt).toBeNull();
+  });
+
+  it("un code ne vaut que pour la personne à qui il a été donné", async () => {
+    const codeDeFoxtrot = await codeActivationPour(foxtrot);
+    const { secret } = await deltaALEtape2();
+    expect((await activer({ codeActivation: codeDeFoxtrot, code: codeTotp(secret) })).erreurs?.codeActivation).toBeDefined();
+    expect(delta.totpActiveAt).toBeNull();
+  });
+
+  it("le compte du portail en est exempté : personne d'autre que lui ne touche à sa 2FA", async () => {
+    const { hashPassword } = await import("@/lib/auth/password");
+    portail.passwordHash = await hashPassword(MOT_DE_PASSE);
+    portail.totpSecret = null;
+    portail.totpActiveAt = null;
+    connecterParLien(portail.id);
+    await redirectionDe(preparerDeuxFaAdmin());
+    expect(await redirectionDe(activer({ code: codeTotp((await lireReglage2fa(portail.id))!) }))).toBe("/admin/activer");
+    expect(portail.totpActiveAt).toBeInstanceOf(Date);
+  });
+
+  it("la réinitialisation faite par soi-même exige aussi un code d'activation", async () => {
+    const { secret } = await deltaALEtape2();
+    // Ce que pose `reinitialiserMaDeuxFa` : un réglage en cours, sans aucune dispense
+    await ouvrirReglage2fa(delta.id, secret);
+    expect((await activer({ code: codeTotp(secret) })).erreur).toMatch(/code d'activation/);
+    expect(delta.totpActiveAt).toBeNull();
+  });
+
+  /*
+   * **Le calcul qui rend le code impossible à deviner** : 31⁶ ≈ 8,9 × 10⁸ codes, et chaque essai
+   * passe par le limiteur `totp_user` (8 par quart d'heure et par compte). Sur les 48 h de validité :
+   * 8 × 4 × 48 = 1 536 essais au plus, soit une chance sur ~578 000.
+   */
+  it("compte chaque essai au limiteur : au 9e dans le quart d'heure, plus rien n'est vérifié", async () => {
+    const { RATE_LIMITS } = await import("@/lib/auth/rate-limit");
+    const { ALPHABET_CODE_ACTIVATION, LONGUEUR_CODE_ACTIVATION, DUREE_CODE_ACTIVATION_MS } = await import("@/lib/auth/code-activation");
+    const { secret } = await deltaALEtape2();
+    const bon = await codeActivationPour(delta);
+    const faux2 = bon.startsWith("A") ? "BBB-BBB" : "AAA-AAA";
+    for (let i = 0; i < RATE_LIMITS.totp_user.max; i++) {
+      expect((await activer({ codeActivation: faux2, code: codeTotp(secret) })).erreurs?.codeActivation).toBeDefined();
+    }
+    // Même le bon code est refusé : le plafond est atteint
+    expect((await activer({ codeActivation: bon, code: codeTotp(secret) })).erreur).toBe("Trop de tentatives. Réessaie dans quelques minutes.");
+    expect(delta.totpActiveAt).toBeNull();
+
+    const essaisSurLaValidite = RATE_LIMITS.totp_user.max * (DUREE_CODE_ACTIVATION_MS / RATE_LIMITS.totp_user.windowMs);
+    const espace = ALPHABET_CODE_ACTIVATION.length ** LONGUEUR_CODE_ACTIVATION;
+    expect(essaisSurLaValidite).toBe(1536);
+    expect(espace).toBe(887_503_681);
+    expect(essaisSurLaValidite / espace).toBeLessThan(2e-6);
+  });
+
+  it("journalise l'usage du code", async () => {
+    const { secret } = await deltaALEtape2();
+    const bon = await codeActivationPour(delta);
+    await redirectionDe(activer({ codeActivation: bon, code: codeTotp(secret) }));
+    expect(faux.audits.map((a) => a.action)).toContain("deux_fa.code_activation_utilise");
   });
 });

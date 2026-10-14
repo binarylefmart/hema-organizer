@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { can, canAssignRole, canEditUser, exigeSessionForte, isStaff, peutNommerAdmin, PERMISSIONS, type Permission } from "@/lib/permissions";
-import { exigeDeuxFaConnexion, peutOuvrirSessionForte, peutSeConnecterParMotDePasse } from "@/lib/auth/acces-admin";
+import { peutActiverDeuxFa, peutOuvrirSessionForte, peutSeConnecterParMotDePasse } from "@/lib/auth/acces-admin";
 
 /**
  * **« Administrateur » n'est plus un rôle, c'est un supplément**. Les trois rôles étaient
@@ -228,14 +228,11 @@ describe("matrice de permissions", () => {
     const equipe = { actif: true, email: "x@club.test", passwordHash: "$argon2id$x", totpSecret: "chiffre", totpActiveAt: new Date() };
     // Tous trois peuvent se connecter par mot de passe : c'est une porte, pas un droit
     for (const r of [admin, instructeur, membre]) expect(peutSeConnecterParMotDePasse({ ...r, ...equipe }), r.role).toBe(true);
-    // Tous trois passent par le code s'ils ont activé la 2FA ; l'ADMIN y passe même sans
-    // Une seule règle à la connexion, rôle compris : le code est demandé à qui l'a configuré.
-    // Un ADMIN sans 2FA entre donc au mot de passe comme un membre — l'espace admin, lui, reste
-    // fermé (il redemande les deux preuves sur `/connexion/admin`).
-    expect(exigeDeuxFaConnexion({ ...admin, actif: true })).toBe(false);
-    expect(exigeDeuxFaConnexion({ ...admin, ...equipe })).toBe(true);
-    expect(exigeDeuxFaConnexion({ ...instructeur, actif: true })).toBe(false);
-    expect(exigeDeuxFaConnexion({ ...instructeur, ...equipe })).toBe(true);
+    // La double authentification ne s'active que pour le bureau : elle ne sert qu'à l'espace admin
+    expect(peutActiverDeuxFa({ ...admin, ...equipe })).toBe(true);
+    expect(peutActiverDeuxFa({ ...instructeur, ...equipe })).toBe(false);
+    expect(peutActiverDeuxFa({ ...membre, ...equipe })).toBe(false);
+    expect(peutActiverDeuxFa({ ...admin, ...equipe, passwordHash: null })).toBe(false);
     // Mais la session forte ne suit que le rôle
     expect(peutOuvrirSessionForte({ ...admin, ...equipe })).toBe(true);
     expect(peutOuvrirSessionForte({ ...instructeur, ...equipe })).toBe(false);

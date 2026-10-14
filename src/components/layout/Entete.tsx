@@ -9,7 +9,7 @@ import { LienAccueil } from "./LienAccueil";
 import { NavBas, NavEntete, type Onglet } from "./Navigation";
 
 export type AccesAdmin = {
-  /** Administrateur nommé (Delta, Echo…), par opposition au compte de service du portail */
+  /** Membre du bureau qui règle son accès sur `/admin/activer` (`peutReglerSonAcces`, compte du portail compris) */
   nominatif: boolean;
   aMotDePasse: boolean;
   totpActiveAt: Date | null;
@@ -22,9 +22,8 @@ const AUCUN: AccesAdmin = { nominatif: false, aMotDePasse: false, totpActiveAt: 
 /**
  * Où en est l'accès administrateur de la personne connectée (une seule lecture par requête),
  * d'après les règles de src/lib/auth/acces-admin.ts — celles-là mêmes que suit /admin/activer.
- * Les points d'entrée vers /admin/activer — accueil, en-tête, profil — ne s'adressent qu'aux
- * administrateurs nommés : ni les membres, ni les instructeurs, ni le compte de service du portail
- * (lui a déjà mot de passe et 2FA) ne doivent en voir la moindre trace.
+ * Les points d'entrée vers /admin/activer ne s'adressent qu'au bureau (compte du portail compris) :
+ * ni les membres ni les instructeurs ne doivent en voir la moindre trace.
  */
 export const accesAdmin = cache(async (user: CurrentUser): Promise<AccesAdmin> => {
   if (!can(user, "settings.technical")) return AUCUN;

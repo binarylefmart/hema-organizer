@@ -75,7 +75,8 @@ describe("retirer les droits d'administrateur", () => {
   it("retire le bureau et laisse le rôle de base intact, sans supprimer le compte", async () => {
     faux.cible = autre;
     await retirerDroitsAdmin("n");
-    expect(faux.misAJour).toEqual([{ where: { id: "n" }, data: { estAdmin: false } }]);
+    // Le bureau part, et son code d'activation en cours avec lui : il n'a plus rien à débloquer.
+    expect(faux.misAJour).toEqual([{ where: { id: "n" }, data: { estAdmin: false, codeActivationHash: null, codeActivationExpireLe: null } }]);
     // **Le rôle n'est pas touché**, et c'est tout l'objet du changement : l'instructeur du bureau
     // reste instructeur. Un `role` dans cette écriture serait une rétrogradation silencieuse.
     expect(JSON.stringify(faux.misAJour)).not.toContain("role");

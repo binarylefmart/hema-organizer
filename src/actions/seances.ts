@@ -13,7 +13,7 @@ import { notifierAnnulation, phraseAnnulation, porteurJetonAnnulation } from "@/
 import { checkRateLimit } from "@/lib/auth/rate-limit";
 import { libererAteliersDesSeances, partiesInitiales } from "@/lib/planning";
 import { formatDateSansAnnee, seanceCommencee } from "@/lib/dates";
-import { seanceAnnulable, seanceRetablissable } from "@/components/seances/gestes-seance";
+import { seanceAnnulable, seanceReglable, seanceRetablissable } from "@/components/seances/gestes-seance";
 
 function rafraichir(sessionId?: string) {
   revalidatePath("/seances");
@@ -81,6 +81,8 @@ async function periodePourEcriture(periodId: string) {
 const REFUS_COMMENCEE = {
   annuler: "Ce cours a déjà commencé : on ne l'annonce plus annulé à des gens qui sont dans la salle.",
   retablir: "Ce cours a déjà commencé : il ne redevient pas un cours prévu.",
+  // Date, horaire, lieu : la séance commencée reste affichée, figée (`seanceReglable`).
+  modifier: "Ce cours a déjà commencé : sa date, son horaire et son lieu ne se modifient plus.",
 } as const;
 
 function commencee(seance: { date: string; heureDebut: string }): boolean {
@@ -185,6 +187,7 @@ export async function modifierSeance(sessionId: string, _prev: FormState, fd: Fo
   // statut (un trimestre clos ne se retouche plus — voir `seancePourEcriture`).
   const ouverte = await seancePourEcriture(sessionId);
   if (ouverte.erreur) return { erreur: ouverte.erreur };
+  if (!seanceReglable({ passee: commencee(ouverte.seance) })) return { erreur: REFUS_COMMENCEE.modifier };
   if (periodId !== ouverte.seance.periodId) {
     return {
       erreur: "Une séance ne change pas de trimestre : ses réponses appartiennent aux invités de sa période. Crée-la dans l'autre trimestre et retire celle-ci.",
@@ -444,6 +447,7 @@ export async function appliquerGesteSeancesEnMasse(entree: unknown): Promise<Res
     const passee = commencee(s);
     if (geste === "annuler" && !s.annulee && !seanceAnnulable({ annulee: false, passee })) refus.push(`${formatDateSansAnnee(s.date)} : ${REFUS_COMMENCEE.annuler}`);
     else if (geste === "retablir" && s.annulee && !seanceRetablissable({ annulee: true, passee })) refus.push(`${formatDateSansAnnee(s.date)} : ${REFUS_COMMENCEE.retablir}`);
+    else if ((geste === "lieu" || geste === "horaire") && !seanceReglable({ passee })) refus.push(`${formatDateSansAnnee(s.date)} : ${REFUS_COMMENCEE.modifier}`);
     lues.push(s);
   }
   if (refus.length > 0 || introuvables > 0) {

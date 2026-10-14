@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parisDateTime } from "@/lib/dates";
-import { lienTemps, lireDateFiltre, lireQuand, QUAND_LABELS, seancesDuJour, selectionnerSeances, valeurQuand } from "@/components/filtres/temps";
+import { addDays, parisDateTime, seanceCommencee, seancePassee } from "@/lib/dates";
+import { lienTemps, lireDateFiltre, lireQuand, QUAND_LABELS, seanceCible, seancesDuJour, selectionnerSeances, valeurQuand } from "@/components/filtres/temps";
 
 /**
  * Bascule « À venir / Passé » des écrans de séances (planning, gestion des séances).
@@ -8,8 +8,9 @@ import { lienTemps, lireDateFiltre, lireQuand, QUAND_LABELS, seancesDuJour, sele
  * Deux promesses à tenir :
  *  - par défaut on ne voit **que ce qui vient** — le passé ne s'affiche que si on le demande,
  *    et l'URL par défaut reste propre (aucun `quand=`) ;
- *  - la frontière n'est pas la date mais **le début du cours** : le cours de ce soir reste « à venir »
- *    toute la journée, et bascule dans le passé dès 19 h 30 passées.
+ *  - la frontière est **le jour** : le cours de ce soir reste « à venir » toute la journée, même
+ *    commencé (grisé et figé par l'écran, `seanceCommencee`), et ne passe dans « Passé » que le
+ *    lendemain, à minuit dans le fuseau du club (`seancePassee`).
  */
 
 const AUJ = "2026-09-22";
@@ -74,6 +75,7 @@ describe("liens de la bascule", () => {
 describe("séances retenues de chaque côté", () => {
   it("ne montre que ce qui vient, dans l'ordre, par défaut", () => {
     expect(selectionnerSeances(seances, "avenir", "periode", MAINTENANT, AUJ).map(quandEt)).toEqual([
+      "2026-09-22 19:30",
       "2026-09-22 21:00",
       "2026-09-25 19:30",
       "2026-10-02 19:30",
@@ -84,20 +86,26 @@ describe("séances retenues de chaque côté", () => {
 
   it("ne montre que ce qui est écoulé, de la plus récente à la plus ancienne", () => {
     expect(selectionnerSeances(seances, "passe", "periode", MAINTENANT, AUJ).map(quandEt)).toEqual([
-      "2026-09-22 19:30",
       "2026-09-18 19:30",
       "2026-09-08 19:30",
       "2026-07-10 19:30",
     ]);
   });
 
-  it("range le cours du jour déjà commencé du côté du passé, l'autre du côté des prochains", () => {
+  it("garde le cours du jour déjà commencé du côté des prochains, jusqu'au lendemain", () => {
     const aVenir = selectionnerSeances(seances, "avenir", "periode", MAINTENANT, AUJ).map(quandEt);
     const passe = selectionnerSeances(seances, "passe", "periode", MAINTENANT, AUJ).map(quandEt);
-    expect(passe).toContain("2026-09-22 19:30");
-    expect(aVenir).not.toContain("2026-09-22 19:30");
-    expect(aVenir).toContain("2026-09-22 21:00");
-    expect(passe).not.toContain("2026-09-22 21:00");
+    expect(aVenir).toContain("2026-09-22 19:30");
+    expect(passe).not.toContain("2026-09-22 19:30");
+    // Commencé, il est figé (l'écran le grise) : les deux règles sont distinctes.
+    expect(seanceCommencee("2026-09-22", "19:30", MAINTENANT)).toBe(true);
+    expect(seancePassee("2026-09-22", MAINTENANT)).toBe(false);
+    // Le lendemain à minuit (heure du club), il passe — pas une minute avant.
+    const minuit = parisDateTime(addDays(AUJ, 1), "00:00");
+    expect(seancePassee("2026-09-22", new Date(minuit.getTime() - 60_000))).toBe(false);
+    expect(seancePassee("2026-09-22", minuit)).toBe(true);
+    const lendemain = selectionnerSeances(seances, "passe", "periode", minuit, addDays(AUJ, 1)).map(quandEt);
+    expect(lendemain.slice(0, 2)).toEqual(["2026-09-22 21:00", "2026-09-22 19:30"]);
   });
 
   it("garde le cours du soir « à venir » tant qu'il n'a pas commencé", () => {
@@ -114,20 +122,23 @@ describe("séances retenues de chaque côté", () => {
 
 describe("la fenêtre de temps fonctionne dans les deux positions", () => {
   it("resserre vers l'avant en position « À venir »", () => {
-    expect(selectionnerSeances(seances, "avenir", "semaine", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-22 21:00", "2026-09-25 19:30"]);
-    expect(selectionnerSeances(seances, "avenir", "mois", MAINTENANT, AUJ)).toHaveLength(4);
-    expect(selectionnerSeances(seances, "avenir", "prochain", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-22 21:00"]);
+    expect(selectionnerSeances(seances, "avenir", "semaine", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-22 19:30", "2026-09-22 21:00", "2026-09-25 19:30"]);
+    expect(selectionnerSeances(seances, "avenir", "mois", MAINTENANT, AUJ)).toHaveLength(5);
+    expect(selectionnerSeances(seances, "avenir", "prochain", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-22 19:30"]);
   });
 
   it("se lit vers l'arrière en position « Passé »", () => {
-    expect(selectionnerSeances(seances, "passe", "semaine", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-22 19:30", "2026-09-18 19:30"]);
-    expect(selectionnerSeances(seances, "passe", "mois", MAINTENANT, AUJ).map(quandEt)).toEqual([
-      "2026-09-22 19:30",
-      "2026-09-18 19:30",
-      "2026-09-08 19:30",
-    ]);
-    // « Prochain cours » devient « Dernier cours » : la séance écoulée la plus récente
-    expect(selectionnerSeances(seances, "passe", "prochain", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-22 19:30"]);
+    expect(selectionnerSeances(seances, "passe", "semaine", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-18 19:30"]);
+    expect(selectionnerSeances(seances, "passe", "mois", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-18 19:30", "2026-09-08 19:30"]);
+    // « Prochain cours » devient « Dernier cours » : la séance d'un jour écoulé la plus récente
+    expect(selectionnerSeances(seances, "passe", "prochain", MAINTENANT, AUJ).map(quandEt)).toEqual(["2026-09-18 19:30"]);
+  });
+
+  it("ouvre sur la séance du jour, à défaut la prochaine — commencée ou non", () => {
+    const avecIds = seances.map((x) => ({ ...x, id: quandEt(x) }));
+    expect(seanceCible(avecIds, AUJ)?.id).toBe("2026-09-22 19:30");
+    expect(seanceCible(avecIds, "2026-09-23")?.id).toBe("2026-09-25 19:30");
+    expect(seanceCible(avecIds, "2026-12-01")).toBeNull();
   });
 
   it("ne rend rien plutôt que d'élargir quand la fenêtre est vide", () => {

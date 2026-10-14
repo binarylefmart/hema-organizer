@@ -19,7 +19,8 @@ export default async function PageVerifier({ searchParams }: Props) {
   // Le bureau se lit sur `estAdmin` — même garde que `reverifierCode2fa`, qui reçoit le formulaire
   // de cet écran : les deux doivent dire la même chose, sinon l'une affiche ce que l'autre refuse.
   // Sur `role`, elle ne laissait plus passer personne.
-  if (!user.estAdmin || !user.sessionForte) redirect(`/connexion?erreur=admin&suite=${encodeURIComponent(retour)}`);
+  // Élévation tombée (ou jamais prise) : la porte de l'espace admin, qui redemande mot de passe et code
+  if (!user.estAdmin || !user.sessionForte) redirect(`/connexion/admin?suite=${encodeURIComponent(retour)}`);
   return (
     <PageAuth titre="Vérification" sousTitre="Cette action est sensible : confirme avec le code de ton application d'authentification.">
       <FormulaireCode configuration={false} action={reverifierCode2fa.bind(null, retour)} libelle="Confirmer" />

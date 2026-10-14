@@ -141,8 +141,9 @@ describe("l'écran de bienvenue offre un vrai bouton « Copier mon lien »", () 
     expect(rang('etape === "installer"')).toBeLessThan(rang('etape === "guide"'));
     expect(rang('etape === "guide"')).toBeLessThan(rang('etape === "consolider"'));
     expect(rang("<GuideInstallation />")).toBeLessThan(rang("<FormulaireMotDePasse"));
-    // La double authentification ne vient qu'après un mot de passe posé
-    expect(rang('setEtape("deux-fa")')).toBeLessThan(rang("/profil#securite"));
+    // Le mot de passe posé mène à l'écran qui le confirme ; la double authentification n'est plus proposée
+    expect(rang('setEtape("mot-de-passe-pose")')).toBeLessThan(rang("Mot de passe enregistré"));
+    expect(parcours).not.toContain("Activer la double authentification");
   });
 
   it("chaque étape peut être déclinée : rien n'est imposé", () => {

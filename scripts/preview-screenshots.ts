@@ -23,12 +23,13 @@ import { urlAnnulation } from "../src/lib/notifications/seances";
 import { jetonDesinscription } from "../src/lib/notifications/desinscription";
 import { PrismaClient } from "@prisma/client";
 import { emailAtelierStatut } from "../src/lib/email/templates/ateliers";
+import { emailPlanningModifie } from "../src/lib/email/templates/planning";
+import { contenuPlanningModifie } from "../src/lib/notifications/planning-modifie";
 import { codeTotpFrais, COMPTES, DEMO_MOT_DE_PASSE, DEMO_TOKEN_EXISTANT, DEMO_TOKEN_NOUVEAU, DEMO_TOTP_SECRET, demoLien } from "../prisma/comptes";
 import { etatPremiereConnexion, instantaneCompteAdministration, restaurerCompteAdministration, restaurerInstantane, type InstantaneCompte } from "../prisma/compte-administration";
 import { dateDemo } from "../prisma/seed-demo";
 import { THEMES as THEMES_COULEURS } from "../src/lib/themes";
 import { identiteReglee, resoudreIdentite, type Identite } from "../src/lib/identite";
-import { hashPassword } from "../src/lib/auth/password";
 import { LIEN_PERSO_COOKIE } from "../src/lib/lien-personnel";
 
 /**
@@ -345,6 +346,28 @@ const SCENES_THEMES: Scene[] = THEMES_COULEURS.map((theme) => ({
   apres: rendreThemeDemo,
 }));
 
+/** Mot de passe choisi par les scènes de première connexion du portail (différent du provisoire). */
+const MDP_PREMIERE_CONNEXION = "premiere-connexion-demo-2026";
+
+/**
+ * **Première connexion du compte du portail**, jusqu'à l'étape 2 du parcours obligatoire : mot de
+ * passe provisoire → choix du vrai (`/nouveau-mot-de-passe`) → `/admin/activer` → « Afficher mon QR
+ * code ». La scène doit appeler `restaurerCompteAdministration` après coup.
+ */
+async function premiereConnexionDuPortail(page: Page): Promise<void> {
+  await etatPremiereConnexion();
+  await page.reload();
+  await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
+  await page.getByLabel("Mot de passe", { exact: true }).fill(DEMO_MDP);
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await page.waitForURL("**/nouveau-mot-de-passe");
+  await page.getByLabel("Mot de passe", { exact: true }).fill(MDP_PREMIERE_CONNEXION);
+  await page.getByLabel("Le même mot de passe, une deuxième fois").fill(MDP_PREMIERE_CONNEXION);
+  await page.getByRole("button", { name: "Enregistrer et continuer" }).click();
+  await page.waitForURL("**/admin/activer");
+  await page.getByRole("button", { name: "Afficher mon QR code" }).click();
+}
+
 /**
  * **Toutes les scènes**, fabriquées à l'appel et non au chargement du module.
  *
@@ -369,49 +392,30 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "connexion-2fa-config",
-      description: "Première connexion d'un admin : configuration de la double authentification (QR code)",
+      description: "Compte du portail sans double authentification : le parcours obligatoire /admin/activer (QR code)",
       chemin: "/connexion",
       avant: async (page) => {
-        await etatPremiereConnexion();
-        await page.reload();
-        await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
-        await page.getByLabel("Mot de passe", { exact: true }).fill(DEMO_MDP);
-        await page.getByRole("button", { name: "Se connecter" }).click();
-        await page.waitForURL("**/connexion/code");
+        await premiereConnexionDuPortail(page);
         await page.getByText("Impossible de scanner").click();
       },
       pleinePage: true,
       apres: restaurerCompteAdministration,
     },
     {
-      nom: "connexion-2fa-code",
-      description: "Connexion admin : saisie du code à 6 chiffres",
-      chemin: "/connexion",
-      avant: async (page) => {
-        await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
-        await page.getByLabel("Mot de passe", { exact: true }).fill(DEMO_MDP);
-        await page.getByRole("button", { name: "Se connecter" }).click();
-        await page.waitForURL("**/connexion/code");
-      },
-    },
-    {
       nom: "connexion-codes-secours",
       description: "Après l'activation de la 2FA : les 8 codes de secours, montrés une seule fois",
       chemin: "/connexion",
       avant: async (page) => {
-        await etatPremiereConnexion();
-        await page.reload();
-        await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
-        await page.getByLabel("Mot de passe", { exact: true }).fill(DEMO_MDP);
-        await page.getByRole("button", { name: "Se connecter" }).click();
-        await page.waitForURL("**/connexion/code");
-        await page.getByText("Impossible de scanner").click();
-        const cle = (await page.locator("code").textContent())!.replace(/\s+/g, "");
-        await page.getByLabel("Code à 6 chiffres").fill(await codeTotpFrais(cle));
-        await page.getByRole("button", { name: "Activer et me connecter" }).click();
-        await page.waitForURL("**/connexion/codes-secours");
-        // On attend la liste des codes, et non la seule adresse : l'écran peut s'y poser puis renvoyer
-        // ailleurs faute de codes à montrer, et la capture était alors une page blanche « réussie ».
+        await premiereConnexionDuPortail(page);
+        const aLaMain = page.locator("details", { hasText: "Impossible de scanner" });
+        await aLaMain.getByText("Impossible de scanner").click();
+        const cle = (await aLaMain.locator("code").textContent())!.replace(/\s+/g, "");
+        const activation = page.locator("form").filter({ has: page.locator('input[name="code"]') });
+        await activation.locator('input[name="motDePasse"]').fill(MDP_PREMIERE_CONNEXION);
+        await activation.locator('input[name="code"]').fill(await codeTotpFrais(cle));
+        await activation.getByRole("button", { name: "Activer la double authentification" }).click();
+        // Les codes s'affichent sur le parcours lui-même (étape 3). On attend la liste, et non la
+        // seule adresse : la capture serait sinon l'étape 2 encore à l'écran.
         await page.getByRole("list", { name: "Codes de secours" }).waitFor();
       },
       pleinePage: true,
@@ -514,22 +518,6 @@ function toutesLesScenes(): Scene[] {
       description: "Page de connexion, champ de collage en évidence (retour du bouton « Copier mon lien »)",
       chemin: "/connexion?lien=copie",
       pleinePage: true,
-    },
-    {
-      nom: "connexion-2fa-proposee",
-      description: "Double authentification **proposée** (membre qui s'est donné un mot de passe) : bouton « Plus tard »",
-      chemin: "/connexion",
-      avant: async (page) => {
-        await donnerMotDePasseDemo();
-        await page.reload({ waitUntil: "networkidle" });
-        await page.getByLabel("Email", { exact: true }).fill(COMPTES.membre);
-        await page.getByLabel("Mot de passe", { exact: true }).fill(DEMO_MDP);
-        await page.getByRole("button", { name: "Se connecter" }).click();
-        await page.waitForURL("**/connexion/code");
-        await page.getByRole("heading", { name: "Protéger mon compte" }).waitFor();
-      },
-      pleinePage: true,
-      apres: retirerMotDePasseDemo,
     },
     { nom: "planning", description: "Planning vu par un membre : tout le trimestre en lecture seule", connexion: COMPTES.membre, chemin: "/planning", pleinePage: true },
     {
@@ -836,7 +824,7 @@ function toutesLesScenes(): Scene[] {
     ...SCENES_THEMES,
     {
       nom: "connexion-elevation",
-      description: "Un responsable entré par son lien veut ouvrir l'administration : le compte du bureau est demandé",
+      description: "Un membre du bureau entré par son lien, accès pas encore réglé : le parcours obligatoire /admin/activer",
       connexion: COMPTES.adminNominatif,
       chemin: "/admin",
       /*
@@ -902,10 +890,17 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "profil-admin-non-eleve",
-      description: "Mon profil (admin entré par son lien) : l'espace admin se prend en redonnant mot de passe et code",
-      connexion: COMPTES.adminNominatif,
+      description: "Mon profil (bureau, espace admin fermé) : l'espace admin se prend en redonnant mot de passe et code",
+      connexion: COMPTES.admin,
       chemin: "/profil",
       pleinePage: true,
+      avant: async (page) => {
+        // Un membre du bureau non réglé ne voit plus son profil (le parcours `/admin/activer` passe
+        // avant) : la scène prend donc le compte du portail, réglé, et referme son élévation comme
+        // le fait la scène `admin-elevation`.
+        await page.context().clearCookies({ name: "hema_admin" });
+        await allerA(page, `${BASE}/profil`);
+      },
     },
     { nom: "admin-comptes", description: "Administration : comptes admin et état de la double authentification", connexion: COMPTES.admin, chemin: "/admin/comptes", pleinePage: true },
     { nom: "admin-themes", description: "Administration : les thèmes du planning et les lieux habituels des cours", connexion: COMPTES.admin, chemin: "/admin/themes", pleinePage: true },
@@ -1584,6 +1579,35 @@ function toutesLesScenes(): Scene[] {
       pleinePage: true,
     },
     {
+      nom: "email-planning-modifie",
+      description: "Email aux instructeurs : le planning a changé (date de chaque cours, ajouts et modifications, auteur)",
+      html: renderEmailHtml(
+        emailPlanningModifie({
+          prenom: "Charlie",
+          contenu: contenuPlanningModifie({
+            auteur: "Delta Lefèvre",
+            seances: [
+              { id: "seance-exemple-1", periodId: "periode", date: "2026-09-26", heureDebut: "19:00", heureFin: "21:00", lieu: "Gymnase municipal, Villebourg" },
+              { id: "seance-exemple-2", periodId: "periode", date: "2026-10-02", heureDebut: "19:00", heureFin: "21:00", lieu: "Gymnase municipal, Villebourg" },
+            ],
+            changements: [
+              {
+                partieId: "a", sessionId: "seance-exemple-1", nature: "COURS", libelle: "Cours", bloc: 1, ordre: 1, horodatage: 1,
+                avant: { theme: "", instructeur: null, instructeurSecond: null, niveau: "INDIFFERENT", description: "" },
+                apres: { theme: "Épée longue — Zornhau", instructeur: "Damien Rochebrune", instructeurSecond: null, niveau: "INDIFFERENT", description: "" },
+              },
+              {
+                partieId: "b", sessionId: "seance-exemple-2", nature: "OPTION", libelle: "Option 1", bloc: 1, ordre: 2, horodatage: 1,
+                avant: { theme: "Messer", instructeur: "Léa Garnier", instructeurSecond: null, niveau: "INDIFFERENT", description: "" },
+                apres: { theme: "Dussack", instructeur: "Hugo Perrin", instructeurSecond: null, niveau: "INDIFFERENT", description: "" },
+              },
+            ],
+          })!,
+        }).contenu,
+      CLUB_EMAIL),
+      pleinePage: true,
+    },
+    {
       nom: "email-seance-annulee",
       description: "Email à tous les invités : séance annulée (date, horaire, lieu, motif)",
       html: renderEmailHtml(
@@ -1743,13 +1767,10 @@ async function etatConnecte(browser: Browser, email: string) {
   context.setDefaultTimeout(ACTION_MS);
   const page = await context.newPage();
   if (email === COMPTES.admin) {
-    // Administrateur : mot de passe puis code de double authentification (secret fixe du seed)
+    // Administrateur : le mot de passe suffit pour entrer (le code n'est demandé qu'à l'espace admin)
     await page.goto(`${BASE}/connexion`);
     await page.getByLabel("Email", { exact: true }).fill(email);
     await page.getByLabel("Mot de passe", { exact: true }).fill(DEMO_MDP);
-    await page.getByRole("button", { name: "Se connecter" }).click();
-    await page.waitForURL("**/connexion/code");
-    await page.getByLabel("Code à 6 chiffres").fill(await codeTotpFrais(DEMO_TOTP_SECRET));
     await page.getByRole("button", { name: "Se connecter" }).click();
     await page.waitForURL((u) => !u.pathname.startsWith("/connexion"));
     /*
@@ -2184,21 +2205,6 @@ async function definirActifDemo(actif: boolean): Promise<void> {
   }
 }
 
-/**
- * Scène « connexion-2fa-proposee » : la double authentification n'est proposée qu'à quelqu'un qui
- * s'est donné un mot de passe. Le compte de démonstration n'en a pas (le lien personnel suffit) :
- * on lui en pose un le temps de la capture, et on le retire aussitôt après — sans quoi toutes les
- * scènes suivantes photographieraient un membre qui n'est plus celui du jeu de données.
- */
-async function donnerMotDePasseDemo(): Promise<void> {
-  const db = new PrismaClient();
-  try {
-    await db.user.update({ where: { email: COMPTES.membre }, data: { passwordHash: await hashPassword(DEMO_MDP), deuxFaProposeeLe: null } });
-  } finally {
-    await db.$disconnect();
-  }
-}
-
 /** Vrai sur le format téléphone des captures (sous le palier `md`, comme `useEcranTelephone`). */
 async function estTelephone(page: Page): Promise<boolean> {
   return (page.viewportSize()?.width ?? 1280) < 768;
@@ -2303,15 +2309,6 @@ async function avancerAssistant(page: Page, etape: number): Promise<void> {
     await page.getByRole("button", { name: "Suivant" }).click();
     await page.locator(`fieldset[data-etape="${e}"]`).waitFor();
     if (e === 3) await page.locator("#assistant-materiel").fill("Masques et gants");
-  }
-}
-
-async function retirerMotDePasseDemo(): Promise<void> {
-  const db = new PrismaClient();
-  try {
-    await db.user.update({ where: { email: COMPTES.membre }, data: { passwordHash: null, deuxFaProposeeLe: null } });
-  } finally {
-    await db.$disconnect();
   }
 }
 

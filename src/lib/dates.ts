@@ -164,9 +164,24 @@ export function parisOffsetMinutes(at: Date): number {
   return decalageMinutes(fuseauCourant(), at);
 }
 
-/** La séance a-t-elle déjà commencé ? */
+/**
+ * La séance a-t-elle déjà commencé ? **C'est le verrou** : dès l'heure de début, plus de réponse
+ * de présence, plus de modification de la séance ni de son programme (seule la correction du
+ * registre par le bureau reste ouverte, voir `modifierPresenceMembre`).
+ */
 export function seanceCommencee(dateIso: string, heureDebut: string, now = new Date()): boolean {
   return parisDateTime(dateIso, heureDebut).getTime() <= now.getTime();
+}
+
+/**
+ * La séance est-elle **passée** ? — le classement « À venir / Passé » du planning et de l'onglet
+ * Séances. Elle l'est **le lendemain de son jour, à minuit dans le fuseau du club** : le cours de ce
+ * soir reste parmi les cours à venir toute la journée — grisé et verrouillé dès qu'il a commencé
+ * (`seanceCommencee`) —, et ne rejoint le passé qu'au jour suivant. Deux règles, deux noms : le verrou
+ * suit l'heure, le classement suit le calendrier.
+ */
+export function seancePassee(dateIso: string, now = new Date()): boolean {
+  return dateIso < todayIso(now);
 }
 
 /* " à 19h30" pour les journaux et emails techniques */

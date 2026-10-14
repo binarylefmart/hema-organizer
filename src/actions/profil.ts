@@ -6,13 +6,11 @@ import { audit } from "@/lib/audit";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { revokeAllSessions } from "@/lib/auth/session";
-import { can } from "@/lib/permissions";
 import { deuxFaActive, peutSecuriserSonCompte } from "@/lib/auth/acces-admin";
 import { clientIp } from "@/lib/request-info";
 import { envoyerInvitation, etatLienPersonnel } from "@/lib/invitations";
-import { desactiverTotp, ouvrirAffichageCodes } from "@/lib/auth/deux-fa";
-import { enregistrerCodesSecours, genererCodesSecours } from "@/lib/auth/codes-secours";
-import { redirect } from "next/navigation";
+import { ACTION_DEMANDE, cleDemande, comptesDuBureau, demandeRecente, destinatairesDemande, envoyerDemande, motDePasseReinitialiseRecemment, prevenirTitulaireDeuxFa } from "@/lib/auth/demande-deux-fa";
+import { formatDateHeure } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 import { champ, zodToFormState, type FormState } from "@/lib/form";
 import { motDePasseSchema } from "@/lib/validation/auth";
@@ -221,65 +219,65 @@ export async function choisirTheme(theme: string): Promise<FormState> {
 }
 
 /**
- * **Réinitialiser sa double authentification** (nouveau téléphone) : mot de passe exigé.
+ * **« Demander la réinitialisation de ma double authentification »** (carte « Sécuriser mon
+ * compte » de « Mon profil »).
  *
- * Pour un administrateur, la 2FA est obligatoire : elle lui sera reproposée à sa prochaine connexion
- * (et sans elle, plus de session forte — donc plus d'administration technique). Pour un membre ou un
- * instructeur, elle était facultative : la retirer le ramène simplement au mot de passe seul, et il
- * la réactive quand il veut depuis « Sécuriser mon compte ».
+ * La double authentification se gère dans l'espace admin (Comptes admin → « Ma double
+ * authentification ») ; qui a perdu son téléphone n'y entre plus. Ce bouton prévient donc le bureau,
+ * qui la réinitialise depuis « Comptes admin » — **la personne qui demande n'est jamais prévenue**,
+ * et le compte du portail ne l'est qu'à défaut d'un autre membre du bureau (`destinatairesDemande`).
+ *
+ * Gardes : une session (l'identité vient d'elle, et de nulle part ailleurs), un compte qui a bien une
+ * double authentification active, **une demande toutes les six heures** — lue au journal d'audit
+ * pour pouvoir le dire, tenue par le limiteur et la clé de déduplication quand deux appuis arrivent
+ * ensemble. Aucun mot de passe : ce geste n'écrit rien sur le compte, il prévient des personnes qui
+ * vérifieront de vive voix avant d'agir (l'email le leur demande).
  */
-export async function reinitialiserMaDeuxFa(_prev: FormState, fd: FormData): Promise<FormState> {
+export async function demanderReinitialisationDeuxFa(): Promise<FormState> {
   const user = await getCurrentUser();
   if (!user) return { erreur: "Ta session a expiré. Reconnecte-toi." };
-  // **Même exigence que pour les codes de secours juste en dessous** : retirer la 2FA d'un compte
-  // d'administration est un geste d'administration. Sans cette ligne, un lien personnel dérobé
-  // suffisait à faire sauter le second facteur d'un administrateur — mot de passe d'abord réécrit,
-  // puis 2FA retirée, puis parcours de réglage rejoué avec son propre téléphone. Le titulaire, lui,
-  // a toujours ses codes de secours pour s'élever si son téléphone est perdu.
-  if (can(user, "settings.technical") && !user.sessionForte) {
-    return { erreur: "Connecte-toi en tant qu'administrateur (mot de passe et code) avant de retirer ta double authentification." };
-  }
-  // Ce formulaire vérifie un mot de passe : sans plafond, il devient un banc d'essai pour le deviner.
-  if (!(await checkRateLimit("totp_user", user.id))) return { erreur: "Trop d'essais. Réessaie dans un quart d'heure." };
-  const compte = await db.user.findUniqueOrThrow({ where: { id: user.id } });
-  if (!deuxFaActive(compte)) return { erreur: "La double authentification n'est pas active sur ton compte." };
-  if (!(await verifyPassword(compte.passwordHash, champ(fd, "motDePasse")))) {
-    return { erreur: "Mot de passe incorrect.", erreurs: { motDePasse: "Mot de passe incorrect." } };
-  }
-  await desactiverTotp(user.id);
-  // Retrait volontaire : on ne vient pas lui reproposer la 2FA à sa prochaine connexion. Le compteur
-  // repart, elle sera reproposée dans un trimestre (et reste disponible ici à tout moment).
-  if (!can(user, "settings.technical")) await db.user.update({ where: { id: user.id }, data: { deuxFaProposeeLe: new Date() } });
-  await audit({ id: user.id, email: user.email }, "deux_fa.reinitialisee", user.id);
-  // Même raison qu'au mot de passe ci-dessus : sans ça, les deux endroits qui disent l'état de la
-  // double authentification continuent d'annoncer « active » après l'avoir retirée.
-  revalidatePath("/profil");
-  return {
-    succes: can(user, "settings.technical")
-      ? "Double authentification réinitialisée : à ta prochaine connexion, un nouveau QR code te sera proposé."
-      : "Double authentification retirée : ton mot de passe suffit désormais. Tu peux la réactiver ci-dessus quand tu veux.",
-  };
-}
+  const compte = await db.user.findUnique({
+    where: { id: user.id },
+    select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, service: true, actif: true, totpSecret: true, totpActiveAt: true },
+  });
+  if (!compte || !compte.actif) return { erreur: "Ta session a expiré. Reconnecte-toi." };
+  if (!deuxFaActive(compte)) return { erreur: "Ton compte n'a pas de double authentification active : il n'y a rien à réinitialiser." };
 
-/** Régénérer ses codes de secours (mot de passe exigé) : les anciens deviennent invalides, les nouveaux sont affichés une fois. */
-export async function regenererCodesSecours(_prev: FormState, fd: FormData): Promise<FormState> {
-  const user = await getCurrentUser();
-  if (!user) return { erreur: "Ta session a expiré. Reconnecte-toi." };
-  // Un administrateur reste tenu à sa session forte pour ce geste : c'est l'un de ses accès techniques.
-  // Un membre ou un instructeur, lui, n'a pas de session forte à produire — son mot de passe suffit (ci-dessous).
-  if (can(user, "settings.technical") && !user.sessionForte) return { erreur: "Reconnecte-toi avec ton mot de passe et ton code avant de régénérer tes codes de secours." };
-  // Ce formulaire vérifie un mot de passe : sans plafond, il devient un banc d'essai pour le deviner,
-  // depuis une session déjà ouverte. Sa voisine `reinitialiserMaDeuxFa` bornait la même vérification,
-  // celle-ci ne la bornait pas — même compteur, même quart d'heure.
-  if (!(await checkRateLimit("totp_user", user.id))) return { erreur: "Trop d'essais. Réessaie dans un quart d'heure." };
-  const compte = await db.user.findUniqueOrThrow({ where: { id: user.id } });
-  if (!deuxFaActive(compte)) return { erreur: "Active d'abord la double authentification." };
-  if (!(await verifyPassword(compte.passwordHash, champ(fd, "motDePasse")))) {
-    return { erreur: "Mot de passe incorrect.", erreurs: { motDePasse: "Mot de passe incorrect." } };
+  const recente = await demandeRecente(user.id);
+  if (recente) {
+    return { erreur: `Ta demande est déjà partie au bureau le ${formatDateHeure(recente)}. Elle ne se renvoie qu'après six heures : en attendant, contacte un membre du bureau directement.` };
   }
-  const codes = genererCodesSecours();
-  await enregistrerCodesSecours(user.id, codes);
-  await ouvrirAffichageCodes(user.id, codes, "/profil#securite");
-  await audit({ id: user.id, email: user.email }, "deux_fa.codes_regeneres", user.id);
-  redirect("/connexion/codes-secours");
+  const { destinataires, repliPortail } = destinatairesDemande(user.id, await comptesDuBureau());
+  if (destinataires.length === 0) {
+    return {
+      erreur: compte.service
+        ? `Il n'y a personne d'autre au bureau à prévenir. Sur le serveur, la commande de secours réinitialise ta double authentification : npm run admin:reset-2fa -- ${compte.email ?? "<adresse>"} --confirmer`
+        : "Il n'y a personne au bureau à prévenir. Contacte le responsable de l'application.",
+    };
+  }
+  if (!(await checkRateLimit("demande_2fa_user", user.id))) return { erreur: "Ta demande est déjà partie au bureau. Elle ne se renvoie qu'après six heures." };
+
+  // La clé porte la personne et la fenêtre de six heures : deux appuis simultanés n'envoient qu'une fois.
+  const dedupKey = cleDemande(user.id, new Date());
+  const reset = await motDePasseReinitialiseRecemment(user.id);
+  const partie = await envoyerDemande({ demandeur: compte, destinataires, dedupKey, motDePasseReinitialiseLe: reset ? formatDateHeure(reset) : null });
+  if (!partie) return { erreur: "Ta demande est déjà partie au bureau. Elle ne se renvoie qu'après six heures." };
+  await audit({ id: user.id, email: user.email }, ACTION_DEMANDE, user.id, {
+    destinataires: destinataires.length,
+    ...(repliPortail ? { repli: "compte du portail" } : {}),
+    ...(compte.service ? { comptePortail: true } : {}),
+  });
+  // Le titulaire est prévenu lui aussi, à sa propre adresse et sur ses appareils : si la demande part
+  // d'une session volée, c'est la seule personne qui peut s'en apercevoir.
+  await prevenirTitulaireDeuxFa({ titulaire: compte, evenement: "demande", dedupKey: `${dedupKey}_titulaire` });
+  revalidatePath("/profil");
+  revalidatePath("/admin/comptes");
+  const aQui = repliPortail ? "au bureau (la boîte du compte du portail, faute d'autre membre du bureau)" : "au bureau";
+  return {
+    succes: !compte.estAdmin
+      ? `Ta demande est partie ${aQui}. Une personne du bureau va retirer ta double authentification ; ta connexion ne change pas.`
+      : compte.service
+        ? `Ta demande est partie ${aQui}. Ce compte ne se réinitialise que par la commande de secours sur le serveur : la personne qui gère le serveur va vérifier avec toi, puis la lancer.`
+        : `Ta demande est partie ${aQui}. Une personne du bureau va vérifier avec toi, puis la réinitialiser : un nouveau QR code te sera alors demandé à ta prochaine connexion.`,
+  };
 }

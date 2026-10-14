@@ -1,4 +1,4 @@
-import { seanceCommencee, todayIso } from "@/lib/dates";
+import { todayIso } from "@/lib/dates";
 import { filtrerHorizon, filtrerHorizonPasse, type Horizon } from "@/lib/horizon";
 
 /**
@@ -62,8 +62,11 @@ export type SeanceTemps = { date: string; heureDebut: string };
 /**
  * Séances retenues, dans les deux sens.
  *
- * La frontière n'est pas la date mais **le début du cours** (`seanceCommencee`) : le cours du soir
- * reste « à venir » toute la journée, et bascule dans le passé dès qu'il a commencé.
+ * La frontière est **le jour, pas l'heure** (`seancePassee`, demande de Delta) : le cours de ce soir
+ * reste « à venir » toute la journée — grisé et verrouillé dès qu'il a commencé, c'est l'écran qui le
+ * montre (`seanceCommencee`) — et ne passe dans « Passé » que le lendemain, à minuit dans le fuseau
+ * du club. Le basculer dès 19 h 30 faisait disparaître le cours du soir de l'écran **pendant** qu'il
+ * se donnait.
  *
  * - « À venir » : de la plus proche à la plus lointaine, resserrées par `filtrerHorizon` ;
  * - « Passé » : de la plus récente à la plus ancienne, resserrées par `filtrerHorizonPasse`.
@@ -77,16 +80,28 @@ export function selectionnerSeances<T extends SeanceTemps>(
   now = new Date(),
   aujourdHui = todayIso(now),
 ): T[] {
-  const commencee = (s: T) => seanceCommencee(s.date, s.heureDebut, now);
+  // `seancePassee` (dates.ts), lue sur le jour de référence reçu : les tests le forcent seul.
+  const passee = (s: T) => s.date < aujourdHui;
   if (quand === "passe") {
-    const passees = seances.filter(commencee);
-    return filtrerHorizonPasse(passees, horizon, aujourdHui).slice().reverse();
+    return filtrerHorizonPasse(seances.filter(passee), horizon, aujourdHui, now).slice().reverse();
   }
   return filtrerHorizon(
-    seances.filter((s) => !commencee(s)),
+    seances.filter((s) => !passee(s)),
     horizon,
     aujourdHui,
   );
+}
+
+/**
+ * **La séance sur laquelle l'écran s'ouvre** : celle du jour, à défaut la prochaine — la première qui
+ * n'est pas passée (`seancePassee`), commencée ou non. `null` s'il n'y en a plus.
+ *
+ * `seances` triée par date croissante, comme pour `selectionnerSeances`. L'écran ne s'en sert que sans
+ * cible explicite (ancre `#seance-…`, date cherchée, séances choisies, position « Passé ») : une cible
+ * demandée passe toujours avant celle-ci.
+ */
+export function seanceCible<T extends { id: string; date: string }>(seances: readonly T[], aujourdHui: string): T | null {
+  return seances.find((s) => s.date >= aujourdHui) ?? null;
 }
 
 

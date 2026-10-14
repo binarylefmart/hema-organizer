@@ -98,7 +98,7 @@ vi.mock("@/lib/db", () => ({
         description: "",
         niveau: "INDIFFERENT",
         ...faux.case,
-        session: { id: "s-1", date: "2126-10-01", period: { statut: faux.statutPeriode } },
+        session: { id: "s-1", date: "2126-10-01", heureDebut: "19:30", period: { statut: faux.statutPeriode } },
       })),
     },
     notificationLog: {
@@ -272,6 +272,16 @@ describe("réponse à une proposition : ce qui part, et ce qui en reste au journ
     expect(faux.emails).toEqual([]);
     expect(faux.push).toEqual([]);
     expect(faux.logs).toEqual([]);
+  });
+
+  it("ne retire ni ne refuse un atelier placé sur un cours déjà commencé : son programme est figé", async () => {
+    const { db } = await import("@/lib/db");
+    faux.ateliers = [{ ...atelier("PLANIFIE"), sessionId: "s-1" }];
+    vi.mocked(db.session.findUnique).mockResolvedValueOnce({ date: "2020-01-02", heureDebut: "19:30" } as never);
+    const res = await deciderAtelier({}, decision("REFUSE"));
+    expect(res.erreur).toMatch(/déjà commencé/);
+    expect(faux.ateliers[0].statut).toBe("PLANIFIE");
+    expect(faux.emails).toEqual([]);
   });
 
   /**

@@ -24,6 +24,18 @@ const faux = vi.hoisted(() => ({
   misAJour: [] as unknown[],
   totpDesactives: [] as string[],
   sessionsRevoquees: [] as string[],
+  cookies: {} as Record<string, string>,
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: (nom: string) => (nom in faux.cookies ? { name: nom, value: faux.cookies[nom] } : undefined),
+    set: (nom: string, valeur: string, options?: { maxAge?: number }) => {
+      if (options?.maxAge === 0) delete faux.cookies[nom];
+      else faux.cookies[nom] = valeur;
+    },
+  }),
+  headers: async () => new Headers(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -114,6 +126,8 @@ describe("le compte permanent garde ses facteurs", () => {
     await reinitialiserDeuxFaCompte("b");
     expect(faux.totpDesactives).toEqual(["b"]);
     expect(faux.sessionsRevoquees).toEqual(["b"]);
+    // …et son code d'activation naît avec la réinitialisation (seule l'empreinte va en base)
+    expect(faux.misAJour).toContainEqual({ where: { id: "b" }, data: { codeActivationHash: expect.stringMatching(/^[0-9a-f]{64}$/), codeActivationExpireLe: expect.any(Date) } });
   });
 
   it("et un compte qui n'est pas du bureau n'entre pas par cette porte", async () => {

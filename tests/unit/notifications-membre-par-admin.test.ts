@@ -289,7 +289,7 @@ describe("enregistrement", () => {
 
 describe("journal d'audit", () => {
   it("garde l'acteur, la cible, l'état avant et l'état après", async () => {
-    await definirNotificationsMembre(CHLOE, {}, cases({ recap_veille: true, rappel_sans_reponse: true, seance_annulee: true, effectif_faible: true, desistement_tardif: true, atelier_statut: true, periode_suivante: true, periode_non_activee: true }));
+    await definirNotificationsMembre(CHLOE, {}, cases({ recap_veille: true, rappel_sans_reponse: true, seance_annulee: true, effectif_faible: true, desistement_tardif: true, planning_modifie: true, atelier_statut: true, periode_suivante: true, periode_non_activee: true }));
     expect(faux.audits).toHaveLength(1);
     const trace = faux.audits[0];
     expect(trace.action).toBe("membre.notifications_reglees");
@@ -317,7 +317,7 @@ describe("journal d'audit", () => {
     await definirNotificationsMembre(CHLOE, {}, cases({ seance_annulee: true }));
     const details = faux.audits[0].details as { rappelEmail: { avant: boolean; apres: boolean }; changements: { type: string }[] };
     expect(details.rappelEmail).toEqual({ avant: true, apres: false });
-    expect(details.changements.map((c) => c.type)).toEqual(["recap_veille", "rappel_sans_reponse", "effectif_faible", "desistement_tardif", "atelier_statut", "evenement_nouveau", "periode_suivante", "periode_non_activee"]);
+    expect(details.changements.map((c) => c.type)).toEqual(["recap_veille", "rappel_sans_reponse", "effectif_faible", "desistement_tardif", "planning_modifie", "atelier_statut", "evenement_nouveau", "periode_suivante", "periode_non_activee"]);
   });
 });
 
@@ -340,7 +340,7 @@ describe("ce que le club a coupé", () => {
   it("ne se rallume pas depuis une fiche, même cochée à la main", async () => {
     clubSansEvenements();
     faux.comptes = [compte({ preferencesNotifications: serialiserPreferencesPersonnelles({ ...preferencesPersonnellesDe(compte()), evenement_nouveau: { email: false, push: false } }) })];
-    await definirNotificationsMembre(CHLOE, {}, cases({ recap_veille: true, rappel_sans_reponse: true, seance_annulee: true, effectif_faible: true, desistement_tardif: true, atelier_statut: true, evenement_nouveau: true, periode_suivante: true, periode_non_activee: true }));
+    await definirNotificationsMembre(CHLOE, {}, cases({ recap_veille: true, rappel_sans_reponse: true, seance_annulee: true, effectif_faible: true, desistement_tardif: true, planning_modifie: true, atelier_statut: true, evenement_nouveau: true, periode_suivante: true, periode_non_activee: true }));
     expect(recoitType("evenement_nouveau")).toBe(false);
   });
 
@@ -348,7 +348,7 @@ describe("ce que le club a coupé", () => {
     clubSansEvenements();
     // Chloé acceptait ces annonces avant que le bureau ne les coupe : son choix doit survivre
     expect(recoitType("evenement_nouveau")).toBe(true);
-    await definirNotificationsMembre(CHLOE, {}, cases({ recap_veille: true, rappel_sans_reponse: true, seance_annulee: true, effectif_faible: true, desistement_tardif: true, atelier_statut: true, periode_suivante: true, periode_non_activee: true }));
+    await definirNotificationsMembre(CHLOE, {}, cases({ recap_veille: true, rappel_sans_reponse: true, seance_annulee: true, effectif_faible: true, desistement_tardif: true, planning_modifie: true, atelier_statut: true, periode_suivante: true, periode_non_activee: true }));
     expect(recoitType("evenement_nouveau")).toBe(true);
     expect(faux.audits[0]).toBeUndefined();
   });

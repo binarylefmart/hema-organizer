@@ -58,7 +58,7 @@ export type LigneObligatoire = { titre: string; quand: string };
  *
  * Un affichage, pas une règle d'envoi : qui reçoit se décide toujours dans les modules d'envoi.
  */
-export const TYPES_ENCADREMENT: readonly TypeNotification[] = ["effectif_faible", "desistement_tardif"];
+export const TYPES_ENCADREMENT: readonly TypeNotification[] = ["effectif_faible", "desistement_tardif", "planning_modifie"];
 export const TYPES_BUREAU: readonly TypeNotification[] = ["periode_suivante", "periode_non_activee"];
 const OBLIGATOIRES_BUREAU: readonly string[] = ["Alertes de sécurité"];
 

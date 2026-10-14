@@ -134,7 +134,10 @@ export async function connecter(page: Page, email: string, suite?: string, eleve
   if (suite) await page.goto(suite);
 }
 
-/** Connexion administrateur en deux temps (le code est calculé à partir du secret connu). */
+/**
+ * Connexion administrateur : mot de passe seul pour entrer, puis — si `elever` — la porte de l'espace
+ * admin, qui redemande mot de passe et code (calculé à partir du secret connu).
+ */
 export async function connecterAdmin(page: Page, email: string, mdp: string, secretTotp: string, suite?: string, elever = true): Promise<void> {
   if (await reprendreSessionAdmin(page)) {
     if (elever) await elevationAdmin(page, mdp, secretTotp);
@@ -145,8 +148,7 @@ export async function connecterAdmin(page: Page, email: string, mdp: string, sec
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Mot de passe", { exact: true }).fill(mdp);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("**/connexion/code");
-  await soumettreCodeTotp(page, secretTotp, "Se connecter", (u) => u.pathname === "/connexion/admin" || !u.pathname.startsWith("/connexion"));
+  await page.waitForURL((u) => u.pathname === "/connexion/admin" || !u.pathname.startsWith("/connexion"));
   /*
    * **La connexion n'ouvre plus l'espace admin** : on passe donc la porte tout de suite, comme le
    * fait Delta. Sans cela, chaque scénario d'administration se retrouverait déposé sur
@@ -176,4 +178,27 @@ export async function deconnecter(page: Page): Promise<void> {
   await page.goto("/profil");
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL("**/connexion");
+}
+
+/**
+ * **Remet un membre du bureau dans l'état « réglage à faire »** du jeu d'essai : ni mot de passe, ni
+ * double authentification, ni code d'activation, aucune session — et ses compteurs du limiteur
+ * effacés (ils vivent en base : deux lancements rapprochés de la suite buteraient sinon sur le
+ * plafond de l'activation). Sert aux scénarios qui mènent le parcours `/admin/activer` jusqu'au bout.
+ */
+export async function remettreBureauNonRegle(email: string): Promise<void> {
+  if (!process.env.DATABASE_URL) process.loadEnvFile();
+  const { PrismaClient } = await import("@prisma/client");
+  const db = new PrismaClient();
+  try {
+    const u = await db.user.findUniqueOrThrow({ where: { email }, select: { id: true } });
+    await db.user.update({
+      where: { id: u.id },
+      data: { passwordHash: null, doitChangerMotDePasse: false, totpSecret: null, totpActiveAt: null, codesSecours: null, codeActivationHash: null, codeActivationExpireLe: null },
+    });
+    await db.authSession.deleteMany({ where: { userId: u.id } });
+    await db.rateLimit.deleteMany({ where: { key: { endsWith: `:${u.id}` } } });
+  } finally {
+    await db.$disconnect();
+  }
 }

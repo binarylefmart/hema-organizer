@@ -224,6 +224,20 @@ describe("rétablir, déplacer, changer l'horaire : aucune annonce", () => {
     expect(faux.prevenus).toEqual([]);
   });
 
+  it("un cours commencé refuse aussi le lieu et l'horaire du lot : il ne se modifie plus", async () => {
+    faux.seances.push(seance("s4", { date: "2020-01-07" }));
+    for (const demande of [
+      { geste: "lieu", sessionIds: ["s1", "s4"], lieu: "Gymnase du Nord", adresse: "" },
+      { geste: "horaire", sessionIds: ["s1", "s4"], heureDebut: "18:00", heureFin: "20:00" },
+    ]) {
+      const res = await appliquerGesteSeancesEnMasse(demande);
+      expect(res.erreur).toMatch(/lot entier est refusé/);
+      expect(res.erreur).toMatch(/déjà commencé/);
+    }
+    expect(faux.ecritures).toEqual([]);
+    expect(faux.audits).toEqual([]);
+  });
+
   it("le lieu : seules les séances qui changent sont écrites, sous `seance.modifiee`", async () => {
     faux.seances[1].lieu = "Gymnase du Nord";
     const res = await appliquerGesteSeancesEnMasse({ geste: "lieu", sessionIds: ["s1", "s2"], lieu: "Gymnase du Nord", adresse: "" });

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { cheminCourant, requireUser } from "@/lib/auth/current-user";
+import { CHEMIN_ACTIVATION_ADMIN, cheminLibrePendantReglage } from "@/lib/auth/acces-admin";
 import { db } from "@/lib/db";
 import { Entete } from "@/components/layout/Entete";
 import { FermerEnQuittant } from "@/components/admin/FermerEnQuittant";
@@ -8,10 +9,18 @@ import { FermerEnQuittant } from "@/components/admin/FermerEnQuittant";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Ce layout est rendu avant sa page : c'est lui qui redirige quand la session manque.
   // Il emporte donc la page demandée (« suite »), sinon un lien d'email perdrait sa destination.
-  const user = await requireUser(await cheminCourant());
+  const chemin = await cheminCourant();
+  const user = await requireUser(chemin);
   // Mot de passe provisoire (compte d'administration, première connexion) : rien d'autre n'est accessible
   const compte = await db.user.findUnique({ where: { id: user.id }, select: { doitChangerMotDePasse: true } });
   if (compte?.doitChangerMotDePasse) redirect("/nouveau-mot-de-passe");
+  // Membre du bureau (compte du portail compris) dont l'accès n'est pas réglé : le parcours
+  // `/admin/activer` passe avant tout le reste — une obligation, pas une suggestion. Seuls le
+  // parcours lui-même et l'écran de bienvenue (qui sort vers lui) restent ouverts. C'est ce qui
+  // rattrape quelqu'un nommé au bureau alors qu'il était déjà connecté : à son prochain écran.
+  // (`requireUser` fait la même vérification pour les pages, que la mise en page ne voit pas passer
+  // d'une page sœur à l'autre ; la redire ici garde la règle lisible là où on la cherche.)
+  if (user.reglageAccesDu && !cheminLibrePendantReglage(chemin)) redirect(CHEMIN_ACTIVATION_ADMIN);
   return (
     <>
       {/* Pendant l'élévation seulement : quitter l'application referme l'espace admin (le composant

@@ -147,7 +147,9 @@ export function etatCodesSecours(codesRestants: number, total: number): LigneEta
  * - le **compte du portail** n'a pas de lien personnel (`compte-de-service`) : afficher « Pas de lien
  *   personnel » dans un état de compte serait une ligne qui ne décrit rien ;
  * - **sans double authentification, il n'y a pas de codes de secours** : la ligne « 0 sur 8 restants »
- *   se lirait comme un incident, alors qu'il n'y a simplement rien à secourir.
+ *   se lirait comme un incident, alors qu'il n'y a simplement rien à secourir ;
+ * - **la double authentification ne concerne que le bureau** (elle n'ouvre que l'espace admin) : un
+ *   membre ne voit sa ligne que s'il en a une d'avant, pour pouvoir la retirer.
  */
 export function lignesEtatCompte(e: {
   lien: EtatLienPersonnel;
@@ -164,7 +166,7 @@ export function lignesEtatCompte(e: {
     lignes.push({ intitule: "Lien d'accès", ton: PASTILLE_LIEN[e.lien.etat].ton, valeur: PASTILLE_LIEN[e.lien.etat].texte, precision: precisionLien(e.lien) });
   }
   lignes.push(etatMotDePasse(e.aDejaUnMotDePasse, e.admin));
-  lignes.push(etatDeuxFa({ deuxFa: e.deuxFa, admin: e.admin, totpActiveAt: e.totpActiveAt }));
+  if (e.admin || e.deuxFa) lignes.push(etatDeuxFa({ deuxFa: e.deuxFa, admin: e.admin, totpActiveAt: e.totpActiveAt }));
   if (e.deuxFa) lignes.push(etatCodesSecours(e.codesRestants, e.codesTotal));
   lignes.push(etatAppareilsNotifies(e.appareils));
   return lignes;

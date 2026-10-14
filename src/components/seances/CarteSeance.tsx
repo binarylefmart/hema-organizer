@@ -41,6 +41,7 @@ export function CarteSeance({
   partEffectifMin,
   actions,
   selection,
+  cible = false,
 }: {
   seance: SeanceCarte;
   aujourdHui: string;
@@ -56,6 +57,11 @@ export function CarteSeance({
    * de la séance seule. Elle ne se rend que si l'interrupteur « Sélection multiple » est ouvert.
    */
   selection?: ReactNode;
+  /**
+   * La séance du jour, à défaut la prochaine (`seanceCible`) : la carte sur laquelle l'écran s'ouvre.
+   * Bordure de la marque et `data-seance-cible`, que `AllerALaSeanceCible` vise.
+   */
+  cible?: boolean;
 }) {
   const dans = joursAvant(aujourdHui, s.date);
   /*
@@ -67,15 +73,26 @@ export function CarteSeance({
    */
   const passe = dans < 0;
   const quand = passe ? null : dans === 0 ? "Aujourd'hui" : dans === 1 ? "Demain" : dans < 7 ? `Dans ${dans} jours` : null;
+  /*
+   * **Le cours du jour déjà commencé reste dans la liste, grisé et figé** jusqu'au lendemain (demande
+   * de Delta) : plus de réponse (`BoutonsPresence verrouille`, et `indiquerPresence` refuse), plus de
+   * geste d'organisation (`gestesSeance`). Un cours d'un jour passé, retrouvé par la date ou dans
+   * « Passé », n'a pas besoin d'être grisé : il n'est plus parmi les cours à venir.
+   */
+  const figee = s.commencee && !s.annulee && !passe;
   // Aujourd'hui ou demain : c'est le cours sur lequel il faut se prononcer maintenant, la carte le dit d'un coup d'œil
-  const imminent = !s.annulee && !passe && dans <= 1;
+  const imminent = !s.annulee && !passe && !figee && dans <= 1;
+  // Le planning montre l'avenir par défaut, et un cours y reste jusqu'au lendemain (`seancePassee`).
+  const lienProgramme = `/planning?periode=${s.periodId}${passe ? "&quand=passe" : ""}#seance-${s.id}`;
 
   return (
     <article
       aria-label={`Séance du ${formatDateLongue(s.date)}`}
-      className={`flex flex-col gap-4 rounded-2xl border bg-surface p-4 tel:gap-3 shadow-carte transition-shadow hover:shadow-carte-survol sm:p-5 ${CARTE_COCHEE} ${
-        s.annulee ? "border-rouge/30" : imminent ? "border-primaire/50" : "border-bordure/60"
-      }`}
+      data-seance-cible={cible ? "" : undefined}
+      data-seance-figee={figee ? "" : undefined}
+      className={`flex scroll-mt-24 flex-col gap-4 rounded-2xl border p-4 tel:gap-3 shadow-carte transition-shadow hover:shadow-carte-survol sm:p-5 ${CARTE_COCHEE} ${
+        figee ? "bg-surface-douce text-texte-secondaire" : "bg-surface"
+      } ${s.annulee ? "border-rouge/30" : imminent || (cible && !figee) ? "border-primaire/50" : "border-bordure/60"}`}
     >
       {/* Quand, puis où. La date perd son année (un cours à venir se situe tout seul) et la
           pastille ne s'affiche que lorsqu'elle apprend quelque chose — « Aujourd'hui » et
@@ -97,6 +114,8 @@ export function CarteSeance({
           </h2>
           {s.annulee ? (
             <span className="rounded-md bg-rouge-doux px-2 py-0.5 text-sm font-semibold text-rouge">Annulée</span>
+          ) : figee ? (
+            <span className="rounded-md bg-surface px-2 py-0.5 text-sm font-semibold text-texte-secondaire">Commencé</span>
           ) : (
             imminent && quand && <span className="rounded-md bg-primaire px-2 py-0.5 text-sm font-semibold text-primaire-texte">{quand}</span>
           )}
@@ -189,7 +208,7 @@ export function CarteSeance({
             <ListeParticipants liste={s.participants} titre={s.commencee ? "Qui était là ?" : "Qui vient ?"} passee={s.commencee} resserre />
             {/* Un lien Next, comme le bouton d'ordinateur : une balise nue rechargeait toute l'application. */}
             <Link
-              href={`/planning?periode=${s.periodId}${s.commencee ? "&quand=passe" : ""}#seance-${s.id}`}
+              href={lienProgramme}
               className="absolute right-0 top-0 inline-flex min-h-12 items-center gap-1 font-semibold text-lien underline decoration-bordure underline-offset-4 hover:decoration-lien ordi:hidden"
             >
               Programme
@@ -206,7 +225,7 @@ export function CarteSeance({
               trois boutons de réponse : ceux-ci portent leurs propres couleurs — vert, rouille,
               ocre — et sont posés bien plus haut, juste sous la date. Le bouton du programme, lui,
               ferme la carte.
-              `quand=passe` pour un cours déjà commencé : le planning montre l'avenir par défaut, et
+              `quand=passe` pour un cours d'un jour passé : le planning montre l'avenir par défaut, et
               sans ce mot la séance cherchée ne serait pas dans la fenêtre — on arriverait sur une
               grille où l'ancre ne désigne rien. */}
           {/* **Pleine largeur, à toutes les tailles**. Il était bridé à `sm:max-w-sm` et collé à
@@ -217,7 +236,7 @@ export function CarteSeance({
               prend la largeur. */}
           <div className="tel:hidden">
             <LienBouton
-              href={`/planning?periode=${s.periodId}${s.commencee ? "&quand=passe" : ""}#seance-${s.id}`}
+              href={lienProgramme}
               variante="primaire"
               pleineLargeur
             >

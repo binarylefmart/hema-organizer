@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *
  * L'étape 3 du parcours `/admin/activer` affiche huit codes de secours, **une seule fois** : en base
  * ils ne sont gardés que hachés, et rien ne les retrouve. Son cookie d'affichage (`hema_codes`) durait
- * dix minutes — celles de `DUREE_DEUX_FA_MS`, le *défi* de connexion, le temps de recopier un code à
+ * dix minutes — celles du *défi* de connexion d'alors, le temps de recopier un code à
  * six chiffres lu sur son téléphone. Or cet écran-là demande l'inverse : recopier huit codes dans un
  * gestionnaire de mots de passe, ou aller chercher une imprimante. Passé le délai, l'écran rechargé
  * ne dit pas « tes codes ont disparu » : `etapeAcces` rend **« terminé »**, et la carte annonce que
@@ -45,7 +45,6 @@ vi.mock("@/lib/db", () => ({ db: { user: { findUnique: vi.fn(async () => null), 
 
 const { DUREE_AFFICHAGE_CODES_MS, lireAffichageCodes, ouvrirAffichageCodes } = await import("@/lib/auth/deux-fa");
 const { DUREE_ACTIVATION_MS, etapeAcces } = await import("@/lib/auth/acces-admin");
-const { DUREE_DEUX_FA_MS } = await import("@/lib/constants");
 
 const MINUTE = 60_000;
 const CODES = ["AAAA-2222", "BBBB-3333", "CCCC-4444", "DDDD-5555", "EEEE-6666", "FFFF-7777", "GGGG-8888", "HHHH-9999"];
@@ -85,7 +84,7 @@ describe("le temps d'afficher huit codes", () => {
     // Un nom, une valeur, un endroit : l'affichage suit l'échéance du parcours, il n'en invente pas
     // une seconde qui dériverait.
     expect(DUREE_AFFICHAGE_CODES_MS).toBe(DUREE_ACTIVATION_MS);
-    expect(DUREE_AFFICHAGE_CODES_MS).toBeGreaterThan(DUREE_DEUX_FA_MS);
+    expect(DUREE_AFFICHAGE_CODES_MS).toBeGreaterThan(10 * MINUTE);
   });
 
   it("finit par se refermer : un cookie qui porte des codes ne vit pas indéfiniment", async () => {
@@ -106,15 +105,16 @@ describe("le temps d'afficher huit codes", () => {
 describe("l'écran qui annonce « tout est réglé »", () => {
   const lire = (p: string) => fs.readFileSync(path.join(process.cwd(), p), "utf8");
   const page = lire("src/app/(app)/admin/activer/page.tsx");
-  const profil = lire("src/app/(app)/profil/FormulaireDeuxFa.tsx");
+  // Les codes de secours se régénèrent dans l'espace admin (« Comptes admin » → « Ma double authentification »).
+  const rubrique = lire("src/app/(app)/admin/comptes/FormulaireMaDeuxFa.tsx");
 
   it("nomme le geste qui réengendre des codes de secours, et le lien qui y mène", () => {
     const fin = page.slice(page.indexOf('etape === "termine" &&'));
-    expect(fin).toContain("ANCRE_SECURITE");
+    expect(fin).toContain("CHEMIN_MA_DEUX_FA");
     expect(fin).toMatch(/codes de secours/);
     // Le libellé cité est celui du bouton réel : s'il est renommé là-bas, cette phrase mentirait ici.
     const libelle = "Régénérer mes codes de secours";
-    expect(profil).toContain(libelle);
+    expect(rubrique).toContain(libelle);
     expect(fin).toContain(libelle);
   });
 });

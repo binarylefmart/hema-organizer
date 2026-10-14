@@ -469,15 +469,20 @@ mois, donc un journal d'accès gardé un an conserverait des mots de passe encor
 
 1. Ouvrir `https://organizer.mon-club.fr/connexion`.
 2. Saisir `ADMIN_EMAIL` et le mot de passe **provisoire** `ADMIN_PASSWORD`.
-3. L'application impose alors le parcours complet : un vrai mot de passe, la configuration de la
-   double authentification (QR code à scanner dans une application d'authentification), puis la
-   notation des **codes de secours**. Ces codes sont montrés une seule fois : les écrire.
+3. L'application impose alors un vrai mot de passe, puis enchaîne sur le parcours obligatoire
+   **Mon accès administrateur** (`/admin/activer`) : la double authentification (QR code à scanner
+   dans une application d'authentification, confirmé par un premier code et le mot de passe), puis
+   la notation des **codes de secours**. Ces codes sont montrés une seule fois : les écrire. Tant que
+   ce parcours n'est pas terminé, aucun autre écran de l'application ne s'ouvre (« Se déconnecter »
+   reste possible).
 4. Une fois ce parcours terminé, `ADMIN_PASSWORD` n'a plus aucun effet. On peut laisser la variable
-   en place, elle ne sert plus à rien.
+   en place, elle ne sert plus à rien. Les connexions suivantes ne demandent que l'adresse et le mot
+   de passe ; le code n'est redemandé qu'à l'ouverture de l'espace admin.
 
-Rappel utile : c'est le **seul** compte pour lequel un mot de passe est obligatoire. Membres et
-instructeurs entrent par leur **lien personnel**, envoyé par email ; ils peuvent se donner un mot de
-passe s'ils le veulent, mais rien ne les y oblige.
+Rappel utile : le mot de passe et la double authentification sont obligatoires pour **le bureau**
+(ce compte et chaque personne nommée au bureau, qui fait le même parcours à sa première ouverture de
+l'application après sa nomination). Membres et instructeurs entrent par leur **lien personnel**,
+envoyé par email ; ils peuvent se donner un mot de passe s'ils le veulent, mais rien ne les y oblige.
 
 ---
 

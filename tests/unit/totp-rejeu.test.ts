@@ -112,7 +112,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-const { seConnecter, verifierCode2fa, seConnecterCommeAdmin, reverifierCode2fa } = await import("@/actions/auth");
+const { seConnecter, seConnecterCommeAdmin, reverifierCode2fa } = await import("@/actions/auth");
 const { consommerCodeTotp } = await import("@/lib/auth/deux-fa");
 const { codeTotp, pasDuCodeTotp, verifierCodeTotp } = await import("@/lib/auth/totp");
 const { chiffrer } = await import("@/lib/crypto");
@@ -236,49 +236,25 @@ describe("consommer un code TOTP", () => {
 });
 
 /* ---------------------------------------------------------------- */
-/* Les trois portes, dans l'ordre où on les franchit                 */
+/* Les deux portes à code, dans l'ordre où on les franchit          */
 /* ---------------------------------------------------------------- */
 
-describe("connexion, élévation, ré-authentification", () => {
-  it("refuse de rejouer le code de la connexion, puis accepte le suivant à chaque porte", async () => {
-    // 1. Connexion : mot de passe, puis code de l'application.
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: "delta@club.test", motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    const codeConnexion = codeTotp(SECRET);
-    expect(await redirectionDe(verifierCode2fa({}, formulaire({ code: codeConnexion })))).toBe("/");
+describe("élévation, ré-authentification", () => {
+  it("refuse de rejouer le code de l'élévation, puis accepte le suivant", async () => {
+    // 1. Connexion : le mot de passe suffit, aucun code n'est demandé pour entrer.
+    expect(await redirectionDe(seConnecter({}, formulaire({ email: "delta@club.test", motDePasse: MOT_DE_PASSE })))).toBe("/");
     expect(faux.sessions).toHaveLength(1);
 
-    // 2. L'élévation vers l'espace admin, avec **le code qui vient de servir** : refusée. C'est le
-    // rejeu de quelqu'un qui a lu le code par-dessus l'épaule et connaît le mot de passe.
-    const rejeu = await seConnecterCommeAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: codeConnexion, suite: "/admin" }));
-    expect(rejeu.erreur).toContain("Un code déjà utilisé ne sert pas une seconde fois");
-    expect(faux.sessions[0].forte).toBeFalsy();
-
-    // Le code suivant, lui, élève : la borne n'enferme pas le titulaire dehors.
-    faux.decalage += UN_PAS_MS;
+    // 2. L'élévation vers l'espace admin : le code juste élève.
     const codeElevation = codeTotp(SECRET);
     expect(await redirectionDe(seConnecterCommeAdmin({}, formulaire({ motDePasse: MOT_DE_PASSE, code: codeElevation, suite: "/admin" })))).toBe("/admin");
     expect(faux.sessions[0].forte).toBe(true);
 
-    // 3. Ré-authentification d'un geste sensible : le code de l'élévation ne se rejoue pas non plus.
+    // 3. Ré-authentification d'un geste sensible : le code de l'élévation ne se rejoue pas.
     const rejeuReauth = await reverifierCode2fa("/admin/membres", {}, formulaire({ code: codeElevation }));
     expect(rejeuReauth.erreurs?.code).toBeDefined();
     faux.decalage += UN_PAS_MS;
     expect(await redirectionDe(reverifierCode2fa("/admin/membres", {}, formulaire({ code: codeTotp(SECRET) })))).toBe("/admin/membres");
-  });
-
-  it("n'ouvre pas deux sessions avec le même code de connexion", async () => {
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: "delta@club.test", motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    const code = codeTotp(SECRET);
-    expect(await redirectionDe(verifierCode2fa({}, formulaire({ code })))).toBe("/");
-    expect(faux.sessions).toHaveLength(1);
-
-    // Le voisin recopie le code et refait le parcours depuis son propre navigateur : il a le mot de
-    // passe, il a vu le code — et il n'entre pas.
-    faux.cookies = {};
-    expect(await redirectionDe(seConnecter({}, formulaire({ email: "delta@club.test", motDePasse: MOT_DE_PASSE })))).toBe("/connexion/code");
-    const second = await verifierCode2fa({}, formulaire({ code }));
-    expect(second.erreurs?.code).toBeDefined();
-    expect(faux.sessions).toHaveLength(1);
   });
 });
 
@@ -297,7 +273,7 @@ describe("les lecteurs de code de src/actions/auth.ts", () => {
   const corps = new Map<string, string>();
   for (const [, nom, suite] of source.matchAll(/export async function (\w+)\(([\s\S]*?)(?=\nexport async function |\n\/\*\*|$)/g)) corps.set(nom, suite);
 
-  it.each(["verifierCode2fa", "seConnecterCommeAdmin", "reverifierCode2fa"])("%s consomme le code au lieu de le vérifier", (nom) => {
+  it.each(["seConnecterCommeAdmin", "reverifierCode2fa", "activerDeuxFaAdmin"])("%s consomme le code au lieu de le vérifier", (nom) => {
     const body = corps.get(nom);
     expect(body, `fonction ${nom} introuvable : le balayage doit suivre les renommages`).toBeDefined();
     expect(body).toContain("consommerCodeTotp(");

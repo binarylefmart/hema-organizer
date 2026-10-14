@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { todayIso } from "./dates";
+import { seanceCommencee, todayIso } from "./dates";
 import { isStaff, type UserLike } from "./permissions";
 
 /**
@@ -14,12 +14,16 @@ import { isStaff, type UserLike } from "./permissions";
  */
 export async function seancesAVenir(user?: (UserLike & { id: string }) | null) {
   const sienne = !user || isStaff(user) ? {} : { membres: { some: { userId: user.id } } };
-  return db.session.findMany({
+  const seances = await db.session.findMany({
     where: { date: { gte: todayIso() }, annulee: false, period: { ...sienne, statut: { not: "CLOSE" } } },
     orderBy: [{ date: "asc" }, { heureDebut: "asc" }],
     select: { id: true, date: true, heureDebut: true, lieu: true },
     take: 40,
   });
+  // Le cours du soir déjà commencé a son programme figé (`seanceValide`, `partiePourEcriture`) :
+  // le proposer ici, ce serait offrir un choix que le serveur refuse.
+  const now = new Date();
+  return seances.filter((s) => !seanceCommencee(s.date, s.heureDebut, now));
 }
 
 /**

@@ -224,3 +224,22 @@ export function csvAudit(lignes: Array<{ date: Date; acteurEmail: string; action
   const entete = ["date", "acteur", "action", "cible", "details", "ip"].join(";");
   return [entete, ...lignes.map((l) => [l.date.toISOString(), l.acteurEmail, l.action, l.cible, l.details, l.ip].map(cellule).join(";"))].join("\r\n") + "\r\n";
 }
+
+/**
+ * **Une double authentification vient d'être (re)configurée** sur un compte du bureau : alerte au
+ * bureau. C'est le dernier geste d'une prise de contrôle (boîte email piratée → mot de passe oublié →
+ * réinitialisation obtenue du bureau → QR code scanné sur un autre téléphone) : le bureau le voit
+ * passer et peut réagir. Une alerte par activation.
+ */
+export async function alerterDeuxFaActivee(args: { userId: string; prenom: string; nom: string; ip: string }): Promise<boolean> {
+  const qui = `${args.prenom} ${args.nom}`.trim();
+  return envoyerAlerte(
+    `alerte_2fa_activee_${args.userId}_${Date.now()}`,
+    `Double authentification configurée pour ${qui}`,
+    [
+      `Une double authentification vient d'être configurée sur le compte de ${qui} (bureau), depuis l'adresse ${args.ip}, le ${formatDateHeure(new Date())}.`,
+      "C'est normal après une nomination au bureau ou une réinitialisation demandée. Si ce n'est pas attendu, contacte la personne et réinitialise sa double authentification depuis Comptes admin.",
+    ],
+    "Une double authentification vient d'être configurée sur un compte du bureau. Ouvre le journal d'audit.",
+  );
+}

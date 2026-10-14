@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/current-user";
+import { EncartCodesActivation } from "@/components/admin/EncartCodesActivation";
 import { db } from "@/lib/db";
 import { ROLE_LABELS, type Role } from "@/lib/constants";
 import { can, canEditUser, estCompteDeService } from "@/lib/permissions";
@@ -431,6 +432,8 @@ export default async function PageMembres({ searchParams }: Props) {
   const importCsv = <ImportCsv periodes={periodesOuvertes} />;
   return (
     <div className="flex flex-col gap-5">
+      {/* Codes d'activation d'une remise à zéro de l'accès d'un membre du bureau, à transmettre. */}
+      <EncartCodesActivation acteurId={acteur.id} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl">Membres</h1>

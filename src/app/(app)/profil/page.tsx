@@ -1,19 +1,16 @@
 import type { Metadata } from "next";
 import { Fragment, Suspense } from "react";
 import Link from "next/link";
-import QRCode from "qrcode";
 import { requireUser } from "@/lib/auth/current-user";
 import { ROLE_LABELS, MOT_DE_PASSE_MIN, type Role } from "@/lib/constants";
-import { activerMaDeuxFa, preparerMaDeuxFa, quitterEspaceAdmin } from "@/actions/auth";
+import { quitterEspaceAdmin } from "@/actions/auth";
 import { Alerte } from "@/components/ui/Alerte";
 import { Icone } from "@/components/ui/Icone";
 import { Bouton, LienBouton } from "@/components/ui/Bouton";
 import { Carte } from "@/components/ui/Carte";
 import { accesAdmin } from "@/components/layout/Entete";
-import { CHEMIN_ACTIVATION_ADMIN, lireReglage2fa } from "@/lib/auth/acces-admin";
-import { formaterSecret, urlOtpauth } from "@/lib/auth/totp";
+import { CHEMIN_ACTIVATION_ADMIN } from "@/lib/auth/acces-admin";
 import { identite } from "@/lib/identite";
-import { FormulaireCode } from "@/components/auth/FormulaireCode";
 import { can } from "@/lib/permissions";
 import { FormulaireMotDePasse } from "@/components/auth/FormulaireMotDePasse";
 import { RenvoyerLien } from "./RenvoyerLien";
@@ -21,7 +18,8 @@ import { CarteNotifications } from "./CarteNotifications";
 import { ActiverPush } from "./ActiverPush";
 import { TesterNotifications } from "./TesterNotifications";
 import { TYPES_ESSENTIELS, lignesNotificationsMembre } from "@/lib/notifications/membre";
-import { FormulaireDeuxFa } from "./FormulaireDeuxFa";
+import { DemanderReinitialisationDeuxFa } from "./DemanderReinitialisationDeuxFa";
+import { CHEMIN_MA_DEUX_FA } from "@/lib/auth/demande-deux-fa";
 import { BoutonDeconnexion } from "./BoutonDeconnexion";
 import { SelecteurTheme } from "./SelecteurTheme";
 import { EncartMiseAJour } from "./EncartMiseAJour";
@@ -45,17 +43,13 @@ export const metadata: Metadata = { title: "Mon profil" };
 type Props = { searchParams: Promise<{ codes?: string; erreur?: string; admin?: string }> };
 
 const ERREURS_SECURITE: Record<string, string> = {
-  expire: "Le réglage a expiré (30 minutes) : redemande un QR code et recommence.",
-  tentatives: "Trop de tentatives. Réessaie dans quelques minutes.",
   /*
    * **L'écran des codes de secours ne se refermait pas en silence**. Les codes ne s'affichent
-   * qu'une fois, le temps du réglage ; passé ce délai, la page renvoyait ici **sans un mot**. La
-   * personne se retrouvait sur son profil, où tout est annoncé « en place » — et ses codes sont
-   * hachés en base, donc définitivement illisibles. Le geste qui répare existe (« Régénérer mes
-   * codes de secours »), il n'était nommé nulle part : un cul-de-sac silencieux. C'est la même
-   * leçon que la carte de fin du parcours `/admin/activer`, corrigée le même soir.
+   * qu'une fois, le temps du réglage ; passé ce délai, la page renvoie ici. Ils sont hachés en base,
+   * donc définitivement illisibles : la phrase nomme le geste qui répare, et où il se trouve.
    */
-  "codes-expires": "Tes codes de secours ne sont plus affichables (ils ne le sont qu'une fois, pendant 30 minutes). Ils existent, mais personne ne peut plus les relire : appuie sur « Régénérer mes codes de secours » pour en obtenir de nouveaux.",
+  "codes-expires":
+    "Tes codes de secours ne sont plus affichables (ils ne le sont qu'une fois, pendant 30 minutes). Ils existent, mais personne ne peut plus les relire : dans l'espace admin, « Comptes admin » → « Ma double authentification », appuie sur « Régénérer mes codes de secours ».",
 };
 
 export default async function PageProfil({ searchParams }: Props) {
@@ -79,12 +73,12 @@ export default async function PageProfil({ searchParams }: Props) {
     db.pushAbonnement.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, select: { id: true, appareil: true, endpoint: true, createdAt: true } }),
   ]);
   const admin = can(user, "settings.technical");
-  // Administrateur nommé : tant que son accès n'est pas réglé, tout passe par /admin/activer
-  // (le parcours y est obligatoire et guidé — on n'ouvre pas un second chemin en parallèle).
+  // Membre du bureau (compte du portail compris) : tant que son accès n'est pas réglé, tout passe par
+  // /admin/activer — le parcours y est obligatoire et guidé, et c'est le seul endroit où une double
+  // authentification s'active. On n'ouvre pas un second chemin en parallèle.
+  // `nominatif` exige une adresse : un membre du bureau sans adresse ne peut pas faire le parcours, on
+  // ne lui montre donc pas un bouton qui mènerait à un refus.
   const activationAFaire = acces.nominatif && !acces.regle;
-  // Réglage 2FA en cours, lancé depuis cette carte : le QR code n'existe que le temps de le scanner.
-  const secretEnCours = !deuxFa && aDejaUnMotDePasse && !activationAFaire && user.email ? await lireReglage2fa(user.id) : null;
-  const qr = secretEnCours ? await QRCode.toDataURL(urlOtpauth(secretEnCours, user.email, (await identite()).nomCourt), { margin: 1, width: 220, color: { dark: "#282828", light: "#fffdfa" } }) : null;
 
   const choixTheme = choixOuDefaut(user.theme, (await identite()).theme);
 
@@ -180,7 +174,7 @@ export default async function PageProfil({ searchParams }: Props) {
         )}
         {codes === "epuises" && (
           <Alerte type="attention" titre="Dernier code de secours utilisé">
-            Tu n&apos;as plus aucun code de secours : régénère-les ci-dessous (section « Sécuriser mon compte »).
+            Tu n&apos;as plus aucun code de secours : régénère-les dans l&apos;espace admin, rubrique « Comptes admin » → « Ma double authentification ».
           </Alerte>
         )}
         {/* **En tête de page** : depuis que l'administration ne s'ouvre plus que d'ici, cette
@@ -324,6 +318,7 @@ export default async function PageProfil({ searchParams }: Props) {
                   <LigneDepliable ancre="securite" titre="Sécuriser mon compte" resume={resumes.securite}>
                     <CarteSecurite
                       admin={admin}
+                      portail={user.service}
                       activationAFaire={activationAFaire}
                       aUnEmail={!!user.email}
                       aUnLienPersonnel={lien.etat !== "compte-de-service"}
@@ -331,8 +326,6 @@ export default async function PageProfil({ searchParams }: Props) {
                       deuxFa={deuxFa}
                       totpActiveAt={compte.totpActiveAt}
                       codesRestants={codesRestants}
-                      qr={qr}
-                      secretEnCours={secretEnCours}
                       erreur={erreur && ERREURS_SECURITE[erreur] ? ERREURS_SECURITE[erreur] : null}
                     />
                   </LigneDepliable>
@@ -383,11 +376,13 @@ function CarteLien({ lien }: { lien: Awaited<ReturnType<typeof etatLienPersonnel
 }
 
 /* ------------------------------------------------------------------------------------------------ */
-/* « Sécuriser mon compte » : mot de passe et double authentification, facultatifs                     */
+/* « Sécuriser mon compte » : mot de passe, état de la double authentification                        */
 /* ------------------------------------------------------------------------------------------------ */
 
 type PropsSecurite = {
   admin: boolean;
+  /** Le compte du portail : lui seul réinitialise sa double authentification (commande de secours) */
+  portail: boolean;
   activationAFaire: boolean;
   aUnEmail: boolean;
   /** Le compte du portail n'a pas de lien personnel : lui proposer cette porte de repli serait faux. */
@@ -396,20 +391,19 @@ type PropsSecurite = {
   deuxFa: boolean;
   totpActiveAt: Date | null;
   codesRestants: number;
-  qr: string | null;
-  secretEnCours: string | null;
   erreur: string | null;
 };
 
 /**
- * Carte ouverte à tout le monde : se donner un mot de passe, puis — si on veut — une double
- * authentification. Le ton dit ce qui est vrai : **c'est facultatif**, le lien personnel suffit ;
- * un mot de passe sert à entrer depuis un appareil où l'on n'a pas son lien.
+ * Carte ouverte à tout le monde : se donner un mot de passe. Le ton dit ce qui est vrai : **c'est
+ * facultatif**, le lien personnel suffit ; un mot de passe sert à entrer depuis un appareil où l'on
+ * n'a pas son lien.
  *
- * Les formulaires sont **ceux des administrateurs** (`FormulaireMotDePasse`, `FormulaireCode`,
- * `FormulaireDeuxFa`) : un seul parcours, pas deux. Ce qui change d'un rôle à l'autre tient en une
- * phrase — pour un ADMIN la double authentification est obligatoire (sans elle, pas de session forte,
- * donc pas d'administration technique) ; pour les autres elle est un supplément qu'ils choisissent.
+ * **La double authentification n'y est qu'un état** : elle n'ouvre que l'espace admin, et c'est là
+ * qu'elle se règle (`/admin/activer`) et se gère (« Comptes admin » → « Ma double
+ * authentification »). La carte en montre les lignes d'état et, à qui en a une, le bouton qui
+ * **demande au bureau** de la réinitialiser — la seule porte de qui a perdu son téléphone et n'entre
+ * plus dans l'espace admin. Un membre qui en a une d'avant (sans effet) passe par le même bouton.
  */
 function CarteSecurite(p: PropsSecurite) {
   return (
@@ -424,7 +418,7 @@ function CarteSecurite(p: PropsSecurite) {
             Le vis-à-vis de la carte d'état l'a rendu visible d'un coup d'œil ; la contradiction,
             elle, était là. */}
         {p.admin
-          ? "Ton mot de passe et ta double authentification ouvrent l'administration technique : les deux sont obligatoires pour ce rôle."
+          ? "Ton mot de passe et ta double authentification ouvrent l'espace admin : les deux sont obligatoires pour y entrer. Pour te connecter à l'application, ton mot de passe ou ton lien suffisent."
           : p.aUnEmail
             ? "C'est facultatif : ton lien personnel suffit pour entrer. Un mot de passe te permet en plus de te connecter depuis un appareil où tu n'as pas ton lien — un ordinateur prêté, un téléphone neuf."
             : "Rien ne peut être réglé ici tant que ton compte n'a pas d'adresse email : c'est par elle qu'on se connecte, et c'est aussi par elle que part ton lien personnel."}
@@ -440,7 +434,7 @@ function CarteSecurite(p: PropsSecurite) {
       <dl className="mb-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 tel:grid-cols-1 tel:gap-y-1">
         {[
           etatMotDePasse(p.aDejaUnMotDePasse),
-          etatDeuxFa({ deuxFa: p.deuxFa, admin: p.admin, totpActiveAt: p.totpActiveAt }),
+          ...(p.admin || p.deuxFa ? [etatDeuxFa({ deuxFa: p.deuxFa, admin: p.admin, totpActiveAt: p.totpActiveAt })] : []),
           ...(p.deuxFa ? [etatCodesSecours(p.codesRestants, NB_CODES_SECOURS)] : []),
         ].map((ligne) => (
           <Fragment key={ligne.intitule}>
@@ -485,54 +479,31 @@ function CarteSecurite(p: PropsSecurite) {
             <FormulaireMotDePasse aDejaUnMotDePasse={p.aDejaUnMotDePasse} />
           </details>
 
-          {!p.aDejaUnMotDePasse ? (
-            <p className="text-texte-secondaire">La double authentification vient après : elle s&apos;ajoute à un mot de passe, elle ne le remplace pas.</p>
-          ) : p.deuxFa ? (
-            <details className="group rounded-xl border border-bordure/60 bg-surface-douce p-4">
-              <summary className="flex min-h-11 cursor-pointer items-center gap-3 font-semibold">
-                Double authentification
-                <Icone nom="chevronBas" taille={22} className="ml-auto text-texte-secondaire transition group-open:rotate-180" />
-              </summary>
-              <p className="mb-4 mt-2 text-texte-secondaire">
-                Un code à 6 chiffres t&apos;est demandé à chaque connexion par mot de passe. Nouveau téléphone ? Réinitialise-la ci-dessous
-                {p.admin ? " : un nouveau QR code te sera proposé à ta prochaine connexion." : ", puis réactive-la depuis cette carte."}
-              </p>
-              <FormulaireDeuxFa codesRestants={p.codesRestants} />
-            </details>
-          ) : p.qr && p.secretEnCours ? (
-            <div className="rounded-xl border border-bordure/60 bg-surface-douce p-4">
-              <h3 className="mb-3 font-semibold">Activer la double authentification</h3>
-              <ol className="mb-5 flex list-decimal flex-col gap-4 pl-5">
-                <li>
-                  Installe une application gratuite si tu n&apos;en as pas : <strong>Aegis</strong>, <strong>FreeOTP</strong>, Google ou Microsoft Authenticator.
-                </li>
-                <li>
-                  Scanne ce code avec l&apos;application :
-                  <div className="mt-2 inline-block rounded-2xl bg-white p-3 shadow-carte">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- image générée en mémoire (data URL) */}
-                    <img src={p.qr} alt="QR code à scanner avec l'application d'authentification" width={220} height={220} />
-                  </div>
-                  <details className="mt-2 text-sm">
-                    <summary className="cursor-pointer text-texte-secondaire">Impossible de scanner ? Saisir la clé à la main</summary>
-                    <code className="mt-1 block select-all break-all rounded-lg bg-surface p-2 text-base tracking-wider">{formaterSecret(p.secretEnCours)}</code>
-                    <p className="mt-1 text-texte-secondaire">Type : code temporel (TOTP), 6 chiffres, 30 secondes.</p>
-                  </details>
-                </li>
-                <li>Recopie le code à 6 chiffres qu&apos;elle affiche pour confirmer :</li>
-              </ol>
-              <FormulaireCode configuration motDePasse action={activerMaDeuxFa} libelle="Activer la double authentification" />
-            </div>
-          ) : (
-            <form action={preparerMaDeuxFa} className="flex flex-col items-start gap-3 rounded-xl border border-bordure/60 bg-surface-douce p-4">
-              <h3 className="font-semibold">Double authentification (facultative)</h3>
+          {/* **La double authentification ne se gère plus ici** : elle ne sert qu'à l'espace admin,
+              et c'est là qu'elle se règle (parcours `/admin/activer`) puis se gère (« Comptes
+              admin » → « Ma double authentification » : codes de secours, nouveau téléphone). Ce
+              qui reste ici, c'est la porte de qui n'y entre plus : demander au bureau de la
+              réinitialiser. */}
+          {p.deuxFa && (
+            <div className="flex flex-col gap-3 rounded-xl border border-bordure/60 bg-surface-douce p-4">
+              <h3 className="font-semibold">Téléphone perdu ou changé ?</h3>
               <p className="text-texte-secondaire">
-                Un code à 6 chiffres, donné par une application sur ton téléphone, en plus du mot de passe. Utile si tu tiens à ce que ton mot de passe seul ne suffise pas.
+                {p.admin ? (
+                  <>
+                    Tes codes de secours et ta double authentification se gèrent dans l&apos;espace admin,{" "}
+                    <Link href={CHEMIN_MA_DEUX_FA} className="underline">
+                      Comptes admin
+                    </Link>
+                    {p.portail
+                      ? ". Si tu ne peux plus y entrer (ni code, ni code de secours), seule la commande de secours sur le serveur la réinitialise : préviens le bureau."
+                      : ". Si tu ne peux plus y entrer (ni code, ni code de secours), demande au bureau de la réinitialiser : un nouveau QR code te sera demandé à ta prochaine connexion."}
+                  </>
+                ) : (
+                  "Ta double authentification ne sert plus à te connecter. Si tu veux qu'elle disparaisse de ton compte, demande au bureau de la retirer."
+                )}
               </p>
-              <Bouton type="submit" variante="secondaire" taille="petite">
-                <Icone nom="bouclier" taille={18} />
-                Activer la double authentification
-              </Bouton>
-            </form>
+              <DemanderReinitialisationDeuxFa variante={!p.admin ? "hors-bureau" : p.portail ? "portail" : "bureau"} />
+            </div>
           )}
         </div>
       )}

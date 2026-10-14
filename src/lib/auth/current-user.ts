@@ -7,7 +7,7 @@ import { can, exigeSessionForte, type Permission } from "@/lib/permissions";
 import { DUREE_REAUTH_MS } from "@/lib/constants";
 import { cheminSuiteSur } from "@/lib/validation/auth";
 import { hashToken, isValidTokenFormat } from "./tokens";
-import { CHEMIN_ACTIVATION_ADMIN, peutOuvrirSessionForte } from "./acces-admin";
+import { CHEMIN_ACTIVATION_ADMIN, cheminLibrePendantReglage, peutOuvrirSessionForte, reglageAccesDu } from "./acces-admin";
 import { echeanceProlongee } from "./session";
 import { annulerSortieElevation, etatElevation, ouvertureElevation, refermerElevationSortie, toucherElevation } from "./elevation";
 
@@ -73,6 +73,13 @@ export type CurrentUser = {
   elevationOuverteLe: Date | null;
   /** Dernière vérification 2FA de cette session (null pour une session par lien) */
   reauthAt: Date | null;
+  /**
+   * **Membre du bureau dont l'accès n'est pas réglé** (`reglageAccesDu`, src/lib/auth/acces-admin.ts) :
+   * il doit faire le parcours `/admin/activer` avant toute autre chose. Lu sur la ligne du compte
+   * déjà chargée avec la session — aucune requête de plus. La mise en page de l'espace connecté le
+   * renvoie sur le parcours, et `assertPermission` refuse ses server actions.
+   */
+  reglageAccesDu: boolean;
 };
 
 /**
@@ -186,6 +193,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
      */
     elevationOuverteLe: ouverteLe,
     reauthAt: session.reauthAt,
+    reglageAccesDu: reglageAccesDu(u),
   };
 });
 
@@ -235,12 +243,25 @@ export async function oublierDestination(): Promise<void> {
   (await cookies()).delete(SUITE_COOKIE);
 }
 
-/** Redirige vers la connexion si non connecté, en gardant la page demandée. */
+/**
+ * Redirige vers la connexion si non connecté, en gardant la page demandée.
+ *
+ * **Et vers `/admin/activer` un membre du bureau dont l'accès n'est pas réglé** (`reglageAccesDu`),
+ * sauf sur les écrans que l'obligation laisse ouverts (`cheminLibrePendantReglage`). La mise en page
+ * de l'espace connecté fait la même vérification, mais App Router ne la ré-exécute pas d'une page
+ * sœur à l'autre : sans cette ligne-ci, un onglet de l'en-tête cliqué depuis le parcours ouvrait la
+ * page demandée. Toutes les pages de l'espace connecté passent par ici (directement ou par
+ * `requirePermission`). Le chemin lu est **celui de la requête**, `/connexion/…` compris
+ * (`cheminCourant` le ramène à « / »).
+ */
 export async function requireUser(next?: string): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) {
     const cible = cheminSuiteSur(next);
     redirect(lienConnexion(cible === "/" ? await cheminCourant() : cible));
+  }
+  if (user.reglageAccesDu && !cheminLibrePendantReglage(cheminSuiteSur((await headers()).get("x-chemin")))) {
+    redirect(CHEMIN_ACTIVATION_ADMIN);
   }
   return user;
 }
@@ -297,10 +318,18 @@ export class AccesRefuse extends Error {
   }
 }
 
-/** Variante pour les server actions : lève au lieu de rediriger. */
+/**
+ * Variante pour les server actions : lève au lieu de rediriger.
+ *
+ * **Un membre du bureau dont l'accès n'est pas réglé est refusé ici**, quelle que soit la permission :
+ * la mise en page ne garde que les écrans, et une server action s'appelle sans passer par eux. Aucune
+ * action du parcours `/admin/activer`, de l'écran de bienvenue ni la déconnexion ne passe par cette
+ * fonction (elles lisent `getCurrentUser`) : la garde ne peut donc pas bloquer la sortie.
+ */
 export async function assertPermission(permission: Permission): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user || !can(user, permission)) throw new AccesRefuse();
+  if (user.reglageAccesDu) throw new AccesRefuse();
   if (exigeSessionForte(permission)) {
     if (!user.sessionForte) throw new AccesRefuse();
     // Une action d'administration compte comme un geste, au même titre qu'une page ouverte.

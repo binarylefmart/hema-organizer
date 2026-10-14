@@ -63,11 +63,9 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
    * en attente porte deux boutons, « Refuser… » et « Programmer » : ce dernier ouvre dans le volet du
    * bas la même séance et le même mot, puis son bouton de confirmation.
    *
-   * **On choisit la deuxième séance proposée, pas celle d'office.** La liste de placement part de la
-   * prochaine séance *au sens des ateliers* — le cours du soir même en fait partie, on peut encore y
-   * caser un jeu à 20 h 05 —, là où le planning ne montre que ce qui n'a pas commencé. Placer sur
-   * celle-là faisait donc passer ce test le matin et échouer le soir, pour un atelier pourtant bien
-   * rangé en base. La deuxième entrée est un autre jour : elle est visible dans le planning à
+   * **On choisit la deuxième séance proposée, pas celle d'office.** La première peut être le cours du
+   * soir même tant qu'il n'a pas commencé : placer sur celle-là rendait le test dépendant de l'heure à
+   * laquelle il tourne. La deuxième entrée est un autre jour : elle est visible dans le planning à
    * n'importe quelle heure.
    *
    * La carte du planning se retrouve ensuite par le titre qu'elle porte (`article#seance-<id>`),

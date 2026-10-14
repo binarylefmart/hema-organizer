@@ -132,9 +132,12 @@ export function SelectionPlanning({
   cachees,
   restantes,
   nbVisibles,
+  commencees = 0,
 }: {
-  /** Une entrée par carte de séance, dans l'ordre de la grille — `null` pour une séance annulée. */
+  /** Une entrée par carte de séance, dans l'ordre de la grille — `null` pour une séance annulée ou commencée. */
   lignes: (LignePlanning | null)[];
+  /** Parmi les `null` de `lignes`, les séances commencées (non annulées) : la phrase les distingue. */
+  commencees?: number;
   /** Les blocs rendus par le serveur au-dessus du repli (cartes et intertitres de mois). */
   visibles: ReactNode[];
   /** Les blocs repliés derrière « Afficher les N autres séances ». */
@@ -311,7 +314,7 @@ export function SelectionPlanning({
 
   const compteurAnnonce = compteurPlanning(selection.size);
   const horsAffichage = texteHorsAffichage(compterHorsAffichage(selection, affichees), MOTS_PLANNING);
-  const sansCase = texteSansCasePlanning(lignes.length - selectionnables.length);
+  const sansCase = texteSansCasePlanning(lignes.length - selectionnables.length - commencees, commencees);
   const montrerBarre = actif && barreDeMasseVisible(selection);
 
   /* ---- Les champs des gestes : les mêmes dans la barre de l'ordinateur et dans le volet du téléphone. ---- */

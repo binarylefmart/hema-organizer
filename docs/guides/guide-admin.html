@@ -17,7 +17,7 @@
       une période, corriger les présences — une par une ou par lots —, tenir l’annuaire et les liens personnels,
       changer les rôles, nommer les administrateurs, régler la part d’effectif et ce que le
       club envoie, réparer les pannes d’accès.</p>
-    <p class="couverture-pied">Version 0.76.0 — 7 octobre 2026 · organizer.mon-club.fr</p>
+    <p class="couverture-pied">Version 0.77.0 — 7 octobre 2026 · organizer.mon-club.fr</p>
   </section>
 
   <section class="sommaire">
@@ -46,10 +46,13 @@
   <!-- ================================================================= 1 -->
   <h2 id="p1">1. Ouvrir l’espace d’administration</h2>
 
-  <p>Connectez-vous comme tout le monde, puis ouvrez <strong>Mon profil</strong> → <strong>Accès
-    administrateur</strong>. La première fois, appuyez sur <strong>Activer mon accès admin</strong> ;
-    ensuite, sur <strong>Se connecter en tant qu’administrateur</strong>, qui demande votre mot de passe
-    puis vos six chiffres — ou un code de secours.</p>
+  <p>Connectez-vous comme tout le monde. Tant que votre accès n’est pas réglé, l’application vous
+    emmène d’abord sur <strong>Mon accès administrateur</strong> : c’est obligatoire pour le bureau, et
+    aucun autre écran ne s’ouvre avant (<strong>Se déconnecter</strong> reste possible). Une fois réglé,
+    la connexion ne demande plus que votre adresse et votre mot de passe ; pour l’espace admin, ouvrez
+    <strong>Mon profil</strong> → <strong>Accès administrateur</strong> → <strong>Se connecter en tant
+    qu’administrateur</strong>, qui demande votre mot de passe puis vos six chiffres — ou un code de
+    secours.</p>
 
   <figure class="haute">
     <img src="../../previews/profil-admin-non-eleve/pc-clair.jpg" alt="Mon profil : la section Accès administrateur">
@@ -57,6 +60,9 @@
   </figure>
 
   <h3>Régler son accès la première fois</h3>
+
+  <p>Le réglage se fait en trois étapes, reprises là où vous les avez laissées. Le compte du bureau
+    commence directement à la deuxième : son mot de passe est choisi juste avant.</p>
 
   <ol class="etapes">
     <li><strong>Choisissez votre mot de passe.</strong> Dix caractères au moins, et pas un mot de passe
@@ -426,9 +432,22 @@
       adresse »</strong>, choisissez-la, puis appuyez sur <strong>Donner les droits admin</strong>.</li>
     <li><strong>Pas encore</strong> : ajoutez-la d’abord dans <strong>Membres</strong>, puis revenez la
       choisir dans la liste.</li>
-    <li>Prévenez-la de vive voix, et dites-lui d’ouvrir <strong>Mon profil</strong> →
-      <strong>Accès administrateur</strong>.</li>
+    <li>Un <strong>code d’activation</strong> s’affiche en haut de la page, une seule fois
+      (par exemple <code>K7P-42M</code>) : <strong>transmettez-le-lui de vive voix ou en main propre,
+      jamais par email ni par message</strong>. Il vaut 48 heures et ne sert qu’une fois.</li>
+    <li>Prévenez-la : au prochain écran qu’elle ouvre dans l’application, elle devra régler son accès
+      (mot de passe, double authentification avec ce code, codes de secours) avant de continuer. Il
+      lui faut une adresse email dans l’annuaire.</li>
   </ol>
+
+  <h3>Le code d’activation</h3>
+
+  <p>Sans lui, personne ne règle la double authentification d’un membre du bureau : ni la personne,
+    ni quelqu’un qui lirait ses emails. Sa ligne dans Comptes admin porte <strong>« Réglage à
+    faire »</strong> et dit jusqu’à quand son code vaut, ou <strong>« aucun code valable »</strong>.
+    Code perdu ou expiré : appuyez sur <strong>Générer un code d’activation</strong> sur sa ligne —
+    le nouveau remplace l’ancien — et transmettez-le de la même façon. Personne ne génère le sien ;
+    le compte du bureau n’en a pas besoin.</p>
 
   <h3>Retirer les droits</h3>
 
@@ -439,14 +458,20 @@
   <h3>Dépanner un téléphone perdu</h3>
 
   <ol class="etapes">
-    <li><strong>Un de ses codes de secours</strong> : elle entre avec, puis va dans <strong>Mon
-      profil</strong> → <strong>Sécuriser mon compte</strong> et règle son code sur le nouveau
-      téléphone.</li>
-    <li><strong>Réinitialiser</strong>, depuis Comptes admin : un nouveau QR code lui est proposé à sa
-      prochaine connexion, et ses appareils sont déconnectés.</li>
+    <li><strong>Un de ses codes de secours</strong> : elle ouvre l’espace admin avec, puis va dans
+      <strong>Comptes admin</strong> → <strong>Ma double authentification</strong> et réinitialise la
+      sienne pour régler le nouveau téléphone.</li>
+    <li>Sans code de secours, elle appuie sur <strong>Demander la réinitialisation de ma double
+      authentification</strong> dans <strong>Mon profil</strong> : les autres membres du bureau
+      reçoivent un message, et sa ligne dans Comptes admin porte « réinitialisation demandée ».
+      Vérifiez avec elle de vive voix, puis appuyez sur <strong>Réinitialiser</strong> : ses
+      appareils sont déconnectés, et un nouveau QR code lui est demandé à sa connexion suivante.
+      Le <strong>code d’activation</strong> qui s’affiche alors se transmet de vive voix ou en main
+      propre : sans lui, elle ne règle pas son nouveau téléphone.</li>
     <li><strong>Réinitialiser l’accès</strong>, sous « Que veux-tu faire ? » sur sa fiche dans
       l’annuaire : mot de passe, code, codes de secours et liens effacés, appareils déconnectés,
-      lien neuf envoyé, compte et passé gardés.</li>
+      lien neuf envoyé, compte et passé gardés. Pour un membre du bureau, un code d’activation
+      s’affiche aussi, à lui transmettre de la même façon.</li>
     <li><strong>En dernier recours</strong>, quand plus aucun administrateur n’entre : sur le serveur,
       <code>npm run admin:reset-2fa -- adresse@du.compte</code>, décrit dans
       <code>docs/DEPLOIEMENT.md</code>.</li>
@@ -629,6 +654,7 @@
       <tr><td><strong>Séance annulée</strong></td><td>Dès l’annulation, à tous les invités et sur le salon</td></tr>
       <tr><td><strong>Alerte « peu de monde »</strong></td><td>Le matin, aux instructeurs, dans les 3 jours avant le cours, sous la part d’effectif réglée</td></tr>
       <tr><td><strong>Désistement de dernière minute</strong></td><td>Dès qu’un membre retire son Présent (ou son Peut-être) dans les 2 heures avant le cours, à tous les instructeurs du club (sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être), par email et téléphone seulement — chacun peut la couper depuis Mon profil : il nomme la personne</td></tr>
+      <tr><td><strong>Planning modifié</strong></td><td>Dès qu’un échauffement, un cours ou une option est ajouté, supprimé, ou change de thème ou d’instructeur principal, dans le planning d’un cours à venir (à l’application des modifications), à tous les instructeurs du club sauf l’auteur du changement : la date de chaque cours, les ajouts, changements et suppressions, et qui les a faits — un seul message par enregistrement, par email et téléphone seulement, chacun peut le couper depuis Mon profil : il nomme des personnes</td></tr>
       <tr><td><strong>Réponse à une proposition d’atelier</strong></td><td>À son auteur, dès qu’on place ou refuse</td></tr>
       <tr><td><strong>Nouvel événement</strong></td><td>À la publication, aux membres, une fois</td></tr>
       <tr><td><strong>Période suivante à créer</strong></td><td>Avant la fin d’un trimestre, aux administrateurs</td></tr>
@@ -747,8 +773,9 @@
       </tr>
       <tr>
         <td><strong>« Je n’ai plus mon téléphone »</strong></td>
-        <td>Un code de secours, puis <strong>Sécuriser mon compte</strong>. Sinon,
-          <strong>Réinitialiser</strong> depuis Comptes admin.</td>
+        <td>Un code de secours, puis <strong>Comptes admin → Ma double authentification</strong>. Sinon,
+          <strong>Demander la réinitialisation</strong> depuis Mon profil : un autre membre du bureau
+          réinitialise depuis Comptes admin et lui donne de vive voix le code d’activation affiché.</td>
       </tr>
       <tr>
         <td><strong>« Il n’a rien reçu »</strong></td>
@@ -798,7 +825,7 @@
   <p>Mettre le serveur à jour : <code>docs/DEPLOIEMENT.md</code>. Ce qui protège les accès :
     <code>docs/SECURITE.md</code>.</p>
 
-  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.76.0 — 7 octobre 2026 ·
+  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.77.0 — 7 octobre 2026 ·
     Mon club d'AMHE · organizer.mon-club.fr — à lire après les guides du
     membre et de l’instructeur.</p>
 </div>

@@ -97,6 +97,6 @@ export function casesAEnvoyer<T>(
 /** La phrase qui dit ce que le tri a écarté (`casesAEnvoyer`). */
 export function texteEcartees(n: number): string {
   return n > 1
-    ? `${n} réglages portaient sur des éléments retirés entre-temps : ils ont été écartés.`
-    : "1 réglage portait sur un élément retiré entre-temps : il a été écarté.";
+    ? `${n} réglages portaient sur des éléments supprimés ou des cours commencés entre-temps : ils ont été écartés.`
+    : "1 réglage portait sur un élément supprimé ou un cours commencé entre-temps : il a été écarté.";
 }

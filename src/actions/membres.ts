@@ -12,6 +12,7 @@ import { analyserCsvMembres } from "@/lib/periodes";
 import { aDejaUnAcces, CHAMPS_TEMOINS_ACCES, messageSansEmail, temoinsAcces } from "@/lib/membres";
 import { remettreAccesAZero } from "@/lib/reinitialisation-acces";
 import { revokeAllSessions } from "@/lib/auth/session";
+import { afficherCodesActivation, remettreCodeActivation } from "@/lib/auth/activation-bureau";
 import { prochaineCouleurLibre } from "@/lib/couleurs-attribution";
 import { caseCochee, champ, zodToFormState, type FormState } from "@/lib/form";
 import {
@@ -456,7 +457,8 @@ export async function retirerDroitsAdmin(userId: string, retour?: string): Promi
    * demander était perdu. Même paramètre que `definirActif` et `definirEmailMembre`.
    */
   await exigerReauth(acteur, retour ?? "/admin/comptes");
-  await db.user.update({ where: { id: userId }, data: { estAdmin: false } });
+  // Le code d'activation en cours part avec le bureau : il n'a plus rien à débloquer.
+  await db.user.update({ where: { id: userId }, data: { estAdmin: false, codeActivationHash: null, codeActivationExpireLe: null } });
   await db.authSession.updateMany({ where: { userId }, data: { forte: false, elevationVueLe: null } });
   // Le journal garde **le rôle de base que la personne conserve** : « nouveauRole: MEMBRE » racontait
   // une rétrogradation qui n'a plus lieu, et c'est le genre de phrase qu'une relecture croit.
@@ -538,7 +540,10 @@ export async function nommerAdministrateur(_prev: FormState, fd: FormData): Prom
   const acteur = await assertPermission("admins.manage");
   const userId = champ(fd, "userId");
   if (!userId) return { erreur: "Choisis la personne à nommer." };
-  const cible = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true } });
+  const cible = await db.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { id: true, prenom: true, nom: true, email: true, role: true, estAdmin: true, actif: true, service: true, totpSecret: true, totpActiveAt: true },
+  });
   if (cible.estAdmin) return { erreur: `${cible.prenom} ${cible.nom} est déjà administrateur.` };
   if (!cible.actif) return { erreur: "Ce compte est désactivé : réactive-le d'abord." };
   if (!canEditUser(acteur, cible)) return { erreur: "Tu ne peux pas modifier ce compte." };
@@ -551,8 +556,16 @@ export async function nommerAdministrateur(_prev: FormState, fd: FormData): Prom
   // migration, ne lui aurait plus donné **aucun droit** par la matrice.
   await db.user.update({ where: { id: userId }, data: { estAdmin: true } });
   await audit(acteur, "admin.droits_donnes", userId, { email: cible.email, roleDeBase: cible.role });
+  // Son réglage l'attend : un code d'activation naît, affiché une fois à qui l'a nommé (voir
+  // `nommerAdministrateurs`, le même geste en lot).
+  const aRegler = !(cible.totpSecret && cible.totpActiveAt);
+  if (aRegler) await afficherCodesActivation(acteur.id, [await remettreCodeActivation(acteur, cible, "nomination")]);
   rafraichir();
-  return { succes: `${cible.prenom} ${cible.nom} est administrateur. Mot de passe et double authentification lui seront demandés avant que l'administration s'ouvre.` };
+  return {
+    succes: aRegler
+      ? `${cible.prenom} ${cible.nom} est administrateur. Son code d'activation s'affiche en haut de Comptes admin : transmets-le de vive voix ou en main propre, jamais par email.`
+      : `${cible.prenom} ${cible.nom} est administrateur.`,
+  };
 }
 
 export async function supprimerMembre(userId: string, retour?: string): Promise<void> {
@@ -952,6 +965,13 @@ export async function reinitialiserAccesMembre(userId: string, retour?: string):
     avaitDeuxFa: !!cible.totpSecret && !!cible.totpActiveAt,
     ...issue,
   });
+  /*
+   * **Un membre du bureau remis à zéro refait tout son réglage** — et le lien neuf vient de partir
+   * dans sa boîte email. Sans code d'activation, c'est cette boîte, et elle seule, qui déciderait
+   * du téléphone inscrit. Le code s'affiche une fois à qui a fait le geste (Comptes admin, annuaire
+   * et fiche le montrent en tête), jamais dans l'email.
+   */
+  if (cible.estAdmin) await afficherCodesActivation(acteur.id, [await remettreCodeActivation(acteur, cible, "reinitialisation_acces")]);
   rafraichir();
 }
 

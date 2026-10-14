@@ -40,7 +40,9 @@ describe("la carte resserrée ne vaut que sur téléphone", () => {
   });
 
   it("le lien court du programme mène au même endroit que le bouton, et fait 48 px", () => {
-    const cibles = CARTE.match(/\/planning\?periode=\$\{s\.periodId\}\$\{s\.commencee \? "&quand=passe" : ""\}#seance-\$\{s\.id\}/g) ?? [];
+    // Une seule adresse, lue par les deux liens : « Passé » seulement pour un cours d'un jour passé.
+    expect(CARTE).toMatch(/const lienProgramme = `\/planning\?periode=\$\{s\.periodId\}\$\{passe \? "&quand=passe" : ""\}#seance-\$\{s\.id\}`/);
+    const cibles = CARTE.match(/href=\{lienProgramme\}/g) ?? [];
     expect(cibles).toHaveLength(2);
     expect(CARTE).toMatch(/className="absolute right-0 top-0 inline-flex min-h-12[^"]*ordi:hidden"/);
   });

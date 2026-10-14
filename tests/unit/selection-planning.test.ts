@@ -268,8 +268,8 @@ describe("ce qu'« Appliquer » envoie", () => {
   });
 
   it("dit ce qu'il écarte", () => {
-    expect(texteEcartees(1)).toBe("1 réglage portait sur un élément retiré entre-temps : il a été écarté.");
-    expect(texteEcartees(3)).toMatch(/^3 réglages portaient sur des éléments retirés entre-temps/);
+    expect(texteEcartees(1)).toBe("1 réglage portait sur un élément supprimé ou un cours commencé entre-temps : il a été écarté.");
+    expect(texteEcartees(3)).toMatch(/^3 réglages portaient sur des éléments supprimés ou des cours commencés entre-temps/);
   });
 
   it("la barre d'édition passe par ce tri, avec les éléments que la page montre", () => {
@@ -314,10 +314,18 @@ describe("l'écran", () => {
     expect(code).toContain("brouillon?.modifiees.get(valeur.id) ?? paireServeur(valeur)");
   });
 
-  it("une séance annulée n'a pas de case", () => {
+  it("une séance annulée ou commencée n'a pas de case", () => {
     const code = source("src/components/planning/GrillePlanning.tsx");
-    expect(code).toContain("enEdition && !c.annulee ? <CaseSeancePlanning");
-    expect(code).toMatch(/if \(c\.annulee\) return null;/);
+    expect(code).toContain("enEdition && !c.annulee && !c.commencee ? <CaseSeancePlanning");
+    expect(code).toMatch(/if \(c\.annulee \|\| c\.commencee\) return null;/);
+  });
+
+  it("une séance commencée reste affichée, grisée, et ses parties en lecture même en modification", () => {
+    const code = source("src/components/planning/GrillePlanning.tsx");
+    expect(code).toContain("const figee = c.commencee && !c.annulee;");
+    expect(code).toContain("valeur={{ ...options, modifiable: false, peutProgrammer: false }}");
+    expect(texteSansCasePlanning(0, 1)).toBe("1 séance commencée n'a pas de case : son programme ne se modifie plus.");
+    expect(texteSansCasePlanning(1, 2)).toMatch(/1 séance annulée .* 2 séances commencées n'ont pas de case/);
   });
 
   it("la barre est la forme commune : interrupteur, « Que veux-tu faire ? », visible avec une sélection", () => {

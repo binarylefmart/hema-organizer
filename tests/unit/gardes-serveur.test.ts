@@ -63,9 +63,6 @@ const SANS_GARDE_ASSUME: Record<string, string> = {
   // La connexion elle-même : on n'est par définition pas connecté. Le mot de passe (argon2id) tient le
   // rôle de la garde, avec un limiteur par IP et par compte, et un message générique (pas d'énumération).
   "src/actions/auth.ts::seConnecter": "porte d'entrée : mot de passe + limiteur, pas de session à vérifier",
-  "src/actions/auth.ts::verifierCode2fa": "second facteur de la connexion en deux temps : l'attente signée tient lieu de session",
-  "src/actions/auth.ts::passerDeuxFa": "même attente signée (`lireAttente2fa`), et un ADMIN ne peut pas passer",
-  "src/actions/auth.ts::annulerConnexion2fa": "abandon de la connexion : n'écrit rien, ferme l'attente et repart sur /connexion",
   // « Mot de passe oublié » : la personne est dehors, c'est tout l'objet du parcours. Réponse toujours
   // identique (aucune énumération de comptes), limiteur par IP et par adresse, lien à usage unique 30 min.
   "src/actions/auth.ts::demanderReinitialisation": "parcours de qui est dehors : réponse générique + limiteur",

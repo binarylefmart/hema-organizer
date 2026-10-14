@@ -9,11 +9,8 @@ import {
   activerTotp,
   consommerCodeTotp,
   fermerAffichageCodes,
-  fermerAttente2fa,
   genererSecretTotp,
-  lireAttente2fa,
   ouvrirAffichageCodes,
-  ouvrirAttente2fa,
   etatSecretTotp,
   MESSAGE_SECRET_2FA_ILLISIBLE,
 } from "@/lib/auth/deux-fa";
@@ -23,23 +20,23 @@ import {
   ANCRE_SECURITE,
   CHEMIN_ACTIVATION_ADMIN,
   compteAcces,
-  deuxFaActive,
   etapeAcces,
-  exigeDeuxFaConnexion,
   fermerReglage2fa,
   lireReglage2fa,
   ouvrirReglage2fa,
   peutOuvrirSessionForte,
-  peutProposerDeuxFa,
   accesAdminRegle,
   peutReglerSonAcces,
-  peutSecuriserSonCompte,
+  reglageAccesDu,
   peutSeConnecterParMotDePasse,
   type CompteAcces,
 } from "@/lib/auth/acces-admin";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
+import { exigeCodeActivation, MESSAGE_CODE_ACTIVATION } from "@/lib/auth/code-activation";
+import { consommerCodeActivation, controlerCodeActivation } from "@/lib/auth/activation-bureau";
 import { generateToken, hashToken, isValidTokenFormat } from "@/lib/auth/tokens";
 import { apresInvitation } from "@/lib/auth/apres-invitation";
+import { CHEMIN_MA_DEUX_FA } from "@/lib/auth/demande-deux-fa";
 import { clientIp, userAgent } from "@/lib/request-info";
 import { DUREE_RESET_MS } from "@/lib/constants";
 import { baseUrl } from "@/lib/env";
@@ -47,7 +44,7 @@ import { enqueueEmail } from "@/lib/email/mailer";
 import { decrireAppareil, emailNouvelAppareil, emailReset } from "@/lib/email/templates/auth";
 import { formatDateHeure } from "@/lib/dates";
 import { checkInvitation, consumeInvitation, jetonDuLienColle, marquerParcoursVu, renouvelerLien, signalerOuverture, verifierAppareils } from "@/lib/invitations";
-import { alerterLienRevoque, surveillerLiensInconnus } from "@/lib/alertes";
+import { alerterDeuxFaActivee, alerterLienRevoque, surveillerLiensInconnus } from "@/lib/alertes";
 import { prevenirNouvelAppareilParPush } from "@/lib/notifications/securite";
 import { poserLienPersonnel } from "@/lib/lien-personnel";
 import { caseCochee, champ, zodToFormState, type FormState } from "@/lib/form";
@@ -111,185 +108,32 @@ export async function seConnecter(_prev: FormState, fd: FormData): Promise<FormS
   // `destinationApresConnexion`) : se connecter dépose alors à l'accueil.
   const destination = destinationApresConnexion(await destinationRetour(suite));
 
-  // Mot de passe correct, et pas de second facteur à demander : membre ou instructeur qui s'est donné
-  // un mot de passe sans activer la double authentification.
-  if (!exigeDeuxFaConnexion(user)) {
-    // On la lui **propose** au passage (une fois par trimestre, pas plus) : beaucoup ignorent que
-    // ça existe, et c'est le seul moment où la question tombe à propos. L'écran porte un bouton
-    // « Plus tard » qui ouvre la session sans rien configurer — voir `passerDeuxFa`.
-    if (peutProposerDeuxFa(user)) {
-      await ouvrirAttente2fa({ userId: user.id, remember: resterConnecte, suite: destination, secretProvisoire: genererSecretTotp() });
-      await audit({ id: user.id, email: user.email }, "connexion.mot_de_passe_ok", null, { deuxFaConfiguree: false, proposition: true });
-      redirect("/connexion/code");
-    }
-    // Session **ordinaire** — la même que par lien personnel : jamais forte, donc aucune porte
-    // d'administration ouverte au passage.
-    await oublierDestination();
-    await destroySession(); // remplace une éventuelle session ouverte par lien
-    await createSession(user.id, resterConnecte, "mot-de-passe", false);
-    await audit({ id: user.id, email: user.email }, "connexion.succes", null, { resterConnecte, deuxFa: false });
-    redirect(await apresConnexion(user.id, destination));
-  }
-
-  // Second facteur exigé : toujours pour un ADMIN (même s'il n'a rien configuré — la configuration est
-  // alors guidée), et pour quiconque a activé la double authentification de son plein gré.
-  const etatSecret = await etatSecretTotp(user.id);
-  /*
-   * **Un secret illisible ne se remplace pas sur présentation du mot de passe**. C'est le cœur du
-   * correctif décrit dans `etatSecretTotp` : confondu avec « absent », ce cas faisait engendrer un
-   * secret provisoire, et le premier venu avec le mot de passe inscrivait son téléphone. On
-   * s'arrête ici, avant même d'ouvrir l'attente 2FA — il n'y a rien à faire de ce compte sans un
-   * administrateur.
-   */
-  if (etatSecret.etat === "illisible") {
-    await audit({ id: user.id, email: user.email }, "connexion.deux_fa_illisible");
-    redirect("/connexion?erreur=2fa-illisible");
-  }
-  await ouvrirAttente2fa({
-    userId: user.id,
-    remember: resterConnecte,
-    suite: destination,
-    // On ne propose la configuration d'un nouveau secret qu'à un compte à qui la 2FA est **imposée**
-    // (ADMIN). Un membre qui n'en veut pas n'est jamais passé par ici.
-    secretProvisoire: etatSecret.etat === "actif" ? undefined : genererSecretTotp(),
-  });
-  await audit({ id: user.id, email: user.email }, "connexion.mot_de_passe_ok", null, { deuxFaConfiguree: etatSecret.etat === "actif" });
-  redirect("/connexion/code");
-}
-
-/** Second temps de la connexion admin : vérification du code de l'application d'authentification. */
-export async function verifierCode2fa(_prev: FormState, fd: FormData): Promise<FormState> {
-  const attente = await lireAttente2fa();
-  if (!attente) redirect("/connexion?erreur=session");
-  const user = await db.user.findUnique({ where: { id: attente.uid } });
-  if (!user || !peutSeConnecterParMotDePasse(user)) redirect("/connexion?erreur=session");
-
-  const ip = await clientIp();
-  if (!(await checkRateLimit("totp_ip", ip)) || !(await checkRateLimit("totp_user", user.id))) return { erreur: MESSAGE_TROP_DE_TENTATIVES };
-
-  const code = champ(fd, "code");
-  const etatSecret = await etatSecretTotp(user.id);
-  // Voir `etatSecretTotp` : illisible ≠ absent. Le cookie d'attente peut avoir été posé avant la
-  // rotation de la clé et porter un secret provisoire ; l'activer écraserait le vrai.
-  if (etatSecret.etat === "illisible") redirect("/connexion?erreur=2fa-illisible");
-  const secretActif = etatSecret.etat === "actif" ? etatSecret.secret : null;
-  const secret = secretActif ?? attente.secretProvisoire;
-  if (!secret) redirect("/connexion?erreur=session");
-  let parCodeSecours: number | null = null;
-  /*
-   * **Un code TOTP se consomme, il ne se vérifie pas**.
-   *
-   * `verifierCodeTotp` ne regarde que l'horloge : rien ne marquait un code comme déjà servi, et le
-   * même code à six chiffres restait donc valable pendant toute sa fenêtre plus la tolérance de
-   * dérive — 30 à 90 s. Un code aperçu par-dessus une épaule, resté sur une capture d'écran ou dans
-   * le journal d'un proxy ouvrait une **seconde** porte, sur le facteur même qui est censé prouver
-   * la possession du téléphone. `consommerCodeTotp` retient le pas de temps employé et refuse tout
-   * pas inférieur ou égal.
-   *
-   * Les trois portes d'authentification (ici, l'élévation, la ré-authentification) l'appellent :
-   * un chemin corrigé ne dit rien de ses voisins, et un compte n'a qu'une borne pour les trois.
-   */
-  if (!(await consommerCodeTotp(user.id, secret, code))) {
-    // Un code de secours (XXXX-XXXX) remplace le code de l'application, une seule fois — pas pendant la configuration
-    parCodeSecours = secretActif ? await consommerCodeSecours(user.id, code) : null;
-    if (parCodeSecours === null) {
-      await audit({ id: user.id, email: user.email }, "connexion.code_2fa_echec");
-      return { erreur: "Code incorrect ou expiré. Regarde le nouveau code dans ton application et réessaie.", erreurs: { code: "Code incorrect." } };
-    }
-    await audit({ id: user.id, email: user.email }, "connexion.code_secours_utilise", null, { restants: parCodeSecours });
-  }
-  let suite = cheminSuiteSur(attente.suite);
-  let codesAMontrer: { codes: string[]; apres: string } | null = null;
-  if (!secretActif) {
-    await activerTotp(user.id, secret);
-    // Première activation : 8 codes de secours, montrés une seule fois juste après
-    const codes = genererCodesSecours();
-    await enregistrerCodesSecours(user.id, codes);
-    codesAMontrer = { codes, apres: suite };
-    suite = "/connexion/codes-secours";
-    await audit({ id: user.id, email: user.email }, "deux_fa.activee");
-  }
-  await fermerAttente2fa();
-  await oublierDestination(); // la destination a servi
-  await destroySession(); // remplace une éventuelle session ouverte par lien
-  // **Les codes se posent APRÈS `destroySession`**, qui efface le cookie de passage des codes (un
-  // appareil partagé ne doit pas les garder) : posés avant, ils partaient avec lui, l'écran des
-  // codes ne trouvait rien, et les huit codes — gardés seulement hachés — étaient perdus.
-  if (codesAMontrer) await ouvrirAffichageCodes(user.id, codesAMontrer.codes, codesAMontrer.apres);
-  /*
-   * **Se connecter n'ouvre pas l'espace admin**.
-   *
-   * La session créée ici est **ordinaire**, pour tout le monde, y compris un administrateur qui
-   * vient de donner son mot de passe *et* son code. Auparavant elle naissait « forte » pour un
-   * ADMIN — au motif que `/connexion/admin` demande exactement ces deux facteurs, et qu'il serait
-   * absurde de les redemander aussitôt. Le résultat était précisément ce qu'on voulait éviter
-   * ailleurs : on ouvrait l'application et l'on était dans les réglages sans l'avoir demandé, avec
-   * les douze heures de l'élévation qui commençaient à courir toutes seules.
-   *
-   * C'est aussi ce que dit déjà, mot pour mot, la porte d'à côté (`seConnecterCommeAdmin`) : « les
-   * deux preuves sont redemandées même si la session vient d'être ouverte au mot de passe :
-   * l'élévation doit coûter un geste conscient, sinon elle n'est qu'un onglet de plus ». Les deux
-   * chemins disent maintenant la même chose.
-   *
-   * Entrer dans l'application, c'est consulter ses cours — même règle pour tout le monde. L'espace
-   * admin se prend depuis « Mon profil », et lui seul crée une session forte
-   * (`renforcerSessionCourante`).
-   */
-  await createSession(user.id, attente.remember === 1, "mot-de-passe", false);
-  await audit({ id: user.id, email: user.email }, "connexion.succes", null, { resterConnecte: attente.remember === 1, deuxFa: true, forte: false, codeSecours: parCodeSecours !== null });
-  if (parCodeSecours === 0) redirect("/profil?codes=epuises");
-  redirect(await apresConnexion(user.id, suite));
-}
-
-/**
- * **« Plus tard »** : la personne ne veut pas configurer sa double authentification maintenant.
- *
- * Son mot de passe a été vérifié au temps précédent : la session s'ouvre normalement, exactement
- * comme si rien n'avait été proposé. On note seulement la date, pour ne pas lui reposer la question
- * avant un trimestre (`peutProposerDeuxFa`).
- *
- * **Un administrateur ne passe jamais** : pour lui la double authentification est imposée, pas
- * proposée, et cette action le renvoie à l'écran du code. C'est le garde-fou de tout ce parcours —
- * sans lui, « Plus tard » deviendrait la porte dérobée de l'administration technique.
- */
-export async function passerDeuxFa(): Promise<void> {
-  const attente = await lireAttente2fa();
-  if (!attente) redirect("/connexion?erreur=session");
-  const user = await db.user.findUnique({ where: { id: attente.uid } });
-  if (!user || !peutSeConnecterParMotDePasse(user)) redirect("/connexion?erreur=session");
-  if (deuxFaActive(user)) redirect("/connexion/code");
-
-  await db.user.update({ where: { id: user.id }, data: { deuxFaProposeeLe: new Date() } });
-  await fermerAttente2fa();
+  // Mot de passe correct : la session s'ouvre, **ordinaire** — la même que par lien personnel, pour
+  // tout le monde, double authentification configurée ou non. Le code ne se demande qu'à l'ouverture
+  // de l'espace admin (`seConnecterCommeAdmin`) : entrer dans l'application et ouvrir les réglages
+  // techniques sont deux portes, avec deux serrures.
   await oublierDestination();
   await destroySession(); // remplace une éventuelle session ouverte par lien
-  await createSession(user.id, attente.remember === 1, "mot-de-passe", false);
-  await audit({ id: user.id, email: user.email }, "deux_fa.proposition_reportee");
-  await audit({ id: user.id, email: user.email }, "connexion.succes", null, { resterConnecte: attente.remember === 1, deuxFa: false, propositionPassee: true });
-  redirect(await apresConnexion(user.id, cheminSuiteSur(attente.suite)));
+  await createSession(user.id, resterConnecte, "mot-de-passe", false);
+  await audit({ id: user.id, email: user.email }, "connexion.succes", null, { resterConnecte });
+  redirect(await apresConnexion(user.id, destination));
 }
 
 /**
- * Destination après une connexion : la page demandée, sauf deux réglages qui ne se remettent pas
- * à plus tard.
+ * Destination après une connexion : la page demandée, sauf un réglage qui ne se remet pas à plus
+ * tard, dans cet ordre :
+ *  1. un **mot de passe encore provisoire** (compte du portail fraîchement créé), qu'on remplace
+ *     avant toute chose ;
+ *  2. un **membre du bureau dont l'accès n'est pas réglé** (`reglageAccesDu`, compte du portail
+ *     compris) : le parcours obligatoire `/admin/activer` (double authentification, codes de secours).
  *
- * 1. **Mot de passe encore provisoire** (compte d'administration fraîchement créé) : on impose d'en
- *    choisir un avant toute chose.
- * 2. **Administrateur dont l'accès n'est pas réglé** : mot de passe et double authentification lui
- *    sont **obligatoires**, et on le dépose sur son parcours plutôt que de le laisser découvrir
- *    plus tard, devant une porte close, qu'il lui manquait deux réglages. C'est la même règle qu'à
- *    l'ouverture d'un lien personnel (`apresInvitation`) : elle vaut donc pour les deux façons
- *    d'entrer, sans quoi il suffisait de passer par le mot de passe pour y échapper.
- *
- * Ce n'est pas un enfermement : le parcours se quitte, l'application reste utilisable, et c'est la
- * porte de l'espace admin — elle seule — qui reste fermée tant qu'il n'est pas terminé.
+ * Une fois réglé, la connexion ne demande **aucun** code : la page demandée s'ouvre directement, et
+ * seule la porte de l'espace admin (`/connexion/admin`) redemande mot de passe et code.
  */
 async function apresConnexion(userId: string, suite: string): Promise<string> {
-  // Les codes de secours qui viennent d'être générés passent toujours en premier
-  if (suite === "/connexion/codes-secours") return suite;
   const compte = await compteAcces(userId);
   if (compte?.doitChangerMotDePasse) return "/nouveau-mot-de-passe";
-  if (compte && peutReglerSonAcces(compte) && !accesAdminRegle(compte)) return CHEMIN_ACTIVATION_ADMIN;
+  if (reglageAccesDu(compte)) return CHEMIN_ACTIVATION_ADMIN;
   return cheminSuiteSur(suite);
 }
 
@@ -319,7 +163,9 @@ export async function choisirMotDePasse(_prev: FormState, fd: FormData): Promise
   await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(parsed.data.motDePasse), doitChangerMotDePasse: false } });
   await revokeAllSessions(user.id, true);
   await audit({ id: user.id, email: user.email }, "mot_de_passe.premier_choix");
-  redirect("/");
+  // Le compte du portail enchaîne sur sa double authentification (`apresConnexion`) : son étape 1
+  // vient d'être faite ici.
+  redirect(await apresConnexion(user.id, "/"));
 }
 
 /* ------------------------------------------------------------------------------------------------ */
@@ -334,7 +180,8 @@ async function enReglageDacces(): Promise<{ user: CurrentUser; compte: CompteAcc
   const user = await getCurrentUser();
   if (!user) redirect("/connexion?erreur=session");
   const compte = await compteAcces(user.id);
-  // Membre, instructeur, compte désactivé, ou compte du portail (déjà réglé) : rien à faire ici
+  // Membre, instructeur, compte désactivé ou sans adresse : rien à faire ici. Le compte du portail,
+  // lui, passe par ce parcours comme tout membre du bureau.
   if (!compte || !peutReglerSonAcces(compte)) redirect("/?acces=refuse");
   return { user, compte };
 }
@@ -382,7 +229,12 @@ export async function activerDeuxFaAdmin(_prev: FormState, fd: FormData): Promis
   const { user, compte } = await enReglageDacces();
   if (etapeAcces(compte) !== "deux-fa") redirect(CHEMIN_ACTIVATION_ADMIN);
   const ip = await clientIp();
-  if (!(await checkRateLimit("totp_ip", ip)) || !(await checkRateLimit("totp_user", user.id))) return { erreur: MESSAGE_TROP_DE_TENTATIVES };
+  // Chaque essai compte, quelle que soit la pièce fausse (mot de passe, code d'activation, code TOTP) :
+  // c'est ce plafond — 8 essais par quart d'heure et par compte — qui rend le code d'activation
+  // impossible à deviner en pratique (voir docs/SECURITE.md, « Code d'activation »).
+  if (!(await checkRateLimit("totp_ip", ip)) || !(await checkRateLimit("totp_user", user.id)) || !(await checkRateLimit("activation_user", user.id))) {
+    return { erreur: MESSAGE_TROP_DE_TENTATIVES };
+  }
 
   /*
    * **Le mot de passe courant, en plus du code.** C'est cette étape qui rend la session forte : sans
@@ -403,6 +255,28 @@ export async function activerDeuxFaAdmin(_prev: FormState, fd: FormData): Promis
   // Secret provisoire du réglage en cours : rattaché à ce compte, jamais à un autre
   const secret = await lireReglage2fa(user.id);
   if (!secret) redirect(`${CHEMIN_ACTIVATION_ADMIN}?erreur=expire`);
+
+  /*
+   * **Le code d'activation, remis hors bande par un autre membre du bureau.** Le mot de passe
+   * ci-dessus ne suffit pas à prouver qu'on est la personne : pour un membre du bureau pas encore
+   * réglé, c'est **celui qui tient sa boîte email** qui l'a choisi (lien personnel, ou « mot de passe
+   * oublié »). Le code ne passe jamais par l'email : sans lui, rien ne s'active. Vérifié **avant** le
+   * code TOTP et consommé **au succès seulement** — une faute de frappe sur les six chiffres ne coûte
+   * pas le code d'activation. Le compte du portail en est exempté (`exigeCodeActivation`), et la
+   * réinitialisation faite par soi-même aussi, dans le navigateur où elle a été faite.
+   */
+  const exigeCode = exigeCodeActivation(compte);
+  let empreinteCode: string | null = null;
+  if (exigeCode) {
+    const verdict = await controlerCodeActivation(user.id, champ(fd, "codeActivation"));
+    if (!verdict.ok) {
+      await audit({ id: user.id, email: user.email }, "admin.deux_fa_echec", null, { facteur: "code_activation", raison: verdict.raison });
+      const detail =
+        verdict.raison === "expire" ? "Ce code d'activation a expiré (48 heures)." : verdict.raison === "absent" ? "Aucun code d'activation n'est en cours pour ton compte." : "Code d'activation incorrect.";
+      return { erreur: `${detail} ${MESSAGE_CODE_ACTIVATION}`, erreurs: { codeActivation: detail } };
+    }
+    empreinteCode = verdict.empreinte;
+  }
   /*
    * **Ce code est consommé comme les autres**.
    *
@@ -424,9 +298,19 @@ export async function activerDeuxFaAdmin(_prev: FormState, fd: FormData): Promis
     return { erreur: "Code incorrect ou expiré. Regarde le nouveau code dans ton application et réessaie.", erreurs: { code: "Code incorrect." } };
   }
 
+  // Usage unique : écriture conditionnelle sur l'empreinte vérifiée. Un second appel simultané avec le
+  // même code (ou un code remplacé entre-temps par un administrateur) est refusé ici, avant toute activation.
+  if (empreinteCode !== null) {
+    if (!(await consommerCodeActivation(user.id, empreinteCode))) {
+      return { erreur: `Ce code d'activation n'est plus valable. ${MESSAGE_CODE_ACTIVATION}`, erreurs: { codeActivation: "Code d'activation plus valable." } };
+    }
+    await audit({ id: user.id, email: user.email }, "deux_fa.code_activation_utilise", user.id);
+  }
+
   await activerTotp(user.id, secret);
   await fermerReglage2fa();
   await audit({ id: user.id, email: user.email }, "admin.deux_fa_activee", user.id);
+  await alerterDeuxFaActivee({ userId: user.id, prenom: user.prenom, nom: user.nom, ip: await clientIp() }).catch(() => false);
 
   const codes = genererCodesSecours();
   await enregistrerCodesSecours(user.id, codes);
@@ -436,85 +320,6 @@ export async function activerDeuxFaAdmin(_prev: FormState, fd: FormData): Promis
   // Le réglage est complet : la session ouverte par lien personnel devient forte, sur place
   await renforcerSessionCourante(user.sessionId);
   redirect(CHEMIN_ACTIVATION_ADMIN);
-}
-
-/* ------------------------------------------------------------------------------------------------ */
-/* Double authentification **facultative**, réglée depuis « Mon profil » (/profil#securite)           */
-/* ------------------------------------------------------------------------------------------------ */
-
-/**
- * Garde commune des deux actions ci-dessous. Volontairement plus large que `enReglageDacces` : ici
- * **tout le monde** est admis (membre, instructeur, administrateur), pourvu que le compte soit actif,
- * qu'il ait une adresse et qu'il ait **déjà** un mot de passe — on ne met pas un second verrou sur
- * une porte qui n'en a pas encore un. L'identité vient de la session, et de nulle part ailleurs.
- */
-async function enReglageDeSaDeuxFa(): Promise<{ user: CurrentUser; compte: CompteAcces }> {
-  const user = await getCurrentUser();
-  if (!user) redirect("/connexion?erreur=session");
-  const compte = await compteAcces(user.id);
-  if (!compte || !peutSecuriserSonCompte(compte) || !compte.passwordHash) redirect(ANCRE_SECURITE);
-  // Un administrateur nominatif qui n'a pas terminé son parcours obligatoire y reste : une seule
-  // façon de régler un accès administrateur, et c'est /admin/activer.
-  if (peutReglerSonAcces(compte) && etapeAcces(compte) !== "termine") redirect(CHEMIN_ACTIVATION_ADMIN);
-  return { user, compte };
-}
-
-/** Proposer (ou reproposer) un QR code depuis le profil : secret provisoire, 30 min, ce compte seul. */
-export async function preparerMaDeuxFa(): Promise<void> {
-  const { user, compte } = await enReglageDeSaDeuxFa();
-  if (deuxFaActive(compte)) redirect(ANCRE_SECURITE); // déjà active : rien à préparer
-  if (!(await debitReglageOk(user.id))) redirect("/profil?erreur=tentatives#securite");
-  await ouvrirReglage2fa(user.id, genererSecretTotp());
-  redirect(ANCRE_SECURITE);
-}
-
-/**
- * Activer sa double authentification depuis le profil, par un premier code juste, puis afficher les
- * codes de secours une seule fois.
- *
- * **Aucune élévation de session** : à la différence d'`activerDeuxFaAdmin`, rien n'est renforcé ici.
- * La personne repart avec la session qu'elle avait. Activer un second facteur protège son compte ;
- * cela ne lui donne pas un droit de plus — l'administration technique reste au rôle ADMIN, muni
- * d'une session forte ouverte par `/connexion` ou par `/admin/activer`.
- *
- * **Le mot de passe courant est redemandé**, comme pour un administrateur et pour exactement la même
- * raison : sans lui, détenir la session de quelqu'un — un lien personnel laissé ouvert sur un
- * appareil prêté — suffisait à scanner le QR code avec **son propre** téléphone et à repartir avec
- * les codes de secours. Le titulaire se retrouvait dehors, avec un second facteur qui n'était plus
- * le sien. Ses trois voisines (`activerDeuxFaAdmin`, `reinitialiserMaDeuxFa`, `regenererCodesSecours`)
- * le demandaient déjà ; celle-ci était la seule à ne pas le faire. Le mot de passe existe
- * forcément : `enReglageDeSaDeuxFa` refuse un compte qui n'en a pas.
- */
-export async function activerMaDeuxFa(_prev: FormState, fd: FormData): Promise<FormState> {
-  const { user, compte } = await enReglageDeSaDeuxFa();
-  if (deuxFaActive(compte)) redirect(ANCRE_SECURITE);
-  const ip = await clientIp();
-  if (!(await checkRateLimit("totp_ip", ip)) || !(await checkRateLimit("totp_user", user.id))) return { erreur: MESSAGE_TROP_DE_TENTATIVES };
-
-  if (!(await verifyPassword(compte.passwordHash, champ(fd, "motDePasse")))) {
-    await audit({ id: user.id, email: user.email }, "deux_fa.activation_echec", null, { facteur: "mot_de_passe" });
-    return { erreur: "Mot de passe incorrect.", erreurs: { motDePasse: "Mot de passe incorrect." } };
-  }
-
-  const secret = await lireReglage2fa(user.id);
-  if (!secret) redirect("/profil?erreur=expire#securite");
-  // Consommé comme partout ailleurs : même raison qu'`activerDeuxFaAdmin` ci-dessus — le pas de temps
-  // appartient au compte, pas au secret provisoire, et un code non consommé ici resterait valable sur
-  // la connexion et sur la porte de l'espace admin pendant une minute et demie.
-  if (!(await consommerCodeTotp(user.id, secret, champ(fd, "code")))) {
-    await audit({ id: user.id, email: user.email }, "deux_fa.activation_echec");
-    return { erreur: "Code incorrect ou expiré. Regarde le nouveau code dans ton application et réessaie.", erreurs: { code: "Code incorrect." } };
-  }
-
-  await activerTotp(user.id, secret);
-  await fermerReglage2fa();
-  await audit({ id: user.id, email: user.email }, "deux_fa.activee", user.id, { depuis: "profil" });
-
-  const codes = genererCodesSecours();
-  await enregistrerCodesSecours(user.id, codes);
-  await ouvrirAffichageCodes(user.id, codes, ANCRE_SECURITE);
-  await audit({ id: user.id, email: user.email }, "deux_fa.codes_generes", user.id, { nombre: codes.length });
-  redirect("/connexion/codes-secours");
 }
 
 /**
@@ -560,8 +365,9 @@ export async function seConnecterCommeAdmin(_prev: FormState, fd: FormData): Pro
   if (etatSecret.etat === "illisible") return { erreur: MESSAGE_SECRET_2FA_ILLISIBLE };
   if (etatSecret.etat === "absent") redirect(CHEMIN_ACTIVATION_ADMIN);
   const secret = etatSecret.secret;
-  // Le code se consomme ici aussi (voir `verifierCode2fa`) : c'est la porte des réglages techniques,
-  // celle qui vaut le plus la peine d'être rejouée.
+  // Le code se consomme ici aussi : c'est la porte des réglages techniques, celle qui vaut le plus la
+  // peine d'être rejouée.
+  let dernierCode = false;
   if (!(await consommerCodeTotp(user.id, secret, code))) {
     const restants = await consommerCodeSecours(user.id, code);
     if (restants === null) {
@@ -569,10 +375,14 @@ export async function seConnecterCommeAdmin(_prev: FormState, fd: FormData): Pro
       return refus;
     }
     await audit({ id: user.id, email: user.email }, "connexion.code_secours_utilise", null, { restants, contexte: "elevation" });
+    dernierCode = restants === 0;
   }
 
   await renforcerSessionCourante(user.sessionId);
   await audit({ id: user.id, email: user.email }, "admin.espace_ouvert");
+  // Le dernier code de secours vient de servir : on dépose sur la carte qui en régénère, plutôt que
+  // de laisser l'administrateur sans aucun repli au prochain téléphone perdu.
+  if (dernierCode) redirect(CHEMIN_MA_DEUX_FA);
   const suite = cheminSuiteSur(champ(fd, "suite"));
   redirect(suite === "/" ? "/admin" : suite);
 }
@@ -599,15 +409,17 @@ export async function reverifierCode2fa(suite: string, _prev: FormState, fd: For
   // Le bureau se lit sur `estAdmin` : `role === "ADMIN"` n'étant plus jamais vrai, cette garde
   // renvoyait **tout le monde** sur la page de connexion — y compris l'administrateur qu'on vient
   // d'envoyer ici pour confirmer son code, qui se retrouvait dehors au milieu de son geste.
-  if (!user || !user.estAdmin || !user.sessionForte) redirect("/connexion?erreur=admin");
+  if (!user) redirect("/connexion?erreur=session");
+  if (!user.estAdmin || !user.sessionForte) redirect(`/connexion/admin?suite=${encodeURIComponent(cheminSuiteSur(suite))}`);
   const ip = await clientIp();
   if (!(await checkRateLimit("totp_ip", ip)) || !(await checkRateLimit("totp_user", user.id))) return { erreur: MESSAGE_TROP_DE_TENTATIVES };
   const etatSecret = await etatSecretTotp(user.id);
   if (etatSecret.etat === "illisible") return { erreur: MESSAGE_SECRET_2FA_ILLISIBLE };
-  if (etatSecret.etat === "absent") redirect("/connexion?erreur=admin");
+  if (etatSecret.etat === "absent") redirect(CHEMIN_ACTIVATION_ADMIN);
   const secret = etatSecret.secret;
   const code = champ(fd, "code");
-  // Même borne que la connexion et l'élévation (voir `verifierCode2fa`).
+  // Même borne que l'élévation.
+  let dernierCode = false;
   if (!(await consommerCodeTotp(user.id, secret, code))) {
     const restants = await consommerCodeSecours(user.id, code);
     if (restants === null) {
@@ -615,10 +427,11 @@ export async function reverifierCode2fa(suite: string, _prev: FormState, fd: For
       return { erreur: "Code incorrect ou expiré. Regarde le nouveau code dans ton application et réessaie.", erreurs: { code: "Code incorrect." } };
     }
     await audit({ id: user.id, email: user.email }, "connexion.code_secours_utilise", null, { restants, contexte: "reauth" });
+    if (restants === 0) dernierCode = true;
   }
   await marquerReauth(user.sessionId);
   await audit({ id: user.id, email: user.email }, "reauth.ok");
-  redirect(cheminSuiteSur(suite));
+  redirect(dernierCode ? CHEMIN_MA_DEUX_FA : cheminSuiteSur(suite));
 }
 
 /** Page « codes de secours » : l'admin confirme les avoir notés. */
@@ -626,12 +439,6 @@ export async function confirmerCodesSecours(suite: string): Promise<void> {
   const user = await getCurrentUser();
   await fermerAffichageCodes();
   redirect(user ? await apresConnexion(user.id, suite) : cheminSuiteSur(suite));
-}
-
-/** Abandon de la connexion en deux temps. */
-export async function annulerConnexion2fa(): Promise<void> {
-  await fermerAttente2fa();
-  redirect("/connexion");
 }
 
 /** Déconnexion. */
@@ -703,23 +510,13 @@ export async function reinitialiserMotDePasse(token: string, _prev: FormState, f
   ]);
   await revokeAllSessions(reset.userId);
   await audit({ id: reset.userId, email: reset.user.email }, "mot_de_passe.reinitialise");
-  // Même règle qu'à la connexion, et c'est la même fonction : le code est demandé à qui l'a
-  // configuré, et à personne d'autre. Pour les autres, le lien reçu par email a déjà prouvé
-  // l'identité — la session s'ouvre.
-  if (!exigeDeuxFaConnexion(reset.user)) {
-    await createSession(reset.userId, true, "mot-de-passe", false);
-    await audit({ id: reset.userId, email: reset.user.email }, "connexion.succes", null, { deuxFa: false, apresReset: true });
-    redirect("/?mdp=ok");
-  }
-  const etatSecret = await etatSecretTotp(reset.userId);
-  // Même refus qu'à la connexion ordinaire : ce chemin-ci est **le** plus tentant, puisqu'il suffit
-  // d'accéder à la boîte email pour y arriver sans connaître le mot de passe.
-  if (etatSecret.etat === "illisible") {
-    await audit({ id: reset.userId, email: reset.user.email }, "connexion.deux_fa_illisible", null, { apresReset: true });
-    redirect("/connexion?erreur=2fa-illisible");
-  }
-  await ouvrirAttente2fa({ userId: reset.userId, remember: true, suite: "/?mdp=ok", secretProvisoire: etatSecret.etat === "actif" ? undefined : genererSecretTotp() });
-  redirect("/connexion/code");
+  // Même règle qu'à la connexion : la session s'ouvre, ordinaire, sans code. Le lien reçu par email
+  // a prouvé l'identité ; l'espace admin, lui, redemandera mot de passe **et** code — c'est ce qui
+  // empêche une boîte email piratée d'y mener.
+  await createSession(reset.userId, true, "mot-de-passe", false);
+  await audit({ id: reset.userId, email: reset.user.email }, "connexion.succes", null, { apresReset: true });
+  // Un membre du bureau dont l'accès n'est pas réglé enchaîne sur son parcours obligatoire.
+  redirect(reglageAccesDu(reset.user) ? CHEMIN_ACTIVATION_ADMIN : "/?mdp=ok");
 }
 
 /**
@@ -761,11 +558,11 @@ export async function connexionParInvitation(token: string, fd?: FormData): Prom
   // Même règle que la connexion par mot de passe : un écran rouvert n'est pas une destination.
   const destination = destinationApresConnexion(await destinationRetour(fd ? champ(fd, "suite") : undefined));
 
-  // Un administrateur nominatif dont le mot de passe ou la double authentification manquent doit
-  // d'abord les régler : c'est obligatoire pour lui (l'espace admin n'ouvre qu'avec les deux), là
-  // où c'est facultatif pour un membre ou un instructeur. Son lien le connecte quand même — on ne
-  // lui ferme pas l'application —, mais il le dépose sur `/admin/activer`.
-  const reglageAdminDu = peutReglerSonAcces(user) && !accesAdminRegle(user);
+  // Membre du bureau dont l'accès n'est pas réglé : son lien le connecte, mais c'est le parcours
+  // obligatoire `/admin/activer` qui l'attend au bout (après la question de l'installation, si ce
+  // lien ne l'a pas encore posée). La ligne du compte vient d'être lue : `doitChangerMotDePasse`
+  // compris, que la mise en page traite avant (`/nouveau-mot-de-passe`).
+  const reglageAdminDu = reglageAccesDu(user);
 
   const courant = await getCurrentUser();
   if (courant?.id === userId) {

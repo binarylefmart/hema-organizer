@@ -29,7 +29,8 @@ import { SelecteurPeriode, type PeriodeOption } from "@/components/filtres/Selec
 import { ChampDate } from "@/components/filtres/ChampDate";
 import { VoletFiltres } from "@/components/filtres/VoletFiltres";
 import { periodePertinente } from "@/components/filtres/saisons";
-import { lireDateFiltre, lireQuand, seancesDuJour, selectionnerSeances, valeurQuand, type Quand } from "@/components/filtres/temps";
+import { lireDateFiltre, lireQuand, seanceCible, seancesDuJour, selectionnerSeances, valeurQuand, type Quand } from "@/components/filtres/temps";
+import { AllerALaSeanceCible } from "@/components/filtres/AllerALaSeanceCible";
 import { HORIZON_LABELS, HORIZON_LABELS_PASSE, lireHorizon, type Horizon } from "@/lib/horizon";
 import { DeuxColonnes, LARGEUR_PAGE } from "@/components/ui/DeuxColonnes";
 
@@ -377,7 +378,10 @@ async function Liste({
   }
   // Une période terminée n'a plus rien « à venir » : plutôt qu'une page vide, la carte d'information
   // renvoie d'un clic sur le passé, là où ses séances se trouvent réellement.
-  const passeesDisponibles = vue.quand === "avenir" && toutes.some((x) => seanceCommencee(x.date, x.heureDebut, vue.maintenant));
+  const passeesDisponibles = vue.quand === "avenir" && toutes.some((x) => x.date < vue.aujourdHui);
+  // La carte sur laquelle l'écran s'ouvre : le cours du jour, à défaut le prochain — sans cible
+  // explicite seulement (date cherchée, position « Passé ») ; une ancre passe devant, côté navigateur.
+  const cibleId = vue.quand === "avenir" && !vue.date ? (seanceCible(seances, vue.aujourdHui)?.id ?? null) : null;
   if (toutes.length === 0) {
     return choisie ? (
       <Alerte type="info" titre={`Aucun cours dans « ${choisie.nom} »`}>
@@ -412,10 +416,13 @@ async function Liste({
           </p>
         </Alerte>
       ) : enEdition ? (
-        <SelectionEdition seances={seances} periodes={periodes} vue={vue} partEffectifMin={partEffectifMin} peutSupprimer={peutSupprimer} />
+        <SelectionEdition seances={seances} periodes={periodes} vue={vue} partEffectifMin={partEffectifMin} peutSupprimer={peutSupprimer} cibleId={cibleId} />
       ) : (
-        <ListeSeances cartes={seances.map((x) => <CarteSeance key={x.id} seance={x} aujourdHui={vue.aujourdHui} partEffectifMin={partEffectifMin} />)} />
+        <ListeSeances
+          cartes={seances.map((x) => <CarteSeance key={x.id} seance={x} aujourdHui={vue.aujourdHui} partEffectifMin={partEffectifMin} cible={x.id === cibleId} />)}
+        />
       )}
+      <AllerALaSeanceCible />
     </>
   );
 }
@@ -436,12 +443,14 @@ async function SelectionEdition({
   vue,
   partEffectifMin,
   peutSupprimer,
+  cibleId,
 }: {
   seances: SeanceCarte[];
   periodes: Promise<PeriodeOption[]>;
   vue: Vue;
   partEffectifMin: number;
   peutSupprimer: boolean;
+  cibleId: string | null;
 }) {
   const [liste, lieux] = await Promise.all([periodes, getLieux()]);
   const close = new Set(liste.filter((p) => ecritureFermee(p.statut)).map((p) => p.id));
@@ -472,6 +481,7 @@ async function SelectionEdition({
           seance={x}
           aujourdHui={vue.aujourdHui}
           partEffectifMin={partEffectifMin}
+          cible={x.id === cibleId}
           selection={lignes[i] ? <CaseSeance id={x.id} jour={lignes[i].jour} /> : undefined}
           actions={<GestesSeance id={x.id} annulee={x.annulee} passee={seanceCommencee(x.date, x.heureDebut, vue.maintenant)} ouvrir />}
         />

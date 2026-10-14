@@ -1,23 +1,15 @@
 "use client";
 
 import { useActionState } from "react";
-import { verifierCode2fa } from "@/actions/auth";
 import { FORM_INITIAL, type FormState } from "@/lib/form";
 import { Alerte } from "@/components/ui/Alerte";
-import { Bouton } from "@/components/ui/Bouton";
 import { BoutonEnvoi } from "@/components/ui/BoutonEnvoi";
 import { Champ } from "@/components/ui/Champ";
 
 type Props = {
   configuration: boolean;
-  annuler?: () => Promise<void>;
-  /**
-   * Configuration **proposée** et non imposée : ajoute « Plus tard », qui ouvre la session sans rien
-   * configurer. Réservé aux comptes à qui la double authentification n'est pas due (jamais un ADMIN).
-   */
-  passer?: () => Promise<void>;
-  /** Action de vérification (par défaut : second temps de la connexion) */
-  action?: (prev: FormState, fd: FormData) => Promise<FormState>;
+  /** Action de vérification : activation (profil, `/admin/activer`) ou ré-authentification */
+  action: (prev: FormState, fd: FormData) => Promise<FormState>;
   libelle?: string;
   /**
    * Demander **aussi** le mot de passe courant. Posé partout où l'on **rattache un second facteur**
@@ -26,9 +18,14 @@ type Props = {
    * permettait de scanner le QR code avec son propre téléphone et de prendre sa place.
    */
   motDePasse?: boolean;
+  /**
+   * Demander **aussi** le code d'activation remis de vive voix par un autre membre du bureau
+   * (étape 2 de `/admin/activer`, membres du bureau nominatifs) — voir `src/lib/auth/code-activation.ts`.
+   */
+  codeActivation?: boolean;
 };
 
-export function FormulaireCode({ configuration, annuler, passer, action: actionVerif = verifierCode2fa, libelle, motDePasse = false }: Props) {
+export function FormulaireCode({ configuration, action: actionVerif, libelle, motDePasse = false, codeActivation = false }: Props) {
   const [state, action] = useActionState(actionVerif, FORM_INITIAL);
   return (
     <form action={action} className="flex flex-col gap-5" noValidate>
@@ -51,6 +48,22 @@ export function FormulaireCode({ configuration, annuler, passer, action: actionV
           erreur={state.erreurs?.motDePasse}
         />
       )}
+      {codeActivation && (
+        <Champ
+          label="Code d'activation (remis par un membre du bureau)"
+          name="codeActivation"
+          id="codeActivation"
+          autoComplete="off"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={12}
+          required
+          className="text-center text-2xl uppercase tracking-[0.2em]"
+          aide="6 caractères, par exemple K7P-42M. Valable 48 heures, une seule fois."
+          erreur={state.erreurs?.codeActivation}
+        />
+      )}
       <Champ
         label="Code à 6 chiffres"
         name="code"
@@ -65,18 +78,8 @@ export function FormulaireCode({ configuration, annuler, passer, action: actionV
         erreur={state.erreurs?.code}
       />
       <BoutonEnvoi taille="grande" pleineLargeur enCours="Vérification…">
-        {libelle ?? (configuration ? "Activer et me connecter" : "Se connecter")}
+        {libelle ?? (configuration ? "Activer" : "Confirmer")}
       </BoutonEnvoi>
-      {passer && (
-        <Bouton type="submit" variante="secondaire" pleineLargeur formAction={passer} formNoValidate>
-          Plus tard
-        </Bouton>
-      )}
-      {annuler && (
-        <Bouton type="submit" variante="discret" pleineLargeur formAction={annuler} formNoValidate>
-          Annuler
-        </Bouton>
-      )}
     </form>
   );
 }

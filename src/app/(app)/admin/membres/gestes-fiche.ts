@@ -185,9 +185,12 @@ function decrire(geste: GesteFiche, p: PersonneFiche): GesteFicheOffert {
               ? `${p.prenom} reçoit aussitôt un lien neuf par email. ${phraseEmails(1)}`
               : "Rien ne partira (pas d'adresse, compte désactivé ou pas inscrit(e) à une période active) : l'accès sera seulement remis à zéro, et c'est « Envoyer le lien » de la carte « Périodes et liens d'accès » qui reprendra la main.",
             "Le compte et tout son historique restent intacts : présences, ateliers, réponses.",
+            ...(p.estAdmin
+              ? [`${p.prenom} est du bureau : un code d'activation s'affichera en haut de la page, une seule fois. Transmets-le de vive voix ou en main propre, jamais par email — sans lui, sa double authentification ne se réactive pas.`]
+              : []),
           ],
         },
-        confirmation: `Remettre à zéro l'accès de ${nom} ? Mot de passe, double authentification, codes de secours et liens en cours seront effacés, et tous ses appareils déconnectés. Son historique n'est pas touché.`,
+        confirmation: `Remettre à zéro l'accès de ${nom} ? Mot de passe, double authentification, codes de secours et liens en cours seront effacés, et tous ses appareils déconnectés. Son historique n'est pas touché.${p.estAdmin ? " Un code d'activation va s'afficher, à lui transmettre de vive voix ou en main propre." : ""}`,
         definitif: true,
         fait: "L'accès est remis à zéro.",
       };

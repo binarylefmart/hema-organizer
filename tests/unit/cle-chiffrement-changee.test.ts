@@ -113,7 +113,7 @@ describe("un secret TOTP illisible n'est pas « pas de secret »", () => {
   });
 });
 
-describe("les cinq portes refusent, aucune ne remplace", () => {
+describe("les portes refusent, aucune ne remplace", () => {
   /**
    * Un balayage, et il dit ce qu'il prouve : que **chaque** lecture du secret dans les actions
    * d'authentification traite le cas « illisible ». Il ne prouve pas ce que fait l'action ensuite —
@@ -124,7 +124,7 @@ describe("les cinq portes refusent, aucune ne remplace", () => {
     const { readFileSync } = await import("node:fs");
     const code = readFileSync("src/actions/auth.ts", "utf8");
     const lectures = code.match(/etatSecretTotp\(/g) ?? [];
-    expect(lectures.length, "cinq portes lisent le secret : connexion, code, élévation, ré-auth, sortie du reset").toBeGreaterThanOrEqual(5);
+    expect(lectures.length, "deux portes lisent le secret : élévation, ré-auth").toBeGreaterThanOrEqual(2);
     expect(code.match(/etat === "illisible"/g) ?? []).toHaveLength(lectures.length);
     // Et `secretTotpActif`, qui confondait les deux états, n'existe plus — pas même dans un appel oublié.
     expect(code).not.toContain("secretTotpActif(");

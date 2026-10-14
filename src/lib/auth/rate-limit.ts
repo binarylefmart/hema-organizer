@@ -25,6 +25,11 @@ export const RATE_LIMITS = {
   /** Réglage de l'accès administrateur (/admin/activer) : mêmes ordres de grandeur que la connexion */
   activation_ip: { max: 20, windowMs: 15 * 60 * 1000 },
   activation_user: { max: 10, windowMs: 15 * 60 * 1000 },
+  /** « Demander la réinitialisation de ma double authentification » : une demande toutes les six heures (`DELAI_ENTRE_DEMANDES_MS`) */
+  demande_2fa_user: { max: 3, windowMs: 6 * 60 * 60 * 1000 },
+  // « Planning modifié » : une annonce par « Appliquer », vingt par heure et par auteur au plus — un
+  // lot rejoué en boucle (thème A ↔ B) ne doit pas vider le quota d'envoi du club
+  planning_annonce_user: { max: 20, windowMs: 60 * 60 * 1000 },
   unsubscribe_ip: { max: 20, windowMs: 60 * 60 * 1000 },
   /** Ouvertures de la page d'annulation par lien d'email (publique, sans connexion) : mêmes ordres de grandeur que /invitation */
   annulation_ip: { max: 30, windowMs: 15 * 60 * 1000 },

@@ -45,12 +45,11 @@ describe("où mène l'ouverture d'un lien", () => {
 });
 
 /**
- * **Le régime strict des administrateurs** : mot de passe et double authentification sont
- * facultatifs pour un membre ou un instructeur, **obligatoires pour un ADMIN** — l'espace admin
- * n'ouvre qu'avec les deux. Son lien personnel le connecte quand même, comme tout le monde ; c'est
- * la destination qui change.
+ * **Un membre du bureau non réglé est déposé sur son réglage** : mot de passe et double
+ * authentification lui sont **obligatoires** (compte du portail compris). Son lien le connecte comme
+ * tout le monde ; c'est la destination qui change.
  */
-describe("un administrateur non réglé est déposé sur son réglage", () => {
+describe("un membre du bureau non réglé est déposé sur son réglage", () => {
   it("remplace la page demandée par /admin/activer", () => {
     expect(apresInvitation(DEJA_VU, "/planning", true)).toBe("/admin/activer");
     expect(apresInvitation(DEJA_VU, "/", true)).toBe("/admin/activer");
@@ -62,9 +61,10 @@ describe("un administrateur non réglé est déposé sur son réglage", () => {
     expect(apresInvitation(null, "/planning", true)).toBe("/bienvenue?suite=%2Fadmin%2Factiver");
   });
 
-  it("ne change rien pour qui n'est pas concerné", () => {
+  it("ne change rien pour qui n'est pas concerné (membre, instructeur, bureau réglé)", () => {
     expect(apresInvitation(DEJA_VU, "/planning", false)).toBe("/planning");
     expect(apresInvitation(DEJA_VU, "/planning")).toBe("/planning");
+    expect(apresInvitation(null, "/planning")).toBe("/bienvenue?suite=%2Fplanning");
   });
 });
 
@@ -81,8 +81,9 @@ describe("l'écran de bienvenue ne propose pas à un administrateur ce qui lui e
     const fs = await import("node:fs");
     const path = await import("node:path");
     const page = fs.readFileSync(path.join(process.cwd(), "src/app/(app)/bienvenue/page.tsx"), "utf8");
-    expect(page).toContain("peutReglerSonAcces(compte)");
-    expect(page).toContain("accesAdminRegle(compte)");
+    expect(page).toContain("const reglageAdminDu = reglageAccesDu(compte);");
+    // …et il en sort vers le parcours obligatoire, quelle que soit la page demandée
+    expect(page).toContain("const suite = reglageAdminDu ? CHEMIN_ACTIVATION_ADMIN : demandee;");
   });
 });
 
@@ -98,6 +99,8 @@ describe("le marqueur est sur l'invitation, pas sur la personne", () => {
     expect(corps).toContain("await marquerParcoursVu(id);");
     // …et c'est bien le marqueur de l'invitation qui décide de la destination
     expect(corps).toContain("redirect(apresInvitation(parcoursVuLe, destination, reglageAdminDu));");
+    // Le réglage dû se lit sur le compte, avec la règle unique
+    expect(corps).toContain("const reglageAdminDu = reglageAccesDu(user);");
     // L'ancien déclencheur (« premier accès de la personne ») ne doit plus servir à router
     expect(corps).not.toContain("apresInvitation(usedAt");
   });

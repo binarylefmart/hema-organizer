@@ -26,18 +26,21 @@ test.afterAll(restaurerCompteAdministration);
 /**
  * **Le code n'est demandé qu'à qui l'a configuré** : ce compte, remis à l'état de première
  * connexion, n'a pas encore de double authentification — le lien reçu par email a déjà prouvé
- * l'identité, la session s'ouvre donc directement. Le mot de passe du seed étant provisoire,
- * l'application impose ensuite d'en choisir un vrai.
+ * l'identité, la session s'ouvre donc directement.
  *
- * La double authentification se reconfigure alors depuis « Mon profil → Sécuriser mon compte » :
- * c'est le chemin de ce compte-ci (le parcours `/admin/activer` est réservé aux administrateurs
- * **nominatifs**). La preuve qu'elle est bien active n'est pas une pastille mais un comportement :
- * la connexion suivante redemande un code.
+ * Il est du bureau : son réglage est obligatoire, et il passe par le parcours `/admin/activer`
+ * (mot de passe → QR code → codes de secours), le seul endroit où une double authentification
+ * s'active — « Mon profil » n'en montre plus que l'état. On y va explicitement : selon la règle
+ * d'entrée, la réinitialisation y dépose déjà, ou pas encore.
+ *
+ * Puis la gestion **dans l'espace admin** (« Comptes admin » → « Ma double authentification ») :
+ * régénérer ses codes de secours, et réinitialiser sa double authentification — qui ramène au
+ * parcours avec un nouveau QR code.
  */
-test("le compte d'administration réinitialise son mot de passe par email, puis reconfigure la double authentification", async ({ page }) => {
-  // Le parcours le plus long de la suite côté comptes : réinitialisation, mot de passe définitif,
-  // QR code, codes de secours, puis une reconnexion complète.
-  test.setTimeout(120_000);
+test("le compte d'administration réinitialise son mot de passe par email, règle sa double authentification, puis la gère dans l'espace admin", async ({ page }) => {
+  // Le parcours le plus long de la suite côté comptes : réinitialisation, QR code, codes de secours,
+  // reconnexion, élévation, régénération des codes, réinitialisation de la 2FA.
+  test.setTimeout(180_000);
   await page.goto("/mot-de-passe-oublie");
   await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
   await page.getByRole("button", { name: "Recevoir le lien" }).click();
@@ -61,68 +64,72 @@ test("le compte d'administration réinitialise son mot de passe par email, puis 
   await page.getByLabel("Mot de passe", { exact: true }).fill("nouveau-mot-de-passe");
   await page.getByLabel("Le même mot de passe, une deuxième fois").fill("nouveau-mot-de-passe");
   await page.getByRole("button", { name: "Enregistrer et me connecter" }).click();
-  /*
-   * Aucune double authentification sur ce compte (`etatPremiereConnexion` l'a retirée) : la session
-   * s'ouvre sans second facteur. Et **sans passer par « Choisis ton mot de passe »**, bien que le
-   * compte soit encore marqué provisoire : celui qu'on vient de choisir **est** le vrai, la
-   * réinitialisation lève donc elle-même ce caractère. Sans cela, on renvoyait la personne choisir
-   * un mot de passe juste après l'avoir choisi — une boucle absurde, corrigée dans l'action.
-   */
-  await page.waitForURL((u) => u.pathname === "/" && u.search.includes("mdp=ok"));
+  // Aucune double authentification (`etatPremiereConnexion` l'a retirée) : la session s'ouvre sans
+  // second facteur, sans repasser par « Choisis ton mot de passe ».
+  await page.waitForURL((u) => !u.pathname.startsWith("/reinitialiser") && !u.pathname.startsWith("/connexion"));
 
   // Le lien de réinitialisation est à usage unique
   await page.goto(lien!);
   await expect(page.getByRole("heading", { name: "Lien expiré" })).toBeVisible();
 
-  // Reconfiguration de la double authentification, depuis « Mon profil »
+  // « Mon profil » ne propose plus d'activer une double authentification : il renvoie au parcours
   await page.goto("/profil#securite");
-  await page.getByRole("button", { name: "Activer la double authentification" }).click();
+  await expect(page.getByRole("button", { name: "Activer la double authentification" })).toHaveCount(0);
+
+  // Le parcours imposé : étape 2, le QR code
+  await page.goto("/admin/activer");
+  await page.getByRole("button", { name: "Afficher mon QR code" }).click();
   const aLaMain = page.locator("details", { hasText: "Impossible de scanner" });
   await aLaMain.getByText("Impossible de scanner").click();
   const cle = (await aLaMain.locator("code").textContent())!.replace(/\s+/g, "");
-  /*
-   * **Le mot de passe courant est redemandé** avec le premier code : sans lui, détenir la session
-   * de quelqu'un suffisait à scanner le QR code avec son propre téléphone et à repartir avec ses
-   * codes de secours. C'est celui qu'on vient de choisir.
-   *
-   * On vise le formulaire d'activation lui-même (le seul qui porte un champ « code »), et par le nom
-   * du champ plutôt que par son libellé : l'écran « Mon profil » porte **deux** champs `motDePasse`
-   * — celui du changement de mot de passe, replié, et celui-ci — et `Champ` tire l'identifiant du
-   * nom. Les deux `<label for="motDePasse">` désignent donc le premier, replié : `getByLabel` tombe
-   * sur un champ invisible. Défaut d'écran signalé à part ; le test, lui, ne doit pas en dépendre.
-   */
-  const activation = page.locator("form").filter({ has: page.locator('input[name="code"]') });
-  await activation.locator('input[name="motDePasse"]').fill("nouveau-mot-de-passe");
-  /*
-   * **`codeTotpFrais`, et non `codeTotp`**. Le serveur refuse tout pas de temps inférieur ou égal
-   * au dernier accepté, et cette borne vit sur le **compte** (`User.totpDernierPas`), pas sur le
-   * secret : la connexion qui précède, quelques secondes plus tôt, vient de consommer le pas
-   * courant. Un code calculé naïvement sur la clé **neuve** retombe donc sur un pas déjà brûlé,
-   * l'activation est rejetée — à juste titre — et l'écran revient à `/profil` au lieu d'aller aux
-   * codes de secours. Le test attendait alors deux minutes une navigation qui ne viendrait jamais.
-   *
-   * L'outillage des captures a reçu ce correctif le matin même ; cette spec était le dernier endroit
-   * à calculer un code à la main.
-   */
-  await activation.locator('input[name="code"]').fill(await codeTotpFrais(cle));
-  await activation.getByRole("button", { name: "Activer la double authentification" }).click();
-  // Les 8 codes de secours sont montrés une seule fois
-  await page.waitForURL("**/connexion/codes-secours");
+  // **Le mot de passe courant est redemandé** avec le premier code, et le code est calculé par
+  // `codeTotpFrais` : la borne anti-rejeu vit sur le compte, et la connexion qui précède a pu brûler
+  // le pas courant.
+  await page.getByLabel("Mon mot de passe").fill("nouveau-mot-de-passe");
+  await page.getByLabel("Code à 6 chiffres").fill(await codeTotpFrais(cle));
+  await page.getByRole("button", { name: "Activer la double authentification" }).click();
+  // Étape 3 : les 8 codes de secours, montrés une seule fois
   await expect(page.getByRole("list", { name: "Codes de secours" }).getByRole("listitem")).toHaveCount(8);
   await page.getByRole("button", { name: "J'ai noté mes codes" }).click();
+  await page.waitForURL((u) => u.pathname.startsWith("/admin") && !u.pathname.startsWith("/admin/activer"));
 
-  // Elle est bien en place : la connexion suivante redemande un code (et le mot de passe choisi à la
-  // réinitialisation sert — c'est le seul qu'on ait posé)
+  // Elle est bien en place : la connexion suivante n'en demande pas, mais l'espace admin l'exige
   await page.goto("/profil");
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL("**/connexion");
   await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
   await page.getByLabel("Mot de passe", { exact: true }).fill("nouveau-mot-de-passe");
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("**/connexion/code");
-  await page.getByLabel("Code à 6 chiffres").fill(await codeTotpFrais(cle));
-  await page.getByRole("button", { name: "Se connecter" }).click();
   await page.waitForURL((u) => !u.pathname.startsWith("/connexion"));
+  // « Mon profil » montre le bouton de qui n'entrerait plus dans l'espace admin
+  await page.goto("/profil#securite");
+  await expect(page.getByRole("button", { name: "Demander la réinitialisation de ma double authentification" })).toBeVisible();
+  await page.goto("/connexion/admin?suite=%2Fadmin%2Fcomptes");
+  await page.getByLabel("Mon mot de passe").fill("nouveau-mot-de-passe");
+  await page.getByLabel("Code à 6 chiffres").fill(await codeTotpFrais(cle));
+  await page.getByRole("button", { name: "Ouvrir l'espace admin" }).click();
+  await page.waitForURL("**/admin/comptes**");
+
+  // Dans l'espace admin : régénérer ses codes de secours (mot de passe redemandé)
+  const rubrique = page.locator("#ma-deux-fa");
+  await expect(rubrique.getByRole("heading", { name: "Ma double authentification" })).toBeVisible();
+  await rubrique.locator("#codes-motDePasse").fill("nouveau-mot-de-passe");
+  await rubrique.getByRole("button", { name: "Régénérer mes codes de secours" }).click();
+  await page.waitForURL("**/connexion/codes-secours");
+  await expect(page.getByRole("list", { name: "Codes de secours" }).getByRole("listitem")).toHaveCount(8);
+  await page.getByRole("button", { name: "J'ai noté mes codes" }).click();
+  await page.waitForURL("**/admin/comptes**");
+
+  // Nouveau téléphone : réinitialiser sa double authentification ramène au parcours, étape 2
+  await page.locator("#ma-deux-fa #deuxfa-motDePasse").fill("nouveau-mot-de-passe");
+  // La confirmation dit ce que la réinitialisation entraîne : on l'accepte (Playwright la refuse par défaut)
+  page.once("dialog", (d) => void d.accept());
+  await page.locator("#ma-deux-fa").getByRole("button", { name: "Réinitialiser ma double authentification" }).click();
+  await page.waitForURL("**/admin/activer**");
+  // Le nouveau QR code est prêt tout de suite, et ce compte (le portail) n'a pas de code d'activation
+  // à présenter — personne d'autre que lui ne touche à sa double authentification.
+  await expect(page.getByRole("img", { name: "QR code à scanner avec l'application d'authentification" })).toBeVisible();
+  await expect(page.getByLabel("Code d'activation (remis par un membre du bureau)")).toHaveCount(0);
 });
 
 test("une adresse inconnue ou non-admin reçoit la même réponse (pas d'énumération)", async ({ page }) => {

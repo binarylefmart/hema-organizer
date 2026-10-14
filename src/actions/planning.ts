@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
-import { formatDateSansAnnee, minuscule, todayIso } from "@/lib/dates";
+import { formatDateSansAnnee, minuscule, seanceCommencee, todayIso } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { assertPermission } from "@/lib/auth/current-user";
@@ -16,6 +16,7 @@ import {
   type NatureElement,
 } from "@/lib/constants";
 import { notifierDecisionAtelier } from "@/lib/notifications/ateliers";
+import { annoncerAttentePlanning, differerModificationsPlanning, differerRetraitPlanning, oublierRetraitsPlanning, signalerEcrituresPlanning } from "@/lib/notifications/planning-modifie";
 import { champ, zodToFormState, type FormState } from "@/lib/form";
 import {
   getThemes,
@@ -59,6 +60,14 @@ function rafraichir(sessionId?: string) {
 }
 
 /**
+ * **Un cours commencé garde son programme tel quel** (demande de Delta : la séance reste affichée,
+ * grisée et non modifiable, jusqu'au lendemain). La règle est `seanceCommencee` — la même que le
+ * verrou des réponses (`indiquerPresence`) et de l'annulation —, posée sur les deux portes du
+ * planning, donc sur toutes ses écritures : case, lot, ajout, retrait, déplacement, atelier.
+ */
+const REFUS_SEANCE_COMMENCEE = "Ce cours a déjà commencé : son programme ne se modifie plus.";
+
+/**
  * **La partie, la séance qui la porte, et le droit d'y toucher** — la porte commune des actions qui
  * suivent.
  *
@@ -76,7 +85,7 @@ async function partiePourEcriture(partieId: string, client: Pick<Prisma.Transact
       instructeur: { select: { prenom: true, nom: true } },
       instructeurSecond: { select: { prenom: true, nom: true } },
       session: {
-        select: { id: true, date: true, annulee: true, period: { select: { statut: true } } },
+        select: { id: true, date: true, heureDebut: true, annulee: true, period: { select: { statut: true } } },
       },
     },
   });
@@ -96,6 +105,8 @@ async function partiePourEcriture(partieId: string, client: Pick<Prisma.Transact
    * aucun programme sur une séance annulée, et `retablirSeance` existe — on rétablit, puis on règle.
    */
   if (partie.session.annulee) return { erreur: "Cette séance est annulée : son programme n'a plus d'objet. Rétablis-la d'abord." } as const;
+  // La partie voyage avec le refus : le geste par lots nomme ainsi la case et la séance fautives.
+  if (seanceCommencee(partie.session.date, partie.session.heureDebut)) return { erreur: REFUS_SEANCE_COMMENCEE, commencee: partie } as const;
   return { partie } as const;
 }
 
@@ -103,7 +114,7 @@ async function partiePourEcriture(partieId: string, client: Pick<Prisma.Transact
 async function seancePourEcriture(sessionId: string) {
   const session = await db.session.findUnique({
     where: { id: sessionId },
-    select: { id: true, date: true, annulee: true, period: { select: { statut: true } } },
+    select: { id: true, date: true, heureDebut: true, annulee: true, period: { select: { statut: true } } },
   });
   if (!session) return { erreur: "Séance introuvable." } as const;
   if (ecritureFermee(session.period.statut))
@@ -111,6 +122,7 @@ async function seancePourEcriture(sessionId: string) {
   // Même règle que pour une partie existante, et pour la même raison : ajouter une ligne au
   // programme d'un cours annulé n'a pas d'objet, et ce programme sort du club.
   if (session.annulee) return { erreur: "Cette séance est annulée : son programme n'a plus d'objet. Rétablis-la d'abord." } as const;
+  if (seanceCommencee(session.date, session.heureDebut)) return { erreur: REFUS_SEANCE_COMMENCEE } as const;
   return { session } as const;
 }
 
@@ -392,6 +404,8 @@ export async function enregistrerCase(input: {
     avant.sessionId,
     detailsCase(avant, apres, parsed.data),
   );
+  // Réglage par réglage sur la fiche : regroupé par auteur avant de prévenir les instructeurs.
+  differerModificationsPlanning(user, [{ avant, apres }]);
   rafraichir(avant.sessionId);
   return { succes: "Enregistré" };
 }
@@ -495,10 +509,11 @@ function compteRenduLot(ecrites: number, inchangees: number): string {
  * `synchroniserSeance` et `rafraichir` sont appelés **une fois par séance touchée** — un lot en porte
  * plusieurs, et les appeler par case recopierait dix fois le même programme dans la même séance.
  *
- * ## Rien ne part vers les gens
+ * ## Un seul message aux instructeurs
  *
- * Comme le geste unitaire : le planning ne notifie personne, c'est le récap de la veille qui publie
- * le programme, et un geste de masse n'envoie jamais la notification du geste unitaire multipliée.
+ * Les éléments échauffement, cours et option ajoutés ou modifiés partent dans **un** message
+ * `planning_modifie` pour tout le lot (`signalerEcrituresPlanning`), jamais un par case ; il ne lève
+ * pas. Les membres, eux, n'en reçoivent rien : c'est le récap de la veille qui publie le programme.
  */
 export async function enregistrerCases(input: {
   cases: Array<{
@@ -550,7 +565,7 @@ export async function enregistrerCases(input: {
     const ctx = await partiePourEcriture(reglages.partieId);
     // Ni libellé ni date à nommer dans ce cas-là (la ligne n'a pas été relue), et l'identifiant ne
     // se recopie pas : la phrase partagée dit déjà ce qu'il faut faire.
-    if ("erreur" in ctx) return { erreur: `${ctx.erreur} Rien n'a été enregistré.` };
+    if ("erreur" in ctx) return "commencee" in ctx && ctx.commencee ? refusDuLot(ctx.commencee, ctx.erreur) : { erreur: `${ctx.erreur} Rien n'a été enregistré.` };
     const avant = ctx.partie;
     themeFigeParAtelier(avant, reglages);
     sansThemeNiDetails(reglages);
@@ -574,7 +589,11 @@ export async function enregistrerCases(input: {
 
   // Rien à écrire : on ne synchronise pas, on ne journalise pas et on ne revalide rien — le geste
   // unitaire s'arrête de la même façon sur sa case (« Rien à changer. »).
-  if (aEcrire.length === 0) return { succes: compteRenduLot(0, inchangees) };
+  // Les suppressions faites pendant la modification partent pourtant : « Appliquer » a été appuyé.
+  if (aEcrire.length === 0) {
+    await signalerEcrituresPlanning(user, []);
+    return { succes: compteRenduLot(0, inchangees) };
+  }
 
   // Une seule transaction, case après case : la teinte d'une case dont le thème change se choisit
   // parmi celles que portent **déjà** les autres éléments de la séance — y compris une voisine du
@@ -621,6 +640,7 @@ export async function enregistrerCases(input: {
     });
   }
 
+  await signalerEcrituresPlanning(user, aEcrire.map(({ avant }, i) => ({ avant, apres: apres[i] })));
   for (const sessionId of seancesTouchees) rafraichir(sessionId);
   return { succes: compteRenduLot(aEcrire.length, inchangees) };
 }
@@ -1017,6 +1037,8 @@ export async function retirerPartie(input: {
     niveau: libelleNiveau(partie.niveau),
     ...(atelier ? { atelier: atelier.titre } : {}),
   });
+  // Annoncé aux instructeurs avec le prochain « Appliquer les modifications », jamais sans lui
+  differerRetraitPlanning(user, partie);
   rafraichir(partie.sessionId);
   if (atelier) revalidatePath("/ateliers");
   return { succes: atelier ? "Élément retiré — l'atelier est de retour en attente." : "Élément retiré." };
@@ -1390,4 +1412,19 @@ export async function enregistrerLieux(
   return {
     succes: `${lieux.length} lieu${lieux.length > 1 ? "x" : ""} enregistré${lieux.length > 1 ? "s" : ""}.`,
   };
+}
+
+/**
+ * **« Appliquer les modifications » sans case à écrire** : les suppressions faites pendant la
+ * modification partent maintenant aux instructeurs (`planning_modifie`), en un message.
+ */
+export async function annoncerModificationsAppliquees(): Promise<void> {
+  const user = await assertPermission("planning.edit");
+  await annoncerAttentePlanning(user);
+}
+
+/** **« Annuler »** : les suppressions faites pendant la modification ne seront pas annoncées. */
+export async function oublierModificationsNonAppliquees(): Promise<void> {
+  const user = await assertPermission("planning.edit");
+  oublierRetraitsPlanning(user.id);
 }

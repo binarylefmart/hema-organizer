@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { COMPTES, connecter, DEMO_TOTP_SECRET, demoLien, MDP } from "./helpers";
-import { codeTotp } from "@/lib/auth/totp";
+import { codeTotpFrais } from "../../prisma/comptes";
+import { COMPTES, connecter, deconnecter, demoLien, MDP, remettreBureauNonRegle } from "./helpers";
 
 /**
  * Parcours : lien d'accès personnel → ouverture directe (sans mot de passe) → écran de bienvenue → présence.
@@ -107,17 +107,10 @@ test("un membre ne peut pas ouvrir l'espace de gestion", async ({ page }) => {
   await expect(page.getByText("Tu n'as pas accès à cette page.")).toBeVisible();
 });
 
-test("un administrateur se connecte avec mot de passe puis code de double authentification", async ({ page }) => {
+test("un administrateur se connecte au mot de passe seul : le code n'est demandé qu'à l'espace admin", async ({ page }) => {
   await page.goto("/connexion");
   await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
   await page.getByLabel("Mot de passe", { exact: true }).fill(MDP);
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await page.waitForURL("**/connexion/code");
-  // Pas de session tant que le code n'est pas bon
-  await page.getByLabel("Code à 6 chiffres").fill("000000");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page.getByText("Code incorrect ou expiré.")).toBeVisible();
-  await page.getByLabel("Code à 6 chiffres").fill(codeTotp(DEMO_TOTP_SECRET));
   await page.getByRole("button", { name: "Se connecter" }).click();
   await page.waitForURL((u) => u.pathname === "/");
   /*
@@ -219,24 +212,122 @@ test("un administrateur régénère puis révoque le lien d'un membre", async ({
   await expect(page.getByText(/Ce lien a été annulé/)).toBeVisible();
 });
 
-test("un administrateur peut se connecter avec un code de secours, une seule fois", async ({ page }) => {
-  const debut = async () => {
-    await page.goto("/connexion");
-    await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
-    await page.getByLabel("Mot de passe", { exact: true }).fill(MDP);
-    await page.getByRole("button", { name: "Se connecter" }).click();
-    await page.waitForURL("**/connexion/code");
+test("un administrateur peut ouvrir l'espace admin avec un code de secours, une seule fois", async ({ page }) => {
+  const porte = async () => {
+    await page.goto("/connexion/admin");
+    await page.getByLabel("Mon mot de passe").fill(MDP);
   };
-  await debut();
-  await page.getByLabel("Code à 6 chiffres").fill("jklm npqr");
+  await page.goto("/connexion");
+  await page.getByLabel("Email", { exact: true }).fill(COMPTES.admin);
+  await page.getByLabel("Mot de passe", { exact: true }).fill(MDP);
   await page.getByRole("button", { name: "Se connecter" }).click();
   await page.waitForURL((u) => u.pathname === "/");
+  await porte();
+  await page.getByLabel("Code à 6 chiffres").fill("jklm npqr");
+  await page.getByRole("button", { name: "Ouvrir l'espace admin" }).click();
+  await page.waitForURL((u) => !u.pathname.startsWith("/connexion"));
+  // Refermer l'espace admin, puis rejouer le même code : refusé
   await page.goto("/profil");
+  await page.getByRole("button", { name: "Quitter l'espace admin" }).click();
+  await porte();
+  await page.getByLabel("Code à 6 chiffres").fill("JKLM-NPQR");
+  await page.getByRole("button", { name: "Ouvrir l'espace admin" }).click();
+  await expect(page.getByText(/Mot de passe ou code incorrect/)).toBeVisible();
+});
+
+/**
+ * **Un membre du bureau sans double authentification ne va pas plus loin que son réglage** : son
+ * lien le connecte comme tout le monde, mais le parcours `/admin/activer` est obligatoire avant
+ * tout le reste (la question de l'installation peut passer avant). Tout écran l'y ramène, et il
+ * peut toujours se déconnecter.
+ */
+test("un membre du bureau non réglé entre par son lien et est tenu de régler son accès", async ({ page }) => {
+  await connecter(page, COMPTES.admin3);
+  if (new URL(page.url()).pathname === "/bienvenue") {
+    await page.getByRole("button", { name: "Non, continuer dans le navigateur" }).click();
+  }
+  await page.waitForURL((u) => u.pathname === "/admin/activer");
+  await expect(page.getByText("Obligatoire pour les membres du bureau")).toBeVisible();
+  // Le code d'activation est annoncé dès l'étape 1 : il faut le temps de joindre un membre du bureau
+  await expect(page.getByText("Un code d'activation sera nécessaire")).toBeVisible();
+  // Aucun autre écran ne s'ouvre tant que le réglage n'est pas fait
+  await page.goto("/planning");
+  await page.waitForURL((u) => u.pathname === "/admin/activer");
+  await page.goto("/profil");
+  await page.waitForURL((u) => u.pathname === "/admin/activer");
+  // La sortie existe
   await page.getByRole("button", { name: "Se déconnecter" }).click();
   await page.waitForURL("**/connexion");
-  // Le même code est refusé la deuxième fois
-  await debut();
-  await page.getByLabel("Code à 6 chiffres").fill("JKLM-NPQR");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page.getByText("Code incorrect ou expiré.")).toBeVisible();
+});
+
+/**
+ * **Le code d'activation ferme la voie « boîte email ou lien volé → espace admin ».** Celui qui
+ * ouvre le lien d'un membre du bureau non réglé choisit le mot de passe et voit le QR code, mais
+ * l'étape 2 n'active rien sans le code qu'un autre membre du bureau génère dans Comptes admin et
+ * remet de vive voix. Puis le vrai parcours : le bureau génère le code, la personne le saisit.
+ */
+test("un membre du bureau ne règle sa double authentification qu'avec le code d'activation remis par le bureau", async ({ page }) => {
+  test.setTimeout(180_000);
+  await remettreBureauNonRegle(COMPTES.admin3);
+  const MOT_DE_PASSE_FOXTROT = "foxtrot-escrime-2026";
+  try {
+    // 1. Par son lien : étape 1 (mot de passe), puis l'étape 2 sans code — refusée
+    await connecter(page, COMPTES.admin3);
+    if (new URL(page.url()).pathname === "/bienvenue") {
+      await page.getByRole("button", { name: "Non, continuer dans le navigateur" }).click();
+    }
+    await page.waitForURL((u) => u.pathname === "/admin/activer");
+    await page.getByLabel("Nouveau mot de passe").fill(MOT_DE_PASSE_FOXTROT);
+    await page.getByLabel("Confirmer le mot de passe").fill(MOT_DE_PASSE_FOXTROT);
+    await page.getByRole("button", { name: "Enregistrer mon mot de passe" }).click();
+    await expect(page.getByRole("heading", { name: "Étape 2 — Activer la double authentification" })).toBeVisible();
+    await expect(page.getByText("Demande un code d'activation à un membre du bureau : il le génère dans Comptes admin.").first()).toBeVisible();
+    const aLaMain = page.locator("details", { hasText: "Impossible de scanner" });
+    await aLaMain.getByText("Impossible de scanner").click();
+    const cle = (await aLaMain.locator("code").textContent())!.replace(/\s+/g, "");
+    await page.getByLabel("Mon mot de passe").fill(MOT_DE_PASSE_FOXTROT);
+    await page.getByLabel("Code d'activation (remis par un membre du bureau)").fill("ABC-DEF");
+    await page.getByLabel("Code à 6 chiffres").fill(await codeTotpFrais(cle));
+    await page.getByRole("button", { name: "Activer la double authentification" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Demande un code d'activation à un membre du bureau" })).toBeVisible();
+    await page.getByRole("button", { name: "Se déconnecter" }).click();
+    await page.waitForURL("**/connexion");
+
+    // 2. Le compte d'administration génère le code depuis Comptes admin : ligne « Réglage à faire »
+    await connecter(page, COMPTES.admin, "/admin/comptes");
+    await expect(page.getByText("Réglage à faire").first()).toBeVisible();
+    page.once("dialog", (d) => void d.accept());
+    await page.getByRole("button", { name: "Générer un code d'activation pour Foxtrot 06" }).click();
+    const encart = page.locator("#codes-activation");
+    await expect(encart).toBeVisible();
+    await expect(encart).toContainText("Code d'activation de Foxtrot 06");
+    const code = (await encart.locator(".font-mono").first().textContent())!.trim();
+    expect(code).toMatch(/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{3}-[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{3}$/);
+    // La ligne dit maintenant jusqu'à quand le code vaut — jamais sa valeur
+    await expect(page.getByText(/code d'activation valable jusqu'au/)).toBeVisible();
+    await encart.getByRole("button", { name: "C'est noté, masquer" }).click();
+    await expect(encart).toHaveCount(0);
+    await deconnecter(page);
+
+    // 3. Foxtrot revient par son lien : l'étape 2 passe avec le code, saisi en minuscules sans tiret
+    await connecter(page, COMPTES.admin3);
+    if (new URL(page.url()).pathname === "/bienvenue") {
+      await page.getByRole("button", { name: "Non, continuer dans le navigateur" }).click();
+    }
+    await page.waitForURL((u) => u.pathname === "/admin/activer");
+    await expect(page.getByText(/Un code a été généré pour toi/)).toBeVisible();
+    const qr = page.getByRole("button", { name: "Afficher mon QR code" });
+    if (await qr.isVisible()) await qr.click();
+    const aLaMain2 = page.locator("details", { hasText: "Impossible de scanner" });
+    await aLaMain2.getByText("Impossible de scanner").click();
+    const cle2 = (await aLaMain2.locator("code").textContent())!.replace(/\s+/g, "");
+    await page.getByLabel("Mon mot de passe").fill(MOT_DE_PASSE_FOXTROT);
+    await page.getByLabel("Code d'activation (remis par un membre du bureau)").fill(code.replace("-", "").toLowerCase());
+    await page.getByLabel("Code à 6 chiffres").fill(await codeTotpFrais(cle2));
+    await page.getByRole("button", { name: "Activer la double authentification" }).click();
+    await expect(page.getByRole("list", { name: "Codes de secours" }).getByRole("listitem")).toHaveCount(8);
+  } finally {
+    // Le jeu d'essai garde Foxtrot « non réglé » : c'est l'état que le scénario précédent éprouve
+    await remettreBureauNonRegle(COMPTES.admin3);
+  }
 });

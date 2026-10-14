@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { assertPermission } from "@/lib/auth/current-user";
 import { membrePeutModifier, transitionAutorisee } from "@/lib/ateliers";
 import { ecritureFermee } from "@/lib/constants";
-import { todayIso } from "@/lib/dates";
+import { seanceCommencee, todayIso } from "@/lib/dates";
 import { notifierDecisionAtelier } from "@/lib/notifications/ateliers";
 import { champ, zodToFormState, type FormState } from "@/lib/form";
 import { atelierSchema, decisionAtelierSchema } from "@/lib/validation/gestion";
@@ -66,11 +66,15 @@ function titreParDefaut(titre: string, description: string, prenom: string): str
   return debut ? debut.slice(0, 60) : `Atelier de ${prenom}`;
 }
 
-/** La séance souhaitée doit être à venir et non annulée (sinon ignorée). */
+/**
+ * La séance souhaitée doit être à venir, non annulée et **pas encore commencée** (sinon ignorée) :
+ * placer un atelier écrit dans son programme, que le planning fige dès le début du cours
+ * (`partiePourEcriture`) — deux portes vers la même écriture, une seule serrure.
+ */
 async function seanceValide(sessionId: string | undefined): Promise<string | null> {
   if (!sessionId) return null;
   const s = await db.session.findUnique({ where: { id: sessionId } });
-  return s && !s.annulee && s.date >= todayIso() ? s.id : null;
+  return s && !s.annulee && s.date >= todayIso() && !seanceCommencee(s.date, s.heureDebut) ? s.id : null;
 }
 
 /**
@@ -183,13 +187,24 @@ export async function supprimerAtelier(atelierId: string): Promise<void> {
  * Le membre, lui, garde le droit d'effacer **la sienne** tant qu'elle est en attente
  * (`supprimerAtelier`) : les deux gestes ne se ressemblent que de loin.
  */
+/**
+ * **Le cours de l'atelier a-t-il commencé ?** Son programme est alors figé (`partiePourEcriture`) :
+ * aucune décision prise depuis la file des ateliers ne doit vider sa case.
+ */
+async function coursDeLAtelierCommence(sessionId: string | null): Promise<boolean> {
+  if (!sessionId) return false;
+  const s = await db.session.findUnique({ where: { id: sessionId }, select: { date: true, heureDebut: true } });
+  return !!s && seanceCommencee(s.date, s.heureDebut);
+}
+
 export async function effacerProposition(atelierId: string): Promise<void> {
   const user = await assertPermission("ateliers.supprimer");
   const atelier = await db.atelier.findUniqueOrThrow({
     where: { id: atelierId },
     include: { proposePar: { select: { prenom: true, nom: true } } },
   });
-  if (atelier.statut === "PLANIFIE") await retirerAtelier(atelierId);
+  // Cours commencé : sa case garde son contenu (programme figé) ; seul le lien vers l'atelier tombe.
+  if (atelier.statut === "PLANIFIE" && !(await coursDeLAtelierCommence(atelier.sessionId))) await retirerAtelier(atelierId);
   await db.atelier.delete({ where: { id: atelierId } });
   await audit(user, "atelier.efface_sans_reponse", atelierId, {
     titre: atelier.titre,
@@ -212,6 +227,9 @@ export async function deciderAtelier(_prev: FormState, fd: FormData): Promise<Fo
   const { atelierId, statut, commentaire, sessionId } = parsed.data;
   const atelier = await db.atelier.findUniqueOrThrow({ where: { id: atelierId }, include: { proposePar: true } });
   if (!transitionAutorisee(atelier.statut, statut)) return { erreur: `Passage ${atelier.statut} → ${statut} impossible.` };
+  // Un atelier placé sur un cours commencé ne se déplace ni ne se retire : le programme est figé.
+  if (atelier.statut === "PLANIFIE" && (await coursDeLAtelierCommence(atelier.sessionId)))
+    return { erreur: "Le cours de cet atelier a déjà commencé : son programme ne se modifie plus." };
   let seance: { date: string; heureDebut: string; lieu: string } | null = null;
   // L'atelier **après** la décision : c'est son `updatedAt` qui date le message (voir
   // `notifierDecisionAtelier`), et qui distingue un second refus du premier.

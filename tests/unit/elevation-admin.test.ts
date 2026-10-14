@@ -65,7 +65,9 @@ vi.mock("@/lib/db", () => ({
         expiresAt: new Date(Date.now() + 3_600_000),
         lastSeenAt: new Date(),
         reauthAt: null,
-        user: { id: "u-admin", prenom: "Delta", nom: "Bretteur", email: "delta@club.test", role: etat.role, estAdmin: etat.estAdmin, actif: etat.actif, rappelEmail: true, theme: "hema", service: false },
+        user: { id: "u-admin", prenom: "Delta", nom: "Bretteur", email: "delta@club.test", role: etat.role, estAdmin: etat.estAdmin, actif: etat.actif, rappelEmail: true, theme: "hema", service: false,
+          // Accès réglé (mot de passe + 2FA) : sinon tout écran renverrait sur `/admin/activer`
+          passwordHash: "$argon2id$x", doitChangerMotDePasse: false, totpSecret: "chiffre", totpActiveAt: new Date("2026-09-01T10:00:00Z") },
       })),
       update: vi.fn(async () => ({})),
       delete: vi.fn(async () => ({})),
@@ -209,17 +211,46 @@ describe("le rôle reste maître : le cookie n'est qu'un second facteur", () => 
   });
 
   it("force le réglage plutôt que de refuser, quand il manque le mot de passe ou la 2FA", () => {
-    // Un administrateur dont l'accès n'est pas complet est déposé sur `/admin/activer` — par les
-    // deux portes d'entrée (son lien, et son mot de passe), et par l'écran d'élévation lui-même.
-    // Le refuser sans rien proposer le laisserait découvrir plus tard, devant une porte close,
-    // qu'il lui manquait deux réglages.
+    // Un membre du bureau dont l'accès n'est pas complet est déposé sur `/admin/activer` — dès la
+    // connexion (`apresConnexion`) et par l'écran d'élévation. Le refuser sans rien proposer le
+    // laisserait devant une porte close, sans savoir pourquoi.
     const actions = lire("src/actions/auth.ts");
-    expect(actions).toContain("if (compte && peutReglerSonAcces(compte) && !accesAdminRegle(compte)) return CHEMIN_ACTIVATION_ADMIN;");
+    expect(actions).toContain("if (reglageAccesDu(compte)) return CHEMIN_ACTIVATION_ADMIN;");
+    expect(actions).not.toContain("cheminReglageAcces");
     const elevation = lire("src/app/(public)/connexion/admin/page.tsx");
     expect(elevation).toContain("if (!compte || !accesAdminRegle(compte)) redirect(CHEMIN_ACTIVATION_ADMIN);");
     // …et le parcours lui-même reste ouvert sans élévation, sinon il serait impossible à suivre
     const courant = lire("src/lib/auth/current-user.ts");
     expect(courant).toContain('if (chemin === CHEMIN_ACTIVATION_ADMIN || chemin.startsWith(`${CHEMIN_ACTIVATION_ADMIN}/`)) return user;');
+  });
+
+  /**
+   * **L'obligation est gardée par la mise en page et par `requireUser`** (comme le mot de passe
+   * provisoire) : tant que le réglage est dû, tout écran de l'espace connecté renvoie sur le parcours.
+   * La mise en page seule ne suffit pas — App Router ne la ré-exécute pas d'une page sœur à l'autre —,
+   * d'où la même vérification dans `requireUser`, par où passent toutes les pages.
+   */
+  it("garde l'espace connecté tant que le réglage est dû, sauf le parcours lui-même", () => {
+    const layout = lire("src/app/(app)/layout.tsx");
+    expect(layout).toContain("if (user.reglageAccesDu && !cheminLibrePendantReglage(chemin)) redirect(CHEMIN_ACTIVATION_ADMIN);");
+    // Après le mot de passe provisoire, qui précède l'étape 2
+    expect(layout.indexOf('redirect("/nouveau-mot-de-passe")')).toBeLessThan(layout.indexOf("user.reglageAccesDu"));
+    const courant = lire("src/lib/auth/current-user.ts");
+    expect(courant).toContain('if (user.reglageAccesDu && !cheminLibrePendantReglage(cheminSuiteSur((await headers()).get("x-chemin")))) {');
+    expect(courant).toContain("reglageAccesDu: reglageAccesDu(u),");
+    // Les server actions : refusées par la garde centrale
+    expect(courant).toContain("if (user.reglageAccesDu) throw new AccesRefuse();");
+  });
+
+  it("dit l'obligation sur le parcours, l'ouvre au compte du portail, et laisse se déconnecter", () => {
+    const page = lire("src/app/(app)/admin/activer/page.tsx");
+    expect(page).toContain("Obligatoire pour les membres du bureau");
+    expect(page).not.toContain("if (compte.service)");
+    expect(page).toContain("<form action={seDeconnecter}");
+    // Aucune action du parcours, ni la déconnexion, ne passe par `assertPermission` : la garde des
+    // actions ne peut pas enfermer quelqu'un sur le parcours.
+    const actions = lire("src/actions/auth.ts");
+    expect(actions).not.toContain("assertPermission");
   });
 
   it("n'annonce pas l'élévation sur le parcours de réglage, où l'on ne l'a pas encore", () => {
@@ -562,7 +593,7 @@ describe("la connexion n'élève personne", () => {
     const actions = lire("src/actions/auth.ts");
     // Le 4e argument est `forte`, resté `false` ; le 3e dit seulement par quelle porte on est entré
     // et n'ouvre rien de plus.
-    expect(actions).toContain('await createSession(user.id, attente.remember === 1, "mot-de-passe", false);');
+    expect(actions).toContain('await createSession(user.id, resterConnecte, "mot-de-passe", false);');
     // Plus aucune création de session ne demande la force : elle ne s'obtient qu'en s'élevant
     expect(actions).not.toMatch(/createSession\([^)]*,\s*forte\s*\)/);
     expect(actions).not.toContain("const forte = peutOuvrirSessionForte(user);");
@@ -581,7 +612,7 @@ describe("la connexion n'élève personne", () => {
 
   it("le journal d'audit ne raconte plus de connexion forte", () => {
     const actions = lire("src/actions/auth.ts");
-    expect(actions).toContain("deuxFa: true, forte: false,");
+    expect(actions).not.toMatch(/"connexion\.succes"[^\n]*forte: true/);
   });
 });
 

@@ -20,8 +20,9 @@
  * | `creneaux`      | `dedupKey` de récap ou de rappel d'avant l'empreinte du créneau           | la clé est **renommée**           |
  * | `vides`         | élément **vide en trop** : au-delà des cours du modèle, jamais touché     | l'élément est supprimé, rangs refaits |
  * | `teintes`       | cours ou option sans teinte enregistrée (ligne d'avant la colonne), ou teinte sur un échauffement / un atelier | la teinte lue est enregistrée |
+ * | `codes`         | codes de secours jamais affichés (2FA activée par la connexion avant v0.73.0) | les codes sont effacés (`null`)  |
  *
- * Un dixième relevé, **purement informatif** et jamais réparé, liste les lignes dont la clé
+ * Un onzième relevé, **purement informatif** et jamais réparé, liste les lignes dont la clé
  * étrangère pointe vers un parent disparu (`PRAGMA foreign_key_check`). Une base saine n'en a
  * aucune ; s'il en sort, c'est une corruption d'un autre ordre, qui se règle à la main.
  *
@@ -64,7 +65,7 @@ import { estTeinte, prendUneTeinte, teintesProgramme } from "../src/components/s
  */
 
 /** Nom des contrôles, dans l'ordre où le rapport les présente. */
-export const CONTROLES = ["fantomes", "ateliers", "notifications", "liens", "parties", "rangs", "creneaux", "vides", "teintes"] as const;
+export const CONTROLES = ["fantomes", "ateliers", "notifications", "liens", "parties", "rangs", "creneaux", "vides", "teintes", "codes"] as const;
 export type Controle = (typeof CONTROLES)[number];
 
 export type LigneReponse = {
@@ -646,6 +647,88 @@ export function detecterClesSansCreneau(
   return releve;
 }
 
+/**
+ * 10. **Codes de secours que personne n'a jamais vus.**
+ *
+ * **Le défaut, corrigé en v0.73.0.** À la première activation de la double authentification **par
+ * la connexion** (la proposition qui suit le mot de passe, `src/actions/auth.ts`), les huit codes de
+ * secours étaient bien enregistrés — hachés — dans `User.codesSecours`, mais leur affichage était
+ * posé **avant** `destroySession`, qui efface le cookie de passage des codes : l'écran des codes ne
+ * trouvait rien, et personne ne les a jamais lus. Le défaut date de la première version de la 2FA.
+ *
+ * **Ce que ça laisse en base** : un compte qui croit avoir des codes. L'écran de profil annonce « 8
+ * sur 8 restants », alors qu'aucun des huit n'est utilisable — le jour où le téléphone est perdu, la
+ * porte de repli promise n'existe pas. Effacer ces codes ne retire donc rien à personne, et fait
+ * dire la vérité au profil : « 0 sur 8 restants », en rouge ; Comptes admin → Ma double
+ * authentification porte le bouton qui en régénère.
+ *
+ * **La signature dans le journal d'audit** : `deux_fa.activee` **sans `depuis`** dans `details`
+ * (la connexion n'écrit ni cible ni détails ; l'activation depuis le profil écrit
+ * `{"depuis":"profil"}`, et ses codes, eux, s'affichaient), datée d'avant `FIN_CODES_JAMAIS_VUS`.
+ *
+ * **Ce qui innocente un compte** : n'importe quel événement qui a produit des codes **affichés**
+ * après cette activation — `deux_fa.codes_regeneres` (profil), `deux_fa.codes_generes` (activation
+ * depuis le profil), `admin.codes_secours_generes` (parcours `/admin/activer`), ou une nouvelle
+ * activation avec `depuis`. On juge donc le **dernier** événement producteur de codes du compte :
+ * seul un dernier événement fautif désigne des codes jamais vus. À égalité d'horodatage, l'innocent
+ * l'emporte (prudence : ce contrôle efface).
+ *
+ * Un `details` illisible n'est pas pris pour une signature : on n'efface pas sur un doute.
+ */
+
+/** Déploiement de v0.73.0 le 2026-10-07 vers 21 h (Paris), soit 19:00Z ; une heure de marge. */
+export const FIN_CODES_JAMAIS_VUS = new Date("2026-10-07T20:00:00Z");
+
+/** Les actions du journal qui enregistrent des codes de secours neufs. */
+export const ACTIONS_CODES_SECOURS = ["deux_fa.activee", "deux_fa.codes_generes", "deux_fa.codes_regeneres", "admin.codes_secours_generes"] as const;
+
+/** Une entrée du journal d'audit, réduite à ce qu'il faut pour la juger. */
+export type EvenementCodes = { acteurId: string | null; cible: string | null; action: string; details: string | null; date: Date };
+
+/** Un compte qui porte encore des codes de secours (`codesSecours` non nul). */
+export type CompteAvecCodes = { id: string; prenom: string };
+
+export type CodesJamaisVus = { userId: string; prenom: string; activeeLe: Date };
+
+/** Vrai pour l'activation par la connexion d'avant le correctif : `deux_fa.activee` sans `depuis`. */
+export function activationSansAffichage(e: EvenementCodes, fin: Date = FIN_CODES_JAMAIS_VUS): boolean {
+  if (e.action !== "deux_fa.activee" || e.date.getTime() >= fin.getTime()) return false;
+  if (e.details === null || e.details.trim() === "") return true;
+  try {
+    const d: unknown = JSON.parse(e.details);
+    return typeof d === "object" && d !== null && !Array.isArray(d) && !("depuis" in d);
+  } catch {
+    return false;
+  }
+}
+
+export function detecterCodesJamaisVus(
+  comptes: readonly CompteAvecCodes[],
+  evenements: readonly EvenementCodes[],
+  fin: Date = FIN_CODES_JAMAIS_VUS,
+): CodesJamaisVus[] {
+  // Le compte concerné : la cible quand l'entrée en porte une, sinon l'acteur (la connexion n'écrit
+  // pas de cible — c'est justement la forme fautive).
+  const parCompte = new Map<string, EvenementCodes[]>();
+  for (const e of evenements) {
+    if (!(ACTIONS_CODES_SECOURS as readonly string[]).includes(e.action)) continue;
+    const userId = e.cible ?? e.acteurId;
+    if (!userId) continue;
+    parCompte.set(userId, [...(parCompte.get(userId) ?? []), e]);
+  }
+  const jamaisVus: CodesJamaisVus[] = [];
+  for (const c of comptes) {
+    const liste = parCompte.get(c.id);
+    if (!liste || liste.length === 0) continue;
+    const dernier = Math.max(...liste.map((e) => e.date.getTime()));
+    const derniers = liste.filter((e) => e.date.getTime() === dernier);
+    if (derniers.every((e) => activationSansAffichage(e, fin))) {
+      jamaisVus.push({ userId: c.id, prenom: c.prenom, activeeLe: derniers[0].date });
+    }
+  }
+  return jamaisVus;
+}
+
 /* ────────────────────────────── Arguments de la ligne de commande ────────────────────────────── */
 
 export type Options = { reparer: boolean; tout: boolean; controles: Set<Controle>; aide: boolean };
@@ -736,6 +819,7 @@ type Releve = {
   creneaux: ClesSansCreneau;
   vides: SurnumerairesAReparer;
   teintes: TeinteAEcrire[];
+  codes: CodesJamaisVus[];
 };
 
 type Base = typeof import("../src/lib/db").db;
@@ -751,6 +835,7 @@ async function relever(db: Base, controles: ReadonlySet<Controle>): Promise<Rele
     creneaux: { aReecrire: [], sansSeance: [], dejaPrises: [] },
     vides: { aSupprimer: [], rangs: [], seancesVidees: [] },
     teintes: [],
+    codes: [],
   };
 
   if (controles.has("fantomes")) {
@@ -869,6 +954,18 @@ async function relever(db: Base, controles: ReadonlySet<Controle>): Promise<Rele
     releve.teintes = detecterTeintesManquantes(parties, themes);
   }
 
+  if (controles.has("codes")) {
+    // Seuls les comptes qui portent encore des codes : un compte sans codes n'a rien à effacer.
+    const [comptes, evenements] = await Promise.all([
+      db.user.findMany({ where: { codesSecours: { not: null } }, select: { id: true, prenom: true } }),
+      db.auditLog.findMany({
+        where: { action: { in: [...ACTIONS_CODES_SECOURS] } },
+        select: { acteurId: true, cible: true, action: true, details: true, date: true },
+      }),
+    ]);
+    releve.codes = detecterCodesJamaisVus(comptes, evenements);
+  }
+
   if (controles.has("liens")) {
     const invitations = await db.invitation.findMany({
       where: { revokedAt: null },
@@ -903,7 +1000,8 @@ function total(releve: Releve): number {
     // Les parties en trop, et non leurs rangements : ranger les survivantes est la **conséquence**
     // de la suppression, pas une seconde incohérence à compter.
     releve.vides.aSupprimer.length +
-    releve.teintes.length
+    releve.teintes.length +
+    releve.codes.length
   );
 }
 
@@ -1085,6 +1183,20 @@ function afficherTeintes(releve: Releve, tout: boolean): void {
   detail(releve.teintes.map((t) => `séance ${t.sessionId}, élément ${t.id} : ${t.avant ?? "aucune"} → ${t.apres ?? "aucune"}`), tout);
 }
 
+function afficherCodes(releve: Releve, tout: boolean): void {
+  titre("10. Codes de secours que personne n'a jamais vus");
+  if (releve.codes.length === 0) {
+    ligne("  Aucun. Chaque compte qui a des codes de secours les a vus s'afficher.");
+    return;
+  }
+  const n = releve.codes.length;
+  ligne(`  ${pluriel(n, "compte")} dont la double authentification a été activée à la connexion avant le`);
+  ligne("  correctif : les codes enregistrés n'ont jamais été affichés, donc ne servent à personne.");
+  ligne("  Ils seront effacés — le profil dira alors « 0 sur 8 restants », et Comptes admin → Ma double");
+  ligne("  authentification en régénère.");
+  detail(releve.codes.map((c) => `${c.prenom} — activée le ${jourLocal(c.activeeLe)}`), tout);
+}
+
 /**
  * Relevé informatif : des lignes dont la clé étrangère pointe vers un parent disparu. Jamais réparé
  * — il n'existe pas de réparation générique, et une base qui en présente demande un examen, pas un
@@ -1140,6 +1252,8 @@ async function sauvegarderAvantReparation(): Promise<string> {
  * détruites des cases encore vivantes. Rempli par le contrôle `vides`, lu par `journaliser`.
  */
 let retireesReellement: string[] = [];
+/** Comptes dont les codes jamais vus ont réellement été effacés (contrôle `codes`). */
+let codesEffaces = 0;
 
 async function reparer(db: Base, releve: Releve, controles: ReadonlySet<Controle>): Promise<string[]> {
   const faits: string[] = [];
@@ -1303,6 +1417,27 @@ async function reparer(db: Base, releve: Releve, controles: ReadonlySet<Controle
       const n = releve.creneaux.aReecrire.length;
       faits.push(`${pluriel(n, "clé")} de notification renommée${n > 1 ? "s" : ""} au format « créneau »`);
     }
+
+    if (controles.has("codes") && releve.codes.length > 0) {
+      /*
+       * Un compte à la fois, **à condition que ses codes n'aient pas bougé depuis le relevé** : la
+       * condition porte sur la valeur relue dans la transaction, si bien qu'un compte qui vient de
+       * régénérer ses codes (donc de les voir) garde les nouveaux.
+       */
+      let effaces = 0;
+      for (const c of releve.codes) {
+        const actuel = await tx.user.findUnique({ where: { id: c.userId }, select: { codesSecours: true } });
+        if (!actuel?.codesSecours) continue;
+        const { count } = await tx.user.updateMany({ where: { id: c.userId, codesSecours: actuel.codesSecours }, data: { codesSecours: null } });
+        effaces += count;
+      }
+      codesEffaces = effaces;
+      faits.push(`codes de secours jamais vus effacés sur ${pluriel(effaces, "compte")}`);
+      if (effaces < releve.codes.length) {
+        const g = releve.codes.length - effaces;
+        faits.push(`${pluriel(g, "compte")} laissé${g > 1 ? "s" : ""} : ${g > 1 ? "leurs codes avaient changé" : "ses codes avaient changé"} à l'instant de l'écriture`);
+      }
+    }
   });
   return faits;
 }
@@ -1345,6 +1480,9 @@ async function journaliser(db: Base, releve: Releve, faits: readonly string[]): 
             .map((p) => `${dateFr(p.date)} ${p.libelle}`),
           partiesVidesNonDetaillees: Math.max(0, retireesReellement.length - 200),
           teintesEnregistrees: releve.teintes.length,
+          // Effacer des codes ne se défait pas : les comptes visés restent lisibles au journal (identifiants).
+          codesJamaisVusEffaces: codesEffaces,
+          codesJamaisVusComptes: releve.codes.slice(0, 200).map((c) => c.userId),
           faits,
         }),
       },
@@ -1388,8 +1526,9 @@ export async function main(argv: readonly string[]): Promise<number> {
     const releve = await relever(db, options.controles);
     afficherReleve(releve, options.controles, options.tout);
     if (options.controles.has("teintes")) afficherTeintes(releve, options.tout);
+    if (options.controles.has("codes")) afficherCodes(releve, options.tout);
 
-    titre("10. Lignes pointant vers un parent disparu (relevé, jamais réparé)");
+    titre("11. Lignes pointant vers un parent disparu (relevé, jamais réparé)");
     await verifierClesEtrangeres(db);
 
     const anomalies = total(releve);
