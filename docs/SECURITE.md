@@ -15,17 +15,25 @@
 | Qui | Comment | Session |
 |---|---|---|
 | Tout le monde (membres, instructeurs, admins) | **Lien personnel** `/invitation/<jeton>` envoyé par email — aucun identifiant à retenir, c'est la porte principale | **12 h glissantes**, cookie httpOnly — session **ordinaire**, y compris pour un administrateur |
-| Membre ou instructeur qui s'est donné un mot de passe — **facultatif** | `/connexion` : email + mot de passe (argon2id), puis code TOTP ou code de secours **s'il a activé la 2FA lui-même** | Session ordinaire (12 h glissantes) |
-| **Administrateur — mot de passe et 2FA obligatoires** (parcours `/admin/activer`) | même page, puis code TOTP **toujours exigé** | **Session forte** (12 h, jamais prolongée) — la seule qui ouvre l'administration technique |
+| Qui s'est donné un mot de passe (facultatif pour un membre ou un instructeur), administrateurs compris | `/connexion` : email + mot de passe (argon2id). **Aucun code n'est demandé ici**, double authentification configurée ou non | Session ordinaire (12 h glissantes) |
+| **Administrateur qui ouvre l'espace admin — mot de passe et 2FA obligatoires dès l'entrée** (parcours `/admin/activer`) | `/connexion/admin`, depuis une session ouverte : mot de passe **et** code TOTP ou code de secours, **toujours exigés** | **Session forte** (12 h, jamais prolongée) — la seule qui ouvre l'administration technique |
 | Application installée sur iPhone | Champ « J'ai reçu un lien par email » sur `/connexion` : la PWA ne partage pas le stockage de Safari. Même vérification que l'ouverture du lien, message générique, jeton jamais recopié | identique au lien personnel |
 
 Les règles qui tiennent ce tableau :
 
-- **Mot de passe facultatif pour les membres et les instructeurs, obligatoire pour les
-  administrateurs.** Chacun se le définit s'il le veut depuis « Mon profil » → « Sécuriser mon compte » ;
-  sans mot de passe, on entre par son lien. Un compte sans mot de passe reçoit sur `/connexion` un
-  message **générique** — aucune énumération de comptes —, et le « mot de passe oublié » suit la même
-  règle.
+- **Mot de passe facultatif pour les membres et les instructeurs, obligatoire pour le bureau.**
+  Chacun se le définit s'il le veut depuis « Mon profil » → « Sécuriser mon compte » ; sans mot de
+  passe, on entre par son lien. Un compte sans mot de passe reçoit sur `/connexion` un message
+  **générique** — aucune énumération de comptes —, et le « mot de passe oublié » suit la même règle.
+- **Un membre du bureau règle mot de passe *et* 2FA avant d'utiliser l'application**, compte du
+  portail compris : le parcours `/admin/activer` (mot de passe → 2FA → codes de secours, repris là où
+  il s'est arrêté) est **obligatoire**. La connexion par mot de passe, l'ouverture du lien personnel et
+  la sortie du « mot de passe oublié » y déposent ; une personne nommée au bureau y est envoyée à son
+  écran suivant. Tant qu'il n'est pas terminé, tout écran de l'espace connecté y ramène et les actions
+  gardées par une permission sont refusées ; seuls le parcours, l'écran de bienvenue, le choix d'un mot
+  de passe et l'affichage des codes de secours restent ouverts, avec « Se déconnecter ». Un membre du
+  bureau **sans adresse email** n'y est pas tenu : il ne peut pas se connecter par mot de passe. Une
+  fois réglé, entrer dans l'application ne demande aucun code.
 - **Se connecter par mot de passe n'ouvre aucun droit supplémentaire** : les droits restent ceux du
   rôle. Un administrateur entré par son lien a une session **ordinaire** ; l'administration technique
   exige une élévation explicite (mot de passe et code redonnés sur `/connexion/admin`).
@@ -89,20 +97,89 @@ d'élévation, liens d'email. Deux règles rendent ces jetons non interchangeabl
   un appui : les messageries qui préchargent les liens (antivirus, protections d'entreprise) ne
   consomment donc rien. La même règle vaut pour tout lien d'email qui écrit.
 
-## Double authentification
+## Double authentification (pour l'espace admin seulement)
 
-- **Administrateur : toujours exigée**, même s'il n'a rien configuré (le code lui est alors demandé *et*
-  configuré au passage). Le bouton « Plus tard » lui est refusé.
-- **Membre, instructeur : facultative**, proposée une fois le mot de passe posé, déclinable, et non
-  reproposée avant un trimestre. Réglable en permanence depuis « Mon profil ».
+- **Elle ne garde qu'une porte : l'espace admin.** `/connexion/admin` (élévation) et le code récent
+  redemandé avant une action sensible l'exigent toujours ; la connexion à l'application (`/connexion`,
+  lien personnel, sortie du « mot de passe oublié ») ne la demande jamais, quel que soit le rôle. Un
+  mot de passe dérobé, ou une boîte email qui réinitialise le mot de passe, n'ouvre donc qu'une session
+  **ordinaire**, jamais l'administration.
+- **Bureau (compte du portail compris) : obligatoire dès l'entrée dans l'application**, réglée par le
+  parcours `/admin/activer` ; elle ne se demande ensuite qu'à l'ouverture de l'espace admin.
+- **Membre, instructeur : ni proposée ni activable** — elle ne protégerait rien. Un compte qui en garde
+  une la garde sans effet sur sa connexion ; un membre du bureau la retire depuis Comptes admin.
+- **Elle se gère dans l'espace admin** (élévation exigée) : « Comptes admin → Ma double
+  authentification » régénère ses codes de secours et réinitialise la sienne (mot de passe exigé, puis
+  retour au parcours) ; la même page réinitialise celle d'un autre membre du bureau, sauf le compte du
+  portail, que lui seul réinitialise.
+- **« Mon profil » ne porte que la demande** : « Demander la réinitialisation de ma double
+  authentification », après une confirmation qui dit ce qu'elle entraîne. Un message part à **tous les
+  autres membres actifs du bureau, jamais à la personne qui demande** (au compte du portail seulement
+  s'il n'y a personne d'autre) ; une demande toutes les six heures au plus ; rien ne change sur le
+  compte tant qu'une personne du bureau n'a pas vérifié et agi. Sa ligne dans Comptes admin porte
+  « réinitialisation demandée » jusque-là.
+- **Ce qui rend une demande frauduleuse visible** : le titulaire est **toujours prévenu** (email à sa
+  propre adresse et notification sur ses appareils) de chaque demande et de chaque réinitialisation ou
+  retrait de sa 2FA — si la demande part d'une session volée, lui seul peut s'en apercevoir ; l'email au
+  bureau signale un mot de passe réinitialisé dans les sept jours ; et le bureau reçoit une **alerte de
+  sécurité à chaque configuration de 2FA** d'un de ses comptes.
 - TOTP RFC 6238 (SHA-1, 6 chiffres, 30 s, ±1 pas), **secret chiffré AES-256-GCM** (clé dérivée de
-  `SESSION_SECRET`). Un code ne sert qu'une fois.
-- **8 codes de secours** (hachés SHA-256, usage unique), montrés une fois, régénérables depuis le profil
-  (mot de passe exigé).
-- **Perte du téléphone** : code de secours, sinon un autre administrateur, sinon
-  `npm run admin:reset-2fa -- <email>` sur le serveur. Le compte d'administration permanent fait
-  exception : **lui seul réinitialise son second facteur** — c'est le seul compte qui puisse rouvrir
-  l'administration, et sa voie de secours est sa propre boîte email, puis un redéploiement.
+  `SESSION_SECRET`). Un code ne sert qu'une fois. Configuration par le parcours (QR code et clé
+  manuelle), activée par le premier code juste, le mot de passe courant et, pour un membre du bureau
+  nominatif, le code d'activation.
+- **8 codes de secours** (hachés SHA-256, usage unique), montrés une fois, régénérables dans Comptes
+  admin (mot de passe exigé).
+- **Perte du téléphone** : un code de secours ouvre l'espace admin → Comptes admin → Ma double
+  authentification → « Réinitialiser ». Sans code : la demande depuis « Mon profil », puis un autre
+  membre du bureau, **après avoir vérifié de vive voix**, réinitialise depuis Comptes admin et remet le
+  code d'activation qui s'affiche. Le compte du portail fait exception : **lui seul réinitialise son
+  second facteur**, et sa voie de secours est `npm run admin:reset-2fa -- <email>` sur le serveur.
+
+### Code d'activation du bureau
+
+Pour un membre du bureau pas encore réglé (fraîchement nommé, 2FA ou accès remis à zéro), le lien
+personnel et le « mot de passe oublié » passent par sa boîte email. Le code d'activation fait qu'une
+boîte email ou un lien ne suffisent pas à inscrire un téléphone : l'étape 2 du parcours exige de tout
+membre du bureau **nominatif** un code à usage unique qu'un **autre** membre du bureau génère dans
+Comptes admin et remet **de vive voix ou en main propre**.
+
+- **Quand il naît** : à la nomination, à la réinitialisation de la 2FA d'un membre du bureau — **celle
+  qu'on fait soi-même comprise** —, à la remise à zéro de l'accès d'un membre du bureau, et par le bouton
+  « Générer un code d'activation » de sa ligne (« Réglage à faire »). Personne ne génère le sien. Un
+  nouveau code remplace le précédent ; retirer les droits l'efface.
+- **Forme** : 6 signes d'un alphabet sans caractères ambigus (ni 0/O, ni 1/I/L), tirés par un
+  générateur cryptographique, affichés en deux groupes (`K7P-42M`) ; saisie tolérante (casse, espaces,
+  tirets). **Valable 48 h, à usage unique** : deux saisies simultanées, une seule passe.
+- **Stockage** : seulement un HMAC-SHA-256 sous la clé `SESSION_SECRET`, **lié au compte**, et son
+  échéance. Une copie de la base ne rend pas le code, et un code ne vaut que pour son compte.
+- **Affichage** : une seule fois, à l'administrateur qui l'a généré, par un cookie de passage signé,
+  chiffré, nommé à cet administrateur, de 15 minutes. Il ne passe **jamais** par un email, une
+  notification, une URL ni le journal d'audit, qui ne note que qui l'a généré, pour qui, son échéance et
+  son usage.
+- **Force brute impraticable** : chaque essai passe par les limiteurs du code à usage unique (8 par
+  quart d'heure et par compte) et de l'activation, après la vérification du mot de passe. Sur les 48 h
+  de validité, cela fait au plus 1 536 essais pour 887 503 681 codes possibles, soit moins d'une chance
+  sur 500 000 ; chaque échec est journalisé, et une configuration réussie déclenche toujours l'alerte de
+  sécurité du bureau.
+- **Seule exemption : le compte du portail.** Repli serveur : `npm run admin:reset-2fa -- <email>
+  --confirmer`, qui affiche aussi un code d'activation pour un membre du bureau nominatif.
+- **Un membre du bureau sans code valable** — nommé sans avoir terminé son réglage, code expiré ou
+  perdu — est arrêté à l'étape 2, qui le lui dit, et sa ligne dans Comptes admin porte « aucun code
+  valable » : un autre administrateur génère son code et le lui remet.
+
+### Codes de secours : vérifier qu'ils ont été montrés
+
+Un code de secours qui n'a jamais été affiché à son titulaire est une porte de repli qui n'existe pas.
+L'outil de réparation livré dans l'image (voir `docs/DEPLOIEMENT.md`) porte un contrôle `codes` qui
+relève ces comptes. À lancer après une mise à jour :
+
+```bash
+docker exec hema-organizer node reparer.cjs --seulement=codes
+```
+
+S'il signale des comptes, relancez avec `--reparer` : leurs codes sont effacés (une sauvegarde est
+prise avant l'écriture), l'écran annonce « 0 sur 8 restants », et chacun en régénère depuis Comptes
+admin → Ma double authentification.
 
 ## Ce qui sort du club
 
@@ -132,7 +209,10 @@ bot et webhook Discord sont **chiffrés en base** et ne sont jamais réaffichés
 ## Limitation de débit
 
 Persistante en base (fenêtre glissante), purgée chaque nuit. Contextes dans
-`src/lib/auth/rate-limit.ts` : connexion, ouverture de lien, API publique, pages de partage, images.
+`src/lib/auth/rate-limit.ts` : connexion, ouverture de lien, code à usage unique et code d'activation,
+demande de réinitialisation de 2FA, API publique, pages de partage, images. La notification
+« Planning modifié » est plafonnée à vingt annonces par heure et par auteur : un lot rejoué en boucle ne
+vide pas le quota d'envoi du club.
 
 ### Durcissement du proxy — recommandé, et à faire avec méthode
 

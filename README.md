@@ -18,8 +18,8 @@ tient l'annuaire, et des stages, tournois et démonstrations à annoncer. HEMA O
   notification sur le téléphone, et si le club le veut, sur son site WordPress.
 
 Rien à créer pour entrer : chacun reçoit **son lien personnel** par email, qui le connecte
-directement. Un mot de passe et une double authentification sont là pour qui les veut, obligatoires
-pour le bureau seulement.
+directement. Un mot de passe est là pour qui le veut ; pour le bureau, mot de passe et double
+authentification sont obligatoires, et le code n'est demandé qu'à l'ouverture de l'espace admin.
 
 <sub>Next.js 15 · TypeScript · SQLite (Prisma) · Tailwind · une seule image Docker · AGPL-3.0</sub>
 
@@ -31,7 +31,7 @@ pour le bureau seulement.
 | Lire le programme : la discipline, l'instructeur, le niveau, en couleurs | Pour chaque cours : qui mène, qui assiste, la discipline, le niveau, quelques mots de description | L'**annuaire**, les rôles (membre, instructeur), les liens personnels, les corrections de présence après coup |
 | **Proposer un atelier** : un jeu, un exercice, la lecture d'un traité, avec son animateur | **Programmer ou refuser** les ateliers proposés, avec un mot pour le membre | Les **listes de disciplines et d'échauffements**, les salles du club, son nom, son logo et ses couleurs |
 | Lire les annonces de **stages, tournois et démonstrations**, et s'inscrire chez l'organisateur | **Annoncer un événement** : affiche, dates, lieu, tarifs, lien d'inscription | Ce que le club **envoie et publie** : email, Discord, Telegram, téléphone, site du club |
-| Installer l'application sur son téléphone et choisir ses rappels | Annuler un cours (l'annonce part avec le motif), être prévenu d'un effectif trop faible ou d'un désistement de dernière minute | Double authentification **obligatoire**, appareils déconnectables, journal de tout ce qui est fait |
+| Installer l'application sur son téléphone et choisir ses rappels | Annuler un cours (l'annonce part avec le motif), être prévenu d'un effectif trop faible, d'un désistement de dernière minute ou d'un planning modifié par un autre instructeur | Double authentification **obligatoire** pour l'espace admin, code d'activation remis de vive voix, appareils déconnectables, journal de tout ce qui est fait |
 
 Tout se règle dans l'application : le nom du club, son sigle, ses logos, ses couleurs, ses salles,
 ses disciplines, ses jours de cours, son fuseau horaire et une vingtaine de thèmes de couleurs. Un
@@ -318,9 +318,12 @@ Ouvrez `https://organizer.mon-club.fr/connexion` et entrez votre `ADMIN_EMAIL` e
 L'application vous impose aussitôt, dans cet ordre : un vrai mot de passe, une double
 authentification (un QR code à scanner avec une application d'authentification sur votre téléphone),
 puis **huit codes de secours**. Ces codes ne sont montrés qu'une fois — écrivez-les et rangez-les
-ailleurs que sur le téléphone.
+ailleurs que sur le téléphone. Tant que ce parcours n'est pas terminé, aucun autre écran ne s'ouvre
+(« Se déconnecter » reste possible).
 
-Une fois ce parcours terminé, `ADMIN_PASSWORD` ne sert plus à rien.
+Une fois ce parcours terminé, `ADMIN_PASSWORD` ne sert plus à rien. Les connexions suivantes ne
+demandent que l'adresse et le mot de passe ; le code n'est redemandé qu'à l'ouverture de l'espace
+admin et avant un geste sensible.
 
 ### Étape 7 — Mettez le club à ses couleurs, et ouvrez-lui la porte
 
@@ -492,8 +495,8 @@ l'heure du **Récap de la veille** (18:00 par défaut). Chaque canal a sa page :
 | **Site du club** | Notifications → Site du club | Voir § 9 : rien ne part, c'est le site qui vient lire |
 
 Les messages : récap de la veille, rappel à qui n'a pas répondu (une semaine puis deux jours avant),
-séance annulée, alerte « peu de monde » aux instructeurs, désistement de dernière minute, réponse à
-un atelier, nouvel événement, et deux alertes au bureau (période à créer, période à activer). Chacun
+séance annulée, alerte « peu de monde » aux instructeurs, désistement de dernière minute, planning
+modifié, réponse à un atelier, nouvel événement, et deux alertes au bureau (période à créer, période à activer). Chacun
 règle ensuite les siens dans **Mon profil**.
 
 ### 9. Les prochains cours sur le site du club — l'API publique et le plugin WordPress
@@ -529,8 +532,12 @@ les annulations et les nouveaux événements (`/api/public/annonces`).
    seuls trois jours avant le premier cours.
 3. Donnez au club les **[trois guides](docs/guides/)** : membre, instructeur, bureau.
 
-Un nouvel administrateur doit se donner un mot de passe et une double authentification avant d'ouvrir
-l'espace admin : l'application le guide.
+Un nouvel administrateur doit se donner un mot de passe et une double authentification avant
+d'utiliser l'application : elle l'y emmène dès sa connexion, et le guide. Pour la double
+authentification, il lui faut le **code d'activation** qui s'affiche une seule fois à l'administrateur
+qui l'a nommé : celui-ci le lui remet de vive voix ou en main propre, jamais par email ni par message.
+Le code vaut 48 heures et ne sert qu'une fois ; un nouveau se génère sur sa ligne dans **Comptes
+admin**.
 
 ## Les trois guides d'utilisation
 

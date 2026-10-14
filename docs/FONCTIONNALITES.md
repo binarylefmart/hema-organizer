@@ -59,8 +59,9 @@ Peut-être.
 - **Revenir** : le lien collé une fois est gardé sur l'appareil. L'écran de connexion propose
   « Me connecter avec ce lien », « Modifier » et « Oublier » (pour un téléphone prêté). Sur iPhone,
   l'application installée a son champ « J'ai reçu un lien par email » pour coller le lien.
-- **Mot de passe et double authentification** sont facultatifs pour un membre : « Mon profil » →
-  « Sécuriser mon compte ». La connexion dure douze heures glissantes.
+- **Le mot de passe** est facultatif pour un membre : « Mon profil » → « Sécuriser mon compte ».
+  Membres et instructeurs n'ont pas de double authentification : la connexion (lien, mot de passe,
+  mot de passe oublié) ne demande jamais de code. Elle dure douze heures glissantes.
 
 ### Répondre aux cours
 
@@ -69,6 +70,11 @@ Peut-être.
 - **Séances** : une carte par cours, avec la date en toutes lettres, l'horaire, le lieu (qui ouvre la
   carte du téléphone), le programme, l'effectif et trois gros boutons **Présent**, **Absent**,
   **Peut-être**. Un tap enregistre, et la réponse se change jusqu'au début du cours.
+- **Séances et Planning s'ouvrent sur la séance du jour**, sinon sur la prochaine (sauf quand
+  l'adresse vise une séance ou un filtre précis).
+- **Une séance commencée** (l'heure de début est atteinte, à l'heure du club) reste parmi les séances
+  à venir, **grisée**, avec l'étiquette **« Commencé »** : plus rien ne s'y modifie, ni réponse, ni
+  programme, ni horaire. Elle passe dans « Passé » le lendemain à minuit.
   - au téléphone, la carte est **resserrée** : la date, le programme en lignes, les trois boutons,
     puis les compteurs (peut-être, absents, sans réponse) ;
   - à l'ordinateur, la carte est plus aérée, deux par ligne sur un grand écran.
@@ -139,7 +145,9 @@ colonnes. On y trouve :
 - **Apparence** : le thème de couleurs, ou celui du téléphone par défaut ;
 - **Mon lien d'accès** : jusqu'à quand il vaut, et **« Renvoyer mon lien »** (qui déconnecte les
   autres appareils) ;
-- **Sécuriser mon compte** : mot de passe, double authentification, codes de secours ;
+- **Sécuriser mon compte** : le mot de passe ; pour qui a une double authentification (le bureau),
+  aussi **« Demander la réinitialisation de ma double authentification »** (voir Comptes admin) ;
+- **Accès administrateur**, pour le bureau seulement : l'entrée de l'espace admin ;
 - **« Se déconnecter »**.
 
 ## Instructeur
@@ -205,7 +213,8 @@ sur chaque séance, une case maîtresse qui dit ce qu'elle emporte, et **« Sél
 Au téléphone, la sélection se fait dans une barre claire en bas de l'écran et un volet qui monte ;
 on peut y cocher élément par élément.
 
-Un trimestre clos ne se modifie plus. Une séance annulée verrouille son programme.
+Un trimestre clos ne se modifie plus. Une séance annulée verrouille son programme, une séance
+commencée aussi.
 
 ### Tenir les séances
 
@@ -218,7 +227,9 @@ Un trimestre clos ne se modifie plus. Une séance annulée verrouille son progra
   change pas de trimestre.
 - **Sélection multiple des séances** (onglet Séances, en modification) : annuler (motif commun),
   rétablir, changer le lieu, changer l'horaire. Supprimer est réservé au bureau.
-- Annuler ou rétablir une séance déjà commencée est refusé.
+- Une séance déjà commencée ne se modifie plus : ni annulation, ni rétablissement, ni programme,
+  date, horaire ou lieu, refus côté serveur compris. Seule la correction des présences par le bureau
+  reste ouverte (c'est son objet).
 
 ### Ateliers
 
@@ -262,15 +273,37 @@ cours.
   Peut-être à Absent) dans les deux heures avant un cours, tous les instructeurs reçoivent son nom et
   l'effectif à jour, par email et sur le téléphone, jamais sur les salons. Ceux qui ont eux-mêmes
   répondu Absent ou Peut-être ne la reçoivent pas.
+- **Planning modifié** : quand un échauffement, un cours ou une option est ajouté, supprimé, ou
+  change de thème ou d'instructeur principal dans le planning d'un cours à venir, les autres
+  instructeurs reçoivent la date de chaque cours touché, ce qui a été ajouté, changé ou
+  « Supprimé » (avec les **nouvelles valeurs** seulement) et qui l'a fait. Le second instructeur, le
+  niveau et la description ne s'annoncent qu'avec un de ces changements. Rien ne part avant
+  « Appliquer les modifications » — une suppression comprise — et « Annuler » n'annonce rien ; la fiche
+  d'une séance, qui enregistre réglage par réglage, regroupe les réglages d'un même auteur. Un email
+  par enregistrement, et sur le téléphone une notification courte par journée modifiée. Les ateliers,
+  les séances annulées, closes ou déjà commencées ne sont pas annoncés. Par email et téléphone
+  seulement (il nomme des personnes), désactivable dans « Mon profil ».
 
 ## Bureau (administrateur)
 
 ### Ouvrir l'espace admin
 
-On y entre par **« Mon profil » → « Accès administrateur »**. La première fois, un parcours en trois
-étapes : choisir son mot de passe, activer la double authentification, noter ses huit codes de
-secours. Ensuite, **« Se connecter en tant qu'administrateur »** redemande le mot de passe et le
-code. Se connecter à l'application n'ouvre jamais l'espace admin.
+**Pour le bureau, mot de passe et double authentification sont obligatoires dès l'entrée.** Tant
+que son accès n'est pas réglé, un membre du bureau est emmené sur **« Mon accès administrateur »** —
+après sa connexion par mot de passe, après l'ouverture de son lien, et au prochain écran qu'il ouvre
+s'il vient d'être nommé —, et aucun autre écran ne s'ouvre avant (« Se déconnecter » reste possible).
+Le parcours a trois étapes, reprises là où on les a laissées : choisir son mot de passe, activer la
+double authentification, noter ses huit codes de secours.
+
+L'étape 2 demande le **code d'activation** que remet un autre membre du bureau, de vive voix ou en
+main propre (voir Comptes admin) : sans lui, ni la personne ni quelqu'un qui lirait ses emails ne
+règle sa double authentification. Seul le compte du portail en est dispensé.
+
+Une fois l'accès réglé, la connexion ne demande que l'adresse et le mot de passe (ou le lien). Le
+code n'est demandé qu'à l'ouverture de l'espace admin — **« Mon profil » → « Accès administrateur »
+→ « Se connecter en tant qu'administrateur »**, qui redemande le mot de passe et le code (ou un code
+de secours) — et avant un geste sensible. Se connecter à l'application n'ouvre jamais l'espace
+admin.
 
 L'espace admin se referme avec « Quitter l'espace admin », après dix minutes sans activité, dix
 minutes après avoir quitté l'application, et au plus tard douze heures après son ouverture.
@@ -314,7 +347,8 @@ Membres, Présences, Thèmes et lieux, Club, Notifications, Comptes admin, Sessi
 - **Au téléphone**, l'annuaire est une liste de lignes avec **« + Ajouter »**, et la fiche d'un membre
   se règle par boutons.
 - **Réinitialiser l'accès** remet à zéro mot de passe, code, codes de secours et liens, et envoie un
-  lien neuf.
+  lien neuf. Pour un membre du bureau, un code d'activation s'affiche aussi, à lui remettre de vive
+  voix.
 
 ### Présences
 
@@ -384,6 +418,7 @@ Les messages :
 | Séance annulée | tous les invités, salons | aussitôt |
 | Alerte « peu de monde » | instructeurs | le matin, dans les trois jours avant |
 | Désistement de dernière minute | instructeurs | dans les deux heures avant le cours |
+| Planning modifié | instructeurs, sauf l'auteur | à l'application des modifications ; sur le téléphone, une notification par journée |
 | Réponse à une proposition d'atelier | l'auteur | à la décision |
 | Nouvel événement | membres, salons | à la publication, une fois |
 | Période suivante à créer, période à activer | administrateurs | avant la fin, puis avant le premier cours |
@@ -395,8 +430,29 @@ messages personnels ne partent qu'aux personnes qui ont un accès actif.
 
 - **Comptes admin** : nommer un administrateur parmi les personnes de l'annuaire (recherche, liste
   repliée à dix noms), retirer les droits (la personne garde son rôle de base), réinitialiser la
-  double authentification de quelqu'un. Un administrateur ne se crée pas de zéro : on l'ajoute dans
-  Membres, puis on le nomme.
+  double authentification d'un autre membre du bureau (sauf celle du compte du portail, que lui seul
+  réinitialise), retirer celle, sans effet, d'un membre ou d'un instructeur qui en garde une. Un
+  administrateur ne se crée pas de zéro : on l'ajoute dans Membres, puis on le nomme.
+  - **Le code d'activation** : 6 signes (par exemple `K7P-42M`), valable 48 heures, à usage unique.
+    Il s'affiche **une seule fois**, en haut de la page, à l'administrateur qui le génère — à la
+    nomination, à la réinitialisation d'une double authentification, à la remise à zéro d'un accès, ou
+    par **« Générer un code d'activation »** sur la ligne d'une personne dont le réglage est à faire.
+    Il se transmet de vive voix ou en main propre, **jamais** par email ni par message. La ligne porte
+    « Réglage à faire » et dit jusqu'à quand le code vaut, ou « aucun code valable ». Un nouveau code
+    remplace l'ancien ; personne ne génère le sien. Toute réinitialisation, celle qu'on fait soi-même
+    comprise, en exige un.
+  - **Ma double authentification** : régénérer ses codes de secours, réinitialiser la sienne (mot de
+    passe exigé, puis retour au parcours, avec un code remis par un autre membre du bureau).
+  - **Demande de réinitialisation** : depuis « Mon profil », un membre du bureau qui a perdu son
+    téléphone et ses codes de secours demande la réinitialisation, après une confirmation qui dit ce
+    qu'elle entraîne. Un message part à tous les **autres** membres du bureau (jamais à lui ; au compte
+    du portail s'il n'y a personne d'autre), au plus une demande toutes les six heures, et sa ligne
+    porte « réinitialisation demandée » jusqu'à ce qu'on agisse. Le message signale un mot de passe
+    réinitialisé récemment. On vérifie avec la personne de vive voix avant d'appuyer sur
+    « Réinitialiser ».
+  - **Le titulaire est toujours prévenu** (email et téléphone) de chaque demande et de chaque
+    réinitialisation de sa double authentification, et le bureau reçoit une alerte de sécurité à
+    chaque configuration d'une double authentification d'un de ses comptes.
 - **Sessions** : déconnecter un appareil, ou tous ceux d'une personne.
 - **Journal d'audit** : qui a fait quoi, filtres, raccourcis (par exemple *liens*), export CSV. Le
   journal des modifications du planning y mène aussi.

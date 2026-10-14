@@ -116,7 +116,8 @@ Ce que chacun peut faire — « ADMIN » se lisant « qui porte le supplément �
   séance souhaitée (optionnel, parmi les séances à venir)
 - "Mes propositions" : suivi du statut + commentaire de l'instructeur, modifiable/supprimable tant que PROPOSE
 - "Mon profil" : nom, email, notifications, thème, **état du lien d'accès + bouton « Renvoyer mon lien »**,
-  carte « Sécuriser mon compte » (mot de passe et double authentification, facultatifs)
+  carte « Sécuriser mon compte » (mot de passe facultatif ; pour qui a une double authentification,
+  « Demander la réinitialisation de ma double authentification »)
 
 ## Calcul du taux
 - Taux = présents / membres invités sur la période × 100, arrondi à l'entier
@@ -238,6 +239,16 @@ redirige vers `/gestion/ateliers`. Rien n'y est montré à l'un et caché à l'a
   **Pourquoi :** une séance porte les réponses des membres, et le dénominateur de tous les taux est
   l'effectif invité **de sa période**. La déplacer y ferait entrer des réponses de gens absents du
   nouveau dénominateur — ou obligerait à les effacer. On crée la séance là où elle doit être
+- **Une séance commencée se fige, et ne passe au passé que le lendemain.**
+  **Commencée** = `seanceCommencee(date, heureDebut)`, l'heure de début atteinte dans le fuseau du club : la carte reste
+  parmi les séances à venir, **grisée**, étiquette « Commencé », et plus rien ne s'y modifie — réponse, programme,
+  date, horaire, lieu, placement d'atelier (`partiePourEcriture`, `seancePourEcriture`, `modifierSeance`, gestes en
+  masse, `seanceValide`), refus côté serveur compris. **Passée** = `seancePassee(date)`, le lendemain à minuit : c'est
+  là qu'elle bascule dans « Passé ». Exceptions : la **correction des présences par le bureau** reste ouverte après
+  le début (c'est son objet), et la suppression reste un geste de bureau avec élévation. Planning et Séances
+  s'ouvrent **sur la séance du jour, sinon la prochaine** (`seanceCible`, `AllerALaSeanceCible`), sauf cible
+  explicite dans l'adresse. « Mon historique », les compteurs de l'accueil et le tableau de bord comptent un
+  cours dès son début (taux identiques partout)
 - **Effacer une séance n'est PAS un geste d'organisation** : `supprimerSeance` exige
   `periods.manage` (ADMIN) **et l'élévation** (`exigerReauth`), exactement comme son geste jumeau
   `supprimerSeancesPeriode` sur l'écran de la période, et le nombre de réponses perdues part dans le
@@ -403,26 +414,59 @@ seul réglage purement technique de l'application, la conservation du journal d'
 - Lien : https://<DOMAIN>/invitation/<token>, **valable 4 mois** (la durée d'un trimestre du club), révoqué à la clôture de
   la période ; renouvelé automatiquement et renvoyé par email — **à tout le monde, quel que soit le rôle** (balayage de 07:00,
   `renouvelerLiensExpirants` : aucun filtre sur `role`, ne pas en ajouter)
-- **Mot de passe et double authentification sont FACULTATIFS pour les membres et les instructeurs,
-  OBLIGATOIRES pour les administrateurs.** Le lien personnel, généré/régénéré/révoqué par
-  l'équipe, reste la porte principale de **tout le monde, quel que soit le rôle** : il connecte directement (session
-  de 12 h glissantes) ; première utilisation → écran de bienvenue
-- **Membres et instructeurs : un filet, jamais une obligation.** Depuis « Mon profil » → « Sécuriser mon compte »
-  (`/profil#securite`), chacun peut se définir un mot de passe, puis — en option — activer une double authentification
-  TOTP. **Pourquoi :** le lien *seul* enferme dehors quiconque perd son email ou change d'appareil. Sans mot de
-  passe, on entre par son lien. Les écrans qui accueillent l'ouverture d'un lien (page du lien, écran de
-  bienvenue) le mentionnent en une phrase, avec un lien vers cette ancre
-- **ADMIN : mot de passe ET double authentification obligatoires**, réglés par le parcours dédié **`/admin/activer`**
-  (mot de passe → 2FA → codes de secours, repris là où il s'est arrêté). Un ADMIN a parfaitement le droit d'entrer par
-  son lien personnel comme les autres — sa session est alors **ordinaire** — mais **l'espace admin reste fermé tant que
-  ce parcours n'est pas terminé** : ce n'est pas une option qu'il peut décliner indéfiniment. **Pourquoi :**
-  l'administration technique (paramètres, comptes, sessions, journal d'audit) ne s'ouvre jamais sans second facteur
-- **La page de connexion est ouverte à qui s'est donné un mot de passe**, quel que soit son rôle. Le code TOTP est ensuite
-  demandé **toujours à un administrateur** (configuré au passage s'il n'en a pas encore), et à quiconque a activé la double
-  authentification de lui-même. À qui n'en a pas, elle est **proposée** après le mot de passe, avec un bouton « Plus tard »
-  qui ouvre la session sans rien configurer (et pas reproposée avant un trimestre : `User.deuxFaProposeeLe`) — ce
-  « Plus tard » est **refusé à un ADMIN**. Un compte **sans** mot de passe reçoit un message générique
-  (aucune énumération de comptes) qui le renvoie à son lien personnel. Le reset de mot de passe suit la même règle
+- **La double authentification ne garde que l'espace admin.** Le lien personnel, généré/régénéré/révoqué
+  par l'équipe, reste la porte principale de **tout le monde, quel que soit le rôle** : il connecte directement
+  (session de 12 h glissantes) ; première utilisation → écran de bienvenue
+- **Mot de passe : facultatif pour tout le monde pour entrer.** Depuis « Mon profil » → « Sécuriser mon compte »
+  (`/profil#securite`), chacun peut se définir un mot de passe. **Pourquoi :** le lien *seul* enferme dehors
+  quiconque perd son email ou change d'appareil. Les écrans qui accueillent l'ouverture d'un lien (page du
+  lien, écran de bienvenue) le mentionnent en une phrase, avec un lien vers cette ancre
+- **La page de connexion est ouverte à qui s'est donné un mot de passe**, quel que soit son rôle, et **ne demande
+  jamais de code** — ni à un administrateur, ni à qui a configuré une double authentification. Le reset de mot de
+  passe suit la même règle. Un compte **sans** mot de passe reçoit un message générique (aucune énumération de
+  comptes) qui le renvoie à son lien personnel. Le code ne se demande qu'à `/connexion/admin` (élévation) et à
+  `/connexion/verifier` (code récent avant une action sensible)
+- **BUREAU (compte du portail compris) : mot de passe ET double authentification obligatoires dès l'entrée.**
+  Règle unique `reglageAccesDu` (`src/lib/auth/acces-admin.ts`) : bureau actif, avec une adresse, dont l'accès
+  n'est pas réglé. Il fait le parcours **`/admin/activer`** (mot de passe → 2FA → codes de secours, repris là où il
+  s'est arrêté) après le mot de passe, après l'ouverture de son lien (l'écran de bienvenue passe d'abord), et **à
+  son prochain écran** s'il vient d'être nommé au bureau : la mise en page de l'espace connecté et `requireUser`
+  le renvoient sur le parcours (`cheminLibrePendantReglage` : parcours, bienvenue, mot de passe provisoire, codes
+  de secours), et `assertPermission` refuse ses server actions. Le parcours porte « Se déconnecter ». Un bureau
+  **sans adresse** n'est pas enfermé : il ne peut de toute façon pas se connecter par mot de passe. Une fois
+  réglée, la 2FA ne se demande qu'à l'ouverture de l'espace admin. Pendant le réglage, les actions sur **son
+  propre compte** (présence, thème, préférences, mot de passe) restent ouvertes : seules celles qui passent par
+  `assertPermission` sont refusées. **Pourquoi :** l'administration technique (paramètres, comptes, sessions,
+  journal d'audit) ne s'ouvre jamais sans second facteur
+- **Code d'activation à usage unique, remis hors bande.** Tenir la boîte email ou le lien d'un membre du bureau
+  non réglé ne doit pas suffire à inscrire son téléphone. L'étape 2 de `/admin/activer` exige donc de tout membre
+  du bureau **nominatif** un code de 6 signes (`23456789ABCDEFGHJKMNPQRSTUVWXYZ`, affiché `K7P-42M`, saisie
+  tolérante), **48 h, usage unique**, qu'un **autre** membre du bureau génère dans Comptes admin et remet de vive
+  voix ou en main propre. Il naît à la nomination, à la réinitialisation de la 2FA d'un autre, à la remise à zéro
+  de l'accès d'un membre du bureau, et par « Générer un code d'activation » sur sa ligne (« Réglage à faire »). Un
+  nouveau code remplace l'ancien ; retirer les droits l'efface. En base, seulement un HMAC (`SESSION_SECRET`, lié
+  au compte) et l'échéance ; affichage unique à qui l'a généré (cookie signé et chiffré à son nom, usage
+  `code-activation`, 15 min) ; jamais dans le journal (`deux_fa.code_activation_genere` / `_utilise`), une URL, un
+  email ou une notification. Seul exempté : le compte du portail (repli `npm run admin:reset-2fa`, qui affiche
+  aussi un code pour un nominatif). **Toute réinitialisation exige un code, celle qu'on fait soi-même comprise** :
+  un autre membre du bureau le génère. Force brute : `totp_user` 8/15 min, soit 1 536 essais sur 48 h pour
+  8,9 × 10⁸ codes. Code : `src/lib/auth/code-activation.ts` (pur), `src/lib/auth/activation-bureau.ts`
+- **La 2FA se gère dans l'espace admin, pas dans « Mon profil »** : « Comptes admin → Ma double
+  authentification » (`CHEMIN_MA_DEUX_FA`) régénère ses codes de secours et réinitialise la sienne (mot de passe,
+  puis retour au parcours) ; la même page réinitialise celle d'un autre membre du bureau (sauf le compte du
+  portail, que lui seul réinitialise) et retire celle, sans effet, d'un membre ou d'un instructeur qui en garde une.
+  **« Mon profil » ne garde que le mot de passe** et, pour qui a une 2FA, **« Demander la réinitialisation de ma
+  double authentification »** (confirmation qui dit ce que la réinitialisation entraîne) : un message part à
+  **tous les autres membres actifs du bureau, jamais à la personne qui demande**, et au compte du portail
+  seulement s'il n'y a personne d'autre (`src/lib/auth/demande-deux-fa.ts`, une demande toutes les six heures au
+  plus, lue dans le journal `deux_fa.reinitialisation_demandee`) ; la ligne de la personne dans Comptes admin
+  porte « réinitialisation demandée le … » jusqu'à la réinitialisation. **Le titulaire est toujours prévenu**
+  (email à sa propre adresse et notification sur ses appareils) de chaque demande et de chaque réinitialisation
+  ou retrait de sa 2FA : si la demande part d'une session volée, lui seul peut s'en apercevoir. L'email au bureau
+  signale un mot de passe réinitialisé dans les sept jours, et le bureau reçoit une **alerte de sécurité à chaque
+  configuration de 2FA** d'un de ses comptes (`alerterDeuxFaActivee`). Une demande dont l'email a échoué ne
+  compte pas dans les six heures
+- **Membres et instructeurs n'activent pas de double authentification** : elle ne protégerait rien
 - **Invariant : l'administration technique exige le supplément « du bureau » ET une
   « session forte »** (mot de passe + code TOTP). La force d'une session **ne se déduit jamais** de « mot de passe + 2FA » :
   elle se déduit du **compte** (`peutOuvrirSessionForte`, `src/lib/auth/acces-admin.ts` — un compte actif portant
@@ -455,10 +499,9 @@ seul réglage purement technique de l'application, la conservation du journal d'
 - **Parcours d'entrée, montré une fois par lien** (`Invitation.parcoursVuLe`, pas par personne : un
   nouveau lien le remet une fois, revenir ne coûte pas un clic de plus) : (1) « veux-tu installer
   l'application ? » — oui / je l'ai déjà installée / non —, avec les étapes de la plateforme et le
-  bouton « Copier mon lien » ; (2) « consolider ton compte » — mot de passe, puis 2FA si un mot de
-  passe vient d'être posé — ou « continuer avec mon lien ». Tout est déclinable, **sauf pour un
-  ADMIN** : son lien le connecte (session ordinaire), mais le parcours le dépose sur
-  `/admin/activer`, qu'il doit terminer pour ouvrir l'espace admin. La question de
+  bouton « Copier mon lien » ; (2) « consolider ton compte » — un mot de passe — ou « continuer
+  avec mon lien ». Tout est déclinable, **sauf pour le bureau** : un membre du bureau non réglé ne
+  voit pas l'étape « consolider » et sort de l'écran de bienvenue vers `/admin/activer`, obligatoire. La question de
   l'installation est **sautée** sur ordinateur et en mode `standalone`
 - Ensuite : connexion classique email + mot de passe depuis n'importe quel appareil, **pour qui s'en est donné un**
 - "Mot de passe oublié" par lien email à usage unique (30 min)
@@ -553,6 +596,45 @@ seul réglage purement technique de l'application, la conservation du journal d'
 - **Trois jours avant le cours, pas plus tôt** (`HORIZON_ALERTE_EFFECTIF`) : fenêtre J-3 → le jour
   même, une seule alerte par séance (`effectif_<id>`). Plus tôt, il n'y a encore rien à décider
 
+### Désistement de dernière minute
+- **Type `desistement_tardif`** (`src/lib/notifications/desistement.ts`) : quand un membre change **lui-même** sa
+  réponse de Présent → Absent, Présent → Peut-être ou Peut-être → Absent **dans les 2 h qui précèdent le début**
+  (`DELAI_DESISTEMENT_TARDIF_MIN`, fuseau du club), **tous les instructeurs du club** sont prévenus (rôle de base
+  INSTRUCTEUR, plus l'équipe de la séance, accès actif) — chacun selon ses préférences, désactivable dans « Mon
+  profil » —, **sauf** le membre lui-même et les instructeurs qui ont répondu Absent ou Peut-être à cette séance.
+  Une correction du bureau (fiche, `/admin/presences`, lot) n'annonce rien.
+- **Email et push seulement** : le message nomme le membre, il ne part donc ni sur Discord, ni sur Telegram, ni
+  par l'API publique. Clé posée avant l'envoi, libérée sur échec, une par membre × séance × statut ; l'envoi ne
+  bloque jamais la réponse du membre (`signalerDesistementTardif` ne lève pas, et vérifie la fenêtre par une
+  lecture légère avant toute autre requête).
+
+### Planning modifié
+- **Type `planning_modifie`** (`src/lib/notifications/planning-modifie.ts`, gabarit `src/lib/email/templates/planning.ts`) :
+  quand un **échauffement, un cours ou une option** est rempli, modifié ou supprimé dans le planning d'un cours à
+  venir, **tous les instructeurs** (rôle de base INSTRUCTEUR, plus l'équipe de la séance, accès actif) reçoivent la
+  liste des ajouts, changements et suppressions (« Supprimé »), séance par séance avec sa date — **sauf l'auteur**,
+  et **seulement les nouvelles valeurs** (jamais « ancien → nouveau »). **Seuls le thème et l'instructeur principal
+  déclenchent une modification** ; second instructeur, niveau et description ne s'annoncent qu'avec eux. Les
+  ateliers, les déplacements et un élément resté vide n'annoncent rien ; une séance annulée, d'une période close
+  ou déjà commencée non plus.
+- **Un email par geste, une notification de téléphone par journée** (compacte : « + » ajout, « ✎ » modification,
+  « − » suppression ; une nouvelle notification du même cours remplace la précédente à l'écran). « Appliquer les
+  modifications » (`enregistrerCases`) envoie pour tout le lot. **Une suppression ne s'annonce qu'avec
+  « Appliquer »** — même sans case à écrire (`annoncerModificationsAppliquees`) ; « Annuler » l'oublie
+  (`oublierModificationsNonAppliquees`), et elle se périme après deux heures. La fiche de séance, qui enregistre
+  réglage par réglage, regroupe par auteur et envoie deux minutes après le dernier (regroupement en mémoire : un
+  redémarrage dans ces deux minutes perd le message, jamais l'écriture).
+- **Plafond par auteur** : vingt annonces par heure (`planning_annonce_user`), pour qu'un lot rejoué en boucle ne
+  vide pas le quota d'envoi du club.
+- **Email et push seulement** (il nomme des personnes), désactivable dans « Mon profil », visible des seuls instructeurs.
+
+### Ce que chacun voit dans ses réglages de notifications
+- **Selon son rôle** (`typesVisiblesPour`, `src/lib/notifications/membre.ts`) : un membre ne voit ni les alertes
+  de l'encadrement (« peu de monde », désistement de dernière minute, planning modifié — rôle de base INSTRUCTEUR)
+  ni celles du bureau (périodes à créer / à activer, et « Alertes de sécurité » parmi les messages toujours
+  envoyés — `estAdmin`). Les rôles s'additionnent. La fiche d'un membre côté admin montre les lignes **de cette
+  personne**. Un affichage seulement : qui reçoit se décide dans les modules d'envoi.
+
 ### Fenêtres de temps des écrans
 - `src/lib/horizon.ts`, les mêmes puces partout (séances, planning, tableau de bord) : **Toute la période · 2 mois ·
   1 mois · 2 semaines · 1 semaine · Prochain cours**. Les libellés sont **en durée** : « 1 mois » et non
@@ -632,7 +714,8 @@ seul réglage purement technique de l'application, la conservation du journal d'
 # Sécurité (obligatoire)
 - Validation de toutes les entrées avec Zod, côté serveur
 - Protection CSRF sur les mutations, en-têtes de sécurité (CSP stricte, X-Frame-Options DENY, Referrer-Policy)
-- Rate limiting : login, invitation, reset, désinscription, API publique (par IP et par email)
+- Rate limiting : login, invitation, reset, désinscription, API publique (par IP et par email), code à usage
+  unique, code d'activation, demande de réinitialisation de 2FA, annonces « Planning modifié » par auteur
 - Messages d'erreur génériques (pas d'énumération de comptes)
 - Contrôle d'accès vérifié côté serveur sur chaque route/action
 - Aucune élévation de privilège possible : l'annuaire est fermé à un INSTRUCTEUR, et le supplément « du bureau »
