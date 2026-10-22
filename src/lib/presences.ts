@@ -206,6 +206,18 @@ export const PALIER_LABELS: Record<Palier, string | null> = {
  * ({@link seuilEnPersonnes}) : c'est ce qui fait qu'aucun écran n'a de nombre à recopier.
  */
 /**
+ * **Moins de {@link SEUIL_PLANCHER} « Présent » confirmés : l'alerte part, quoi qu'il arrive.**
+ *
+ * Décision du club : 3 confirmés et 2 « peut-être » font un effectif attendu de 4, pile le seuil, et
+ * l'encadrement n'a rien reçu pour un cours qui n'avait que trois personnes sûres. Les « peut-être »
+ * aident à préparer le matériel, pas à décider d'ouvrir la salle : sous quatre confirmés, on prévient,
+ * sans regarder les « peut-être », la part réglée ni la taille du groupe invité.
+ */
+export function sousLePlancherConfirme(c: { presents: number }): boolean {
+  return c.presents < SEUIL_PLANCHER;
+}
+
+/**
  * **Le cours manque-t-il de monde ?** — la *décision*, pas le mot.
  *
  * Séparée de `palierEffectif`, et c'est une leçon payée le même jour. La borne dégénérée ajoutée à
@@ -227,6 +239,7 @@ export const PALIER_LABELS: Record<Palier, string | null> = {
  * **« quel mot afficher ? »** se tait quand l'échelle n'a pas de sens.
  */
 export function sousLeSeuil(c: { presents: number; peutEtre: number; invites: number }, partEffectifMin: number): boolean {
+  if (sousLePlancherConfirme(c)) return true;
   const seuil = seuilEnPersonnes(partEffectifMin, c.invites);
   // Un groupe qui ne dépasse pas le seuil n'est pas « en danger » : il est trop petit pour être jugé,
   // et le reprocher à la séance serait reprocher la taille de la période. C'est la borne d'origine,
@@ -255,7 +268,7 @@ export function palierEffectif(c: { presents: number; peutEtre: number; invites:
    */
   if (c.invites <= seuil || c.invites < seuilConfort(seuil)) return "indetermine";
   const attendus = effectifAttendu(c);
-  if (attendus < seuil) return "danger";
+  if (attendus < seuil || sousLePlancherConfirme(c)) return "danger";
   if (attendus < seuilConfort(seuil)) return "juste";
   return "bien";
 }

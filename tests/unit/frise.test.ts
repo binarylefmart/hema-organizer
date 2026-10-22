@@ -410,7 +410,8 @@ describe("un club de douze ne voit rien changer", () => {
     const seuil = 4;
     if (c.invites <= seuil) return "indetermine";
     const attendus = c.presents + Math.round(c.peutEtre / 2);
-    if (attendus < seuil) return "danger";
+    // Moins de quatre confirmés : danger quoi qu'il arrive (`sousLePlancherConfirme`).
+    if (attendus < seuil || c.presents < seuil) return "danger";
     if (attendus < seuil + 3) return "juste";
     return "bien";
   }

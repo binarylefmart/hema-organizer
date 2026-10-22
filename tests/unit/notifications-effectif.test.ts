@@ -345,20 +345,34 @@ describe("alerte « peu de monde » : le même juge que les écrans", () => {
   });
 
   /**
-   * L'exemple de la docstring de `presences.ts`, à l'échelle où il a un sens : un club de 12 invités
-   * (seuil 4, confort 7). Trois confirmés valent moins que le seuil, six indécis en font six
-   * attendus — « Effectif juste », et il n'y a rien à annoncer.
+   * Un club de 12 invités (seuil 4, confort 7) : quatre confirmés et six indécis font sept attendus —
+   * « Bien rempli », et il n'y a rien à annoncer.
    */
-  it("se tait sur 3 confirmés et 6 indécis, l'exemple que `presences.ts` déclare non dangereux", async () => {
-    const chiffres = { presents: 3, peutEtre: 6, invites: 12 };
+  it("se tait sur 4 confirmés et 6 indécis", async () => {
+    const chiffres = { presents: 4, peutEtre: 6, invites: 12 };
     expect(seuilEnPersonnes(20, 12)).toBe(4);
-    expect(motAffiche(chiffres)).toBe("Effectif juste");
+    expect(motAffiche(chiffres)).toBe("Bien rempli");
 
-    faux.seances = [seancePour(12, [...reponsesDe("PRESENT", 3), ...reponsesDe("PEUT_ETRE", 6, 4)])];
+    faux.seances = [seancePour(12, [...reponsesDe("PRESENT", 4), ...reponsesDe("PEUT_ETRE", 6, 4)])];
     expect(await alerterEffectifFaible(MATIN)).toBe(0);
     expect(faux.emails).toHaveLength(0);
     expect(faux.salon).toHaveLength(0);
   });
+
+  /**
+   * **Moins de quatre confirmés : l'alerte part, quoi qu'il arrive.** Le cas réel qui a fixé la règle :
+   * 3 « Présent » et 2 « Peut-être » font 4 attendus, pile le seuil, et rien n'était parti.
+   */
+  for (const peutEtre of [2, 6]) {
+    it(`alerte sur 3 confirmés et ${peutEtre} indécis, quels que soient les « peut-être »`, async () => {
+      const chiffres = { presents: 3, peutEtre, invites: 12 };
+      expect(motAffiche(chiffres)).toBe("Peu de monde");
+
+      faux.seances = [seancePour(12, [...reponsesDe("PRESENT", 3), ...reponsesDe("PEUT_ETRE", peutEtre, 4)])];
+      expect(await alerterEffectifFaible(MATIN)).toBe(1);
+      expect(faux.emails.length).toBeGreaterThan(0);
+    });
+  }
 
   /**
    * **La garde `indetermine`, et pourquoi elle vient avec le correctif.** `palierEffectif` rend
@@ -367,16 +381,22 @@ describe("alerte « peu de monde » : le même juge que les écrans", () => {
    * déclenchait à *chaque* cours tant que les 4 n'étaient pas tous confirmés, pour un club où il n'y
    * a rien à décider. Passer par `palierEffectif` donne les deux d'un coup.
    */
-  it("ne dit rien d'un trimestre de 4 invités, où aucun écran n'affiche de couleur", async () => {
+  it("alerte aussi un trimestre de 4 invités, où aucun écran n'affiche de couleur", async () => {
     const chiffres = { presents: 1, peutEtre: 0, invites: 4 };
-    // 4 invités, seuil 4 (le plancher) : l'échelle ne veut rien dire, et le mot est absent.
+    // 4 invités, seuil 4 (le plancher) : l'échelle ne veut rien dire, et le mot est absent…
     expect(palierEffectif(chiffres, 20)).toBe("indetermine");
     expect(motAffiche(chiffres)).toBeNull();
 
+    // …mais moins de quatre confirmés déclenche l'alerte quoi qu'il arrive (`sousLePlancherConfirme`).
     faux.seances = [seancePour(4, reponsesDe("PRESENT", 1))];
+    expect(await alerterEffectifFaible(MATIN)).toBe(1);
+    expect(faux.emails.length).toBeGreaterThan(0);
+  });
+
+  it("ne dit rien d'un trimestre de 4 invités tous confirmés", async () => {
+    faux.seances = [seancePour(4, reponsesDe("PRESENT", 4))];
     expect(await alerterEffectifFaible(MATIN)).toBe(0);
     expect(faux.emails).toHaveLength(0);
-    expect(faux.logs).toHaveLength(0);
   });
 
   /**

@@ -18,6 +18,7 @@ import {
   serialiserPreferences,
 } from "@/lib/notifications/preferences";
 import { HORIZON_ALERTE_EFFECTIF } from "@/lib/notifications/planification";
+import { SEUIL_PLANCHER } from "@/lib/presences";
 import { ERREUR_WHATSAPP_NON_CONFIGURE, envoyerWhatsApp, lienPartageWhatsApp, whatsappConfigure } from "@/lib/notifications/whatsapp";
 
 /**
@@ -374,7 +375,8 @@ describe("phrases du panneau : la règle, jamais un nombre de personnes", () => 
     expect(quand).toContain("écran Club");
     // Le plus important : plus aucun décompte de présents.
     expect(quand).not.toMatch(/\d+\s*présent/);
-    expect(quand).not.toContain("moins de 4");
+    // Le seul nombre de personnes toléré : le plancher de confirmés, lu depuis sa constante.
+    expect(quand).toContain(`moins de ${SEUIL_PLANCHER} « Présent » confirmés`);
   });
 
   /**
@@ -385,8 +387,8 @@ describe("phrases du panneau : la règle, jamais un nombre de personnes", () => 
   it("compose sa fenêtre depuis `HORIZON_ALERTE_EFFECTIF`, et ne porte aucun autre nombre", () => {
     const quand = DESCRIPTIONS.effectif_faible.quand;
     expect(quand).toContain(`${HORIZON_ALERTE_EFFECTIF} jours`);
-    // 7 = l'heure du balayage du matin ; l'horizon = la fenêtre. Rien d'autre.
-    expect([...quand.matchAll(/\d+/g)].map((m) => m[0])).toEqual(["7", String(HORIZON_ALERTE_EFFECTIF)]);
+    // 7 = l'heure du balayage du matin ; l'horizon = la fenêtre ; le plancher de confirmés. Rien d'autre.
+    expect([...quand.matchAll(/\d+/g)].map((m) => m[0])).toEqual(["7", String(HORIZON_ALERTE_EFFECTIF), String(SEUIL_PLANCHER)]);
   });
 
   /**

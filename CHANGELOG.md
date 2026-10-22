@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.78.0
+
+### Corrections
+
+- **alertes** : moins de 4 « Présent » confirmés déclenche l'alerte « peu de monde », quoi qu'il arrive
+
+### Autres changements
+
+- **readme** : séance du jour, planning modifié, code d'activation du bureau
+
 ## 0.77.0
 
 ### Nouveautés

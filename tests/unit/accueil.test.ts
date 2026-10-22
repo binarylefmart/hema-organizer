@@ -608,11 +608,11 @@ describe("compte rendu d'accueil", () => {
       // Un programme s'écrit pour un soir : la bulle donne les deux dates, pas un total
       coursSansProgrammeDates: ["2026-09-29", "2026-10-13"],
       // Le club de ce jeu d'essai compte 4 invités, soit le seuil d'effectif lui-même : l'échelle
-      // des paliers se déclare « indéterminée » plutôt que de reprocher à un cours d'être donné à
-      // un petit groupe. Aucun cours ne peut donc être « en danger » ici (voir `palierEffectif`).
-      coursEnDanger: 0,
-      prochainCoursEnDanger: null,
-      coursEnDangerDates: [],
+      // des paliers est « indéterminée », mais s4 et s6 ont moins de quatre confirmés — en danger
+      // quoi qu'il arrive (voir `sousLePlancherConfirme`).
+      coursEnDanger: 2,
+      prochainCoursEnDanger: "2026-09-29",
+      coursEnDangerDates: ["2026-09-29", "2026-10-13"],
       // Deux cours passés : une « moitié de trimestre » d'un seul cours n'est pas une tendance
       tendance: null,
       // Les deux cours passés tombent le même jour : il n'y a pas deux créneaux à comparer

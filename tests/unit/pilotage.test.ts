@@ -335,8 +335,10 @@ describe("cours à venir en danger", () => {
   });
 
   it("suit le palier commun : les peut-être comptent pour moitié", () => {
-    // 3 présents + 2 peut-être = 4 attendus, soit le seuil atteint : pas en danger.
-    expect(coursEnDanger([{ date: "2026-10-02", compteurs: compteurs(3, 2) }], PART)).toEqual([]);
+    // 4 présents + 2 peut-être = 5 attendus : pas en danger.
+    expect(coursEnDanger([{ date: "2026-10-02", compteurs: compteurs(4, 2) }], PART)).toEqual([]);
+    // 3 présents + 2 peut-être = 4 attendus, mais moins de quatre confirmés : en danger quoi qu'il arrive.
+    expect(coursEnDanger([{ date: "2026-10-02", compteurs: compteurs(3, 2) }], PART)).toEqual(["2026-10-02"]);
     // 3 présents seuls : en dessous.
     expect(coursEnDanger([{ date: "2026-10-02", compteurs: compteurs(3, 0) }], PART)).toEqual(["2026-10-02"]);
   });
@@ -349,9 +351,10 @@ describe("cours à venir en danger", () => {
     expect(coursEnDanger([{ date: "2026-10-02", compteurs: compteurs(9, 0, 80) }], PART)).toEqual(["2026-10-02"]);
   });
 
-  it("ne colore pas un trimestre trop petit pour que le seuil ait un sens", () => {
-    // Palier « indéterminé » : avec 4 invités, aucun effectif n'atteindra jamais le seuil.
-    expect(coursEnDanger([{ date: "2026-10-02", compteurs: compteurs(0, 0, 4) }], PART)).toEqual([]);
+  it("compte même un trimestre trop petit pour que le seuil ait un sens, sous quatre confirmés", () => {
+    // Avec 4 invités, l'échelle est « indéterminée », mais moins de quatre confirmés reste un danger.
+    expect(coursEnDanger([{ date: "2026-10-02", compteurs: compteurs(0, 0, 4) }], PART)).toEqual(["2026-10-02"]);
+    expect(coursEnDanger([{ date: "2026-10-02", compteurs: compteurs(4, 0, 4) }], PART)).toEqual([]);
   });
 
   it("ne renvoie aucune date quand tout va bien, ni sur une liste vide", () => {

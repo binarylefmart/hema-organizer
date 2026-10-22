@@ -188,6 +188,7 @@ export default async function PageIdentite() {
                         {club.partEffectifMin} % de {invites} invités, soit {seuilEnPersonnes(club.partEffectifMin, invites)} personnes
                       </strong>{" "}
                       — jamais moins de {SEUIL_PLANCHER}. En dessous, l&apos;encadrement est prévenu et le cours est marqué « Peu de monde ».
+                      Et quoi qu&apos;il arrive, un cours à moins de {SEUIL_PLANCHER} « Présent » confirmés déclenche l&apos;alerte.
                     </>
                   )}
                 </p>

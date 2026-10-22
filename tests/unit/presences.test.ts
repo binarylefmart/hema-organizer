@@ -10,6 +10,8 @@ import {
   PALIERS,
   MARGE_CONFORT,
   SEUIL_PLANCHER,
+  sousLeSeuil,
+  sousLePlancherConfirme,
   seuilConfort,
   seuilEnPersonnes,
   tauxPersonnel,
@@ -202,11 +204,22 @@ describe("paliers de remplissage d'un cours", () => {
   });
 
   it("juge sur l'effectif attendu, pas sur les seuls confirmés", () => {
-    // 3 confirmés et 6 indécis, c'est ~6 attendus : le cours n'est pas en danger, il est juste.
+    // 4 confirmés et 6 indécis, c'est ~7 attendus : le cours est bien rempli.
+    expect(effectifAttendu(seance(4, 6))).toBe(7);
+    expect(palierEffectif(seance(4, 6), PART)).toBe("bien");
+    // 4 confirmés, personne d'autre : le seuil est tenu, sans marge.
+    expect(palierEffectif(seance(4, 0), PART)).toBe("juste");
+  });
+
+  it("met en danger tout cours à moins de quatre confirmés, quels que soient les « peut-être »", () => {
+    // 3 confirmés et 6 indécis font ~6 attendus, mais seulement trois personnes sûres.
     expect(effectifAttendu(seance(3, 6))).toBe(6);
-    expect(palierEffectif(seance(3, 6), PART)).toBe("juste");
-    // Les mêmes 3 confirmés, personne d'autre : là, il l'est.
-    expect(palierEffectif(seance(3, 0), PART)).toBe("danger");
+    expect(palierEffectif(seance(3, 6), PART)).toBe("danger");
+    expect(sousLeSeuil(seance(3, 6), PART)).toBe(true);
+    // Le cas du 22 octobre : 3 confirmés et 2 « peut-être », pile 4 attendus.
+    expect(sousLeSeuil(seance(3, 2), PART)).toBe(true);
+    expect(sousLePlancherConfirme({ presents: 3 })).toBe(true);
+    expect(sousLePlancherConfirme({ presents: 4 })).toBe(false);
   });
 
   it("ne note pas un groupe plus petit que le seuil lui-même", () => {

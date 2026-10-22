@@ -3,6 +3,7 @@ import { CLES, getSetting, setSetting } from "@/lib/settings";
 // La fenêtre de l'alerte « peu de monde » se lit là où elle est définie (module pur, sans base) :
 // la phrase du panneau ne recopie pas « 3 jours ».
 import { HORIZON_ALERTE_EFFECTIF } from "./planification";
+import { SEUIL_PLANCHER } from "@/lib/presences";
 
 /**
  * Réglages du panneau « Notifications » (Gestion → Réglages).
@@ -239,7 +240,7 @@ export type DescriptionNotification = {
  * de jours, pas un nombre de personnes — il ne dépend d'aucun réglage de club, mais il n'a pas à
  * être recopié deux fois. `tests/unit/notifications-preferences.test.ts` relie les deux.
  */
-export const REGLE_SEUIL_EFFECTIF = "dont l'effectif attendu (présents et moitié des « peut-être ») reste sous la part minimale réglée par le club";
+export const REGLE_SEUIL_EFFECTIF = `qui compte moins de ${SEUIL_PLANCHER} « Présent » confirmés, ou dont l'effectif attendu (présents et moitié des « peut-être ») reste sous la part minimale réglée par le club`;
 
 export const DESCRIPTIONS: Record<TypeNotification, DescriptionNotification> = {
   recap_veille: {
