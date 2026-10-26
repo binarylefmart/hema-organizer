@@ -84,7 +84,7 @@ export function VignetteProchainCours({ seance }: { seance: SeanceCarte }) {
       aria-label="Le prochain cours"
       className="rounded-2xl border border-encre-texte/15 bg-encre p-4 text-encre-texte shadow-carte"
     >
-      <p className="text-xs font-bold uppercase tracking-[0.14em] text-marque">Prochain cours</p>
+      <p className="text-xs font-bold uppercase tracking-[0.14em] text-marque">{seance.commencee ? "Cours du jour · commencé" : "Prochain cours"}</p>
       <p className="mt-1 text-lg font-bold leading-tight sm:text-xl">
         {formatDateCourte(seance.date)}&nbsp;· {formatHeure(seance.heureDebut)}
       </p>

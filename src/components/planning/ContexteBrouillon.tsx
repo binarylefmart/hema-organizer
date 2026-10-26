@@ -20,7 +20,7 @@ import { poserEnMasse, type EcritureEnMasse, type EtatBrouillon, type Imposee } 
  * fournisseur se monte une fois autour des cartes, comme `FournisseurOptions` juste à côté.
  *
  * **Deux mains y écrivent** : la case elle-même (`poser`, `oublier`), et la sélection multiple du
- * planning (`poserPlusieurs`, « Régler une partie » sur plusieurs séances). La seconde laisse une trace
+ * planning (`poserPlusieurs`, « Régler des éléments » et « Remplacer un thème » sur plusieurs séances). La seconde laisse une trace
  * que la case relit (`imposees`, voir `brouillon.ts`) : sans elle, la barre compterait des cases
  * modifiées que leurs listes déroulantes ne montreraient pas.
  *

@@ -19,7 +19,7 @@ import { Volet } from "@/components/ui/Volet";
 import { LienBouton } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
 import { Cellule, Ligne, Tableau, type PalierTableau } from "@/components/ui/Tableau";
-import { etatDuLien } from "./etat-lien";
+import { etatDuLien, LEGENDE_LIEN, type TonLien } from "./etat-lien";
 import { libelleAfficher, libelleCompteur, LIBELLE_REPLIER, LIGNES_VISIBLES } from "@/components/seances/listes";
 import { ImportCsv } from "./ImportCsv";
 import { SelecteurRole } from "./SelecteurRole";
@@ -95,6 +95,9 @@ type Props = { searchParams: Promise<{ q?: string; inactifs?: string; tout?: str
  */
 const LIGNE_COCHEE =
   "tel:rounded-xl tel:has-[[data-case-selection]:checked]:bg-primaire-doux tel:has-[[data-case-selection]:checked]:ring-2 tel:has-[[data-case-selection]:checked]:ring-inset tel:has-[[data-case-selection]:checked]:ring-primaire";
+
+/** La puce de la légende, aux couleurs pleines des pastilles (`Pastille`). */
+const PUCE_LIEN: Record<TonLien, string> = { vert: "bg-vert", ocre: "bg-ocre", rouge: "bg-rouge", neutre: "bg-texte-secondaire/40" };
 
 export default async function PageMembres({ searchParams }: Props) {
   const acteur = await requirePermission("members.view");
@@ -551,6 +554,19 @@ export default async function PageMembres({ searchParams }: Props) {
             390 px l'écran garde ce qu'il était : une personne par fiche, rien de tronqué, aucun
             défilement horizontal.
           */}
+          {/* **La légende du code couleur de l'état du lien**, une fois au-dessus du tableau : la
+              pastille porte déjà sa situation en toutes lettres, la légende dit ce que la couleur
+              demande au bureau (`LEGENDE_LIEN`, `etat-lien.ts`). */}
+          {membres.length > 0 && (
+            <ul aria-label="Code couleur de l'état du lien" className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-texte-secondaire">
+              {LEGENDE_LIEN.map((l) => (
+                <li key={l.ton} className="flex items-center gap-1.5">
+                  <span aria-hidden className={`inline-block size-3 rounded-full ${PUCE_LIEN[l.ton]}`} />
+                  {l.texte}
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="mt-4">
             <Tableau
               palier={PALIER_TABLEAU}
@@ -839,10 +855,9 @@ export default async function PageMembres({ searchParams }: Props) {
                       </Cellule>
                       {/*
                         **L'état du lien, en colonne** (« l'état du lien devient une
-                        colonne, donc comparable d'un coup d'œil »). Un seul des cinq états porte une
-                        couleur — « Jamais ouvert » sans mot de passe —, parce que c'est celui qu'on
-                        balaie la colonne pour trouver. L'infobulle porte la phrase entière : le mot
-                        court tient dans la colonne, il ne dit pas tout (`etat-lien.ts`).
+                        colonne, donc comparable d'un coup d'œil »), en code couleur : vert = entre,
+                        ocre = lien envoyé pas encore ouvert, rouge = ne peut pas entrer, neutre =
+                        hors jeu. L'infobulle porte la phrase entière et le geste (`etat-lien.ts`).
                       */}
                       {/* Au téléphone, l'état du lien remonte sous le nom, en petit : la seule
                           seconde ligne de la personne. */}

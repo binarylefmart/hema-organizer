@@ -8,6 +8,8 @@ import type { Compteurs } from "@/lib/presences";
 import { Icone } from "@/components/ui/Icone";
 import { ListeRepliee } from "@/components/seances/ListeRepliee";
 import { couper, ORDRE_GROUPES } from "@/components/seances/listes";
+import { ProgrammeCours } from "@/components/seances/ProgrammeCours";
+import type { ProgrammeSeance } from "@/lib/planning";
 
 /**
  * **La couleur des deux nombres écrits au-dessus d'une colonne** : vert « Présent », ocre «
@@ -75,6 +77,17 @@ export type DetailsCours = {
       `lienCarte` cherche alors le nom du lieu seul. */
   adresse: string;
   participants: ListesParStatut;
+  /**
+   * **Le programme du cours, lu comme au planning** (Delta : « comme pour les
+   * planifications, le cours / échauffement, l'instructeur etc. ») : partie par partie, chaque
+   * élément avec sa nature, son thème, son instructeur et son niveau — le même `ProgrammeCours`
+   * (variante `compact`) que la fiche de la vue Personnel. Facultatif : un cours pas encore
+   * programmé n'affiche rien, ni « à venir », ni bloc vide (`ProgrammeCours` se tait de lui-même).
+   */
+  programme?: ProgrammeSeance;
+  /** Le thème « libre » et l'alternative d'une séance d'avant le planning, lus par `ProgrammeCours`. */
+  theme?: string;
+  alternative?: string;
 };
 
 /**
@@ -95,8 +108,8 @@ const GROUPES: Array<{ cle: CleSegment; liste: keyof ListesParStatut }> = ORDRE_
  *
  * La barre verticale bascule en **bande horizontale** sous la frise : mêmes couleurs, mêmes
  * proportions, mais la place d'écrire dedans. Le panneau ne répète donc pas la colonne, il
- * l'ouvre — et il ajoute les trois seules choses que la frise ne montre pas : **la date en toutes
- * lettres, l'horaire et le lieu**, puis **les noms**. C'est exactement pour ça qu'on l'ouvre.
+ * l'ouvre — et il ajoute ce que la frise ne montre pas : **la date en toutes lettres, l'horaire et
+ * le lieu**, **le programme du cours** (comme au planning), puis **les noms**. C'est exactement pour ça qu'on l'ouvre.
  *
  * **L'animation** est une transition, pas une chorégraphie : le panneau part de `grid-rows-[0fr]`
  * et d'une opacité nulle, et l'effet de montage le bascule à sa taille réelle. Sans elle, la bande
@@ -189,6 +202,14 @@ export function FriseDetail({
               {details.lieu}
             </a>
           </p>
+          {/* **Ce qu'on va travailler**, juste après « quand et où » et avant « combien » : le
+              programme tel que le planning le montre — parties, échauffement, cours, options, avec
+              leur thème, leur instructeur et leur niveau, aux couleurs du planning. */}
+          {details.programme && (
+            <div className="mt-2">
+              <ProgrammeCours programme={details.programme} theme={details.theme} alternative={details.alternative} compact />
+            </div>
+          )}
           {/* **La bande** : la colonne couchée, et elle en reprend exactement les trois parties —
               le vert, l'ocre, puis le reste du club en neutre. Les segments sont dimensionnés par
               `flex-grow` proportionnel à leur part, ce qui absorbe sans calcul les 2 px de fond qui

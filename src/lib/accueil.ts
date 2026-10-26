@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { dateDAdhesion, joursDeCoursDuClub, moisDepuis, presencesDuMeilleurMois } from "./blasons";
-import { parisOffsetMinutes, todayIso } from "./dates";
+import { seanceCommencee, todayIso } from "./dates";
 import { evenementsAVenir } from "./evenements";
 import { can, isStaff } from "./permissions";
 import { prochainesSeances, type SeanceCarte } from "./seances";
@@ -568,13 +568,11 @@ export async function compteRendu(user: CurrentUser, partEffectifMin: number, no
   const espaceAdminOuvert = can(user, "settings.technical") && user.sessionForte;
   const periode = await periodeDuCompteRendu(user, now);
   /*
-   * L'heure qu'il est **à Paris**, « HH:MM », pour poser en SQL exactement la frontière de
-   * `seanceCommencee` : une séance a eu lieu si sa date est passée, ou si c'est aujourd'hui et que
-   * son heure de début est atteinte. `heureDebut` est une chaîne « HH:MM », qui se compare comme
-   * telle — aucune `Date` construite côté base.
+   * Les cours qui ont eu lieu, en SQL : ceux d'avant aujourd'hui, exactement la frontière de
+   * `seancePassee` — le cours du jour, commencé ou non, ne compte qu'à partir du lendemain, comme
+   * dans « Passé ». `Session.date` est une chaîne « AAAA-MM-JJ », qui se compare comme telle.
    */
-  const heureParis = new Date(now.getTime() + parisOffsetMinutes(now) * 60_000).toISOString().slice(11, 16);
-  const commencees = { annulee: false, OR: [{ date: { lt: aujourdHui } }, { date: aujourdHui, heureDebut: { lte: heureParis } }] };
+  const passeesSql = { annulee: false, date: { lt: aujourdHui } };
   const [cartes, stats, evenements, ateliersEnAttente, liensDormants, presencesNominatives, mesPresences, ateliersProposes, presencesToutesSaisons] = await Promise.all([
     // Les cartes des prochains cours, telles que les affiche déjà la liste des séances.
     prochainesSeances(user, now),
@@ -653,26 +651,25 @@ export async function compteRendu(user: CurrentUser, partEffectifMin: number, no
      * « AAAA-MM-JJ » qui se compare comme telle — aucune `Date` construite ici, elle basculerait
      * d'un jour selon le fuseau du serveur.
      *
-     * **La frontière est celle de `seanceCommencee`, et pas « avant aujourd'hui ».** C'était le
-     * seul compteur de l'écran à s'arrêter à minuit : le soir même d'un cours, le compteur du
-     * trimestre avait déjà avancé (il lit `passee`, donc l'heure de début) pendant que le blason
-     * « 50 cours » affichait encore le chiffre de la veille, juste à côté. Deux compteurs de
-     * présence qui ne disent pas la même chose sur le même écran, c'est un compteur de trop.
+     * **La frontière est celle de `seancePassee`**, comme le compteur du trimestre juste à côté (il
+     * lit `passee`) : deux compteurs de présence qui ne disent pas la même chose sur le même écran,
+     * c'est un compteur de trop.
      */
-    periode ? db.attendance.count({ where: { userId: user.id, statut: "PRESENT", session: commencees } }) : 0,
+    periode ? db.attendance.count({ where: { userId: user.id, statut: "PRESENT", session: passeesSql } }) : 0,
   ]);
 
   // À partir d'ici, plus aucune requête : tout se lit dans ce qui vient d'être chargé.
-  // Les prochains cours vont jusqu'à la fin de la journée en cours : celui de ce soir y est encore
-  // à 18 h, et il en sort dès qu'il a commencé. C'est exactement la frontière que le tableau de
-  // bord applique pour dire qu'une séance est passée — sans quoi le même écran compterait le cours
-  // de 19 h 30, à 20 h, à la fois comme fait et comme restant à faire.
-  const aVenir = cartes.filter((c) => !c.commencee);
+  // Les prochains cours comprennent celui du jour jusqu'à minuit, commencé ou non (`seancePassee`) :
+  // le tableau de bord ne le compte comme passé que le lendemain, il ne peut donc pas sortir d'ici
+  // avant — sans quoi le cours du soir ne serait plus nulle part pendant qu'il se donne. Commencé, il
+  // n'attend plus de réponse : il sort de tout ce qui en réclame une.
+  const aVenir = cartes;
   const deLaPeriode = periode ? aVenir.filter((c) => c.periodId === periode.id) : [];
   const prochaines = aVenir.slice(0, PROCHAINES_AFFICHEES);
   // Ce qu'on attend encore de la personne : les cartes portent déjà sa réponse (`monStatut`),
-  // rien à relire. Une séance annulée n'attend aucune réponse : la relancer serait un faux rappel.
-  const sansReponse = deLaPeriode.filter((c) => c.inscrit && !c.annulee && c.monStatut === null).length;
+  // rien à relire. Une séance annulée ou commencée n'attend aucune réponse : la relancer serait un
+  // faux rappel.
+  const sansReponse = deLaPeriode.filter((c) => c.inscrit && !c.annulee && !c.commencee && c.monStatut === null).length;
   // La prochaine séance « pour de vrai » : une séance annulée n'attend aucune réponse et ne
   // rassemblera personne, la mettre en avant donnerait des chiffres qui ne veulent rien dire.
   const prochaine = aVenir.find((c) => !c.annulee) ?? null;
@@ -826,8 +823,9 @@ export async function compteRendu(user: CurrentUser, partEffectifMin: number, no
           // sens sur un tas.
           passees: passees.map((s) => ({ id: s.id, date: s.date, presents: s.compteurs.presents })),
           // Tout ce qui reste au trimestre, et pas les seuls cours mis en avant : « 2 cours en
-          // danger » doit parler de la fin du trimestre, sinon le compteur rassure à tort.
-          aVenirDuTrimestre: seances.filter((s) => !s.passee && !s.annulee),
+          // danger » doit parler de la fin du trimestre, sinon le compteur rassure à tort. Le cours
+          // commencé n'en est plus : son effectif est joué, il n'y a plus personne à faire venir.
+          aVenirDuTrimestre: seances.filter((s) => !s.passee && !s.annulee && !seanceCommencee(s.date, s.heureDebut, now)),
           membres: stats?.membres ?? [],
           ateliersEnAttente,
           seancesDeLaPeriode: seances,
@@ -907,9 +905,9 @@ function blocAdmin(entrees: {
   noms: ReadonlyMap<string, string>;
 }): BlocAdmin {
   const { prochaines, passees, membres, ateliersEnAttente, seancesDeLaPeriode, aujourdHui, liens, presences, noms } = entrees;
-  // Les cours annulés n'attendent aucune réponse : les compter ferait tomber le taux de réponse et
-  // ferait passer pour muet quelqu'un à qui on n'a rien demandé.
-  const suivis = prochaines.filter((c) => !c.annulee);
+  // Les cours annulés ou commencés n'attendent aucune réponse : les compter ferait tomber le taux de
+  // réponse et ferait passer pour muet quelqu'un à qui on n'a rien demandé (ou plus rien).
+  const suivis = prochaines.filter((c) => !c.annulee && !c.commencee);
   const attendues = suivis.reduce((n, c) => n + c.compteurs.invites, 0);
   const manquantes = suivis.reduce((n, c) => n + c.compteurs.enAttente, 0);
   // Les noms d'un membre à partir de sa ligne d'agrégat : un identifiant absent de l'annuaire

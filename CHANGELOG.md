@@ -2,6 +2,24 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.79.0
+
+### Nouveautés
+
+- **accueil** : la vue Club montre le programme du cours comme au planning
+- **planning** : régler plusieurs éléments d'un coup et remplacer un thème en sélection multiple
+- **admin** : templates de cours, appliqués à des dates d'une période
+- **membres** : état du lien en code couleur, libellés détaillés et légende
+
+### Corrections
+
+- **seances** : historique, accueil et tableau de bord ne comptent un cours comme passé que le lendemain
+
+### Autres changements
+
+- **captures** : scènes des gestes de masse du planning sur ordinateur
+- état du 26/10 et scènes de capture des templates
+
 ## 0.78.0
 
 ### Corrections

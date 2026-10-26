@@ -1,4 +1,4 @@
-import { addDays, seanceCommencee, todayIso } from "./dates";
+import { addDays, todayIso } from "./dates";
 
 /**
  * Fenêtre de temps commune à tous les écrans : on part de la période entière (le trimestre en
@@ -46,46 +46,20 @@ export function filtrerHorizon<T extends { date: string }>(seances: T[], horizon
 }
 
 /**
- * **La frontière du passé, c'est le début du cours — jamais minuit.**
- *
- * Une séance porte sa date *et* son heure de début : le cours de ce soir n'est passé qu'à partir de
- * 20 h, comme partout ailleurs dans l'application (`seanceCommencee`, la bascule « À venir /
- * Passé », les compteurs de l'accueil et du tableau de bord).
- *
- * `heureDebut` absente = on ne sait pas quand le cours commence : on retombe sur la date seule,
- * l'ancien comportement. C'est le repli des listes qui ne portent que des dates (une frise, un jeu
- * d'essai) ; tout ce qui vient d'une requête de séance porte son heure.
- */
-function seancePassee(s: { date: string; heureDebut?: string }, aujourdHui: string, now: Date): boolean {
-  return s.heureDebut === undefined ? s.date <= aujourdHui : seanceCommencee(s.date, s.heureDebut, now);
-}
-
-/**
  * Même fenêtre, tournée vers le passé (séances triées par date croissante) :
  * « prochain » ne garde que la dernière séance écoulée.
  *
- * **Le haut de la fenêtre est le début du cours, pas la fin de la journée**. Le découpage se
- * faisait sur `s.date <= aujourdHui`, si bien qu'un mardi à 18 h le cours de 20 h comptait déjà
- * pour passé : l'horizon « Dernier cours » du tableau de bord retenait **le cours du soir non
- * commencé** — une seule ligne, « moyenne 0 % », et tout le club à « 0 présence / 0 séance / 0 % »,
- * le cours de jeudi dernier n'étant même pas montré. Les écrans de séances ne le voyaient pas : ils
- * pré-filtrent avec `seanceCommencee` avant d'appeler ici (voir `src/components/filtres/temps.ts`).
- * Un compensateur posé d'un côté et pas de l'autre, c'est exactement la forme de défaut que ce
- * dossier passe son temps à démonter : la règle est donc **dans cette fonction**, où les deux
- * appelants la reçoivent.
- *
- * `now` sert à cette frontière (l'heure qu'il est), `aujourdHui` à la largeur de la fenêtre (le jour
- * d'où l'on compte) : les deux valent le même instant chez tous les appelants, et restent deux
- * arguments parce que « le jour de référence » se force parfois seul dans les tests.
+ * **Le haut de la fenêtre est la veille, jamais le cours de ce soir** (`seancePassee`, demande de
+ * Delta) : un cours ne rejoint le passé que le lendemain, à minuit dans le fuseau du club — commencé
+ * ou non, celui du jour reste parmi les cours à venir, grisé et verrouillé dès son heure de début.
+ * C'est la règle du planning et de l'onglet Séances, et c'est ici qu'elle se pose pour le tableau de
+ * bord, l'historique et l'accueil : une seule fonction, que tous les appelants reçoivent. Un mardi à
+ * 21 h, l'horizon « Dernier cours » montre donc le cours de jeudi dernier, pas celui qui se donne.
  */
-export function filtrerHorizonPasse<T extends { date: string; heureDebut?: string }>(
-  seances: T[],
-  horizon: Horizon,
-  aujourdHui = todayIso(),
-  now = new Date(),
-): T[] {
+export function filtrerHorizonPasse<T extends { date: string }>(seances: T[], horizon: Horizon, aujourdHui = todayIso()): T[] {
   if (horizon === "periode") return seances;
-  const passees = seances.filter((s) => seancePassee(s, aujourdHui, now));
+  // `seancePassee` (dates.ts), lue sur le jour de référence reçu : les tests le forcent seul.
+  const passees = seances.filter((s) => s.date < aujourdHui);
   if (horizon === "prochain") return passees.slice(-1);
   const debut = addDays(aujourdHui, -(JOURS[horizon] as number));
   return passees.filter((s) => s.date >= debut);

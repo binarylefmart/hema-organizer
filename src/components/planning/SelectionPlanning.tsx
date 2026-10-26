@@ -20,7 +20,7 @@ import { questionSelection } from "@/components/ui/barre-selection";
 import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
 import { EcuNature } from "@/components/seances/EcuNature";
 import type { EntreeListe } from "@/components/ui/liste-deroulante";
-import { gesteRetenu, varianteGeste } from "@/components/ui/choix-geste";
+import { gesteRetenu, varianteGeste, type Explication } from "@/components/ui/choix-geste";
 import {
   ajouter,
   barreDeMasseVisible,
@@ -47,37 +47,53 @@ import { SeancesRepliees } from "./SeancesRepliees";
 import { estNatureAjoutable } from "./parties-carte";
 import {
   blocsProposes,
+  CHAMPS_INCHANGES,
+  choisirInstructeur,
   compteurPlanning,
   confirmationPlanning,
+  ECRIRE,
   elementsProposes,
   elementsRetenus,
   ENTREES_TETE,
-  expliquerGestePlanning,
+  expliquerAjout,
   expliquerReglageElements,
+  expliquerReglages,
+  expliquerRemplacement,
   gestesPlanningApplicables,
   INVITE_PLANNING,
   libelleAfficherEtSelectionnerPlanning,
   libelleBlocPropose,
-  libelleBoutonPlanning,
+  libelleBoutonAjout,
+  libelleBoutonReglages,
+  libelleBoutonRemplacement,
+  libellePartieProposee,
   libelleReglerElements,
   libelleSuivantElements,
-  messageElementsRegles,
-  natureDesThemes,
-  libellePartieProposee,
+  libelleThemeTrouve,
   libelleToutesSeancesPlanning,
   lireChoix,
+  messageElementsRegles,
+  messageReglages,
+  messageRemplacement,
   MOTS_PLANNING,
+  natureDesThemes,
   NATURES_AJOUT_MASSE,
   NE_PAS_CHANGER,
   partiesProposees,
-  planReglage,
   planReglageElements,
+  planReglages,
+  planRemplacement,
+  reglageDepuisChamps,
   reglageVide,
   texteSansCasePlanning,
+  themeMixte,
+  themeRetenu,
+  themesRemplacants,
+  themesTrouves,
+  type ChampsReglage,
   type ChoixAjout,
   type GestePlanning,
   type LignePlanning,
-  type ReglagePartie,
 } from "./selection-planning";
 
 /**
@@ -95,11 +111,25 @@ import {
  * (6) », « Tous les vendredis (5) »). La choisir ajoute ces séances au lot, puis la liste revient à
  * « Choisir un jour… » ; quand elles y sont toutes, l'entrée devient « Retirer les mardis (6) ».
  *
- * **« Régler une partie » n'écrit rien** : il pose les cases dans le brouillon du mode modification
- * (`poserPlusieurs`), exactement comme si on les avait réglées à la main — et c'est la barre du bas,
- * « Appliquer les modifications », qui les enregistre avec tous ses verrous. **Ajouter dans une
- * partie** — choisir la partie (1 à la dernière + 1), puis l'échauffement, le cours ou l'option —
- * s'enregistre tout de suite, comme le menu de la carte (`ajouterPartiesEnMasse`).
+ * **Trois gestes.**
+ *
+ * - **« Régler des éléments »** : les noms des éléments des séances cochées (« Partie 1 ·
+ *   Échauffement (6 séances) », « Partie 1 · Cours (6 séances) »…) sont des **cases à cocher** ; chaque
+ *   élément coché déplie **ses** réglages (instructeur, second, thème de la liste de sa nature, niveau,
+ *   description — « Ne pas changer » par défaut), et un seul bouton (« Appliquer aux 6 séances ») les
+ *   pose tous. Au téléphone, le volet garde sa variante en deux étapes : cocher les éléments **un par
+ *   un** dans les séances cochées, puis un seul réglage pour tous.
+ * - **« Remplacer un thème »** : un thème présent dans les séances cochées (avec le nombre d'éléments
+ *   qui le portent) et son remplaçant, pris dans la liste du club de la bonne nature.
+ * - **« Ajouter dans une partie »** — choisir la partie (1 à la dernière + 1), puis l'échauffement, le
+ *   cours ou l'option — s'enregistre tout de suite, comme le menu de la carte (`ajouterPartiesEnMasse`).
+ *
+ * **Régler et remplacer n'écrivent rien** : ils posent les cases dans le brouillon du mode
+ * modification (`poserPlusieurs`), exactement comme si on les avait réglées à la main — et c'est la
+ * barre du bas, « Appliquer les modifications », qui les enregistre avec tous ses verrous. La teinte
+ * d'un cours ou d'une option dont le thème change s'y recalcule, case par case, dans la transaction
+ * (l'action d'« Appliquer », `teinteAEnregistrer`) : d'ici là, la carte garde sa couleur d'avant, comme
+ * pour un thème changé à la main.
  *
  * **La sélection ne porte que sur ce qui est affiché** : les cartes visibles, et les repliées une fois
  * dépliées. Le repli du planning est donc tenu **ici** (et rendu par `SeancesRepliees`, piloté) : la
@@ -110,9 +140,6 @@ import {
 type Contexte = { actif: boolean; selection: ReadonlySet<string>; basculer: (id: string) => void };
 
 const Selection = createContext<Contexte | null>(null);
-
-/** L'entrée « écrire une description » de la liste du même nom (les deux autres sont communes). */
-const ECRIRE = "__ecrire__";
 
 /**
  * Les quatre boutons du niveau, au téléphone : un mot court qui tient dans un quart de 380 px, et le
@@ -125,6 +152,9 @@ const NIVEAU_LABELS_TELEPHONE: Record<Niveau, { court: string; complet: string }
   INTERMEDIAIRE: { court: "Interm.", complet: NIVEAU_LABELS.INTERMEDIAIRE },
   AVANCE: { court: "Avancé", complet: NIVEAU_LABELS.AVANCE },
 };
+
+/** Ce que la question « Que veux-tu faire ? » montre sous le geste choisi : l'explication et le bouton. */
+type VueGeste = { explication: Explication | null; bouton: string; inerte: boolean };
 
 export function SelectionPlanning({
   lignes,
@@ -148,33 +178,37 @@ export function SelectionPlanning({
 }) {
   const router = useRouter();
   const brouillon = useBrouillon();
+  const modifiees = brouillon?.modifiees ?? new Map();
   const options = useOptionsCase();
   const [actif, setActif] = useState(false);
   const [deplie, setDeplie] = useState(false);
   const [brute, setSelection] = useState<ReadonlySet<string>>(() => new Set());
   const [gesteChoisi, setGesteChoisi] = useState<GestePlanning | "">("");
-  const [partieChoisie, setPartieChoisie] = useState("");
+  /**
+   * **« Régler des éléments », sur ordinateur** : un jeu de réglages par élément coché, rangé sous
+   * son nom calculé (« Partie 1 · Cours »). Cocher un élément lui donne un jeu neuf (tout sur « Ne
+   * pas changer ») ; le décocher l'oublie.
+   */
+  const [reglagesParElement, setReglagesParElement] = useState<Readonly<Record<string, ChampsReglage>>>({});
+  /** « Remplacer un thème » : la clé du thème trouvé (`normaliserTheme`) et le remplaçant choisi. */
+  const [themeARemplacer, setThemeARemplacer] = useState("");
+  const [remplacantChoisi, setRemplacantChoisi] = useState("");
   const [blocChoisi, setBlocChoisi] = useState("");
   const [natureChoisie, setNatureChoisie] = useState("");
-  const [instructeur, setInstructeur] = useState(NE_PAS_CHANGER);
-  const [second, setSecond] = useState(NE_PAS_CHANGER);
-  const [themeChoix, setThemeChoix] = useState(NE_PAS_CHANGER);
-  const [themeLibre, setThemeLibre] = useState("");
-  const [niveau, setNiveau] = useState(NE_PAS_CHANGER);
-  const [descriptionChoix, setDescriptionChoix] = useState(NE_PAS_CHANGER);
-  const [descriptionTexte, setDescriptionTexte] = useState("");
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
   const caseMaitresse = useRef<HTMLInputElement>(null);
   /**
    * **Au téléphone** : la barre sombre du bas, le volet des gestes, les puces des jours,
    * et « Régler des éléments » en deux étapes — cocher les éléments voulus dans les séances cochées
-   * (`elementsCoches`), puis les régler. Sur ordinateur, rien de tout cela n'est monté.
+   * (`elementsCoches`), puis les régler d'un seul jeu de réglages (`champsTelephone`). Sur
+   * ordinateur, rien de tout cela n'est monté.
    */
   const telephone = useEcranTelephone();
   const [voletOuvert, setVoletOuvert] = useState(false);
   const [elementsCoches, setElementsCoches] = useState<ReadonlySet<string>>(() => new Set());
   const [etapeElements, setEtapeElements] = useState<"cocher" | "regler">("cocher");
+  const [champsTelephone, setChampsTelephone] = useState<ChampsReglage>(CHAMPS_INCHANGES);
 
   const selectionnables = lignes.filter((l): l is LignePlanning => l !== null);
   // Une séance qui a quitté la grille (filtre, annulation entre-temps) quitte aussi le lot.
@@ -191,81 +225,109 @@ export function SelectionPlanning({
     if (caseMaitresse.current) caseMaitresse.current.indeterminate = etatCases === "partielle";
   }, [etatCases]);
 
-  const applicables = gestesPlanningApplicables(lot);
+  const applicables = gestesPlanningApplicables(lot, modifiees);
   const geste = gesteRetenu(gesteChoisi, applicables);
   useEffect(() => {
     if (geste !== gesteChoisi) setGesteChoisi("");
   }, [geste, gesteChoisi]);
 
+  /* ---- Régler des éléments, sur ordinateur : plusieurs noms, chacun ses réglages. ---- */
   const parties = partiesProposees(lot);
-  // Une partie qui n'existe plus dans le lot (séance décochée) n'est plus choisie.
-  const partie = parties.some((p) => p.libelle === partieChoisie) ? partieChoisie : "";
+  // Un élément qui n'existe plus dans le lot (séance décochée) n'est plus coché : il reste dans
+  // l'état, mais rien ne le lit tant qu'il ne revient pas.
+  const partiesCochees = parties.filter((p) => reglagesParElement[p.libelle] !== undefined);
   /*
-   * **La liste « Thème » suit la nature de la partie choisie** (avenant 4) : un
-   * échauffement propose les thèmes d'échauffement, le reste les thèmes de cours et options. Un
-   * thème choisi dans l'autre liste ne survit pas au changement de partie : il revient à « Ne pas
-   * changer », plutôt que d'écrire sur un échauffement un thème qu'il ne proposerait pas.
+   * **La liste « Thème » de chaque élément suit sa nature** (avenant 4) : un échauffement propose les
+   * thèmes d'échauffement, le reste les thèmes de cours et options. Chaque élément ayant ses propres
+   * réglages, il n'y a jamais de mélange à trancher ici.
    */
-  const themesPartie = themesDeNature(options, parties.find((p) => p.libelle === partie)?.nature ?? "COURS");
+  const themesDe = (p: { nature: LignePlanning["parties"][number]["nature"] }) => themesDeNature(options, p.nature);
+  const planOrdi =
+    geste === "regler" && !telephone && partiesCochees.length > 0
+      ? planReglages(
+          lot,
+          partiesCochees.map((p) => ({ libelle: p.libelle, reglage: reglageDepuisChamps(reglagesParElement[p.libelle], themesDe(p)) })),
+          modifiees,
+        )
+      : null;
+  const majElement = (libelle: string, champs: ChampsReglage) => {
+    setReglagesParElement((r) => ({ ...r, [libelle]: champs }));
+    setMessage(null);
+  };
+  const basculerElement = (libelle: string) => {
+    setReglagesParElement((r) => {
+      if (r[libelle] === undefined) return { ...r, [libelle]: CHAMPS_INCHANGES };
+      const reste = { ...r };
+      delete reste[libelle];
+      return reste;
+    });
+    setMessage(null);
+  };
+
   /*
    * **Au téléphone, la liste suit la nature des éléments cochés** : celle de l'échauffement, ou celle
    * des cours et options. S'ils mêlent les deux, aucune liste ne vaut pour tous (`natureDesThemes`
    * rend `null`) : on ne propose que « Ne pas changer », le vide et un thème libre, et on le dit —
-   * même raison que ci-dessus, on n'écrit pas sur un échauffement un thème qu'il ne proposerait pas.
+   * on n'écrit pas sur un échauffement un thème qu'il ne proposerait pas.
    */
   const elementsChoisis = elementsRetenus(lot, elementsCoches);
   const natureThemes = natureDesThemes(elementsChoisis);
-  const themesListe = telephone ? (natureThemes ? themesDeNature(options, natureThemes) : []) : themesPartie;
-  const themeRetenu = themeChoix === NE_PAS_CHANGER || themeChoix === "" || themeChoix === AUTRE || themesListe.includes(themeChoix) ? themeChoix : NE_PAS_CHANGER;
+  const themesTelephone = natureThemes ? themesDeNature(options, natureThemes) : [];
+  const reglageTelephone = reglageDepuisChamps(champsTelephone, themesTelephone);
+  // Le plan du téléphone : par identifiant d'élément, une fois les éléments cochés et un champ choisi.
+  const planElements = telephone && geste === "regler" && etapeElements === "regler" && !reglageVide(reglageTelephone) ? planReglageElements(elementsChoisis, reglageTelephone, modifiees) : null;
 
-  const reglage: ReglagePartie = {
-    instructeurId: lireChoix(instructeur),
-    instructeurSecondId: lireChoix(second),
-    theme: themeRetenu === AUTRE ? themeLibre.trim() || undefined : lireChoix(themeRetenu),
-    niveau: lireChoix(niveau) as Niveau | undefined,
-    description: descriptionChoix === ECRIRE ? descriptionTexte.trim() || undefined : lireChoix(descriptionChoix),
-  };
-  const plan = geste === "regler" && partie && !reglageVide(reglage) ? planReglage(lot, partie, reglage, brouillon?.modifiees ?? new Map()) : null;
-  // L'ajout attend ses deux choix, la partie et la nature : rien ne se devine sur plusieurs séances.
+  /* ---- Remplacer un thème : celui qu'on trouve dans les séances cochées, et son remplaçant. ---- */
+  const trouves = themesTrouves(lot, modifiees);
+  const trouve = trouves.find((t) => t.cle === themeARemplacer) ?? null;
+  const remplacants = trouve ? themesRemplacants(trouve, options) : [];
+  const remplacant = remplacants.includes(remplacantChoisi) ? remplacantChoisi : "";
+  const planTheme = geste === "remplacer" && trouve && remplacant ? planRemplacement(lot, trouve.cle, remplacant, options, modifiees) : null;
+
+  /* ---- Ajouter dans une partie : la partie et la nature, rien ne se devine sur plusieurs séances. ---- */
   const blocs = blocsProposes(lot);
   const bloc = blocs.includes(Number(blocChoisi)) ? Number(blocChoisi) : null;
   const ajout: ChoixAjout | null = geste === "ajouter" && bloc !== null && estNatureAjoutable(natureChoisie) ? { bloc, nature: natureChoisie } : null;
-  const inerte = geste === "" || (geste === "regler" && (!plan || plan.ecritures.length === 0)) || (geste === "ajouter" && !ajout);
-  const nombreBouton = geste === "regler" ? (plan?.ecritures.length ?? 0) : lot.length;
-  // Le plan du téléphone : par identifiant d'élément, une fois les éléments cochés et un champ choisi.
-  const planElements = telephone && geste === "regler" && etapeElements === "regler" && !reglageVide(reglage) ? planReglageElements(elementsChoisis, reglage, brouillon?.modifiees ?? new Map()) : null;
 
-  const remettreReglage = () => {
-    setInstructeur(NE_PAS_CHANGER);
-    setSecond(NE_PAS_CHANGER);
-    setThemeChoix(NE_PAS_CHANGER);
-    setThemeLibre("");
-    setNiveau(NE_PAS_CHANGER);
-    setDescriptionChoix(NE_PAS_CHANGER);
-    setDescriptionTexte("");
-  };
+  /** L'explication, le bouton et son inertie, pour le geste choisi — les mêmes sur ordinateur et au téléphone. */
+  const vue: VueGeste =
+    geste === "regler"
+      ? { explication: expliquerReglages(planOrdi), bouton: libelleBoutonReglages(planOrdi), inerte: !planOrdi || planOrdi.ecritures.length === 0 }
+      : geste === "remplacer"
+        ? { explication: expliquerRemplacement(trouve, remplacant, planTheme), bouton: libelleBoutonRemplacement(planTheme), inerte: !planTheme || planTheme.ecritures.length === 0 }
+        : geste === "ajouter"
+          ? { explication: expliquerAjout(lot, ajout), bouton: libelleBoutonAjout(lot.length, ajout), inerte: !ajout }
+          : { explication: null, bouton: "Appliquer", inerte: true };
+
   const remettreAZero = () => {
     setGesteChoisi("");
     setElementsCoches(new Set());
     setEtapeElements("cocher");
-    setPartieChoisie("");
+    setChampsTelephone(CHAMPS_INCHANGES);
+    setReglagesParElement({});
+    setThemeARemplacer("");
+    setRemplacantChoisi("");
     setBlocChoisi("");
     setNatureChoisie("");
-    remettreReglage();
   };
 
   const lancer = () => {
-    if (geste === "" || inerte) return;
+    if (geste === "" || vue.inerte) return;
     if (geste === "regler") {
-      if (!plan || !brouillon) return;
+      if (!planOrdi || !brouillon) return;
       // Rien ne part : les cases entrent dans le brouillon, la barre du bas les enregistrera.
-      brouillon.poserPlusieurs(plan.ecritures);
-      const n = plan.ecritures.length;
-      setMessage({
-        type: "ok",
-        texte: `« ${partie} » réglé sur ${n === 1 ? "1 séance" : `${n} séances`}, pas encore appliqué : « Appliquer les modifications » l'enregistre.`,
-      });
-      remettreReglage();
+      brouillon.poserPlusieurs(planOrdi.ecritures);
+      setMessage({ type: "ok", texte: messageReglages(planOrdi) });
+      setReglagesParElement({});
+      return;
+    }
+    if (geste === "remplacer") {
+      if (!planTheme || !trouve || !brouillon) return;
+      // Rien ne part non plus : le thème remplacé quitte les séances cochées dans le brouillon.
+      brouillon.poserPlusieurs(planTheme.ecritures);
+      setMessage({ type: "ok", texte: messageRemplacement(trouve.theme, remplacant, planTheme) });
+      setThemeARemplacer("");
+      setRemplacantChoisi("");
       return;
     }
     if (!ajout || !window.confirm(confirmationPlanning(ajout, lot.length))) return;
@@ -287,12 +349,12 @@ export function SelectionPlanning({
     });
   };
 
-  /** Le geste final de « Régler des éléments » : rien ne part, les cases entrent dans le brouillon. */
+  /** Le geste final de « Régler des éléments » au téléphone : rien ne part, les cases entrent dans le brouillon. */
   const reglerElements = () => {
     if (!planElements || planElements.ecritures.length === 0 || !brouillon) return;
     brouillon.poserPlusieurs(planElements.ecritures);
     setMessage({ type: "ok", texte: messageElementsRegles(planElements.ecritures.length) });
-    remettreReglage();
+    setChampsTelephone(CHAMPS_INCHANGES);
     setElementsCoches(new Set());
     setEtapeElements("cocher");
     // Retour à la liste des gestes, message en tête : on peut en régler d'autres, ou fermer le volet.
@@ -304,11 +366,10 @@ export function SelectionPlanning({
     options.personnes
       .filter((p) => p.id !== exclu)
       .map((p) => ({ valeur: p.id, libelle: `${p.prenom} ${p.nom}`, couleur: couleurPersonne(p.id, p.couleur) }));
-  const choixInstructeur = lireChoix(instructeur);
   const entreesInstructeur: EntreeListe[] = [...ENTREES_TETE, ...personnes()];
   // Le second ne se propose pas la personne choisie pour mener : on ne s'assiste pas soi-même.
-  const entreesSecond: EntreeListe[] = [...ENTREES_TETE, ...personnes(choixInstructeur || undefined)];
-  const entreesTheme: EntreeListe[] = [...ENTREES_TETE, ...themesListe.map((t) => ({ valeur: t, libelle: t })), { valeur: AUTRE, libelle: "Autre…" }];
+  const entreesSecond = (c: ChampsReglage): EntreeListe[] => [...ENTREES_TETE, ...personnes(lireChoix(c.instructeur) || undefined)];
+  const entreesTheme = (liste: readonly string[]): EntreeListe[] => [...ENTREES_TETE, ...liste.map((t) => ({ valeur: t, libelle: t })), { valeur: AUTRE, libelle: "Autre…" }];
   const entreesNiveau: EntreeListe[] = [ENTREES_TETE[0], ...NIVEAUX.map((n) => ({ valeur: n, libelle: libelleChoixNiveau(n) }))];
   const entreesDescription: EntreeListe[] = [...ENTREES_TETE, { valeur: ECRIRE, libelle: "Écrire une description…" }];
 
@@ -342,53 +403,58 @@ export function SelectionPlanning({
       />
     </div>
   );
-  const champsPersonnesTheme = (
-    <>
-      <Liste
-        id="instructeur-planning-en-masse"
-        libelle="Instructeur"
-        valeur={instructeur}
-        entrees={entreesInstructeur}
-        onChoisir={(v) => {
-          setInstructeur(v);
-          // Le second ne peut pas être la personne qui mène : on libère la place.
-          if (v !== NE_PAS_CHANGER && v === second) setSecond(NE_PAS_CHANGER);
-        }}
-      />
-      <Liste id="second-planning-en-masse" libelle="Second instructeur" valeur={second} entrees={entreesSecond} onChoisir={setSecond} />
-      <div className="flex flex-col gap-2">
+
+  /**
+   * Instructeur, second et thème d'un jeu de réglages. `suffixe` distingue les identifiants quand
+   * plusieurs éléments cochés déplient chacun les leurs (ordinateur) ; le téléphone n'en a qu'un jeu.
+   */
+  const champsPersonnesTheme = (c: ChampsReglage, maj: (c: ChampsReglage) => void, themes: readonly string[], suffixe = "") => {
+    const theme = themeRetenu(c, themes);
+    return (
+      <>
         <Liste
-          id="theme-planning-en-masse"
-          libelle="Thème"
-          valeur={themeRetenu}
-          entrees={entreesTheme}
-          onChoisir={setThemeChoix}
-          aide="Le thème est publié sur les pages de partage et, si le club l'a ouverte, par l'API publique."
+          id={`instructeur-planning-en-masse${suffixe}`}
+          libelle="Instructeur"
+          valeur={c.instructeur}
+          entrees={entreesInstructeur}
+          // Le second ne peut pas être la personne qui mène : on libère la place.
+          onChoisir={(v) => maj(choisirInstructeur(c, v))}
         />
-        {themeRetenu === AUTRE && (
-          <Champ
-            label="Thème libre"
-            name="themeLibre"
-            id="theme-libre-planning-en-masse"
-            value={themeLibre}
-            maxLength={THEME_MAX}
-            onChange={(e) => setThemeLibre(e.target.value)}
+        <Liste id={`second-planning-en-masse${suffixe}`} libelle="Second instructeur" valeur={c.second} entrees={entreesSecond(c)} onChoisir={(v) => maj({ ...c, second: v })} />
+        <div className="flex flex-col gap-2">
+          <Liste
+            id={`theme-planning-en-masse${suffixe}`}
+            libelle="Thème"
+            valeur={theme}
+            entrees={entreesTheme(themes)}
+            onChoisir={(v) => maj({ ...c, theme: v })}
+            aide="Le thème est publié sur les pages de partage et, si le club l'a ouverte, par l'API publique."
           />
-        )}
-      </div>
-    </>
-  );
-  const champDescription = (
+          {theme === AUTRE && (
+            <Champ
+              label="Thème libre"
+              name="themeLibre"
+              id={`theme-libre-planning-en-masse${suffixe}`}
+              value={c.themeLibre}
+              maxLength={THEME_MAX}
+              onChange={(e) => maj({ ...c, themeLibre: e.target.value })}
+            />
+          )}
+        </div>
+      </>
+    );
+  };
+  const champDescription = (c: ChampsReglage, maj: (c: ChampsReglage) => void, suffixe = "") => (
     <div className="flex flex-col gap-2">
-      <Liste id="description-planning-en-masse" libelle="Description" valeur={descriptionChoix} entrees={entreesDescription} onChoisir={setDescriptionChoix} />
-      {descriptionChoix === ECRIRE && (
+      <Liste id={`description-planning-en-masse${suffixe}`} libelle="Description" valeur={c.description} entrees={entreesDescription} onChoisir={(v) => maj({ ...c, description: v })} />
+      {c.description === ECRIRE && (
         <ZoneTexte
           label="Nouvelle description"
           name="description"
-          id="description-texte-planning-en-masse"
-          value={descriptionTexte}
+          id={`description-texte-planning-en-masse${suffixe}`}
+          value={c.descriptionTexte}
           maxLength={PARTIE_DESCRIPTION_MAX}
-          onChange={(e) => setDescriptionTexte(e.target.value)}
+          onChange={(e) => maj({ ...c, descriptionTexte: e.target.value })}
           aide={`La même pour chaque séance. Elle est publiée sur les pages de partage et, si le club l'a ouverte, par l'API publique — visibles hors du club. ${PARTIE_DESCRIPTION_MAX} signes au plus.`}
         />
       )}
@@ -396,14 +462,89 @@ export function SelectionPlanning({
   );
 
   /**
-   * **Le volet du téléphone.** « Régler des éléments » s'y fait en deux étapes : cocher les éléments
-   * voulus parmi ceux des séances cochées, puis les régler ; « Ajouter dans une partie » garde ses
-   * deux listes. Mêmes gestes, mêmes écritures que la barre de l'ordinateur.
+   * **« Remplacer un thème »** : deux listes. La première ne propose que les thèmes présents dans les
+   * séances cochées, avec ce qu'ils touchent ; la seconde, les thèmes du club de la bonne liste.
    */
-  const gestesTelephone = applicables.map((g) => (g.geste === "regler" ? { ...g, libelle: `Régler des éléments (${g.nombre === 1 ? "1 séance" : `${g.nombre} séances`})` } : g));
+  const champsRemplacement = (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Liste
+          id="theme-trouve-planning-en-masse"
+          libelle="Thème à remplacer"
+          valeur={trouve?.cle ?? ""}
+          entrees={[{ valeur: "", libelle: "Choisir un thème…" }, ...trouves.map((t) => ({ valeur: t.cle, libelle: libelleThemeTrouve(t) }))]}
+          onChoisir={(v) => {
+            setThemeARemplacer(v);
+            setRemplacantChoisi("");
+            setMessage(null);
+          }}
+        />
+        {trouve && remplacants.length > 0 && (
+          <Liste
+            id="theme-remplacant-planning-en-masse"
+            libelle="Nouveau thème"
+            valeur={remplacant}
+            entrees={[{ valeur: "", libelle: "Choisir un thème…" }, ...remplacants.map((t) => ({ valeur: t, libelle: t }))]}
+            onChoisir={(v) => {
+              setRemplacantChoisi(v);
+              setMessage(null);
+            }}
+            aide={
+              themeMixte(trouve)
+                ? "Thèmes d'échauffement et thèmes de cours et options réunis : chaque élément ne reçoit qu'un thème de sa liste."
+                : trouve.echauffements > 0
+                  ? "Les thèmes d'échauffement du club."
+                  : "Les thèmes de cours et options du club."
+            }
+          />
+        )}
+      </div>
+      {trouve && remplacants.length === 0 && (
+        <p className="text-base text-texte-secondaire">
+          La liste du club n&apos;a pas d&apos;autre thème à proposer pour ces éléments : « Régler des éléments » permet d&apos;écrire un thème libre.
+        </p>
+      )}
+    </div>
+  );
+
+  /**
+   * **« Régler des éléments », sur ordinateur** : une case par élément des séances cochées ; chaque
+   * élément coché déplie ses réglages, dans un cadre à son nom.
+   */
+  const champsReglagesOrdi = (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-1 text-base font-semibold">Éléments à régler</legend>
+      {parties.map((p, i) => {
+        const champs = reglagesParElement[p.libelle];
+        const suffixe = `-${i + 1}`;
+        return (
+          <div key={p.libelle} className={`flex flex-col gap-3 rounded-xl px-3 ${champs ? "border-2 border-primaire/60 pb-3" : "border border-bordure/60"}`}>
+            <label className="inline-flex min-h-12 cursor-pointer items-center gap-3 font-semibold">
+              <input type="checkbox" checked={champs !== undefined} onChange={() => basculerElement(p.libelle)} className="size-6 shrink-0 accent-primaire" />
+              <EcuNature nature={p.nature} />
+              {libellePartieProposee(p)}
+            </label>
+            {champs && (
+              <div role="group" aria-label={`Réglages de « ${p.libelle} »`} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {champsPersonnesTheme(champs, (c) => majElement(p.libelle, c), themesDe(p), suffixe)}
+                <Liste id={`niveau-planning-en-masse${suffixe}`} libelle="Niveau" valeur={champs.niveau} entrees={entreesNiveau} onChoisir={(v) => majElement(p.libelle, { ...champs, niveau: v })} />
+                <div className="sm:col-span-2">{champDescription(champs, (c) => majElement(p.libelle, c), suffixe)}</div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </fieldset>
+  );
+
+  /**
+   * **Le volet du téléphone.** « Régler des éléments » s'y fait en deux étapes : cocher les éléments
+   * voulus parmi ceux des séances cochées, puis les régler ; « Remplacer un thème » et « Ajouter dans
+   * une partie » gardent leurs deux listes. Mêmes gestes, mêmes écritures que la barre de l'ordinateur.
+   */
   const voletPlanning = () => {
     const communs = {
-      gestes: gestesTelephone,
+      gestes: applicables,
       valeur: geste,
       onChoisir: (v: GestePlanning | "") => {
         setGesteChoisi(gesteRetenu(v, applicables));
@@ -428,7 +569,7 @@ export function SelectionPlanning({
             <fieldset key={seance.id} className="flex flex-col gap-1 rounded-xl border border-bordure/60 px-3 py-2">
               <legend className="px-1 font-bold first-letter:uppercase">{seance.jour}</legend>
               {elements.map(({ partie: el, cochable }) => {
-                const paire = brouillon?.modifiees.get(el.id) ?? el.serveur;
+                const paire = modifiees.get(el.id) ?? el.serveur;
                 const personne = options.personnes.find((p) => p.id === paire.instructeurId);
                 const resume = [personne ? `${personne.prenom} ${personne.nom}` : "Personne", paire.theme || "Sans thème"].join(" · ");
                 return (
@@ -464,7 +605,7 @@ export function SelectionPlanning({
           onRetour={() => setEtapeElements("cocher")}
         >
           <p className="font-semibold">{elementsChoisis.length === 1 ? "1 élément coché" : `${elementsChoisis.length} éléments cochés`}</p>
-          {champsPersonnesTheme}
+          {champsPersonnesTheme(champsTelephone, setChampsTelephone, themesTelephone)}
           {natureThemes === null && (
             <p className="text-base text-texte-secondaire">
               Ces éléments mêlent un échauffement et un cours ou une option : leurs listes de thèmes diffèrent. Choisis « Autre… » pour un thème commun, ou règle-les séparément.
@@ -472,18 +613,18 @@ export function SelectionPlanning({
           )}
           <div role="group" aria-labelledby="niveau-planning-telephone" className="flex flex-col gap-1">
             <p id="niveau-planning-telephone" className="text-base font-semibold">
-              Niveau{niveau === NE_PAS_CHANGER ? " : ne pas changer" : ""}
+              Niveau{champsTelephone.niveau === NE_PAS_CHANGER ? " : ne pas changer" : ""}
             </p>
             <div className="grid grid-cols-4 gap-1.5">
               {NIVEAUX.map((n) => {
-                const choisi = niveau === n;
+                const choisi = champsTelephone.niveau === n;
                 return (
                   <button
                     key={n}
                     type="button"
                     aria-pressed={choisi}
                     aria-label={NIVEAU_LABELS_TELEPHONE[n].complet}
-                    onClick={() => setNiveau(choisi ? NE_PAS_CHANGER : n)}
+                    onClick={() => setChampsTelephone((c) => ({ ...c, niveau: choisi ? NE_PAS_CHANGER : n }))}
                     className={`inline-flex min-h-12 items-center justify-center rounded-xl border-2 px-1 text-base font-semibold transition active:scale-[0.98] ${
                       choisi ? "border-primaire bg-primaire text-primaire-texte" : "border-bordure/70 bg-surface text-texte"
                     }`}
@@ -494,18 +635,13 @@ export function SelectionPlanning({
               })}
             </div>
           </div>
-          {champDescription}
+          {champDescription(champsTelephone, setChampsTelephone)}
         </GestesVolet>
       );
     }
     return (
-      <GestesVolet
-        {...communs}
-        explication={geste === "" ? null : expliquerGestePlanning(geste, lot, plan, partie, ajout)}
-        bouton={geste === "" ? "Appliquer" : libelleBoutonPlanning(geste, nombreBouton, partie, ajout)}
-        inerte={inerte}
-        onLancer={lancer}
-      >
+      <GestesVolet {...communs} explication={vue.explication} bouton={vue.bouton} inerte={vue.inerte} onLancer={lancer}>
+        {geste === "remplacer" && champsRemplacement}
         {geste === "ajouter" && champsAjout}
       </GestesVolet>
     );
@@ -609,7 +745,7 @@ export function SelectionPlanning({
       </div>
 
       {/* La barre n'existe qu'avec une sélection — celle de l'onglet Séances, classe pour classe.
-          **Elle n'est pas collante** : dépliée sur « Régler une partie » (cinq listes), elle dépassait
+          **Elle n'est pas collante** : dépliée sur « Régler des éléments » (cinq listes par élément coché), elle dépassait
           la hauteur d'un écran, et la barre « Appliquer les modifications », collée en bas, en
           recouvrait la fin sans qu'on puisse la faire défiler. Une seule barre collée par écran. */}
       {montrerBarre && !telephone && (
@@ -635,35 +771,16 @@ export function SelectionPlanning({
               setGesteChoisi(gesteRetenu(v as GestePlanning | "", applicables));
               setMessage(null);
             }}
-            explication={geste === "" ? null : expliquerGestePlanning(geste, lot, plan, partie, ajout)}
-            bouton={geste === "" ? "Appliquer" : libelleBoutonPlanning(geste, nombreBouton, partie, ajout)}
+            explication={vue.explication}
+            bouton={vue.bouton}
             variante={varianteGeste(false)}
-            inerte={inerte}
+            inerte={vue.inerte}
             enCours={enCours}
             onLancer={lancer}
           >
             {geste === "ajouter" && champsAjout}
-            {geste === "regler" && (
-              <div className="flex flex-col gap-3">
-                <Liste
-                  id="partie-planning-en-masse"
-                  libelle="Partie à régler"
-                  valeur={partie}
-                  entrees={[{ valeur: "", libelle: "Choisir une partie…" }, ...parties.map((p) => ({ valeur: p.libelle, libelle: libellePartieProposee(p) }))]}
-                  onChoisir={(v) => {
-                    setPartieChoisie(v);
-                    setMessage(null);
-                  }}
-                />
-                {partie && (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {champsPersonnesTheme}
-                    <Liste id="niveau-planning-en-masse" libelle="Niveau" valeur={niveau} entrees={entreesNiveau} onChoisir={setNiveau} />
-                    <div className="sm:col-span-2">{champDescription}</div>
-                  </div>
-                )}
-              </div>
-            )}
+            {geste === "remplacer" && champsRemplacement}
+            {geste === "regler" && champsReglagesOrdi}
           </ChoixGeste>
         </div>
       )}

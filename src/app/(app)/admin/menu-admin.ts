@@ -38,6 +38,9 @@ export const GROUPES_ADMIN: readonly GroupeAdmin[] = [
       // Le trimestre en tête : c'est par lui que commence une saison, et c'est le seul de
       // ces écrans qui parle d'organisation plutôt que de technique.
       { href: "/admin/periodes", label: "Périodes", icone: "calendrier", permission: "periods.manage" },
+      // Les templates de cours, juste après les périodes : un cours type (horaire, lieu, programme)
+      // qu'on applique à des dates — c'est la suite naturelle du trimestre qu'on vient de monter.
+      { href: "/admin/templates", label: "Templates", icone: "copie", permission: "templates.manage" },
       { href: "/admin/membres", label: "Membres", icone: "groupe", permission: "members.view" },
       // Le registre d'un soir de cours : la séance, puis la réponse de chacun
       { href: "/admin/presences", label: "Présences", icone: "check", permission: "attendances.autrui" },

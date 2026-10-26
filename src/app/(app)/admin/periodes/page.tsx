@@ -59,6 +59,31 @@ export default async function PagePeriodes({ searchParams }: Props) {
         <LienBouton href="/admin/periodes/nouvelle">Nouvelle période</LienBouton>
       </div>
       {/*
+       * **Ce que gère une période, et ce qu'elle ne gère pas** (demande de Delta :
+       * « une description de ce que ça gère, que les invitations, pas les cours »). Une période dit
+       * **qui est invité et quand** : ses dates, ses membres invités, leurs liens personnels — et ses
+       * créneaux, qui font naître les séances vides. Le **contenu** des cours (échauffement, cours,
+       * options, encadrants) ne s'y règle pas : il se planifie au planning, ou s'applique d'un template.
+       * Les deux boutons mènent aux deux endroits où ça se fait, pour que la question « où est-ce
+       * que je mets le programme ? » trouve sa réponse sur l'écran où on la pose.
+       */}
+      <Carte>
+        <p>
+          Une période fixe <strong>le calendrier et les invitations</strong> : ses dates, les membres invités et leurs liens
+          personnels, et les créneaux qui créent les séances. <strong>Elle ne règle pas le contenu des cours</strong> : le
+          programme (échauffement, cours, options, instructeurs) se planifie dans le planning, ou s&apos;applique d&apos;un
+          template de cours.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <LienBouton href="/planning" variante="secondaire">
+            Planifier les cours
+          </LienBouton>
+          <LienBouton href="/admin/templates/appliquer" variante="secondaire">
+            Planifier un template
+          </LienBouton>
+        </div>
+      </Carte>
+      {/*
        * **Sur téléphone, une ligne par période** : son nom, ses dates et ses séances,
        * l'état en pastille à droite, et les liens activés (« 8 / 12 ») hors brouillon ; toucher la ligne
        * ouvre la période, où tout se gère (séances, activer, clore) et où se lisent les invités.

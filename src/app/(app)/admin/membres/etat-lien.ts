@@ -11,21 +11,33 @@
  * l'intérêt de le sortir du JSX — la règle se teste, et la colonne ne peut pas raconter autre chose
  * que ce que le bouton d'envoi de la même ligne fait.
  *
- * **Le ton n'est pas décoratif, et il a une règle** : l'ocre dit « **cette personne ne peut pas
- * entrer aujourd'hui, et il y a un geste à faire** ». Rien d'autre n'est coloré — une colonne de
- * douze pastilles colorées ne distingue plus rien. Trois états la portent donc, et ils ont tous la
- * même conséquence pour le bureau, pas la même cause : aucun lien ne lui a été envoyé, son lien
- * n'a jamais été ouvert, ou son lien n'est plus valable — à chaque fois **sans mot de passe pour
- * compenser**. Avec un mot de passe, la personne entre par la page de connexion : son lien dormant
- * n'est pas un problème à régler, et la pastille redevient neutre.
+ * **Le ton est un code couleur, et il a une règle** (demande de Delta) — une couleur
+ * par conséquence pour le bureau, jamais par cause, pour qu'un balayage de la colonne suffise :
  *
- * Restent neutres, et c'est voulu : un compte **désactivé** (c'est une décision du bureau, pas un
- * incident) et un compte **sans adresse** (la colonne dit l'empêchement ; ajouter une adresse est un
- * geste de la fiche, pas de la colonne).
+ * - **vert** : la personne entre — son lien a servi et vaut encore, ou elle a activé son compte
+ *   (mot de passe créé), lien utilisé ou non. Rien à faire ;
+ * - **ocre** : en attente — un lien valable lui a été envoyé, elle ne l'a pas encore ouvert. Le
+ *   geste, s'il en faut un, est de l'appeler ;
+ * - **rouge** : bloquée — aucun lien envoyé, ou un lien qui n'est plus valable, et pas de mot de
+ *   passe pour compenser. Elle ne peut pas entrer aujourd'hui : « Envoyer le lien » ;
+ * - **neutre** : hors jeu — compte désactivé (décision du bureau, pas un incident), sans adresse
+ *   (ajouter une adresse est un geste de la fiche), ou aucune période n'envoie de lien.
+ *
+ * **Le libellé dit la situation entière** (« Compte activé · lien jamais utilisé », « Lien envoyé ·
+ * jamais ouvert »), parce que la couleur seule ne se lit pas pour tout le monde ; l'infobulle porte
+ * la phrase complète et le geste.
  */
 
-/** Les tons de `Pastille` que cette colonne emploie. Deux, pas cinq : voir l'en-tête du module. */
-export type TonLien = "neutre" | "ocre";
+/** Les tons de `Pastille` que cette colonne emploie : voir l'en-tête du module. */
+export type TonLien = "vert" | "ocre" | "rouge" | "neutre";
+
+/** La légende du code couleur, affichée au-dessus de l'annuaire : les mêmes mots que l'en-tête. */
+export const LEGENDE_LIEN: ReadonlyArray<{ ton: TonLien; texte: string }> = [
+  { ton: "vert", texte: "entre sans souci" },
+  { ton: "ocre", texte: "lien envoyé, pas encore ouvert" },
+  { ton: "rouge", texte: "ne peut pas entrer : lien à envoyer" },
+  { ton: "neutre", texte: "hors jeu (désactivé, sans adresse…)" },
+];
 
 export type EtatLien = {
   /** Le mot de la colonne, court parce qu'il se lit en balayant douze lignes. */
@@ -64,82 +76,73 @@ export type LigneEtatLien = {
 /**
  * **L'ordre des questions est l'ordre des causes**, et il n'est pas interchangeable :
  *
- * 1. **le compte est-il actif ?** Désactivé, son lien a été révoqué : parler de « lien en cours »
- *    serait faux, et parler de « jamais ouvert » accuserait quelqu'un à qui on a coupé l'accès ;
- * 2. **y a-t-il une adresse ?** Sans elle, il n'y a pas de lien du tout et il n'y en aura pas : la
- *    colonne dit l'empêchement, pas un état d'attente. C'est aussi ce que la page dit déjà ailleurs
- *    (« l'équipe coche sa présence à sa place ») ;
- * 3. **le lien a-t-il déjà servi ?** C'est la question de la colonne. Non, et alors deux cas que la
- *    première version confondait : si **aucun lien ne lui a été envoyé**, la colonne dit « Aucun lien
- *    envoyé » — dire « son lien personnel n'a jamais été ouvert » de quelqu'un qui n'en a pas est un
- *    mensonge, et le geste n'est pas le même ; sinon « Jamais ouvert ». Les deux en **ocre seulement
- *    si la personne n'a pas de mot de passe** : avec un mot de passe elle entre déjà. C'est exactement
- *    la condition de l'ancienne pastille (`!m.passwordHash && jamaisOuvert && m.actif`), reprise sans
- *    la perdre ;
- * 4. **sinon, où en est le lien de la période courante ?** « Lien en cours » ou « Aucun lien en
- *    cours » — ce dernier en **ocre sans mot de passe** : un lien révoqué ou échu, c'est quelqu'un
- *    qui ne peut plus entrer, et c'est précisément ce que la colonne sert à repérer. Et s'il
- *    n'existe aucune période vers laquelle envoyer, on n'invente pas un manque : la colonne dit
- *    seulement « Déjà ouvert ».
+ * 1. **le compte est-il actif ?** Désactivé, son lien a été révoqué : parler de son lien serait faux ;
+ * 2. **y a-t-il une adresse ?** Sans elle, aucun lien ne peut partir : la colonne dit l'empêchement ;
+ * 3. **le lien a-t-il déjà servi ?** Non : aucun lien envoyé, un lien envoyé et encore valable, ou un
+ *    lien envoyé qui ne vaut plus — trois situations, trois gestes (envoyer, appeler, renvoyer) ;
+ * 4. **sinon, le lien de la période vaut-il encore ?** Sans période vers laquelle envoyer, on
+ *    n'invente pas un manque.
+ *
+ * À chaque étape, **un mot de passe change la conséquence, pas la cause** : la personne a activé son
+ * compte et entre par la page de connexion, la pastille passe au vert et le dit (« Compte activé · … »).
  */
 export function etatDuLien(ligne: LigneEtatLien): EtatLien {
   if (!ligne.actif) {
-    return {
-      libelle: "Sans accès",
-      ton: "neutre",
-      detail: "Compte désactivé : son lien personnel a été révoqué et ne connecte plus.",
-    };
+    return { libelle: "Compte désactivé", ton: "neutre", detail: "Compte désactivé : son lien personnel a été révoqué et ne connecte plus." };
   }
   if (!ligne.aUnEmail) {
     return {
-      libelle: "Sans adresse",
+      libelle: "Sans adresse email",
       ton: "neutre",
       detail: "Sans adresse email, aucun lien personnel ne peut partir : l'équipe coche sa présence à sa place.",
     };
   }
+  const active = ligne.aUnMotDePasse;
+  const parMotDePasse = "Elle a activé son compte (mot de passe créé) : elle entre par la page de connexion.";
   if (!ligne.dejaOuvert) {
     if (ligne.periodeDeLien && !ligne.lienEnvoye) {
-      return ligne.aUnMotDePasse
-        ? {
-            libelle: "Aucun lien envoyé",
-            ton: "neutre",
-            detail: "Aucun lien personnel ne lui a été envoyé pour la période en cours, mais elle s'est donné un mot de passe : elle entre par la page de connexion.",
-          }
+      return active
+        ? { libelle: "Compte activé · aucun lien envoyé", ton: "vert", detail: `Aucun lien personnel ne lui a été envoyé pour la période en cours. ${parMotDePasse}` }
         : {
             libelle: "Aucun lien envoyé",
-            ton: "ocre",
+            ton: "rouge",
             detail: "Aucun lien personnel ne lui a été envoyé, et elle n'a pas de mot de passe : elle ne peut pas entrer. Le bouton « Envoyer le lien » est dans son volet.",
           };
     }
-    return ligne.aUnMotDePasse
-      ? {
-          libelle: "Jamais ouvert",
-          ton: "neutre",
-          detail: "Son lien personnel n'a jamais servi, mais elle s'est donné un mot de passe : elle entre par la page de connexion.",
-        }
-      : {
-          libelle: "Jamais ouvert",
-          ton: "ocre",
-          detail: "Son lien personnel lui a été envoyé et n'a jamais été ouvert, et elle n'a pas de mot de passe : elle n'est jamais entrée.",
-        };
+    if (ligne.periodeDeLien && !ligne.lienEnCours) {
+      return active
+        ? { libelle: "Compte activé · lien jamais utilisé", ton: "vert", detail: `Son lien personnel n'a jamais servi et n'est plus valable (échu ou révoqué). ${parMotDePasse}` }
+        : {
+            libelle: "Lien expiré sans avoir servi",
+            ton: "rouge",
+            detail: "Son lien personnel lui a été envoyé, n'a jamais été ouvert et n'est plus valable (échu ou révoqué) ; elle n'a pas de mot de passe : elle n'est jamais entrée. Renvoyer le lien.",
+          };
+    }
+    return active
+      ? { libelle: "Compte activé · lien jamais utilisé", ton: "vert", detail: `Son lien personnel n'a jamais servi. ${parMotDePasse}` }
+      : ligne.periodeDeLien
+        ? {
+            libelle: "Lien envoyé · jamais ouvert",
+            ton: "ocre",
+            detail: "Son lien personnel lui a été envoyé, il est valable, mais elle ne l'a jamais ouvert et n'a pas de mot de passe : elle n'est jamais entrée. L'appeler.",
+          }
+        : { libelle: "Lien jamais utilisé", ton: "neutre", detail: "Son lien personnel n'a jamais servi. Aucune période n'envoie de lien en ce moment." };
   }
   if (!ligne.periodeDeLien) {
-    return { libelle: "Déjà ouvert", ton: "neutre", detail: "Son lien personnel a déjà servi. Aucune période n'envoie de lien en ce moment." };
+    return { libelle: "Lien utilisé · hors période", ton: "neutre", detail: "Son lien personnel a déjà servi. Aucune période n'envoie de lien en ce moment." };
   }
   if (ligne.lienEnCours) {
-    return { libelle: "Lien en cours", ton: "neutre", detail: "Son lien personnel a déjà servi et un lien valable existe pour la période en cours." };
+    return { libelle: "Lien en cours · utilisé", ton: "vert", detail: "Son lien personnel a déjà servi et un lien valable existe pour la période en cours." };
   }
-  return ligne.aUnMotDePasse
+  return active
     ? {
-        libelle: "Aucun lien en cours",
-        ton: "neutre",
-        detail:
-          "Son lien personnel a déjà servi, mais aucun lien valable n'existe pour la période en cours — elle entre par son mot de passe en attendant.",
+        libelle: "Compte activé · lien expiré",
+        ton: "vert",
+        detail: `Son lien personnel a déjà servi, mais aucun lien valable n'existe pour la période en cours. ${parMotDePasse}`,
       }
     : {
-        libelle: "Aucun lien en cours",
-        ton: "ocre",
-        detail:
-          "Son lien personnel a déjà servi, mais il n'est plus valable (échu ou remplacé) et elle n'a pas de mot de passe : elle ne peut plus entrer.",
+        libelle: "Lien expiré",
+        ton: "rouge",
+        detail: "Son lien personnel a déjà servi, mais il n'est plus valable (échu ou remplacé) et elle n'a pas de mot de passe : elle ne peut plus entrer. Renvoyer le lien.",
       };
 }

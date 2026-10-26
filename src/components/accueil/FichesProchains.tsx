@@ -163,6 +163,8 @@ const MA_REPONSE: Record<AttendanceStatut, { ton: "vert" | "rouge" | "ocre"; ico
 function MaReponse({ seance: s }: { seance: SeanceCarte }) {
   if (!s.inscrit) return null;
   const reponse = s.monStatut ? MA_REPONSE[s.monStatut as AttendanceStatut] : null;
+  // Commencé, le cours ne prend plus de réponse : la relance réclamerait un geste impossible.
+  if (!reponse && s.commencee) return null;
   if (!reponse) {
     return (
       <p className="flex items-center gap-2 rounded-lg bg-ocre-doux px-3 py-2 text-sm font-semibold text-ocre">
@@ -335,7 +337,9 @@ function FicheSeance({ seance: s, partEffectifMin, personnel }: { seance: Seance
   // son effectif invité, jamais moins que le plancher.
   const seuil = seuilEnPersonnes(partEffectifMin, c.invites);
   return (
-    <li className={`flex flex-col gap-3 rounded-2xl border bg-surface p-3 shadow-carte sm:p-4 ${s.annulee ? "border-rouge/30" : "border-bordure/60"}`}>
+    <li
+      className={`flex flex-col gap-3 rounded-2xl border p-3 shadow-carte sm:p-4 ${s.commencee && !s.annulee ? "bg-surface-douce text-texte-secondaire" : "bg-surface"} ${s.annulee ? "border-rouge/30" : "border-bordure/60"}`}
+    >
       {/* **Les deux bouts de la ligne sont tenus** : la date à gauche, ce qui complète à droite —
           le lieu sur l'accueil d'un membre, la pastille du palier ou « Annulée » ailleurs. C'est la
           même grammaire que les tuiles de la bande, et c'est elle qui évite qu'une bande de
@@ -381,6 +385,10 @@ function FicheSeance({ seance: s, partEffectifMin, personnel }: { seance: Seance
             <Icone nom="interdit" taille={16} />
             Annulée
           </Pastille>
+        ) : s.commencee ? (
+          // Le cours du jour reste parmi les prochains jusqu'à minuit (`seancePassee`), grisé : la même
+          // étiquette que sa carte dans Séances, à la place d'un palier qui ne se joue plus.
+          <span className="rounded-md bg-surface-douce px-2 py-0.5 text-sm font-semibold text-texte-secondaire">Commencé</span>
         ) : (
           !personnel &&
           motDuPalier && (

@@ -904,6 +904,30 @@ function toutesLesScenes(): Scene[] {
     },
     { nom: "admin-comptes", description: "Administration : comptes admin et état de la double authentification", connexion: COMPTES.admin, chemin: "/admin/comptes", pleinePage: true },
     { nom: "admin-themes", description: "Administration : les thèmes du planning et les lieux habituels des cours", connexion: COMPTES.admin, chemin: "/admin/themes", pleinePage: true },
+    { nom: "admin-templates", description: "Administration : les templates de cours — horaire, lieu et programme d'un cours type", connexion: COMPTES.admin, chemin: "/admin/templates", pleinePage: true },
+    {
+      nom: "admin-template",
+      description: "Administration : un template de cours — ses informations et son programme par parties",
+      connexion: COMPTES.admin,
+      chemin: "/admin/templates",
+      avant: async (page) => {
+        const href = await page.getByRole("link", { name: /^Modifier/ }).first().getAttribute("href");
+        await allerA(page, `${BASE}${href}`);
+        await page.getByRole("button", { name: /Enregistrer le programme/ }).first().waitFor();
+      },
+      pleinePage: true,
+    },
+    {
+      nom: "admin-templates-appliquer",
+      description: "Administration : appliquer un template — « tous les mardis » de la période, et ce qui sera fait date par date",
+      connexion: COMPTES.admin,
+      chemin: "/admin/templates/appliquer",
+      avant: async (page) => {
+        await page.getByRole("button", { name: /^Tous les .+ de la période/ }).first().click();
+        await page.getByText(/Ce qui sera fait/).first().waitFor();
+      },
+      pleinePage: true,
+    },
     {
       nom: "admin-identite",
       description: "Administration → Identité : nom du club, sigle, thème, couleur de marque et dépôt des deux logos",
@@ -1276,6 +1300,43 @@ function toutesLesScenes(): Scene[] {
       avant: async (page) => {
         await selectionnerSeancesPlanning(page);
         await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+      },
+    },
+    {
+      nom: "action-planning-masse-elements",
+      description: "Planning en sélection multiple : « Régler des éléments » — deux éléments cochés, chacun avec ses réglages, un seul bouton pour tout le lot (téléphone : le volet)",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        await selectionnerSeancesPlanning(page);
+        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        if (volet) return cocherElementsPlanning(volet);
+        // Sur ordinateur, on choisit le geste dans « Que veux-tu faire ? », puis on coche ses deux
+        // premiers éléments, qui déplient chacun leurs réglages.
+        await page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first().getByRole("combobox").first().click();
+        await page.getByRole("option", { name: /^Régler des éléments/ }).click();
+        const cases = page.locator("fieldset", { hasText: "Éléments à régler" }).first().locator('input[type="checkbox"]');
+        await cases.first().waitFor();
+        await cases.nth(0).check();
+        if ((await cases.count()) > 1) await cases.nth(1).check();
+      },
+    },
+    {
+      nom: "action-planning-remplacer-theme",
+      description: "Planning en sélection multiple : « Remplacer un thème » — le thème trouvé, son nombre d'éléments, et son remplaçant",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        await selectionnerSeancesPlanning(page);
+        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        const cadre = volet ?? page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first();
+        if (!volet) {
+          await cadre.getByRole("combobox").first().click();
+          await page.getByRole("option", { name: /^Remplacer un thème/ }).click();
+        } else {
+          await volet.getByRole("button", { name: /^Remplacer un thème/ }).click();
+        }
+        await page.getByText("Thème à remplacer").first().waitFor();
       },
     },
     {

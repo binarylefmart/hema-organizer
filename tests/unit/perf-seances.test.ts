@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { seanceCommencee } from "@/lib/dates";
+import { seancePassee } from "@/lib/dates";
 import { compterPresences } from "@/lib/presences";
 import { parseDisciplines } from "@/lib/constants";
 
@@ -92,23 +92,18 @@ const SEANCES: SeanceFixture[] = [
 
 const PERIODE = { id: "p1", nom: "Rentrée 2026", statut: "ACTIVE", dateDebut: "2026-09-01", dateFin: "2026-12-20" };
 
-/** Applique le `where` de séances demandé par la requête (date passée, ou jour même déjà commencé). */
+/** Applique le `where` de séances demandé par la requête (date antérieure au jour du club). */
 function filtrerCommeLaBase(where: unknown, seances: SeanceFixture[]): SeanceFixture[] {
-  const clauses = (where as { OR?: Array<{ date: string | { lt: string }; heureDebut?: { lte: string } }> } | undefined)?.OR;
-  if (!clauses) return seances;
-  return seances.filter((s) =>
-    clauses.some((c) => {
-      const surLaDate = typeof c.date === "string" ? s.date === c.date : s.date < c.date.lt;
-      return surLaDate && (!c.heureDebut || s.heureDebut <= c.heureDebut.lte);
-    }),
-  );
+  const date = (where as { date?: { lt: string } } | undefined)?.date;
+  if (!date) return seances;
+  return seances.filter((s) => s.date < date.lt);
 }
 
 /** Ancienne méthode : tout charger, filtrer et trier en JavaScript. Sert de référence. */
 function historiqueDeReference(seances: SeanceFixture[], invites: typeof INVITES, userId: string, now: Date) {
   const trier = (l: typeof INVITES) => l.sort((a, b) => a.prenom.localeCompare(b.prenom, "fr") || a.nom.localeCompare(b.nom, "fr"));
   const retenues = seances
-    .filter((s) => seanceCommencee(s.date, s.heureDebut, now))
+    .filter((s) => seancePassee(s.date, now))
     .map((s) => {
       const statuts = new Map(s.attendances.map((a) => [a.userId, a.statut]));
       const liste = { presents: [] as typeof INVITES, peutEtre: [] as typeof INVITES, absents: [] as typeof INVITES, sansReponse: [] as typeof INVITES };
@@ -175,14 +170,14 @@ describe("historique des présences d'un membre", () => {
     reponses.set("period.findMany", periodeAvecSeances());
   });
 
-  it("écarte les séances non commencées en SQL, pas en JavaScript", async () => {
+  it("écarte les séances non passées en SQL, pas en JavaScript", async () => {
     const { historiquePresences } = await import("@/lib/seances");
     const periodes = await historiquePresences(MEMBRE, MIDI);
-    const where = (appelsDe("period", "findMany")[0].args as { select: { sessions: { where: { OR: unknown[] } } } }).select.sessions.where;
-    // Deux cas, comme `seanceCommencee` : une date déjà passée, ou le jour même à l'heure atteinte
-    expect(where.OR).toEqual([{ date: { lt: "2026-09-22" } }, { date: "2026-09-22", heureDebut: { lte: "12:00" } }]);
-    // La séance du soir et celle de la semaine prochaine ne sont jamais rapatriées
-    expect(periodes[0].seances.map((s) => s.id)).toEqual(["s3", "s2", "s1"]);
+    const where = (appelsDe("period", "findMany")[0].args as { select: { sessions: { where: unknown } } }).select.sessions.where;
+    // Une seule borne, comme `seancePassee` : la date avant le jour du club
+    expect(where).toEqual({ date: { lt: "2026-09-22" } });
+    // Les deux séances du jour et celle de la semaine prochaine ne sont jamais rapatriées
+    expect(periodes[0].seances.map((s) => s.id)).toEqual(["s2", "s1"]);
   });
 
   it("rend exactement le même résultat que l'ancien filtrage en JavaScript", async () => {
@@ -192,16 +187,17 @@ describe("historique des présences d'un membre", () => {
     expect(JSON.parse(JSON.stringify(obtenu))).toEqual(JSON.parse(JSON.stringify(reference)));
   });
 
-  it("garde la règle de `seanceCommencee` pour la séance du jour (avant / après l'heure de début)", async () => {
+  it("n'entre la séance du jour dans l'historique que le lendemain, commencée ou non (`seancePassee`)", async () => {
     const { historiquePresences } = await import("@/lib/seances");
-    // 19 h 59 à Paris : la séance de 20 h n'a pas commencé ; 20 h 30 : elle est dans l'historique
-    const avant = await historiquePresences(MEMBRE, new Date("2026-09-22T17:59:00Z"));
-    const apres = await historiquePresences(MEMBRE, new Date("2026-09-22T18:30:00Z"));
-    expect(avant[0].seances.map((s) => s.id)).toEqual(["s3", "s2", "s1"]);
-    expect(apres[0].seances.map((s) => s.id)).toEqual(["s4", "s3", "s2", "s1"]);
+    // 20 h 30 à Paris : les deux cours du jour ont commencé, aucun n'est encore dans l'historique ;
+    // le lendemain matin, ils y sont tous les deux.
+    const pendant = await historiquePresences(MEMBRE, new Date("2026-09-22T18:30:00Z"));
+    const lendemain = await historiquePresences(MEMBRE, new Date("2026-09-23T06:00:00Z"));
+    expect(pendant[0].seances.map((s) => s.id)).toEqual(["s2", "s1"]);
+    expect(lendemain[0].seances.map((s) => s.id)).toEqual(["s4", "s3", "s2", "s1"]);
     for (const [instant, attendu] of [
-      [new Date("2026-09-22T17:59:00Z"), avant],
-      [new Date("2026-09-22T18:30:00Z"), apres],
+      [new Date("2026-09-22T18:30:00Z"), pendant],
+      [new Date("2026-09-23T06:00:00Z"), lendemain],
     ] as const) {
       expect(JSON.parse(JSON.stringify(attendu))).toEqual(JSON.parse(JSON.stringify(historiqueDeReference(SEANCES, [...INVITES], MEMBRE, instant))));
     }

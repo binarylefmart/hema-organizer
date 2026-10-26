@@ -93,16 +93,18 @@ model User {
   periodes            PeriodMember[]
   periodesAnimees     PeriodInstructeur[]
   seancesAnimees      SessionInstructeur[]
-  partiesAnimees      SessionPartie[]      @relation("PartieInstructeur")
+  partiesAnimees      SessionPartie[]        @relation("PartieInstructeur")
   /// Les parties où la personne **assiste** celui qui mène (second instructeur) : une relation
   /// distincte de `partiesAnimees` parce que les deux colonnes pointent vers la même table et que
   /// Prisma exige alors un nom de relation de chaque côté.
-  partiesAssistees    SessionPartie[]      @relation("PartieInstructeurSecond")
-  partiesModifiees    SessionPartie[]      @relation("PartieModifiePar")
+  partiesAssistees    SessionPartie[]        @relation("PartieInstructeurSecond")
+  partiesModifiees    SessionPartie[]        @relation("PartieModifiePar")
+  templatesMenes      CoursTemplateElement[] @relation("TemplateInstructeur")
+  templatesAssistes   CoursTemplateElement[] @relation("TemplateInstructeurSecond")
   attendances         Attendance[]
   ateliers            Atelier[]
-  ateliersAnimes      Atelier[]            @relation("AtelierAnimateur")
-  ateliersSeconde     Atelier[]            @relation("AtelierAnimateurSecond")
+  ateliersAnimes      Atelier[]              @relation("AtelierAnimateur")
+  ateliersSeconde     Atelier[]              @relation("AtelierAnimateurSecond")
   invitations         Invitation[]
   authSessions        AuthSession[]
   passwordResetTokens PasswordResetToken[]
@@ -262,8 +264,8 @@ model Session {
 /// intitulé à elle. Le libellé est devenu une **donnée libre** et le rang une colonne à part : une
 /// séance porte autant de parties que le club en a besoin, dans l'ordre qu'il choisit.
 model SessionPartie {
-  id        String @id @default(cuid())
-  sessionId String
+  id          String @id @default(cuid())
+  sessionId   String
   /// **Nom affiché de l'élément — une valeur DÉRIVÉE, plus jamais saisie**. Il vaut toujours
   /// `libelleElement(bloc, nature, rang, nombre)` — « Partie 1 · Cours », « Partie 2 · Option 2 »…
   /// (le numéro de l'élément seulement si sa partie porte plusieurs éléments de cette nature) — et
@@ -276,7 +278,7 @@ model SessionPartie {
   /// colonne tenue à jour leur évite de recompter le rang dans leur coin — et un rang recompté
   /// après un filtre d'affichage est précisément la faute que le projet a déjà corrigée deux fois.
   /// Ce qui décrit la partie, c'est son contenu : `theme`, `niveau`, ses encadrants, `description`.
-  libelle   String
+  libelle     String
   /// **Ce qu'on fera dans cette partie**, écrit par l'encadrement quand il a envie de le dire. Vide
   /// par défaut, jamais obligatoire, et affiché **seulement quand il est rempli** (règle
   /// `champsLus`). Même patron que `theme` : une valeur par défaut plutôt qu'une colonne nullable,
@@ -289,16 +291,16 @@ model SessionPartie {
   /// finirait par décider de l'ordre à la place de l'équipe. L'ordre de lecture est
   /// (bloc, ordre, id) — **libre** dans une partie, la nature n'y entre pas ; elle ne décide que
   /// de la place par défaut d'un élément qui arrive (`ORDRE_DEFAUT_NATURES`).
-  ordre     Int    @default(0)
+  ordre       Int    @default(0)
   /// **Numéro de la partie** qui porte cet élément (« une gestion par partie, partie
   /// 1, 2, 3 ») — **contigu à partir de 1**. Une partie n'existe que par ses éléments : retirer le
   /// dernier la fait disparaître et les suivantes se renumérotent (`rangerParties`).
-  bloc      Int    @default(1)
+  bloc        Int    @default(1)
   /// **Ce qu'est l'élément** : ECHAUFFEMENT | COURS | OPTION | ATELIER (`NATURES_ELEMENT`,
   /// src/lib/constants.ts). Remplace l'ancien drapeau `estOption`. OPTION et ATELIER se déroulent
   /// en parallèle ; un élément ATELIER porte normalement un `atelierId`, et vidé (atelier retiré)
   /// il reste un élément Atelier vide, réutilisable par le prochain atelier placé.
-  nature    String @default("COURS")
+  nature      String @default("COURS")
   /// **Teinte du cours ou de l'option** dans la palette du programme (1 à `NOMBRE_TEINTES`,
   /// src/components/seances/teintes.ts), `null` pour un échauffement ou un atelier, qui gardent
   /// leur couleur à eux. **Enregistrée, pour ne jamais bouger toute seule** : elle s'attribue à la
@@ -307,14 +309,14 @@ model SessionPartie {
   /// changer de partie, retirer un voisin, changer l'instructeur). Une ligne d'avant la colonne
   /// (`null` sur un cours) se lit avec la même règle (`teintesProgramme`) et se renseigne par
   /// `scripts/reparer-donnees.ts` (contrôle `teintes`).
-  teinte    Int?
+  teinte      Int?
 
-  instructeurId String?
+  instructeurId       String?
   /// **Celui qui assiste** : un second encadrant, facultatif, un seul. Il compte comme le premier
   /// pour la séance (`SessionInstructeur`, donc les alertes d'effectif) mais ne sort jamais vers le
   /// public — les pages de partage et l'API ne sélectionnent aucun nom.
   instructeurSecondId String?
-  theme               String  @default("")
+  theme               String   @default("")
   /// Niveau annoncé de la case (voir `NIVEAUX`, src/lib/constants.ts) : INDIFFERENT, DEBUTANT,
   /// INTERMEDIAIRE ou AVANCE. Une **valeur par défaut** plutôt qu'une colonne nullable : les cases
   /// écrites avant ce champ valent « indifférent » sans la moindre écriture de masse, et aucun
@@ -380,8 +382,8 @@ model Atelier {
   proposePar      User           @relation(fields: [proposeParId], references: [id], onDelete: Cascade)
   animateur       User?          @relation("AtelierAnimateur", fields: [animateurId], references: [id], onDelete: SetNull)
   animateurSecond User?          @relation("AtelierAnimateurSecond", fields: [animateurSecondId], references: [id], onDelete: SetNull)
-  session    Session?       @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  partie     SessionPartie?
+  session         Session?       @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  partie          SessionPartie?
 
   @@index([statut])
   @@index([sessionId])
@@ -421,18 +423,18 @@ model Invitation {
 
 /// Session de connexion (cookie httpOnly) — seul le hash du jeton est stocké
 model AuthSession {
-  id         String    @id @default(cuid())
-  userId     String
-  tokenHash  String    @unique
+  id                String    @id @default(cuid())
+  userId            String
+  tokenHash         String    @unique
   /// Session « forte » = ouverte par mot de passe + code 2FA (administration). false = ouverte par lien personnel.
-  forte      Boolean   @default(false)
+  forte             Boolean   @default(false)
   /// **Par où cette session est entrée** : "lien" (lien personnel) ou "mot-de-passe". Le plafond de
   /// 3 appareils ne compte que les sessions de la première sorte (`verifierAppareils`) : `forte` ne
   /// dit rien de l'origine depuis que la connexion n'élève plus, et compter *toutes* les sessions
   /// revenait à révoquer le lien de qui s'était connecté trois fois au mot de passe. **NULL =
   /// session ouverte**, origine inconnue : elle reste parfaitement valable, et ne compte pour aucun
   /// plafond — on ne met personne dehors sur une supposition.
-  origine    String?
+  origine           String?
   /// **« Rester connecté » était-il coché ?** Le cookie de session n'a une échéance (`maxAge`) que
   /// si oui ; sinon il meurt avec le navigateur, ce que l'écran promet. La colonne existe parce que
   /// `touchSession` réécrit le cookie en prolongeant la session et **ne peut pas relire** le
@@ -440,23 +442,23 @@ model AuthSession {
   /// qu'on pouvait cocher pour se protéger d'un appareil prêté devenait inopérante dès qu'on
   /// utilisait l'application plus d'une demi-heure. **false pour les sessions ouvertes avant** : le
   /// comportement prudent, et aucune session existante n'est coupée.
-  persistant Boolean   @default(false)
+  persistant        Boolean   @default(false)
   /// Dernière vérification du code 2FA (connexion ou ré-authentification) : les actions sensibles exigent < 10 min
-  reauthAt   DateTime?
+  reauthAt          DateTime?
   /// Dernier geste **dans l'espace admin** de cette session. L'élévation se referme après
   /// `DUREE_INACTIVITE_ELEVATION_MS` sans rien faire : le cookie sans échéance ne suffit pas, les
   /// navigateurs modernes le restaurant au redémarrage (voir `src/lib/auth/elevation.ts`).
-  elevationVueLe DateTime?
+  elevationVueLe    DateTime?
   /// Quand l'application a prévenu qu'elle passait en arrière-plan ou se fermait. Ce n'est pas une
   /// fermeture : l'élévation tombe si l'application ne revient pas avant
   /// `GRACE_SORTIE_ELEVATION_MS`. Ce délai est ce qui distingue « j'ai quitté » d'un simple
   /// changement de page — le navigateur envoie le même signal dans les deux cas.
   elevationSortieLe DateTime?
-  expiresAt  DateTime
-  lastSeenAt DateTime  @default(now())
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime  @default(now())
+  expiresAt         DateTime
+  lastSeenAt        DateTime  @default(now())
+  ip                String?
+  userAgent         String?
+  createdAt         DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -590,4 +592,46 @@ model Evenement {
   creePar User? @relation(fields: [creeParId], references: [id], onDelete: SetNull)
 
   @@index([dateDebut])
+}
+
+/// **Un template de cours** (demande de Delta : « un onglet template pour les cours… créer
+/// des templates de planification de cours qu'on pourra appliquer à des dates précises »). Il porte
+/// ce qu'une séance porte — horaire, lieu — **et son programme** (`CoursTemplateElement`). L'appliquer
+/// à une date crée la séance, ou remplit le programme d'une séance existante **s'il est vide** ; rien
+/// n'est jamais écrasé (`planApplication`, src/lib/templates.ts). Le template ne garde aucun lien
+/// avec les séances qu'il a remplies : le modifier ensuite ne touche à aucune d'elles.
+model CoursTemplate {
+  id         String   @id @default(cuid())
+  nom        String
+  heureDebut String // "HH:MM"
+  heureFin   String // "HH:MM"
+  lieu       String
+  adresse    String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  elements CoursTemplateElement[]
+}
+
+/// **Un élément du programme d'un template** : les mêmes champs qu'un `SessionPartie` saisi au
+/// planning — partie (`bloc`), nature, thème, encadrants, niveau, description —, sans atelier (un
+/// atelier est la proposition d'un membre, il ne se répète pas) et sans libellé (il se calcule à
+/// l'application, `libelleElement`).
+model CoursTemplateElement {
+  id                  String  @id @default(cuid())
+  templateId          String
+  bloc                Int     @default(1)
+  ordre               Int     @default(0)
+  nature              String  @default("COURS")
+  theme               String  @default("")
+  niveau              String  @default("INDIFFERENT")
+  description         String  @default("")
+  instructeurId       String?
+  instructeurSecondId String?
+
+  template          CoursTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  instructeur       User?         @relation("TemplateInstructeur", fields: [instructeurId], references: [id], onDelete: SetNull)
+  instructeurSecond User?         @relation("TemplateInstructeurSecond", fields: [instructeurSecondId], references: [id], onDelete: SetNull)
+
+  @@index([templateId, ordre])
 }

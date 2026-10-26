@@ -51,7 +51,7 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
   await expect(page.getByLabel(/^Sélectionner la séance du/)).toHaveCount(0);
 
   await interrupteur.check();
-  await expect(page.getByText(/^Coche des lignes pour régler une partie/)).toBeVisible();
+  await expect(page.getByText(/^Coche des lignes pour régler des éléments/)).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /^Sélectionner (les \d+ séances affichées|la séance affichée)$/ })).toBeVisible();
   await expect(barre(page)).toHaveCount(0);
 

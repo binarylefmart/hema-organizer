@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { parisDateTime } from "@/lib/dates";
 import { filtrerHorizon, filtrerHorizonPasse, HORIZONS, lireHorizon } from "@/lib/horizon";
 
 const AUJ = "2026-09-22";
@@ -35,26 +34,23 @@ describe("fenêtre de temps", () => {
 
   it("resserre aussi vers le passé (tableau de bord)", () => {
     expect(filtrerHorizonPasse(seances, "periode", AUJ)).toHaveLength(7);
-    expect(filtrerHorizonPasse(seances, "2mois", AUJ).map((s) => s.date)).toEqual(["2026-09-08", "2026-09-18", "2026-09-22"]);
-    expect(filtrerHorizonPasse(seances, "semaine", AUJ).map((s) => s.date)).toEqual(["2026-09-18", "2026-09-22"]);
-    expect(filtrerHorizonPasse(seances, "prochain", AUJ).map((s) => s.date)).toEqual(["2026-09-22"]);
+    // Le cours du jour n'y est pas : il ne rejoint le passé que le lendemain.
+    expect(filtrerHorizonPasse(seances, "2mois", AUJ).map((s) => s.date)).toEqual(["2026-09-08", "2026-09-18"]);
+    expect(filtrerHorizonPasse(seances, "semaine", AUJ).map((s) => s.date)).toEqual(["2026-09-18"]);
+    expect(filtrerHorizonPasse(seances, "prochain", AUJ).map((s) => s.date)).toEqual(["2026-09-18"]);
   });
 });
 
 /**
- * **La fenêtre « passé » se referme au début du cours, pas à minuit**.
- *
- * Le découpage se faisait sur `s.date <= aujourdHui` : un mardi à 18 h, le cours de 20 h comptait
- * déjà pour passé. Les écrans de séances ne le voyaient pas — ils pré-filtrent avec `seanceCommencee`
- * avant d'appeler (`src/components/filtres/temps.ts`) — mais le tableau de bord, non : son horizon
- * « Dernier cours » retenait **le cours du soir non commencé**, affichait « moyenne 0 % », une seule
- * ligne, et tout le club à « 0 présence / 0 séance / 0 % », sans montrer le cours de jeudi dernier.
- * Un compensateur posé d'un côté et pas de l'autre est un défaut en attente : la règle est donc dans
- * la fonction, et ces cas l'y tiennent.
+ * **La fenêtre « passé » se referme à la veille, pas au début du cours** (`seancePassee`, demande de
+ * Delta) : le cours du jour, commencé ou non, reste parmi les cours à venir jusqu'à minuit — la règle
+ * du planning et de l'onglet Séances, que le tableau de bord, l'historique et l'accueil reçoivent
+ * par cette fonction. Un mardi à 18 h comme à 21 h, l'horizon « Dernier cours » montre le cours de
+ * vendredi dernier, jamais celui du soir.
  */
-describe("la frontière du passé est le début du cours", () => {
+describe("la frontière du passé est le lendemain du cours", () => {
   const JOUR = "2026-09-22";
-  /** Le même trimestre, horaires compris : deux cours ce mardi-là, à 10 h et à 20 h. */
+  /** Le même trimestre : deux cours ce mardi-là, à 10 h et à 20 h. */
   const avecHeures = [
     { date: "2026-09-15", heureDebut: "20:00" },
     { date: "2026-09-18", heureDebut: "20:00" },
@@ -62,36 +58,22 @@ describe("la frontière du passé est le début du cours", () => {
     { date: JOUR, heureDebut: "20:00" },
     { date: "2026-09-25", heureDebut: "20:00" },
   ];
-  /** 18 h à Paris : le cours du matin a eu lieu, celui de 20 h non. */
-  const AVANT_LE_COURS = parisDateTime(JOUR, "18:00");
-  /** 20 h 30 : il a commencé. */
-  const APRES_LE_COURS = parisDateTime(JOUR, "20:30");
 
-  it("ne retient pas comme « dernier cours » celui qui n'a pas commencé", () => {
-    // C'est le défaut lui-même : à 18 h, le dernier cours **donné** est celui de 10 h.
-    expect(filtrerHorizonPasse(avecHeures, "prochain", JOUR, AVANT_LE_COURS)).toEqual([{ date: JOUR, heureDebut: "10:00" }]);
-    // Et dès 20 h 30, c'est celui du soir : la bascule se fait à l'heure du cours, pas à minuit.
-    expect(filtrerHorizonPasse(avecHeures, "prochain", JOUR, APRES_LE_COURS)).toEqual([{ date: JOUR, heureDebut: "20:00" }]);
+  it("ne retient jamais un cours du jour comme « dernier cours », même commencé", () => {
+    expect(filtrerHorizonPasse(avecHeures, "prochain", JOUR)).toEqual([{ date: "2026-09-18", heureDebut: "20:00" }]);
+    // Le lendemain, c'est celui de 20 h : le dernier du jour écoulé.
+    expect(filtrerHorizonPasse(avecHeures, "prochain", "2026-09-23")).toEqual([{ date: JOUR, heureDebut: "20:00" }]);
   });
 
-  it("garde le cours du soir hors de la fenêtre tant qu'il n'a pas commencé", () => {
-    const semaine = filtrerHorizonPasse(avecHeures, "semaine", JOUR, AVANT_LE_COURS).map((s) => `${s.date} ${s.heureDebut}`);
-    // La semaine écoulée part du 15 (sept jours en arrière) et s'arrête au cours de 10 h.
-    expect(semaine).toEqual(["2026-09-15 20:00", "2026-09-18 20:00", "2026-09-22 10:00"]);
-    expect(semaine).not.toContain("2026-09-22 20:00");
-    // Le cours à venir de vendredi n'y est jamais : la fenêtre regarde le passé.
-    expect(semaine).not.toContain("2026-09-25 20:00");
+  it("arrête la semaine écoulée à la veille", () => {
+    const semaine = filtrerHorizonPasse(avecHeures, "semaine", JOUR).map((s) => `${s.date} ${s.heureDebut}`);
+    // Elle part du 15 (sept jours en arrière) et s'arrête au 18 : aucun cours du 22, ni de vendredi.
+    expect(semaine).toEqual(["2026-09-15 20:00", "2026-09-18 20:00"]);
   });
 
   it("garde « toute la période » entière, cours à venir compris : c'est le tableau de bord du trimestre", () => {
     // Le tableau de bord montre aussi les réponses déjà reçues pour les cours à venir ; seule la
     // fenêtre resserrée regarde le passé.
-    expect(filtrerHorizonPasse(avecHeures, "periode", JOUR, AVANT_LE_COURS)).toHaveLength(5);
-  });
-
-  it("retombe sur la date seule quand la séance ne porte pas son heure", () => {
-    // Une liste qui ne porte que des dates (jeu d'essai, frise) garde l'ancien comportement : c'est
-    // le repli le plus prudent, et il n'y a rien d'autre à comparer.
-    expect(filtrerHorizonPasse([{ date: JOUR }], "prochain", JOUR, AVANT_LE_COURS)).toEqual([{ date: JOUR }]);
+    expect(filtrerHorizonPasse(avecHeures, "periode", JOUR)).toHaveLength(5);
   });
 });

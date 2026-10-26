@@ -6,7 +6,7 @@ import { pairesEgales, type Paire } from "./file-envoi";
  *
  * Jusqu'ici, une seule main écrivait dans le brouillon : la case (`CaseEditeur`), par son entonnoir
  * `sauver`. Elle tenait son propre état et **poussait** sa valeur vers le brouillon ; le brouillon ne
- * renvoyait jamais rien. La sélection multiple du planning (« Régler une partie » sur plusieurs
+ * renvoyait jamais rien. La sélection multiple du planning (« Régler des éléments », « Remplacer un thème » sur plusieurs
  * séances cochées) écrit maintenant **dans le même brouillon**, pour que la barre « Appliquer les
  * modifications » enregistre ces réglages exactement comme ceux faits à la main — mêmes verrous, même
  * tout-ou-rien, même journal (`enregistrerCases`). Deux conséquences, et ce module les tient :

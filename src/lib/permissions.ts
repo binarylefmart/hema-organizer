@@ -123,6 +123,10 @@ export const PERMISSIONS = {
   // Passés au bureau, en même temps que leur écran a rejoint l'espace admin — donc derrière
   // l'élévation, comme toute permission réservée à ADMIN.
   "themes.manage": ["ADMIN"],
+  // Les templates de cours : un modèle de séance, programme compris, qu'on applique à des
+  // dates — donc des séances créées en série dans un trimestre. Construire le trimestre est un geste
+  // de bureau (`periods.manage`), et l'écran vit dans l'espace admin, derrière l'élévation.
+  "templates.manage": ["ADMIN"],
   "ateliers.propose": ["ADMIN", "INSTRUCTEUR", "MEMBRE"],
 } as const satisfies Record<string, readonly Role[]>;
 

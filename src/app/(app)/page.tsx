@@ -54,9 +54,10 @@ function versPresences(params: Params): string {
 /**
  * Une séance de la vue Club en **colonne dépliable** de la frise.
  *
- * `details` porte les trois choses que la frise ne dessine pas — l'horaire, le lieu (avec son
- * adresse, pour que le panneau en fasse un lien vers la carte) et les noms —
- * et c'est tout l'intérêt d'ouvrir une colonne. Rien n'est chargé pour l'occasion : `cr.prochaines`
+ * `details` porte ce que la frise ne dessine pas — l'horaire, le lieu (avec son adresse, pour que
+ * le panneau en fasse un lien vers la carte), **le programme du cours** — lu comme au planning :
+ * échauffement, cours, options, thème, instructeur, niveau — et les noms —, et c'est tout
+ * l'intérêt d'ouvrir une colonne. Rien n'est chargé pour l'occasion : `cr.prochaines`
  * est déjà une liste de `SeanceCarte` complètes, listes nominatives comprises, ouvertes à tout le
  * club depuis l'étape 3.
  */
@@ -66,7 +67,16 @@ function colonneDepliable(s: SeanceCarte): CoursFrise {
     date: s.date,
     annulee: s.annulee,
     compteurs: s.compteurs,
-    details: { heureDebut: s.heureDebut, heureFin: s.heureFin, lieu: s.lieu, adresse: s.adresse, participants: s.participants },
+    details: {
+      heureDebut: s.heureDebut,
+      heureFin: s.heureFin,
+      lieu: s.lieu,
+      adresse: s.adresse,
+      participants: s.participants,
+      programme: s.programme,
+      theme: s.theme,
+      alternative: s.alternative,
+    },
   };
 }
 
@@ -92,7 +102,8 @@ function sousTitre(cr: CompteRendu): string | null {
  * piloter la période passe derrière une troisième position de bascule.
  * - **Club** : de quoi s'organiser pour les prochains cours, dans cet ordre — la **vignette** du
  *   prochain cours (la question qu'on se pose en ouvrant l'application, écrite en grand), la
- *   **frise** de fréquentation (la forme des quatre prochains cours d'un coup d'œil), la **bande
+ *   **frise** de fréquentation (la forme des quatre prochains cours d'un coup d'œil ; une colonne
+ *   dépliée dit en plus l'horaire, le lieu, le programme du cours et les noms), la **bande
  *   d'indicateurs** (ce qui reste au calendrier) et le **raccourci vers les cours passés**. **Aucune
  *   carte ni fiche de cours ici**, et c'est le fruit de deux retraits successifs : les cartes, parce
  *   qu'elles redisaient en dix lignes ce que la frise montre au-dessus ; les fiches qui les avaient

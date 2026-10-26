@@ -429,6 +429,36 @@ async function main() {
     await synchroniserSeance(sessionId);
   }
 
+  // ---- Templates de cours : deux cours types, pour l'écran « Templates » et son application
+  await db.coursTemplate.deleteMany({});
+  const [instr1, instr2] = instructeursIds;
+  await db.coursTemplate.create({
+    data: {
+      nom: "Mardi Messer",
+      heureDebut: "20:00",
+      heureFin: "22:00",
+      lieu: "Salle des fêtes, Villebourg",
+      adresse: "1 rue des Lices, 00000 Villebourg",
+      elements: {
+        create: [
+          { bloc: 1, ordre: 0, nature: "ECHAUFFEMENT", theme: "Jeu de jambes", instructeurId: instr1 ?? null },
+          { bloc: 1, ordre: 1, nature: "COURS", theme: "Messer", niveau: "DEBUTANT", instructeurId: instr1 ?? null, instructeurSecondId: instr2 ?? null },
+          { bloc: 2, ordre: 2, nature: "OPTION", theme: "Dague", description: "Désarmements depuis la garde basse." },
+        ],
+      },
+    },
+  });
+  await db.coursTemplate.create({
+    data: {
+      nom: "Vendredi épée longue",
+      heureDebut: "19:00",
+      heureFin: "21:00",
+      lieu: "Gymnase municipal, Villebourg",
+      adresse: "3 avenue du Stade, 00000 Villebourg",
+      elements: { create: [{ bloc: 1, ordre: 0, nature: "COURS", theme: "Épée longue", instructeurId: instr2 ?? null }] },
+    },
+  });
+
   // ---- Événements : deux annonces publiées et un brouillon (fil, panneau, page publique de partage)
   await db.evenement.deleteMany({});
   const dans = (jours: number) => addDays(aujourdHui, jours);

@@ -5,25 +5,44 @@ import { LIBELLE_VIDE } from "@/lib/constants";
 import type { Paire } from "@/components/planning/file-envoi";
 import { VARIABLE_HAUTEUR_BARRE_EDITION } from "@/components/ui/barre-selection";
 import { casesAEnvoyer, paireImposee, poserEnMasse, texteEcartees, type EtatBrouillon } from "@/components/planning/brouillon";
+import { AUTRE } from "@/components/planning/options";
 import {
   blocsProposes,
+  CHAMPS_INCHANGES,
+  choisirInstructeur,
   confirmationPlanning,
+  ECRIRE,
   ENTREES_TETE,
-  expliquerGestePlanning,
+  expliquerAjout,
+  expliquerReglages,
+  expliquerRemplacement,
   gestesPlanningApplicables,
+  INVITE_PLANNING,
   issueReglage,
   libelleBlocPropose,
-  libelleBoutonPlanning,
+  libelleBoutonAjout,
+  libelleBoutonReglages,
+  libelleBoutonRemplacement,
   libellePartieProposee,
+  libelleThemeTrouve,
   libelleToutesSeancesPlanning,
   lireChoix,
+  messageReglages,
+  messageRemplacement,
   NE_PAS_CHANGER,
   partiesProposees,
   phrasesEcarts,
   planReglage,
+  planReglages,
+  planRemplacement,
+  reglageDepuisChamps,
   reglageVide,
   seancesSansLaPartie,
   texteSansCasePlanning,
+  themeMixte,
+  themeRetenu,
+  themesRemplacants,
+  themesTrouves,
   type LignePlanning,
   type PartieLigne,
 } from "@/components/planning/selection-planning";
@@ -48,11 +67,28 @@ const b = seance("b", [partie("b1", "Partie 1 · Cours", { serveur: { ...VIDE, i
 const c = seance("c", [partie("c1", "Partie 1 · Cours", { atelier: true })]);
 
 describe("les gestes proposés", () => {
-  it("régler une partie, ajouter dans une partie — chacun avec son nombre", () => {
+  it("régler des éléments, remplacer un thème, ajouter dans une partie — chacun avec son nombre", () => {
     expect(gestesPlanningApplicables([a, b, c]).map((g) => [g.geste, g.nombre, g.libelle])).toEqual([
-      ["regler", 2, "Régler une partie (2 séances)"],
+      ["regler", 2, "Régler des éléments (2 séances)"],
+      // Seule « b » porte un thème (hors atelier).
+      ["remplacer", 1, "Remplacer un thème (1 séance)"],
       ["ajouter", 3, "Ajouter dans une partie (3 séances)"],
     ]);
+  });
+
+  it("« Remplacer un thème » n'est proposé que si un thème est présent — celui du brouillon compris", () => {
+    expect(gestesPlanningApplicables([a]).map((g) => g.geste)).toEqual(["regler", "ajouter"]);
+    const brouillon = new Map([["a3", { ...VIDE, theme: "Dague" }]]);
+    expect(gestesPlanningApplicables([a], brouillon).map((g) => g.geste)).toEqual(["regler", "remplacer", "ajouter"]);
+    // Un thème vidé dans le brouillon ne compte plus.
+    expect(gestesPlanningApplicables([b], new Map([["b1", { ...VIDE }]])).map((g) => g.geste)).toEqual(["regler", "ajouter"]);
+    // Le thème d'un atelier (son titre) ne se remplace pas.
+    const atelier = seance("t", [partie("t1", "Partie 1 · Cours", { atelier: true, serveur: { ...VIDE, theme: "Lutte" } })]);
+    expect(gestesPlanningApplicables([atelier]).map((g) => g.geste)).toEqual(["ajouter"]);
+  });
+
+  it("la phrase d'invite nomme les trois gestes", () => {
+    expect(INVITE_PLANNING).toBe("Coche des lignes pour régler des éléments, remplacer un thème ou ajouter un élément sur plusieurs séances à la fois.");
   });
 
   it("une séance dont toutes les parties portent un atelier n'a rien à régler", () => {
@@ -107,14 +143,14 @@ describe("ajouter dans une partie", () => {
   it("compte les séances trop courtes, où l'élément ouvre une partie à la fin", () => {
     expect(seancesSansLaPartie([a, b, c], 2)).toBe(1);
     expect(seancesSansLaPartie([a, b, c], 3)).toBe(3);
-    const e = expliquerGestePlanning("ajouter", [a, c], null, "", { bloc: 2, nature: "OPTION" });
+    const e = expliquerAjout([a, c], { bloc: 2, nature: "OPTION" });
     expect(e.titre).toBe("Option s'ajoute dans la partie 2 sur chacune des 2 séances, tout de suite.");
     expect(e.phrases.join(" ")).toMatch(/1 séance n'a pas encore de partie 2 : l'élément y ouvre une nouvelle partie, à la fin/);
   });
 
   it("le bouton et la question nomment la nature et la partie", () => {
-    expect(libelleBoutonPlanning("ajouter", 4, "", { bloc: 1, nature: "ECHAUFFEMENT" })).toBe("Ajouter un échauffement dans la partie 1 à 4 séances");
-    expect(libelleBoutonPlanning("ajouter", 4)).toBe("Ajouter");
+    expect(libelleBoutonAjout(4, { bloc: 1, nature: "ECHAUFFEMENT" })).toBe("Ajouter un échauffement dans la partie 1 à 4 séances");
+    expect(libelleBoutonAjout(4, null)).toBe("Ajouter");
     expect(confirmationPlanning({ bloc: 3, nature: "COURS" }, 2)).toMatch(/^Ajouter un cours dans la partie 3 de 2 séances \? C'est enregistré tout de suite/);
   });
 });
@@ -192,19 +228,208 @@ describe("le plan d'un réglage sur le lot", () => {
   });
 
   it("l'explication dit que rien n'est encore enregistré, et ce qui reste de côté", () => {
-    const plan = planReglage([a, c], "Partie 1 · Cours", { theme: "Dague" }, new Map());
-    const e = expliquerGestePlanning("regler", [a, c], plan, "Partie 1 · Cours");
-    expect(e.titre).toBe("« Partie 1 · Cours » est réglé sur 1 séance, dans le brouillon.");
+    const plan = planReglages([a, c], [{ libelle: "Partie 1 · Cours", reglage: { theme: "Dague" } }], new Map());
+    const e = expliquerReglages(plan);
+    expect(e.titre).toBe("1 élément est réglé sur 1 séance, dans le brouillon.");
     expect(e.phrases.join(" ")).toMatch(/Rien n'est encore enregistré/);
-    expect(e.phrases.join(" ")).toMatch(/atelier/);
-    expect(libelleBoutonPlanning("regler", 1, "Partie 1 · Cours")).toBe("Régler « Partie 1 · Cours » sur 1 séance");
-    expect(libelleBoutonPlanning("ajouter", 4, "", { bloc: 2, nature: "OPTION" })).toBe("Ajouter une option dans la partie 2 à 4 séances");
+    expect(e.phrases).toContain("« Partie 1 · Cours » — 1 séance reste de côté : elle porte un atelier dans cette partie (il se change depuis la gestion des ateliers).");
+    expect(libelleBoutonReglages(plan)).toBe("Appliquer à 1 séance");
+    expect(libelleBoutonAjout(4, { bloc: 2, nature: "OPTION" })).toBe("Ajouter une option dans la partie 2 à 4 séances");
   });
 
   it("les ajouts disent qu'ils partent tout de suite, et qu'« Annuler » ne les défait pas", () => {
-    const e = expliquerGestePlanning("ajouter", [a, b], null, "", { bloc: 1, nature: "COURS" });
+    const e = expliquerAjout([a, b], { bloc: 1, nature: "COURS" });
     expect(e.titre).toMatch(/tout de suite/);
     expect(e.phrases.join(" ")).toMatch(/« Annuler » ne le défait pas/);
+  });
+});
+
+/**
+ * **« Régler des éléments »** : plusieurs noms cochés, chacun avec ses réglages, posés
+ * d'un seul appui sur toutes les séances cochées qui les portent.
+ */
+describe("régler plusieurs éléments d'un appui", () => {
+  // Six séances au même programme : un échauffement et un cours dans la partie 1.
+  const six = Array.from({ length: 6 }, (_, i) =>
+    seance(`s${i}`, [partie(`s${i}e`, "Partie 1 · Échauffement"), partie(`s${i}c`, "Partie 1 · Cours")]),
+  );
+
+  it("l'exemple de Delta : échauffement « Footwork », cours « Messer » avec Charlie → 12 cases sur 6 séances", () => {
+    const plan = planReglages(
+      six,
+      [
+        { libelle: "Partie 1 · Échauffement", reglage: { theme: "Footwork" } },
+        { libelle: "Partie 1 · Cours", reglage: { theme: "Messer", instructeurId: "u-charlie" } },
+      ],
+      new Map(),
+    );
+    expect(plan.ecritures).toHaveLength(12);
+    expect(plan.seances).toBe(6);
+    expect(plan.ecritures.find((e) => e.partieId === "s0e")?.paire).toEqual({ ...VIDE, theme: "Footwork" });
+    expect(plan.ecritures.find((e) => e.partieId === "s3c")?.paire).toEqual({ ...VIDE, theme: "Messer", instructeurId: "u-charlie" });
+    expect(libelleBoutonReglages(plan)).toBe("Appliquer aux 6 séances");
+    expect(expliquerReglages(plan).titre).toBe("12 éléments sont réglés sur 6 séances, dans le brouillon.");
+    expect(expliquerReglages(plan).phrases).toContain("« Partie 1 · Échauffement » : réglé sur 6 séances.");
+    expect(messageReglages(plan)).toBe("12 éléments réglés sur 6 séances, pas encore appliqués : « Appliquer les modifications » les enregistre.");
+  });
+
+  it("chaque élément suit les règles d'un seul : atelier de côté, refus de la case, déjà au réglage", () => {
+    const plan = planReglages(
+      [a, b, c],
+      [
+        { libelle: "Partie 1 · Cours", reglage: { instructeurId: "u-alix" } },
+        { libelle: "Partie 2 · Option", reglage: { niveau: "AVANCE" } },
+      ],
+      new Map(),
+    );
+    // Partie 1 · Cours : a1 change, b1 porte déjà Alix, c1 est un atelier. Partie 2 · Option : a3 n'a pas de thème.
+    expect(plan.ecritures.map((e) => e.partieId)).toEqual(["a1"]);
+    expect(plan.seances).toBe(1);
+    const phrases = expliquerReglages(plan).phrases;
+    expect(phrases).toContain("« Partie 1 · Cours » : réglé sur 1 séance ; 1 séance porte déjà ce réglage.");
+    expect(phrases).toContain("« Partie 2 · Option » : aucune séance ne changerait.");
+    expect(phrases).toContain("« Partie 2 · Option » — 1 séance reste de côté : elle n'a pas de thème : niveau et description l'attendent.");
+  });
+
+  it("deux éléments de la même séance ne la comptent qu'une fois, et un élément sans réglage n'écrit rien", () => {
+    const plan = planReglages(
+      [a],
+      [
+        { libelle: "Partie 1 · Cours", reglage: { theme: "Dague" } },
+        { libelle: "Partie 2 · Cours", reglage: { theme: "Sabre" } },
+        { libelle: "Partie 2 · Option", reglage: {} },
+      ],
+      new Map(),
+    );
+    expect(plan.ecritures.map((e) => e.partieId)).toEqual(["a1", "a2"]);
+    expect(plan.seances).toBe(1);
+    expect(plan.parElement.map((e) => [e.libelle, e.plan === null])).toEqual([
+      ["Partie 1 · Cours", false],
+      ["Partie 2 · Cours", false],
+      ["Partie 2 · Option", true],
+    ]);
+    expect(expliquerReglages(plan).phrases).toContain("« Partie 2 · Option » : rien à changer pour l'instant, tout est sur « Ne pas changer ».");
+  });
+
+  it("rien de coché, ou tout sur « Ne pas changer » : le bouton reste muet", () => {
+    expect(expliquerReglages(null).titre).toBe("Coche les éléments à régler, puis choisis ce qui change pour chacun.");
+    const vide = planReglages([a], [{ libelle: "Partie 1 · Cours", reglage: {} }], new Map());
+    expect(vide.ecritures).toEqual([]);
+    expect(expliquerReglages(vide).titre).toBe("Choisis ce qui change pour chaque élément coché.");
+    expect(libelleBoutonReglages(vide)).toBe("Régler les éléments");
+  });
+
+  it("part du brouillon de chaque case", () => {
+    const brouillon = new Map([["a2", { ...VIDE, instructeurId: "u-noe" }]]);
+    const plan = planReglages([a], [{ libelle: "Partie 2 · Cours", reglage: { theme: "Lance" } }], brouillon);
+    expect(plan.ecritures[0].paire).toEqual({ ...VIDE, instructeurId: "u-noe", theme: "Lance" });
+  });
+});
+
+describe("les listes d'un réglage traduites en réglage", () => {
+  it("tout sur « Ne pas changer » ne règle rien", () => {
+    expect(reglageVide(reglageDepuisChamps(CHAMPS_INCHANGES, ["Dague"]))).toBe(true);
+  });
+
+  it("un thème hors de la liste de sa nature revient à « Ne pas changer »", () => {
+    const champs = { ...CHAMPS_INCHANGES, theme: "Messer" };
+    expect(themeRetenu(champs, ["Footwork"])).toBe(NE_PAS_CHANGER);
+    expect(reglageDepuisChamps(champs, ["Footwork"]).theme).toBeUndefined();
+    expect(reglageDepuisChamps(champs, ["Messer"]).theme).toBe("Messer");
+  });
+
+  it("« Autre… » et « Écrire une description… » prennent le texte libre, vide = ne pas changer", () => {
+    const champs = { ...CHAMPS_INCHANGES, theme: AUTRE, themeLibre: "  Dussack ", description: ECRIRE, descriptionTexte: "" };
+    expect(reglageDepuisChamps(champs, [])).toEqual({ instructeurId: undefined, instructeurSecondId: undefined, theme: "Dussack", niveau: undefined, description: undefined });
+  });
+
+  it("choisir pour mener la personne qui assistait libère la place du second", () => {
+    expect(choisirInstructeur({ ...CHAMPS_INCHANGES, second: "u-alix" }, "u-alix").second).toBe(NE_PAS_CHANGER);
+    expect(choisirInstructeur({ ...CHAMPS_INCHANGES, second: "u-alix" }, "u-noe").second).toBe("u-alix");
+  });
+});
+
+/**
+ * **« Remplacer un thème »** : un thème trouvé dans les séances cochées, et son
+ * remplaçant pris dans la bonne liste du club.
+ */
+describe("remplacer un thème", () => {
+  const LISTES = { themes: ["Messer", "Sabre", "Épée longue"], themesEchauffement: ["Footwork", "Souplesse", "Messer"] };
+  const t1 = seance("t1", [
+    partie("t1e", "Partie 1 · Échauffement", { serveur: { ...VIDE, theme: "Footwork" } }),
+    partie("t1c", "Partie 1 · Cours", { serveur: { ...VIDE, theme: "Messer", instructeurId: "u-alix", niveau: "AVANCE", description: "Garde haute" } }),
+    partie("t1o", "Partie 1 · Option", { serveur: { ...VIDE, theme: "messer " } }),
+  ]);
+  const t2 = seance("t2", [
+    partie("t2c", "Partie 1 · Cours", { serveur: { ...VIDE, theme: "Messer" } }),
+    partie("t2a", "Partie 1 · Atelier", { atelier: true, serveur: { ...VIDE, theme: "Messer" } }),
+  ]);
+  const t3 = seance("t3", [partie("t3c", "Partie 1 · Cours", { serveur: { ...VIDE, theme: "Sabre" } })]);
+
+  it("les thèmes présents, à la casse et aux espaces près, avec éléments et séances — atelier à part", () => {
+    const trouves = themesTrouves([t1, t2, t3], new Map());
+    expect(trouves.map(libelleThemeTrouve)).toEqual(["Footwork — 1 élément sur 1 séance", "Messer — 3 éléments sur 2 séances", "Sabre — 1 élément sur 1 séance"]);
+    const messer = trouves[1];
+    expect([messer.echauffements, messer.autres, messer.ateliers]).toEqual([0, 3, 1]);
+  });
+
+  it("lit le brouillon : un thème changé à la main compte sous son nouveau nom", () => {
+    const trouves = themesTrouves([t3], new Map([["t3c", { ...VIDE, theme: "Épée longue" }]]));
+    expect(trouves.map((t) => t.theme)).toEqual(["Épée longue"]);
+  });
+
+  it("propose la liste de la nature, sans le thème remplacé", () => {
+    const [footwork, messer] = themesTrouves([t1, t2], new Map());
+    expect(themesRemplacants(footwork, LISTES)).toEqual(["Souplesse", "Messer"]);
+    expect(themesRemplacants(messer, LISTES)).toEqual(["Sabre", "Épée longue"]);
+  });
+
+  it("tous les éléments qui le portent reçoivent le nouveau thème, le reste de la case gardé", () => {
+    const messer = themesTrouves([t1, t2, t3], new Map())[1];
+    const plan = planRemplacement([t1, t2, t3], messer.cle, "Sabre", LISTES, new Map());
+    expect(plan.ecritures.map((e) => e.partieId)).toEqual(["t1c", "t1o", "t2c"]);
+    expect(plan.seances).toBe(2);
+    expect(plan.ecritures[0].paire).toEqual({ ...VIDE, theme: "Sabre", instructeurId: "u-alix", niveau: "AVANCE", description: "Garde haute" });
+    expect(libelleBoutonRemplacement(plan)).toBe("Remplacer sur 3 éléments (2 séances)");
+    const e = expliquerRemplacement(messer, "Sabre", plan);
+    expect(e.titre).toBe("3 éléments sur 2 séances passent de « Messer » à « Sabre », dans le brouillon.");
+    expect(e.phrases.join(" ")).toMatch(/Rien n'est encore enregistré/);
+    expect(e.phrases.join(" ")).toMatch(/1 atelier porte aussi ce thème : il garde son titre, figé/);
+    expect(messageRemplacement("Messer", "Sabre", plan)).toBe(
+      "« Messer » remplacé par « Sabre » sur 3 éléments (2 séances), pas encore appliqués : « Appliquer les modifications » les enregistre.",
+    );
+  });
+
+  it("avant le remplaçant, l'explication annonce déjà « N éléments sur M séances »", () => {
+    const messer = themesTrouves([t1, t2], new Map())[1];
+    expect(expliquerRemplacement(messer, "", null).titre).toBe("« Messer » : 3 éléments sur 2 séances. Choisis son remplaçant.");
+    expect(expliquerRemplacement(null, "", null).titre).toBe("Choisis le thème à remplacer, puis son remplaçant.");
+    expect(libelleBoutonRemplacement(null)).toBe("Remplacer le thème");
+  });
+
+  it("un thème porté par un échauffement et un cours : listes réunies, chaque élément ne reçoit que la sienne", () => {
+    const mixte = seance("m", [
+      partie("me", "Partie 1 · Échauffement", { serveur: { ...VIDE, theme: "Messer" } }),
+      partie("mc", "Partie 1 · Cours", { serveur: { ...VIDE, theme: "Messer" } }),
+    ]);
+    const [messer] = themesTrouves([mixte], new Map());
+    expect(themeMixte(messer)).toBe(true);
+    expect(themesRemplacants(messer, LISTES)).toEqual(["Footwork", "Souplesse", "Sabre", "Épée longue"]);
+    const versSabre = planRemplacement([mixte], messer.cle, "Sabre", LISTES, new Map());
+    expect(versSabre.ecritures.map((e) => e.partieId)).toEqual(["mc"]);
+    expect(versSabre.horsListe).toEqual({ echauffements: 1, autres: 0 });
+    const e = expliquerRemplacement(messer, "Sabre", versSabre);
+    expect(e.phrases.join(" ")).toMatch(/porté par 1 échauffement et 1 cours ou option : la liste réunit/);
+    expect(e.phrases).toContain("1 échauffement reste de côté : « Sabre » n'est pas un thème d'échauffement.");
+    const versFootwork = planRemplacement([mixte], messer.cle, "Footwork", LISTES, new Map());
+    expect(versFootwork.ecritures.map((x) => x.partieId)).toEqual(["me"]);
+    expect(versFootwork.horsListe).toEqual({ echauffements: 0, autres: 1 });
+  });
+
+  it("le thème lui-même, ou un remplaçant vide, n'écrit rien", () => {
+    const messer = themesTrouves([t2], new Map())[0];
+    expect(planRemplacement([t2], messer.cle, "MESSER", LISTES, new Map()).ecritures).toEqual([]);
+    expect(planRemplacement([t2], messer.cle, " ", LISTES, new Map()).ecritures).toEqual([]);
   });
 });
 
@@ -300,9 +525,11 @@ describe("les deux barres du bas du planning", () => {
 describe("l'écran", () => {
   const source = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
 
-  it("« Régler une partie » va dans le brouillon, sans action serveur à lui", () => {
+  it("« Régler des éléments » et « Remplacer un thème » vont dans le brouillon, sans action serveur à eux", () => {
     const code = source("src/components/planning/SelectionPlanning.tsx");
-    expect(code).toContain("brouillon.poserPlusieurs(plan.ecritures)");
+    expect(code).toContain("brouillon.poserPlusieurs(planOrdi.ecritures)");
+    expect(code).toContain("brouillon.poserPlusieurs(planTheme.ecritures)");
+    expect(code).toContain("brouillon.poserPlusieurs(planElements.ecritures)");
     expect(code).not.toContain("enregistrerCase");
     // Les seuls appels au serveur sont les ajouts, confirmés.
     expect(code.match(/await \w+\(/g)).toEqual(["await ajouterPartiesEnMasse("]);

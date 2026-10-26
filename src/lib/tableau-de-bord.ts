@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { seanceCommencee, toIsoDate, todayIso } from "./dates";
+import { seancePassee, toIsoDate, todayIso } from "./dates";
 import { filtrerHorizonPasse, type Horizon } from "./horizon";
 import { calculerTaux, compteursDepuisTotaux, cumulerTotaux, type Compteurs, type TotauxStatuts } from "./presences";
 
@@ -106,12 +106,11 @@ export async function statsPeriode(periodId: string, now = new Date(), horizon: 
   });
   if (!p) return null;
   const invites = p.membres.length;
-  // La fenêtre se referme au **début du cours**, pas à minuit : `now` part avec le jour de référence,
-  // sans quoi l'horizon « Dernier cours » retenait, un mardi à 18 h, le cours de 20 h qui n'a pas
-  // encore eu lieu — une ligne unique à « 0 % » et tout le club à zéro (voir `filtrerHorizonPasse`).
-  const sessions = filtrerHorizonPasse(p.sessions, horizon, todayIso(now), now);
+  // La fenêtre se referme **à la veille** : le cours du jour, commencé ou non, ne compte qu'à partir
+  // du lendemain — la règle du planning et de l'onglet Séances (`seancePassee`, `filtrerHorizonPasse`).
+  const sessions = filtrerHorizonPasse(p.sessions, horizon, todayIso(now));
   // Taux par membre sur les séances passées non annulées
-  const passees = sessions.filter((s) => !s.annulee && seanceCommencee(s.date, s.heureDebut, now));
+  const passees = sessions.filter((s) => !s.annulee && seancePassee(s.date, now));
   // Les présences sont comptées en base (deux agrégats) au lieu d'être chargées ligne à ligne :
   // une période de cinq saisons, c'est des milliers de lignes dont on ne veut que des totaux.
   // Quand la fenêtre retient toutes les séances, on filtre par période (pas de liste d'identifiants).
@@ -199,7 +198,7 @@ export async function statsPeriode(periodId: string, now = new Date(), horizon: 
     heureDebut: s.heureDebut,
     theme: s.theme,
     annulee: s.annulee,
-    passee: seanceCommencee(s.date, s.heureDebut, now),
+    passee: seancePassee(s.date, now),
     compteurs: compteursDepuisTotaux(totauxSeance.get(s.id) ?? {}, invites),
   }));
   const membres = p.membres.map(({ addedAt, user }) => {
@@ -287,7 +286,7 @@ export async function statsPeriode(periodId: string, now = new Date(), horizon: 
  * prochains cours alignait huit réponses en face d'une colonne « Présences » qui en annonçait cinq.
  * Une réponse à un cours à venir est une **intention**, pas une présence — elle se lit sur les
  * écrans du club, pas dans un relevé de présences. La frontière est celle de partout ailleurs :
- * `seances[].passee`, donc l'heure de début du cours (voir `seanceCommencee`). Les séances annulées
+ * `seances[].passee`, donc le lendemain du cours (voir `seancePassee`). Les séances annulées
  * gardent leur colonne, qui porte la mention « (annulée) » : elle a eu lieu dans le calendrier, et
  * son absence décalerait la lecture.
  */

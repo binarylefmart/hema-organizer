@@ -83,7 +83,7 @@ export function selectionnerSeances<T extends SeanceTemps>(
   // `seancePassee` (dates.ts), lue sur le jour de référence reçu : les tests le forcent seul.
   const passee = (s: T) => s.date < aujourdHui;
   if (quand === "passe") {
-    return filtrerHorizonPasse(seances.filter(passee), horizon, aujourdHui, now).slice().reverse();
+    return filtrerHorizonPasse(seances.filter(passee), horizon, aujourdHui).slice().reverse();
   }
   return filtrerHorizon(
     seances.filter((s) => !passee(s)),

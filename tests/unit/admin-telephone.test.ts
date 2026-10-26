@@ -23,7 +23,7 @@ describe("le menu de l'espace admin", () => {
     const groupes = groupesVisibles(ADMIN_OUVERT);
     expect(groupes.map((g) => g.titre)).toEqual(["Le club au quotidien", "Réglages", "Sécurité"]);
     expect(groupes.map((g) => g.rubriques.map((r) => r.label))).toEqual([
-      ["Périodes", "Membres", "Présences", "Thèmes et lieux"],
+      ["Périodes", "Templates", "Membres", "Présences", "Thèmes et lieux"],
       ["Club", "Notifications", "Comptes admin"],
       ["Sessions", "Journal d'audit", "À propos"],
     ]);

@@ -54,49 +54,42 @@ const ligne = (p: Partial<LigneEtatLien> = {}): LigneEtatLien => ({
   ...p,
 });
 
-describe("l'état du lien, en un mot et un ton", () => {
-  it("dit « Jamais ouvert », et c'est le seul état qui porte une couleur", () => {
+describe("l'état du lien, en un libellé et un code couleur", () => {
+  it("dit « Lien envoyé · jamais ouvert » en ocre : en attente, la personne est à appeler", () => {
     const etat = etatDuLien(ligne({ dejaOuvert: false }));
-    expect(etat.libelle).toBe("Jamais ouvert");
-    // L'ocre est ce qu'on vient chercher en balayant la colonne : personne n'est jamais entré.
+    expect(etat.libelle).toBe("Lien envoyé · jamais ouvert");
     expect(etat.ton).toBe("ocre");
     expect(etat.detail).toContain("jamais");
   });
 
-  it("ne crie pas quand la personne a un mot de passe : son lien dormant n'est pas un problème", () => {
-    // Exactement la condition de l'ancienne pastille (`!m.passwordHash && jamaisOuvert && m.actif`) :
-    // avec un mot de passe, on entre par la page de connexion, le lien n'a jamais eu à servir.
+  it("dit « Compte activé · lien jamais utilisé » en vert quand la personne a un mot de passe", () => {
+    // Avec un mot de passe, on entre par la page de connexion : le lien n'a jamais eu à servir.
     const etat = etatDuLien(ligne({ dejaOuvert: false, aUnMotDePasse: true }));
-    expect(etat.libelle).toBe("Jamais ouvert");
-    expect(etat.ton).toBe("neutre");
+    expect(etat.libelle).toBe("Compte activé · lien jamais utilisé");
+    expect(etat.ton).toBe("vert");
   });
 
   it("un compte désactivé parle de son accès coupé, et pas de son lien", () => {
-    // La question du lien ne se pose plus : la désactivation l'a révoqué. Dire « jamais ouvert »
-    // accuserait quelqu'un à qui on a fermé la porte.
     for (const autre of [{ dejaOuvert: false }, { aUnEmail: false }, { lienEnCours: false }]) {
-      expect(etatDuLien(ligne({ actif: false, ...autre })).libelle).toBe("Sans accès");
+      expect(etatDuLien(ligne({ actif: false, ...autre })).libelle).toBe("Compte désactivé");
     }
   });
 
   it("sans adresse, la colonne dit l'empêchement — pas un état d'attente", () => {
     const etat = etatDuLien(ligne({ aUnEmail: false, dejaOuvert: false }));
-    expect(etat.libelle).toBe("Sans adresse");
+    expect(etat.libelle).toBe("Sans adresse email");
     expect(etat.ton).toBe("neutre");
-    // La même phrase que le reste de l'écran promet déjà : l'équipe coche sa présence à sa place.
     expect(etat.detail).toContain("coche sa présence à sa place");
   });
 
-  it("distingue « lien en cours » de « aucun lien en cours »", () => {
-    expect(etatDuLien(ligne()).libelle).toBe("Lien en cours");
-    expect(etatDuLien(ligne({ lienEnCours: false })).libelle).toBe("Aucun lien en cours");
+  it("distingue « lien en cours » de « lien expiré »", () => {
+    expect(etatDuLien(ligne())).toMatchObject({ libelle: "Lien en cours · utilisé", ton: "vert" });
+    expect(etatDuLien(ligne({ lienEnCours: false }))).toMatchObject({ libelle: "Lien expiré", ton: "rouge" });
   });
 
   it("n'invente aucun manque quand aucune période n'envoie de lien", () => {
-    // Sans période vers laquelle envoyer, `lienEnCours` vaut faux pour tout le monde : écrire
-    // « Aucun lien en cours » sur douze lignes désignerait un problème qui n'existe pas.
-    expect(etatDuLien(ligne({ periodeDeLien: false, lienEnCours: false })).libelle).toBe("Déjà ouvert");
-    expect(etatDuLien(ligne({ periodeDeLien: false, lienEnCours: true })).libelle).toBe("Déjà ouvert");
+    expect(etatDuLien(ligne({ periodeDeLien: false, lienEnCours: false })).libelle).toBe("Lien utilisé · hors période");
+    expect(etatDuLien(ligne({ periodeDeLien: false, lienEnCours: true })).ton).toBe("neutre");
   });
 
   it("porte toujours une phrase entière : le mot court ne dit pas tout", () => {
@@ -282,56 +275,51 @@ describe("le palier de `Tableau` est un ajout : qui ne l'a pas demandé n'a rien
  * entrer aujourd'hui »**, et rien d'autre ne l'est. Ces tests la gardent dans ses trois formes.
  */
 describe("l'état du lien ne dit que ce qui est vrai (relecture du 02/10)", () => {
-  it("distingue « aucun lien envoyé » de « jamais ouvert »", () => {
+  it("distingue « aucun lien envoyé », « jamais ouvert » et « expiré sans avoir servi »", () => {
     const jamaisEnvoye = etatDuLien(ligne({ dejaOuvert: false, lienEnCours: false, lienEnvoye: false }));
-    expect(jamaisEnvoye.libelle).toBe("Aucun lien envoyé");
-    expect(jamaisEnvoye.ton).toBe("ocre");
+    expect(jamaisEnvoye).toMatchObject({ libelle: "Aucun lien envoyé", ton: "rouge" });
     expect(jamaisEnvoye.detail).toContain("Envoyer le lien");
-    // Et la phrase ne parle pas d'un lien qui n'existe pas.
     expect(jamaisEnvoye.detail).not.toContain("n'a jamais été ouvert");
 
     const envoyeJamaisOuvert = etatDuLien(ligne({ dejaOuvert: false, lienEnCours: true, lienEnvoye: true }));
-    expect(envoyeJamaisOuvert.libelle).toBe("Jamais ouvert");
-    expect(envoyeJamaisOuvert.ton).toBe("ocre");
+    expect(envoyeJamaisOuvert).toMatchObject({ libelle: "Lien envoyé · jamais ouvert", ton: "ocre" });
     expect(envoyeJamaisOuvert.detail).toContain("lui a été envoyé");
+
+    const echuSansServir = etatDuLien(ligne({ dejaOuvert: false, lienEnCours: false, lienEnvoye: true }));
+    expect(echuSansServir).toMatchObject({ libelle: "Lien expiré sans avoir servi", ton: "rouge" });
   });
 
-  it("colore « aucun lien en cours » : un lien échu ou révoqué, c'est quelqu'un qui ne peut plus entrer", () => {
+  it("colore en rouge un lien échu ou révoqué : quelqu'un qui ne peut plus entrer", () => {
     const echu = etatDuLien(ligne({ dejaOuvert: true, lienEnCours: false, lienEnvoye: true }));
-    expect(echu.libelle).toBe("Aucun lien en cours");
-    expect(echu.ton).toBe("ocre");
+    expect(echu).toMatchObject({ libelle: "Lien expiré", ton: "rouge" });
     expect(echu.detail).toContain("plus valable");
   });
 
-  /** Un mot de passe, et la personne entre : la colonne cesse d'alerter, dans les trois cas. */
+  /** Un mot de passe, et la personne entre : « Compte activé », en vert, dans les quatre cas. */
   it.each([
     ["aucun lien envoyé", { dejaOuvert: false, lienEnCours: false, lienEnvoye: false }],
     ["jamais ouvert", { dejaOuvert: false, lienEnCours: true, lienEnvoye: true }],
-    ["aucun lien en cours", { dejaOuvert: true, lienEnCours: false, lienEnvoye: true }],
-  ])("redevient neutre avec un mot de passe : %s", (_cas, etat) => {
+    ["expiré sans avoir servi", { dejaOuvert: false, lienEnCours: false, lienEnvoye: true }],
+    ["lien expiré", { dejaOuvert: true, lienEnCours: false, lienEnvoye: true }],
+  ])("passe au vert « Compte activé » avec un mot de passe : %s", (_cas, etat) => {
     const avec = etatDuLien(ligne({ ...(etat as Partial<LigneEtatLien>), aUnMotDePasse: true }));
-    expect(avec.ton).toBe("neutre");
+    expect(avec.ton).toBe("vert");
+    expect(avec.libelle.startsWith("Compte activé")).toBe(true);
     expect(avec.detail).toContain("mot de passe");
   });
 
   it("n'invente pas un manque quand aucune période n'envoie de lien", () => {
     const sansPeriode = etatDuLien(ligne({ dejaOuvert: false, lienEnCours: false, lienEnvoye: false, periodeDeLien: false }));
-    expect(sansPeriode.libelle).toBe("Jamais ouvert");
+    expect(sansPeriode).toMatchObject({ libelle: "Lien jamais utilisé", ton: "neutre" });
   });
 
-  /**
-   * **L'ocre a une règle, et elle se vérifie par balayage** : il ne dit rien d'autre que « cette
-   * personne ne peut pas entrer aujourd'hui ». Un compte désactivé (décision du bureau) et un compte
-   * sans adresse (empêchement, pas incident) restent donc neutres — c'est écrit dans le module.
-   */
-  it("ne colore que ce qui empêche d'entrer", () => {
-    for (const neutre of [
-      ligne({ actif: false }),
-      ligne({ aUnEmail: false }),
-      ligne(),
-      ligne({ periodeDeLien: false }),
-    ]) {
+  /** **Le rouge a une règle** : il ne dit rien d'autre que « cette personne ne peut pas entrer aujourd'hui ». */
+  it("ne met en rouge que ce qui empêche d'entrer, et laisse neutre ce qui est hors jeu", () => {
+    for (const neutre of [ligne({ actif: false }), ligne({ aUnEmail: false }), ligne({ periodeDeLien: false })]) {
       expect(etatDuLien(neutre).ton, etatDuLien(neutre).libelle).toBe("neutre");
+    }
+    for (const rouge of [ligne({ lienEnCours: false }), ligne({ dejaOuvert: false, lienEnCours: false, lienEnvoye: false })]) {
+      expect(etatDuLien(rouge).ton, etatDuLien(rouge).libelle).toBe("rouge");
     }
   });
 

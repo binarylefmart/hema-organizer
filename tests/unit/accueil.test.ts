@@ -181,17 +181,15 @@ vi.mock("@/lib/db", () => ({
         async ({
           where,
         }: {
-          where: { userId: string; statut: string; session: { annulee: boolean; OR: [{ date: { lt: string } }, { date: string; heureDebut: { lte: string } }] } };
+          where: { userId: string; statut: string; session: { annulee: boolean; date: { lt: string } } };
         }) => {
           faux.appels.push("attendance.count(moi)");
-          // La frontière posée en SQL est celle de `seanceCommencee` : la veille, ou aujourd'hui
-          // une fois l'heure de début atteinte. Le faux client l'applique telle quelle, pour qu'un
-          // retour à « avant aujourd'hui » fasse échouer le test du soir de cours.
-          const [avant, dujour] = where.session.OR;
+          // La frontière posée en SQL est celle de `seancePassee` : avant aujourd'hui. Le faux client
+          // l'applique telle quelle, pour qu'un cours du jour compté trop tôt fasse échouer le test.
           const tenues = new Set(
             faux.seances
               .filter((s) => s.annulee === where.session.annulee)
-              .filter((s) => s.date < avant.date.lt || (s.date === dujour.date && s.heureDebut <= dujour.heureDebut.lte))
+              .filter((s) => s.date < where.session.date.lt)
               .map((s) => s.id),
           );
           return faux.presences.filter((a) => a.userId === where.userId && a.statut === where.statut && tenues.has(a.sessionId)).length;
@@ -783,7 +781,7 @@ describe("compte rendu d'accueil", () => {
     expect(faux.appels).toEqual(["period.findFirst", "period.findFirst", "session.findMany", "evenement.findMany"]);
   });
 
-  it("sort une séance des « à venir » dès qu'elle a commencé, et cesse d'en attendre des réponses", async () => {
+  it("garde parmi les prochains un cours du jour commencé, sans plus en attendre de réponse", async () => {
     // MAINTENANT = 14 h à Paris : le cours de 10 h a commencé, celui de 20 h non.
     faux.periodes.push({ id: "p-auto", nom: "T4 2026", statut: "ACTIVE", dateDebut: "2026-09-01", dateFin: "2026-12-20" });
     inviter("p-auto", MOI, { id: "u-charlie", prenom: "Charlie", nom: "Bernard" });
@@ -796,15 +794,15 @@ describe("compte rendu d'accueil", () => {
     faux.presences.push({ userId: "u-charlie", sessionId: "s-matin", statut: "PRESENT" });
 
     const cr = await compteRendu(commeConnecte(ADMIN), SEUIL, MAINTENANT);
-    // Le tableau de bord la compte déjà comme passée : elle ne peut pas être « à venir » en même temps
-    expect(cr.seancesPassees).toBe(1);
-    expect(cr.prochaines.map((s) => s.id)).toEqual(["s-soir", "s4"]);
-    expect(cr.aVenir).toBe(2);
-    // Le prochain cours, c'est celui du soir : 2 invités, personne n'a répondu
-    expect(cr.groupe.presentsProchaine).toBe(0);
-    expect(cr.prochaines[0].compteurs.enAttente).toBe(2);
-    // Le cours du matin, lui, a bien eu lieu : 1 présent sur la seule séance passée
-    expect(cr.admin?.participationMoyenne).toBe(1);
+    // Le tableau de bord ne la compte comme passée que demain (`seancePassee`) : elle reste « à venir »
+    expect(cr.seancesPassees).toBe(0);
+    expect(cr.prochaines.map((s) => s.id)).toEqual(["s-matin", "s-soir", "s4"]);
+    expect(cr.prochaines[0].commencee).toBe(true);
+    expect(cr.aVenir).toBe(3);
+    // Le prochain cours mis en avant est celui du jour, commencé : 1 présent
+    expect(cr.groupe.presentsProchaine).toBe(1);
+    // Aucun cours passé : pas encore de moyenne
+    expect(cr.admin?.participationMoyenne).toBe(0);
     // L'appel du matin est verrouillé : on ne relance plus dessus, seulement s-soir et s4 (2 × 2)
     expect(cr.admin?.invitesSansReponse).toBe(4);
   });
@@ -1595,23 +1593,20 @@ describe("compte rendu d'accueil", () => {
   });
 
   /**
-   * **Le soir d'un cours, les deux compteurs de présence disent la même chose.**
-   *
-   * Celui du trimestre lit `seanceCommencee` (donc l'heure de début) ; celui de la saison
-   * s'arrêtait à « avant aujourd'hui ». À 21 h, un cours de 20 h avait donc avancé l'un et pas
-   * l'autre, côte à côte sur le même écran.
+   * **Le soir d'un cours, les deux compteurs de présence disent la même chose** : ni l'un ni l'autre
+   * ne compte le cours du jour avant le lendemain (`seancePassee`), commencé ou non.
    */
-  it("compte le cours du soir même dans les présences de toute la saison", async () => {
+  it("ne compte le cours du soir, dans le trimestre comme dans la saison, qu'à partir du lendemain", async () => {
     faux.periodes.push({ id: "p-auto", nom: "T4 2026", statut: "ACTIVE", dateDebut: "2026-09-01", dateFin: "2026-12-20" });
     inviter("p-auto", MOI);
-    // Le cours de 20 h du jour même : à 22 h (heure de Paris), il a eu lieu.
     faux.seances.push(seance("s-ce-soir", "2026-09-22"));
     faux.presences.push({ userId: MOI.id, sessionId: "s-ce-soir", statut: "PRESENT" });
-    const cr = await compteRendu(commeConnecte(MOI), SEUIL, new Date("2026-09-22T20:30:00Z"));
-    expect(cr.seancesPassees).toBe(1);
-    expect(cr.moi.presences).toBe(1);
-    // Le compteur de la saison suit exactement le même cours : il ne reste plus une soirée en retard
-    expect(cr.moi.presencesToutesSaisons).toBe(1);
+    // 22 h 30 à Paris : le cours de 20 h a commencé, il n'est pas encore passé.
+    const pendant = await compteRendu(commeConnecte(MOI), SEUIL, new Date("2026-09-22T20:30:00Z"));
+    expect([pendant.seancesPassees, pendant.moi.presences, pendant.moi.presencesToutesSaisons]).toEqual([0, 0, 0]);
+    // Le lendemain, les deux compteurs avancent ensemble.
+    const lendemain = await compteRendu(commeConnecte(MOI), SEUIL, new Date("2026-09-23T06:00:00Z"));
+    expect([lendemain.seancesPassees, lendemain.moi.presences, lendemain.moi.presencesToutesSaisons]).toEqual([1, 1, 1]);
   });
 
   it("ne compte pas un cours du jour qui n'a pas encore commencé", async () => {

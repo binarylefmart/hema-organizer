@@ -335,6 +335,7 @@ describe("balayage : chaque export d'un module « use server » porte une garde"
       "src/actions/profil.ts",
       "src/actions/push.ts",
       "src/actions/seances.ts",
+      "src/actions/templates.ts",
       "src/app/(app)/admin/comptes/actions.ts",
       "src/app/(app)/admin/membres/actions.ts",
       "src/app/(public)/desinscription/actions.ts",

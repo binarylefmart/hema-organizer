@@ -17,7 +17,7 @@
       une période, corriger les présences — une par une ou par lots —, tenir l’annuaire et les liens personnels,
       changer les rôles, nommer les administrateurs, régler la part d’effectif et ce que le
       club envoie, réparer les pannes d’accès.</p>
-    <p class="couverture-pied">Version 0.78.0 — 7 octobre 2026 · organizer.mon-club.fr</p>
+    <p class="couverture-pied">Version 0.79.0 — 7 octobre 2026 · organizer.mon-club.fr</p>
   </section>
 
   <section class="sommaire">
@@ -112,6 +112,12 @@
   <!-- ================================================================= 2 -->
   <h2 id="p2">2. Monter une période</h2>
 
+  <p>Une période fixe <strong>le calendrier et les invitations</strong> : ses dates, les membres invités, leurs
+    liens personnels et les créneaux qui créent les séances. Elle ne règle pas le contenu des cours : le
+    programme se planifie dans le <strong>Planning</strong>, ou s’applique d’un <strong>template</strong>
+    (voir plus bas). Les boutons <strong>Planifier les cours</strong> et <strong>Planifier un template</strong>,
+    en haut de l’onglet <strong>Périodes</strong>, y mènent.</p>
+
   <h3>Créer la période</h3>
 
   <ol class="etapes">
@@ -196,6 +202,25 @@
     <p>Ses séances et toutes les réponses sont effacées pour toujours.</p>
   </div>
 
+  <h3>Préparer des cours types : les templates</h3>
+
+  <p>Espace admin → <strong>Templates</strong>. Un template est un cours type : un nom, un horaire, un lieu et
+    un programme (échauffement, cours, options, instructeurs, niveau).</p>
+  <ol class="etapes">
+    <li>Remplissez <strong>Nouveau template</strong>, puis réglez son <strong>programme</strong> et appuyez sur
+      <strong>Enregistrer le programme</strong>.</li>
+    <li>Appuyez sur <strong>Appliquer un template</strong> : choisissez le template, la période et les dates
+      (par exemple « tous les mardis »).</li>
+    <li>L’écran annonce ce qui va se passer pour chaque date, puis <strong>Appliquer le template</strong>.</li>
+  </ol>
+  <ul>
+    <li>Pas de séance ce jour-là : <strong>elle est créée</strong> avec l’horaire, le lieu et le programme.</li>
+    <li>Une séance existe et son programme est vide : <strong>son programme est rempli</strong>.</li>
+    <li>Sinon la date est <strong>écartée</strong>, et l’écran dit pourquoi : <strong>rien n’est jamais
+      écrasé</strong>.</li>
+  </ul>
+  <p>Aucune notification ne part. Modifier un template ensuite ne change pas les séances déjà remplies.</p>
+
   <!-- ================================================================= 3 -->
   <h2 id="p3">3. Corriger les présences d’un cours</h2>
 
@@ -266,9 +291,20 @@
 
   <figure class="haute">
     <img src="../../previews/gestion-membres/pc-clair.jpg" alt="L’annuaire du club : liste des comptes, rôles et liens">
-    <figcaption>La colonne <b>État du lien</b> signale qui ne peut pas entrer aujourd’hui :
-      <b>Aucun lien envoyé</b> s’envoie, <b>Jamais ouvert</b> s’appelle.</figcaption>
+    <figcaption>La colonne <b>État du lien</b> dit où en est chacun, en toutes lettres et en couleur.</figcaption>
   </figure>
+
+  <p>Le code couleur de la colonne <strong>État du lien</strong>, rappelé au-dessus du tableau :</p>
+  <ul>
+    <li><strong>Vert</strong> — la personne entre : <em>Lien en cours · utilisé</em>, ou <em>Compte activé · …</em>
+      quand elle s’est créé un mot de passe (lien utilisé ou non).</li>
+    <li><strong>Ocre</strong> — en attente : <em>Lien envoyé · jamais ouvert</em>. Appelez-la.</li>
+    <li><strong>Rouge</strong> — elle ne peut pas entrer : <em>Aucun lien envoyé</em>, <em>Lien expiré</em>,
+      <em>Lien expiré sans avoir servi</em>. Envoyez ou renvoyez le lien depuis son volet.</li>
+    <li><strong>Gris</strong> — hors jeu : <em>Compte désactivé</em>, <em>Sans adresse email</em>, ou aucune
+      période n’envoie de lien.</li>
+  </ul>
+  <p>Survolez la pastille pour lire la phrase entière et le geste à faire.</p>
 
   <h3>Ajouter une personne</h3>
 
@@ -825,7 +861,7 @@
   <p>Mettre le serveur à jour : <code>docs/DEPLOIEMENT.md</code>. Ce qui protège les accès :
     <code>docs/SECURITE.md</code>.</p>
 
-  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.78.0 — 7 octobre 2026 ·
+  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.79.0 — 7 octobre 2026 ·
     Mon club d'AMHE · organizer.mon-club.fr — à lire après les guides du
     membre et de l’instructeur.</p>
 </div>

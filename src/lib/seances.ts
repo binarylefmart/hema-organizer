@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { parisOffsetMinutes, seanceCommencee, todayIso } from "./dates";
+import { seanceCommencee, todayIso } from "./dates";
 import { compteursDepuisTotaux, type Compteurs } from "./presences";
 import { isStaff, type UserLike } from "./permissions";
 import { parseDisciplines, type AttendanceStatut } from "./constants";
@@ -239,21 +239,13 @@ export async function seanceCarte(id: string, user: UserLike & { id: string }, n
   return versCarte(s, parPeriode.get(s.periodId) ?? [], user, now, themes);
 }
 
-/** "HH:MM" de l'instant donné, en heure de Paris (même repère que les heures stockées). */
-function heureParis(now: Date): string {
-  const local = new Date(now.getTime() + parisOffsetMinutes(now) * 60_000);
-  return `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`;
-}
-
 /**
- * Filtre SQL « séance déjà commencée » : date passée, ou séance du jour dont l'heure de début
- * est atteinte — la même règle que `seanceCommencee`, exprimée sur les colonnes indexées
- * (`Session(periodId, date)`). Aux heures de changement d'heure il peut retenir une séance du
- * jour de trop : l'appelant repasse `seanceCommencee` derrière, qui tranche.
+ * Filtre SQL « séance passée » : date antérieure au jour du club — la même règle que
+ * `seancePassee`, exprimée sur la colonne indexée (`Session(periodId, date)`). Le cours du jour,
+ * commencé ou non, n'entre dans l'historique que le lendemain, comme dans « Passé ».
  */
-function dejaCommencees(now: Date) {
-  const aujourdHui = todayIso(now);
-  return { OR: [{ date: { lt: aujourdHui } }, { date: aujourdHui, heureDebut: { lte: heureParis(now) } }] };
+function dejaPassees(now: Date) {
+  return { date: { lt: todayIso(now) } };
 }
 
 export type HistoriquePeriode = {
@@ -286,7 +278,7 @@ export type HistoriquePeriode = {
 
 /**
  * Historique complet du membre : toutes les périodes où il a été invité (la plus récente en premier),
- * séances déjà commencées uniquement, avec son statut et son taux personnel (séances non annulées).
+ * séances passées uniquement (le lendemain de leur jour, `seancePassee`), avec son statut et son taux personnel (séances non annulées).
  */
 export async function historiquePresences(userId: string, now = new Date(), maxSeances?: number): Promise<HistoriquePeriode[]> {
   const periodes = await db.period.findMany({
@@ -302,7 +294,7 @@ export async function historiquePresences(userId: string, now = new Date(), maxS
       sessions: {
         // Le tri des séances non commencées se faisait en JavaScript : après quelques saisons,
         // c'était des centaines de séances et des milliers de présences chargées pour rien.
-        where: dejaCommencees(now),
+        where: dejaPassees(now),
         orderBy: [{ date: "desc" }, { heureDebut: "desc" }],
         // `maxSeances` ne borne que ce qui est **affiché** : chaque séance rapatriée emporte les
         // réponses de tout le club, et c'est ce qui fait de cet écran le plus lourd de
@@ -336,8 +328,8 @@ export async function historiquePresences(userId: string, now = new Date(), maxS
     maxSeances === undefined
       ? null
       : await db.session.findMany({
-          where: { periodId: { in: periodes.map((p) => p.id) }, ...dejaCommencees(now) },
-          select: { periodId: true, date: true, heureDebut: true, annulee: true, attendances: { where: { userId }, select: { statut: true } } },
+          where: { periodId: { in: periodes.map((p) => p.id) }, ...dejaPassees(now) },
+          select: { periodId: true, date: true, annulee: true, attendances: { where: { userId }, select: { statut: true } } },
         });
 
   return periodes
@@ -345,9 +337,6 @@ export async function historiquePresences(userId: string, now = new Date(), maxS
       // Même liste d'invités pour toutes les séances de la période : triée une fois (cf. `invitesDesPeriodes`)
       const invites = trierParNom(p.membres.map((m) => m.user));
       const seances = p.sessions
-        // Le filtre SQL est volontairement un peu large (il compare des heures locales) : la règle
-        // qui fait foi reste `seanceCommencee`, réappliquée ici sur les quelques séances du jour.
-        .filter((s) => seanceCommencee(s.date, s.heureDebut, now))
         .map((s) => {
           // Même règle que les cartes : le compteur est le dénombrement de la liste affichée à côté.
           const participants = listeParticipants(s.attendances, invites);
@@ -386,7 +375,7 @@ export async function historiquePresences(userId: string, now = new Date(), maxS
       const sienne = (c: { date: string }) => c.date >= arrivee;
       // Le taux se compte sur **tous** les cours de la période, jamais sur la tranche affichée.
       const coursDeLaPeriode = tousLesCours
-        ? tousLesCours.filter((c) => c.periodId === p.id && seanceCommencee(c.date, c.heureDebut, now) && !c.annulee && sienne(c))
+        ? tousLesCours.filter((c) => c.periodId === p.id && !c.annulee && sienne(c))
         : null;
       const passees = coursDeLaPeriode ?? seances.filter((s) => !s.annulee && sienne(s));
       const presences = coursDeLaPeriode
@@ -401,7 +390,7 @@ export async function historiquePresences(userId: string, now = new Date(), maxS
         seances,
         presences,
         // Ce que le bouton « tout l'historique » doit savoir : il reste des cours qu'on n'a pas lus.
-        aPlus: coursDeLaPeriode !== null && tousLesCours!.filter((c) => c.periodId === p.id && seanceCommencee(c.date, c.heureDebut, now)).length > seances.length,
+        aPlus: coursDeLaPeriode !== null && tousLesCours!.filter((c) => c.periodId === p.id).length > seances.length,
         comptees: passees.length,
         pourcentage: passees.length ? Math.round((presences / passees.length) * 100) : 0,
       };

@@ -8,9 +8,10 @@ import { parisDateTime } from "@/lib/dates";
  * Trois défauts vivaient ensemble ici, et ils se tiennent par la même question — *de quoi parle ce
  * chiffre : d'un soir de cours, ou d'une personne ?*
  *
- * 1. **La fenêtre « passé » se refermait à minuit.** Un mardi à 18 h, l'horizon « Dernier cours »
- *    retenait le cours de 20 h qui n'avait pas commencé : une seule ligne, « moyenne 0 % », et les
- *    douze membres à « 0 présence / 0 séance / 0 % », sans montrer le cours de jeudi dernier.
+ * 1. **La fenêtre « passé » se referme à la veille** (`seancePassee`, demande de Delta) : le cours
+ *    du jour, commencé ou non, ne compte qu'à partir du lendemain — la règle du planning et de
+ *    l'onglet Séances. Un mardi soir, l'horizon « Dernier cours » montre le cours de la semaine
+ *    dernière, jamais une ligne à « 0 % » pour un cours qui se donne encore.
  * 2. **Le CSV effaçait une cellule** avant l'arrivée de la personne, pendant que le compteur de la
  *    séance comptait tout le monde : la ligne « 01/09 » annonçait 8 présents et la colonne du fichier
  *    n'en portait que 7.
@@ -31,8 +32,10 @@ const PERIODE = "p1";
 
 /** Ce mardi-là : deux cours, à 10 h et à 20 h. */
 const MARDI = "2026-09-22";
-/** 18 h à Paris : le cours du matin a eu lieu, celui du soir non. */
-const AVANT_LE_COURS_DU_SOIR = parisDateTime(MARDI, "18:00");
+/** 20 h 30 à Paris : les deux cours du mardi ont commencé, aucun n'est encore passé. */
+const PENDANT_LE_COURS_DU_SOIR = parisDateTime(MARDI, "20:30");
+/** Le lendemain matin : les deux cours du mardi ont rejoint le passé. */
+const LE_LENDEMAIN = parisDateTime("2026-09-23", "08:00");
 
 /**
  * Cinq séances : trois cours déjà donnés, le cours du soir de ce mardi, et un cours de jeudi.
@@ -140,47 +143,48 @@ function brut(): Map<string, Map<string, string>> {
 }
 
 describe("la fenêtre de temps du tableau de bord", () => {
-  it("ne prend pas pour « dernier cours » celui du soir qui n'a pas commencé", async () => {
+  it("ne prend jamais pour « dernier cours » un cours du jour, même commencé", async () => {
     const { statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR, "prochain");
-    // 18 h : le dernier cours **donné** est celui de 10 h, pas celui de 20 h.
-    expect(stats?.seances.map((s) => s.id)).toEqual(["s2"]);
+    const stats = await statsPeriode(PERIODE, PENDANT_LE_COURS_DU_SOIR, "prochain");
+    // 20 h 30 : les cours de 10 h et de 20 h ont commencé, le dernier cours **passé** reste le 15.
+    expect(stats?.seances.map((s) => s.id)).toEqual(["s1"]);
     expect(stats?.seances[0].passee).toBe(true);
   });
 
   it("annonce la moyenne et les taux de ce cours-là, et non un écran tout à zéro", async () => {
     const { statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR, "prochain");
-    // Un présent sur deux invités : 50 %. Avec le cours du soir, l'écran affichait « moyenne 0 % »…
-    expect(stats?.moyenne).toBe(50);
-    // …et tout le club à « 0 présence / 0 séance / 0 % », ce qui se lit comme une panne.
+    const stats = await statsPeriode(PERIODE, PENDANT_LE_COURS_DU_SOIR, "prochain");
+    // Deux présents sur deux invités, le 15 : 100 %.
+    expect(stats?.moyenne).toBe(100);
     const chloe = stats?.membres.find((m) => m.id === "u1");
     expect([chloe?.presents, chloe?.seances, chloe?.pourcentage]).toEqual([1, 1, 100]);
     const inga = stats?.membres.find((m) => m.id === "u2");
-    expect([inga?.presents, inga?.seances, inga?.pourcentage]).toEqual([0, 1, 0]);
+    expect([inga?.presents, inga?.seances, inga?.pourcentage]).toEqual([1, 1, 100]);
   });
 
-  it("garde le cours du soir hors de la fenêtre resserrée, et le ramène dès qu'il a commencé", async () => {
+  it("garde les cours du jour hors de la fenêtre resserrée, et les y fait entrer le lendemain", async () => {
     const { statsPeriode } = await import("@/lib/tableau-de-bord");
-    const avant = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR, "semaine");
-    expect(avant?.seances.map((s) => s.id)).toEqual(["s1", "s2"]);
-    const apres = await statsPeriode(PERIODE, parisDateTime(MARDI, "20:30"), "semaine");
-    expect(apres?.seances.map((s) => s.id)).toEqual(["s1", "s2", "s3"]);
+    const pendant = await statsPeriode(PERIODE, PENDANT_LE_COURS_DU_SOIR, "semaine");
+    expect(pendant?.seances.map((s) => s.id)).toEqual(["s1"]);
+    // Le mercredi, la semaine écoulée part du 16 : les deux cours du mardi, et eux seuls.
+    const lendemain = await statsPeriode(PERIODE, LE_LENDEMAIN, "semaine");
+    expect(lendemain?.seances.map((s) => s.id)).toEqual(["s2", "s3"]);
   });
 
   it("garde en revanche tout le trimestre sur « toute la période », cours à venir compris", async () => {
     const { statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR);
+    const stats = await statsPeriode(PERIODE, PENDANT_LE_COURS_DU_SOIR);
     expect(stats?.seances.map((s) => s.id)).toEqual(["s0", "s1", "s2", "s3", "s4"]);
-    // Le tableau montre aussi les réponses déjà reçues pour ce qui vient : `passee` les distingue.
-    expect(stats?.seances.map((s) => s.passee)).toEqual([true, true, true, false, false]);
+    // Le tableau montre aussi les réponses déjà reçues pour ce qui vient : `passee` les distingue,
+    // et les cours du jour n'en sont qu'à partir du lendemain.
+    expect(stats?.seances.map((s) => s.passee)).toEqual([true, true, false, false, false]);
   });
 });
 
 describe("le remplissage d'une séance et le taux d'une personne", () => {
   it("compte la séance sur tout le monde, y compris une réponse d'avant l'arrivée", async () => {
     const { statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR);
+    const stats = await statsPeriode(PERIODE, PENDANT_LE_COURS_DU_SOIR);
     // Le cours du 1er septembre a bien rassemblé deux personnes : Inga y était, en essai. La fiche
     // de la séance et `/admin/presences` le disent, ce total doit le dire aussi.
     expect(stats?.seances.find((s) => s.id === "s0")?.compteurs.presents).toBe(2);
@@ -188,11 +192,12 @@ describe("le remplissage d'une séance et le taux d'une personne", () => {
 
   it("ne compte pas ce cours-là dans le taux d'Inga : il est d'avant son inscription", async () => {
     const { statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR);
+    const stats = await statsPeriode(PERIODE, LE_LENDEMAIN);
     const inga = stats?.membres.find((m) => m.id === "u2");
-    // Deux cours depuis son arrivée (s1 et s2), une présence : 50 %. Le « Présent » du 1er septembre
-    // n'est ni au numérateur ni au dénominateur — on ne compte à personne les cours d'avant son arrivée.
-    expect([inga?.presents, inga?.seances, inga?.pourcentage]).toEqual([1, 2, 50]);
+    // Le lendemain : trois cours depuis son arrivée (s1, s2, s3), une présence, 33 %. Le « Présent »
+    // du 1er septembre n'est ni au numérateur ni au dénominateur — on ne compte à personne les cours
+    // d'avant son arrivée.
+    expect([inga?.presents, inga?.seances, inga?.pourcentage]).toEqual([1, 3, 33]);
     expect(inga?.arrivee).toBe("2026-09-10");
   });
 });
@@ -200,21 +205,22 @@ describe("le remplissage d'une séance et le taux d'une personne", () => {
 describe("l'export CSV", () => {
   it("n'efface plus une cellule : elle dit ce qui a été saisi, arrivée ou pas", async () => {
     const { csvPresences, statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR);
+    const stats = await statsPeriode(PERIODE, LE_LENDEMAIN);
     if (!stats) throw new Error("la période du faux client devrait exister");
     const lignes = csvPresences(stats, brut()).split("\r\n");
     const inga = lignes.find((l) => l.includes("Inga"))!.split(";");
     // Prénom, nom, arrivée, puis une colonne par cours donné : le « Présent » du 1er septembre est là.
     expect(inga.slice(0, 3)).toEqual(['"Inga"', '"Vidal"', '"2026-09-10"']);
-    expect(inga.slice(3, 6)).toEqual(['"PRESENT"', '"PRESENT"', '"ABSENT"']);
+    // Le lendemain, les quatre cours donnés : le 1er, le 15, et les deux du mardi (Inga n'a rien dit à 20 h).
+    expect(inga.slice(3, 7)).toEqual(['"PRESENT"', '"PRESENT"', '"ABSENT"', '""']);
     // Et la ligne assume de porter deux « Présent » pour une seule présence comptée : c'est la date
     // d'arrivée qui l'explique, et c'est pour ça qu'elle est écrite juste à côté du nom.
-    expect(inga.slice(6)).toEqual(['"1"', '"2"', '"50"']);
+    expect(inga.slice(7)).toEqual(['"1"', '"3"', '"33"']);
   });
 
   it("dit dans son en-tête que les trois totaux s'arrêtent à l'arrivée", async () => {
     const { csvPresences, statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR);
+    const stats = await statsPeriode(PERIODE, PENDANT_LE_COURS_DU_SOIR);
     if (!stats) throw new Error("la période du faux client devrait exister");
     const entete = csvPresences(stats, brut()).split("\r\n")[0].split(";");
     expect(entete.slice(0, 3)).toEqual(['"Prénom"', '"Nom"', '"Arrivée"']);
@@ -223,30 +229,32 @@ describe("l'export CSV", () => {
 
   it("ne donne aucune colonne aux séances qui n'ont pas eu lieu", async () => {
     const { csvPresences, statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR);
+    const stats = await statsPeriode(PERIODE, PENDANT_LE_COURS_DU_SOIR);
     if (!stats) throw new Error("la période du faux client devrait exister");
     const lignes = csvPresences(stats, brut()).split("\r\n");
     const entete = lignes[0];
-    // Les trois cours donnés ont leur colonne…
-    for (const date of ["2026-09-01 20:00", "2026-09-15 20:00", "2026-09-22 10:00"]) expect(entete).toContain(date);
-    // …le cours du soir et celui de jeudi, non : une réponse à un cours à venir est une intention.
+    // Les deux cours passés ont leur colonne…
+    for (const date of ["2026-09-01 20:00", "2026-09-15 20:00"]) expect(entete).toContain(date);
+    // …les deux du jour, commencés, et celui de jeudi, non : ils ne sont passés que le lendemain.
+    expect(entete).not.toContain("2026-09-22 10:00");
     expect(entete).not.toContain("2026-09-22 20:00");
     expect(entete).not.toContain("2026-09-25 20:00");
-    // Chloé a répondu « Présent » à jeudi : la ligne compte trois cellules de réponse, comme ses
-    // trois cours donnés — et non huit cellules en face d'une colonne « Présences » qui en annonce cinq.
+    // Chloé a répondu « Présent » à mardi 10 h et à jeudi : la ligne compte deux cellules de réponse,
+    // comme ses deux cours passés — et non quatre en face d'une colonne « Présences » qui en annonce deux.
     const chloe = lignes.find((l) => l.includes("Chloé"))!.split(";");
-    expect(chloe).toHaveLength(3 + 3 + 3);
-    expect(chloe.slice(3, 6)).toEqual(['"PRESENT"', '"PRESENT"', '"PRESENT"']);
-    expect(chloe.slice(6)).toEqual(['"3"', '"3"', '"100"']);
+    expect(chloe).toHaveLength(3 + 2 + 3);
+    expect(chloe.slice(3, 5)).toEqual(['"PRESENT"', '"PRESENT"']);
+    expect(chloe.slice(5)).toEqual(['"2"', '"2"', '"100"']);
   });
 
   it("suit la fenêtre de temps de l'écran, colonnes comme totaux", async () => {
     const { csvPresences, statsPeriode } = await import("@/lib/tableau-de-bord");
-    const stats = await statsPeriode(PERIODE, AVANT_LE_COURS_DU_SOIR, "prochain");
+    const stats = await statsPeriode(PERIODE, PENDANT_LE_COURS_DU_SOIR, "prochain");
     if (!stats) throw new Error("la période du faux client devrait exister");
     const entete = csvPresences(stats, brut()).split("\r\n")[0];
-    // « Dernier cours » : une seule colonne de séance, celle du cours de 10 h.
-    expect(entete).toContain("2026-09-22 10:00");
-    expect(entete).not.toContain("2026-09-15 20:00");
+    // « Dernier cours » : une seule colonne de séance, celle du 15 — pas un cours du jour.
+    expect(entete).toContain("2026-09-15 20:00");
+    expect(entete).not.toContain("2026-09-01 20:00");
+    expect(entete).not.toContain("2026-09-22 10:00");
   });
 });
