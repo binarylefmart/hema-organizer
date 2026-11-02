@@ -10,8 +10,8 @@ import { pluriel } from "@/components/ui/choix-geste";
  * sert qu'à annoncer les chiffres avant l'appui.
  */
 
-/** Ce que l'écran sait d'une séance pour ce geste. */
-export type SeanceARepondre = { id: string; annulee: boolean; commencee: boolean; monStatut: string | null };
+/** Ce que l'écran sait d'une séance pour ce geste (date et heure : pour la liste « Choisir des dates »). */
+export type SeanceARepondre = { id: string; annulee: boolean; commencee: boolean; monStatut: string | null; date?: string; heureDebut?: string };
 
 /** Les séances encore ouvertes à une réponse : ni annulées, ni commencées (donc ni passées). */
 export function seancesOuvertes<T extends SeanceARepondre>(seances: readonly T[]): T[] {
@@ -34,10 +34,15 @@ export type PlanReponse = {
  * séance déjà répondue la garde si `garder`, sinon la reçoit ; une séance qui porte déjà la réponse
  * choisie n'est pas réécrite (et n'est pas comptée comme « remplacée » — elle gonflerait le chiffre
  * censé faire hésiter).
+ *
+ * `choisies` restreint le geste à des dates précises (« Choisir des dates ») : sans lui, toutes les
+ * séances ouvertes de la période. Une séance choisie mais annulée ou commencée entre-temps reste
+ * ignorée, comme dans le geste entier.
  */
-export function planReponse(seances: readonly SeanceARepondre[], statut: AttendanceStatut, garder: boolean): PlanReponse {
+export function planReponse(seances: readonly SeanceARepondre[], statut: AttendanceStatut, garder: boolean, choisies?: ReadonlySet<string>): PlanReponse {
   const plan: PlanReponse = { aEcrire: [], gardees: 0, remplacees: 0, deja: 0 };
   for (const s of seancesOuvertes(seances)) {
+    if (choisies && !choisies.has(s.id)) continue;
     if (s.monStatut === statut) plan.deja += 1;
     else if (s.monStatut === null) plan.aEcrire.push(s.id);
     else if (garder) plan.gardees += 1;

@@ -9,6 +9,7 @@ import { Bouton } from "@/components/ui/Bouton";
 import { Icone, type NomIcone } from "@/components/ui/Icone";
 import { VoletBas } from "@/components/ui/VoletBas";
 import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
+import { capitale, formatDateSansAnnee, formatHeure } from "@/lib/dates";
 import { confirmationReponse, libelleReponse, phrasesPlan, planReponse, seancesOuvertes, type SeanceARepondre } from "./reponse-periode";
 
 const STYLES: Record<AttendanceStatut, { icone: NomIcone; actif: string; inactif: string }> = {
@@ -17,27 +18,39 @@ const STYLES: Record<AttendanceStatut, { icone: NomIcone; actif: string; inactif
   PEUT_ETRE: { icone: "question", actif: "bg-ocre text-primaire-texte border-ocre", inactif: "bg-surface border-bordure text-ocre hover:border-ocre" },
 };
 
-const TITRE = "Répondre pour toutes les séances à venir";
+const TITRE = "Répondre pour les séances à venir";
 
 /**
- * **Répondre pour toute la période d'un coup** — au-dessus des cartes de l'onglet Séances, pour un
- * membre invité sur une période active. Sur ordinateur, le bouton déplie une carte sous lui ; sur
- * téléphone, il ouvre le volet du bas (`VoletBas`). Le contenu est le même : trois boutons de
- * réponse, la case « Ne pas modifier mes réponses déjà données » (cochée par défaut), ce qui va
- * changer en chiffres, et un seul bouton qui écrit — après confirmation.
+ * **Répondre pour plusieurs séances d'un coup** — au-dessus des cartes de l'onglet Séances, pour un
+ * membre invité sur une période active. Le bouton d'entrée est **plein**, comme « Modifier les
+ * séances » : c'est un geste du membre, pas une option secondaire. Sur ordinateur, il déplie une carte sous lui ; sur téléphone, il ouvre le volet
+ * du bas (`VoletBas`). Le contenu est le même : la portée (**toutes les séances à venir** ou
+ * **des dates choisies**, cochées dans la liste), trois boutons de réponse, la case « Ne pas modifier
+ * mes réponses déjà données » (cochée par défaut), ce qui va changer en chiffres, et un seul bouton
+ * qui écrit — après confirmation.
  */
-export function ReponsePeriode({ periodId, periodNom, seances }: { periodId: string; periodNom: string; seances: SeanceARepondre[] }) {
+export function ReponsePeriode({ periodId, periodNom, seances, filtree = false }: { periodId: string; periodNom: string; seances: SeanceARepondre[]; filtree?: boolean }) {
   const router = useRouter();
   const telephone = useEcranTelephone();
   const [ouvert, setOuvert] = useState(false);
   const [statut, setStatut] = useState<AttendanceStatut | null>(null);
   const [garder, setGarder] = useState(true);
+  const [parDates, setParDates] = useState(false);
+  const [choisies, setChoisies] = useState<ReadonlySet<string>>(new Set());
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
 
   const ouvertes = seancesOuvertes(seances);
   if (ouvertes.length === 0) return null;
-  const plan = statut ? planReponse(seances, statut, garder) : null;
+  const portee = parDates ? choisies : undefined;
+  const plan = statut && (!parDates || choisies.size > 0) ? planReponse(seances, statut, garder, portee) : null;
+  const basculer = (id: string) =>
+    setChoisies((avant) => {
+      const apres = new Set(avant);
+      if (apres.has(id)) apres.delete(id);
+      else apres.add(id);
+      return apres;
+    });
 
   const lancer = () => {
     if (!statut || !plan || plan.aEcrire.length === 0) return;
@@ -45,10 +58,13 @@ export function ReponsePeriode({ periodId, periodNom, seances }: { periodId: str
     setMessage(null);
     demarrer(async () => {
       try {
-        const res = await repondrePourLaPeriode({ periodId, statut, garderReponses: garder });
+                // Filtrée, « toutes » veut dire « celles affichées » : le serveur reçoit leurs identifiants.
+        const seanceIds = parDates ? [...choisies] : filtree ? ouvertes.map((s) => s.id) : undefined;
+        const res = await repondrePourLaPeriode({ periodId, statut, garderReponses: garder, ...(seanceIds ? { seanceIds } : {}) });
         if (res.erreur) return setMessage({ type: "erreur", texte: res.erreur });
         setMessage({ type: "ok", texte: res.succes ?? "C'est noté." });
         setStatut(null);
+        setChoisies(new Set());
         setOuvert(false);
         router.refresh();
       } catch {
@@ -59,10 +75,50 @@ export function ReponsePeriode({ periodId, periodNom, seances }: { periodId: str
 
   const contenu = (
     <div className="flex flex-col gap-3">
+      <div role="group" aria-label="Pour quelles séances" className="grid grid-cols-2 gap-2">
+        {[
+          { valeur: false, libelle: filtree ? (ouvertes.length > 1 ? `Les ${ouvertes.length} séances affichées` : "La séance affichée") : "Toutes les séances" },
+          { valeur: true, libelle: "Choisir des dates" },
+        ].map((o) => (
+          <button
+            key={o.libelle}
+            type="button"
+            aria-pressed={parDates === o.valeur}
+            onClick={() => {
+              setParDates(o.valeur);
+              setMessage(null);
+            }}
+            className={[
+              "min-h-12 rounded-xl border-2 px-2 text-base font-semibold transition active:scale-[0.97]",
+              parDates === o.valeur ? "border-primaire bg-primaire text-primaire-texte shadow-bouton" : "border-bordure bg-surface text-primaire hover:border-primaire",
+            ].join(" ")}
+          >
+            {o.libelle}
+          </button>
+        ))}
+      </div>
       <p className="text-base text-texte-secondaire">
-        {`${ouvertes.length > 1 ? `Les ${ouvertes.length} séances` : "La séance"} à venir de « ${periodNom} ». Les séances annulées ou déjà commencées ne sont pas touchées.`}
+        {parDates
+          ? `Coche les séances de « ${periodNom} » pour lesquelles tu réponds.`
+          : `${ouvertes.length > 1 ? `Les ${ouvertes.length} séances` : "La séance"} ${filtree ? `${ouvertes.length > 1 ? "affichées" : "affichée"} de « ${periodNom} », selon le filtre` : `à venir de « ${periodNom} »`}. Les séances annulées ou déjà commencées ne sont pas touchées.`}
       </p>
-      <div role="group" aria-label="Ma réponse pour toutes les séances" className="grid grid-cols-3 gap-2">
+      {parDates && (
+        <ul aria-label="Séances à venir" className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-xl border border-bordure p-1">
+          {ouvertes.map((s) => (
+            <li key={s.id}>
+              <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-surface-douce">
+                <input type="checkbox" checked={choisies.has(s.id)} onChange={() => basculer(s.id)} className="size-6 shrink-0 accent-primaire" />
+                <span className="flex-1 font-semibold">
+                  {s.date ? capitale(formatDateSansAnnee(s.date)) : "Séance"}
+                  {s.heureDebut ? <span className="font-normal text-texte-secondaire">{` · ${formatHeure(s.heureDebut)}`}</span> : null}
+                </span>
+                <span className="text-sm text-texte-secondaire">{s.monStatut ? STATUT_LABELS[s.monStatut as AttendanceStatut] : "Sans réponse"}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div role="group" aria-label="Ma réponse pour ces séances" className="grid grid-cols-3 gap-2">
         {ATTENDANCE_STATUTS.map((s) => (
           <button
             key={s}
@@ -96,7 +152,7 @@ export function ReponsePeriode({ periodId, periodNom, seances }: { periodId: str
         </div>
       )}
       <Bouton type="button" onClick={lancer} disabled={enCours || !statut || !plan || plan.aEcrire.length === 0} className="w-full sm:w-auto sm:self-start">
-        {!statut || !plan ? "Choisis ta réponse" : plan.aEcrire.length === 0 ? "Rien à changer" : libelleReponse(statut, plan.aEcrire.length)}
+        {parDates && choisies.size === 0 ? "Coche des dates" : !statut || !plan ? "Choisis ta réponse" : plan.aEcrire.length === 0 ? "Rien à changer" : libelleReponse(statut, plan.aEcrire.length)}
       </Bouton>
     </div>
   );
@@ -105,7 +161,6 @@ export function ReponsePeriode({ periodId, periodNom, seances }: { periodId: str
     <div className="flex flex-col gap-2">
       <Bouton
         type="button"
-        variante="secondaire"
         className="w-full sm:w-auto sm:self-start"
         aria-expanded={telephone ? undefined : ouvert}
         onClick={() => {

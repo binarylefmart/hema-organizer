@@ -16,6 +16,10 @@ describe("planReponse", () => {
   it("remplace les réponses différentes quand la case est décochée", () => {
     expect(planReponse(lot, "PRESENT", false)).toEqual({ aEcrire: ["a", "b"], gardees: 0, remplacees: 1, deja: 1 });
   });
+  it("se limite aux dates choisies, sans jamais rouvrir une séance annulée ou commencée", () => {
+    expect(planReponse(lot, "PRESENT", false, new Set(["b", "c", "d", "e"]))).toEqual({ aEcrire: ["b"], gardees: 0, remplacees: 1, deja: 1 });
+    expect(planReponse(lot, "PRESENT", true, new Set(["a"]))).toEqual({ aEcrire: ["a"], gardees: 0, remplacees: 0, deja: 0 });
+  });
   it("annonce les chiffres avant et après", () => {
     const plan = planReponse(lot, "PRESENT", false);
     expect(confirmationReponse("PRESENT", plan)).toBe("Répondre « Présent » pour 2 séances ? 1 réponse déjà donnée sera remplacée. 1 séance porte déjà cette réponse.");
@@ -83,6 +87,15 @@ describe("repondrePourLaPeriode", () => {
     await repondrePourLaPeriode({ periodId: "p1", statut: "ABSENT", garderReponses: false });
     expect(faux.ecrites.map((e) => e.sessionId)).toEqual(["s1", "s2"]);
     expect(faux.desistements).toEqual([{ sessionId: "s2", avant: "PRESENT" }]);
+  });
+  it("répond sur les dates choisies seulement, et ignore une séance hors période, annulée ou passée", async () => {
+    const res = await repondrePourLaPeriode({ periodId: "p1", statut: "ABSENT", garderReponses: false, seanceIds: ["s2", "s3", "s4", "inconnue"] });
+    expect(faux.ecrites).toEqual([{ sessionId: "s2", statut: "ABSENT" }]);
+    expect(res.succes).toBe("C'est noté : Absent pour 1 séance. 1 réponse déjà donnée a été remplacée.");
+  });
+  it("refuse une liste de dates vide", async () => {
+    expect((await repondrePourLaPeriode({ periodId: "p1", statut: "ABSENT", garderReponses: true, seanceIds: [] })).erreur).toBe("Réponse non reconnue.");
+    expect(faux.ecrites).toEqual([]);
   });
   it("refuse une période non active ou où l'on n'est pas invité", async () => {
     faux.periode = { statut: "BROUILLON", membres: [{ userId: "u1" }] };

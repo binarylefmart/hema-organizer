@@ -2,6 +2,17 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.80.1
+
+### Nouveautés
+
+- **presences** : la réponse groupée suit le filtre des séances
+- **presences** : répondre pour des dates précises, bouton d'entrée en avant
+
+### Autres changements
+
+- réponse groupée sur des dates précises et selon le filtre
+
 ## 0.80.0
 
 ### Nouveautés

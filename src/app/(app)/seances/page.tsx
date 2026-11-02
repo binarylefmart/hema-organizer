@@ -420,7 +420,7 @@ async function Liste({
         <SelectionEdition seances={seances} periodes={periodes} vue={vue} partEffectifMin={partEffectifMin} peutSupprimer={peutSupprimer} cibleId={cibleId} />
       ) : (
         <>
-          {vue.quand === "avenir" && !vue.date && <ReponsePeriodeDe toutes={toutes} choisie={choisie} periodes={periodes} />}
+          {vue.quand === "avenir" && !vue.date && <ReponsePeriodeDe affichees={seances} filtree={vue.horizon !== "periode"} choisie={choisie} periodes={periodes} />}
           <ListeSeances
             cartes={seances.map((x) => <CarteSeance key={x.id} seance={x} aujourdHui={vue.aujourdHui} partEffectifMin={partEffectifMin} cible={x.id === cibleId} />)}
           />
@@ -432,22 +432,28 @@ async function Liste({
 }
 
 /**
- * **« Répondre pour toutes les séances à venir »**, pour la période affichée — à défaut, celle du
+ * **« Répondre pour les séances à venir »** (toutes, ou des dates choisies), pour la période affichée — à défaut, celle du
  * prochain cours. Seulement sur une période ACTIVE où la personne est invitée : ailleurs, le serveur
  * refuserait chaque réponse (`indiquerPresence`), et un bouton qui ne mène qu'à un refus n'a pas sa
  * place.
+ *
+ * **Le geste suit le filtre** : il reçoit les séances **affichées**, pas la période
+ * entière. Avec une fenêtre plus courte que la période (« 2 semaines »…), « Toutes les séances »
+ * devient « Les N séances affichées » et le serveur reçoit leurs identifiants (`filtree`) — une
+ * sélection ne prend jamais ce qui n'est pas affiché.
  */
-async function ReponsePeriodeDe({ toutes, choisie, periodes }: { toutes: SeanceCarte[]; choisie: { id: string } | null; periodes: Promise<PeriodeOption[]> }) {
-  const periodId = choisie?.id ?? toutes.find((x) => !x.annulee && !x.commencee)?.periodId;
+async function ReponsePeriodeDe({ affichees, filtree, choisie, periodes }: { affichees: SeanceCarte[]; filtree: boolean; choisie: { id: string } | null; periodes: Promise<PeriodeOption[]> }) {
+  const periodId = choisie?.id ?? affichees.find((x) => !x.annulee && !x.commencee)?.periodId;
   if (!periodId) return null;
   const periode = (await periodes).find((p) => p.id === periodId);
-  const duPeriode = toutes.filter((x) => x.periodId === periodId);
+  const duPeriode = affichees.filter((x) => x.periodId === periodId);
   if (!periode || periode.statut !== "ACTIVE" || !duPeriode.some((x) => x.inscrit)) return null;
   return (
     <ReponsePeriode
       periodId={periodId}
+      filtree={filtree}
       periodNom={periode.nom}
-      seances={duPeriode.map((x) => ({ id: x.id, annulee: x.annulee, commencee: x.commencee, monStatut: x.monStatut }))}
+      seances={duPeriode.map((x) => ({ id: x.id, annulee: x.annulee, commencee: x.commencee, monStatut: x.monStatut, date: x.date, heureDebut: x.heureDebut }))}
     />
   );
 }

@@ -95,6 +95,8 @@ const reponsePeriodeSchema = z.object({
   periodId: z.string().min(1).max(64),
   statut: z.enum(ATTENDANCE_STATUTS),
   garderReponses: z.boolean(),
+  /** Dates précises (« Choisir des dates ») ; absent = toutes les séances à venir de la période. */
+  seanceIds: z.array(z.string().min(1).max(64)).min(1).max(200).optional(),
 });
 
 /**
@@ -110,13 +112,17 @@ const reponsePeriodeSchema = z.object({
  * personne, sauf le désistement de dernière minute — qui ne concerne qu'une séance dans les deux
  * heures : `signalerDesistementTardif` est appelé pour chaque réponse remplacée, et décide seul (il
  * écarte en une lecture légère tout ce qui n'est pas dans la fenêtre).
+ *
+ * **Des dates précises** (`seanceIds`) restreignent le geste à ces séances-là, avec les mêmes verrous :
+ * un identifiant qui n'est pas une séance de la période ne touche rien, une séance annulée ou
+ * commencée reste ignorée.
  */
-export async function repondrePourLaPeriode(input: { periodId: string; statut: string; garderReponses: boolean }): Promise<{ succes?: string; erreur?: string }> {
+export async function repondrePourLaPeriode(input: { periodId: string; statut: string; garderReponses: boolean; seanceIds?: string[] }): Promise<{ succes?: string; erreur?: string }> {
   const user = await getCurrentUser();
   if (!user || !can(user, "attendances.own")) return { erreur: "Ta session a expiré. Reconnecte-toi." };
   const parsed = reponsePeriodeSchema.safeParse(input);
   if (!parsed.success) return { erreur: "Réponse non reconnue." };
-  const { periodId, statut, garderReponses } = parsed.data;
+  const { periodId, statut, garderReponses, seanceIds } = parsed.data;
 
   const periode = await db.period.findUnique({
     where: { id: periodId },
@@ -134,7 +140,7 @@ export async function repondrePourLaPeriode(input: { periodId: string; statut: s
     commencee: seanceCommencee(s.date, s.heureDebut),
     monStatut: s.attendances[0]?.statut ?? null,
   }));
-  const plan = planReponse(lues, statut, garderReponses);
+  const plan = planReponse(lues, statut, garderReponses, seanceIds ? new Set(seanceIds) : undefined);
   if (plan.aEcrire.length > 0) {
     await db.$transaction(
       plan.aEcrire.map((sessionId) =>

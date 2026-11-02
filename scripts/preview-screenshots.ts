@@ -1417,16 +1417,48 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "action-seances-repondre-periode",
-      description: "Séances d'un membre : « Répondre pour toutes les séances à venir » — Présent choisi, case « Ne pas modifier » décochée, les chiffres avant d'écrire (téléphone : le volet)",
+      description: "Séances d'un membre : « Répondre pour les séances à venir » (bouton plein) — Présent choisi, case « Ne pas modifier » décochée, les chiffres avant d'écrire (téléphone : le volet)",
       connexion: COMPTES.membre,
       chemin: "/seances",
       avant: async (page) => {
-        await page.getByRole("button", { name: "Répondre pour toutes les séances à venir" }).click();
+        await page.getByRole("button", { name: "Répondre pour les séances à venir" }).click();
         const zone = (await estTelephone(page))
-          ? page.getByRole("dialog", { name: "Répondre pour toutes les séances à venir" })
-          : page.getByRole("region", { name: "Répondre pour toutes les séances à venir" });
-        await zone.getByRole("group", { name: "Ma réponse pour toutes les séances" }).getByRole("button", { name: "Présent" }).click();
+          ? page.getByRole("dialog", { name: "Répondre pour les séances à venir" })
+          : page.getByRole("region", { name: "Répondre pour les séances à venir" });
+        await zone.getByRole("group", { name: "Ma réponse pour ces séances" }).getByRole("button", { name: "Présent" }).click();
         // Le membre de démonstration a déjà tout répondu : la case décochée montre ce qui serait remplacé.
+        await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
+      },
+    },
+    {
+      nom: "action-seances-repondre-dates",
+      description: "Séances d'un membre : « Répondre pour les séances à venir » sur des dates choisies — deux dates cochées, Absent, les chiffres avant d'écrire (téléphone : le volet)",
+      connexion: COMPTES.membre,
+      chemin: "/seances",
+      avant: async (page) => {
+        await page.getByRole("button", { name: "Répondre pour les séances à venir" }).click();
+        const zone = (await estTelephone(page))
+          ? page.getByRole("dialog", { name: "Répondre pour les séances à venir" })
+          : page.getByRole("region", { name: "Répondre pour les séances à venir" });
+        await zone.getByRole("button", { name: "Choisir des dates" }).click();
+        const cases = zone.getByRole("list", { name: "Séances à venir" }).getByRole("checkbox");
+        await cases.nth(1).check();
+        await cases.nth(2).check();
+        await zone.getByRole("group", { name: "Ma réponse pour ces séances" }).getByRole("button", { name: "Absent" }).click();
+        await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
+      },
+    },
+    {
+      nom: "action-seances-repondre-filtre",
+      description: "Séances d'un membre filtrées sur 2 semaines : « Répondre pour les séances à venir » ne vise que les séances affichées (« Les N séances affichées »)",
+      connexion: COMPTES.membre,
+      chemin: "/seances?h=2semaines",
+      avant: async (page) => {
+        await page.getByRole("button", { name: "Répondre pour les séances à venir" }).click();
+        const zone = (await estTelephone(page))
+          ? page.getByRole("dialog", { name: "Répondre pour les séances à venir" })
+          : page.getByRole("region", { name: "Répondre pour les séances à venir" });
+        await zone.getByRole("group", { name: "Ma réponse pour ces séances" }).getByRole("button", { name: "Peut-être" }).click();
         await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
       },
     },
