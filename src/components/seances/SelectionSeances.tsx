@@ -37,6 +37,7 @@ import {
   ciblesGeste,
   compteurSeances,
   confirmationSeances,
+  elementsRetirables,
   expliquerGesteSeances,
   gesteSeancesDefinitif,
   gestesSeancesApplicables,
@@ -45,6 +46,7 @@ import {
   libelleBoutonSeances,
   libelleToutesSeances,
   MOTS_SEANCES,
+  nbSeances,
   reglageManquant,
   seancesQuiChangent,
   texteSansCaseSeances,
@@ -114,6 +116,7 @@ export function SelectionSeances({
   const [brute, setSelection] = useState<ReadonlySet<string>>(() => new Set());
   const [gesteChoisi, setGesteChoisi] = useState<GesteSeances | "">("");
   const [motif, setMotif] = useState("");
+  const [element, setElement] = useState("");
   const [choixLieu, setChoixLieu] = useState(lieux.length > 0 ? LIEU_VIDE : LIEU_AUTRE);
   const [lieuLibre, setLieuLibre] = useState({ lieu: "", adresse: "" });
   const [horaire, setHoraire] = useState({ heureDebut: "", heureFin: "" });
@@ -150,13 +153,21 @@ export function SelectionSeances({
     adresse: lieuChoisi ? lieuChoisi.adresse : choixLieu === LIEU_AUTRE ? lieuLibre.adresse.trim() : "",
     heureDebut: horaire.heureDebut,
     heureFin: horaire.heureFin,
+    element,
   };
+  // Les éléments que le lot propose ; un choix qui n'y est plus (séance décochée) retombe à vide.
+  const elementsProposes = elementsRetirables(lot);
+  const elementEncorePropose = element === "" || elementsProposes.some((e) => e.libelle === element);
+  useEffect(() => {
+    if (!elementEncorePropose) setElement("");
+  }, [elementEncorePropose]);
   const touchees = geste === "" ? [] : seancesQuiChangent(geste, lot, reglage);
   const inerte = geste === "" || reglageManquant(geste, lot, reglage);
 
   const remettreAZero = () => {
     setGesteChoisi("");
     setMotif("");
+    setElement("");
     setChoixLieu(lieux.length > 0 ? LIEU_VIDE : LIEU_AUTRE);
     setLieuLibre({ lieu: "", adresse: "" });
     setHoraire({ heureDebut: "", heureFin: "" });
@@ -177,6 +188,8 @@ export function SelectionSeances({
     const entree =
       geste === "annuler"
         ? { geste, sessionIds, motif: motif.trim() }
+        : geste === "retirer"
+          ? { geste, sessionIds: seancesQuiChangent(geste, lot, reglage).map((l) => l.id), libelle: element }
         : geste === "lieu"
           ? { geste, sessionIds, lieu: reglage.lieu, adresse: reglage.adresse }
           : geste === "horaire"
@@ -213,6 +226,25 @@ export function SelectionSeances({
   /** Les réglages du geste choisi : les mêmes champs dans la barre de l'ordinateur et dans le volet du téléphone. */
   const reglages = (
     <>
+      {geste === "retirer" && (
+        <div className="flex flex-col gap-1">
+          <label id="element-seances-en-masse-libelle" htmlFor="element-seances-en-masse" className="text-base font-semibold">
+            Élément à retirer
+          </label>
+          <ListeDeroulante
+            id="element-seances-en-masse"
+            libelleId="element-seances-en-masse-libelle"
+            libelle="Élément à retirer"
+            valeur={element}
+            entrees={[
+              { valeur: "", libelle: "Choisir un élément…" },
+              ...elementsProposes.map((e) => ({ valeur: e.libelle, libelle: `${e.libelle} (${nbSeances(e.nombre)})` })),
+            ]}
+            onChoisir={setElement}
+            className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
+          />
+        </div>
+      )}
       {geste === "annuler" && (
         <Champ
           label="Motif (envoyé aux membres)"

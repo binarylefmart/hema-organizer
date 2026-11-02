@@ -13,7 +13,8 @@ import { enregistrerCodesSecours, genererCodesSecours } from "@/lib/auth/codes-s
 import { CHEMIN_ACTIVATION_ADMIN, compteAcces, deuxFaActive, ouvrirReglage2fa } from "@/lib/auth/acces-admin";
 import { CHEMIN_MA_DEUX_FA } from "@/lib/auth/demande-deux-fa";
 import { redirect } from "next/navigation";
-import { getDiscordWebhookUrl, setDiscordWebhookUrl, setSetting, CLES } from "@/lib/settings";
+import { getDiscordWebhookUrl, setDiscordWebhookUrl, setJalonsRappel, setSetting, CLES } from "@/lib/settings";
+import { phraseJalons } from "@/lib/notifications/planification";
 import { estTypeDiscord, salonPour, setSalonDiscord } from "@/lib/notifications/webhooks";
 import { setAlertesActivees, setRetentionAuditJours } from "@/lib/alertes";
 import { COULEUR_BLEU, ERREUR_DISCORD_INCONNUE, posterDiscord } from "@/lib/notifications/discord";
@@ -48,7 +49,7 @@ import {
 import { sendEmailNow } from "@/lib/email/mailer";
 import { emailTest } from "@/lib/email/templates/ateliers";
 import { caseCochee, champ, zodToFormState, type FormState } from "@/lib/form";
-import { alertesSecuriteSchema, publicationCoursSchema, recapHourSchema, retentionAuditSchema, webhookDiscordSchema } from "@/lib/validation/gestion";
+import { alertesSecuriteSchema, jalonsRappelSchema, publicationCoursSchema, recapHourSchema, retentionAuditSchema, webhookDiscordSchema } from "@/lib/validation/gestion";
 import { z } from "zod";
 import { formatDateHeure } from "@/lib/dates";
 import { identite } from "@/lib/identite";
@@ -72,6 +73,24 @@ export async function definirHeureRecap(_prev: FormState, fd: FormData): Promise
   await audit(user, "parametres.recap_hour", null, parsed.data);
   revalidatePath("/admin/notifications");
   return { succes: `Récap envoyé chaque jour à ${parsed.data.recapHour.replace(":", "h")}.` };
+}
+
+/**
+ * **Les délais des rappels aux personnes sans réponse** (`rappels.jalons`, retours du club d'Arras) :
+ * jusqu'à trois champs « jours avant le cours », vides ignorés. Tous vides = plus aucun rappel. Même
+ * serrure que l'heure du récap, sur le même écran.
+ */
+export async function definirJalonsRappel(_prev: FormState, fd: FormData): Promise<FormState> {
+  const user = await assertPermission("settings.technical");
+  const saisis = ["jalon1", "jalon2", "jalon3"].map((n) => champ(fd, n).trim()).filter((v) => v !== "");
+  const parsed = jalonsRappelSchema.safeParse(saisis.map((v) => (/^\d+$/.test(v) ? Number(v) : Number.NaN)));
+  if (!parsed.success) return { erreur: parsed.error.issues[0]?.message ?? "Délais invalides." };
+  await exigerReauth(user, "/admin/notifications");
+  await setJalonsRappel(parsed.data);
+  await audit(user, "parametres.rappels_jalons", null, { jalons: parsed.data });
+  revalidatePath("/admin/notifications");
+  revalidatePath("/admin/notifications/email");
+  return { succes: parsed.data.length === 0 ? "Plus aucun rappel ne part." : `Rappels envoyés ${phraseJalons(parsed.data)}.` };
 }
 
 /**

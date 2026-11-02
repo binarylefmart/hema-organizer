@@ -5,7 +5,8 @@ import { PART_EFFECTIF_MAX, PART_EFFECTIF_MIN, identite } from "@/lib/identite";
 import { SEUIL_PLANCHER, seuilEnPersonnes } from "@/lib/presences";
 import { db } from "@/lib/db";
 import { THEMES } from "@/lib/themes";
-import { enregistrerApparenceClub, enregistrerFuseauClub, enregistrerNomsClub, enregistrerPartEffectifClub } from "@/actions/identite";
+import { enregistrerApparenceClub, enregistrerChoixCours, enregistrerFuseauClub, enregistrerNomsClub, enregistrerPartEffectifClub } from "@/actions/identite";
+import { getChoixCoursActif } from "@/lib/settings";
 import { decalageMinutes, entreesFuseaux, libelleDecalage } from "@/lib/fuseau";
 import { ChampLogo } from "@/components/admin/ChampLogo";
 import { Carte } from "@/components/ui/Carte";
@@ -51,7 +52,7 @@ function heureAuClub(fuseau: string): string {
 
 export default async function PageIdentite() {
   await requirePermission("settings.technical");
-  const [club, invites] = await Promise.all([identite(), effectifInvite()]);
+  const [club, invites, choixCours] = await Promise.all([identite(), effectifInvite(), getChoixCoursActif()]);
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -196,6 +197,23 @@ export default async function PageIdentite() {
                   Ce réglage s&apos;exprime en <em>part de l&apos;effectif</em>, et non en nombre de présents : un même nombre ne
                   pourrait pas servir un club de douze et un club de quatre-vingts. Une part suit l&apos;effectif toute seule, et le plancher de{" "}
                   {SEUIL_PLANCHER} personnes garde son sens aux petits clubs — il n&apos;y a plus rien à ajuster quand le club grandit.
+                </p>
+              </FormulaireAction>
+            </Carte>
+
+            {/* **Le choix des cours** : à côté de l'effectif, parce que c'est aussi une façon de
+                compter qui vient — à quel cours, cette fois. */}
+            <Carte titre="Choix des cours">
+              <FormulaireAction action={enregistrerChoixCours} bouton="Enregistrer le choix des cours">
+                <Case
+                  label="Les membres présents peuvent indiquer le ou les cours qu'ils suivront (facultatif)"
+                  name="choixCours"
+                  defaultChecked={choixCours}
+                />
+                <p className="text-sm text-texte-secondaire">
+                  Après « Présent », chaque carte de séance propose une case par cours, option ou atelier — pas l&apos;échauffement —, avec le nombre
+                  d&apos;inscrits à côté. Répondre « Absent » efface les choix. Les taux, les rappels et les alertes ne changent pas : ils ne
+                  lisent que la réponse. Le tableau de bord gagne une carte « Choix des cours » (par cours, par niveau, par mois).
                 </p>
               </FormulaireAction>
             </Carte>

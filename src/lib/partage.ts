@@ -1,3 +1,4 @@
+import { retoursALaLigne } from "@/lib/retours-ligne";
 import type { NomIcone } from "@/components/ui/Icone";
 import { libelleDuree, libellePrix } from "@/components/evenements/libelles";
 import { niveauAffiche, NIVEAU_DEFAUT, type NatureElement, type Niveau } from "./constants";
@@ -267,7 +268,7 @@ function programme(parties: SeanceBrute["parties"], themesClub: readonly string[
       teinte: teintes[i],
       libelle: c.libelle,
       theme: titre,
-      description: c.description.trim(),
+      description: retoursALaLigne(c.description).trim(),
       niveau: niveauAffiche(c.niveau) ?? NIVEAU_DEFAUT,
       atelier: Boolean(c.atelier),
     });

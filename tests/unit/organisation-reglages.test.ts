@@ -244,14 +244,20 @@ describe("l'identité du club : deux formulaires, deux actions", () => {
     expect(apparence).toContain('caseCochee(fd, "marquePersonnalisee")');
   });
 
-  it("chacun des quatre formulaires de l'écran dit ce qu'il enregistre", () => {
+  it("chacun des cinq formulaires de l'écran dit ce qu'il enregistre", () => {
     const code = lire(PAGE_IDENTITE);
-    for (const bouton of ['bouton="Enregistrer le nom"', 'bouton="Enregistrer l\'apparence"', 'bouton="Enregistrer la part"', 'bouton="Enregistrer le fuseau"']) {
+    for (const bouton of [
+      'bouton="Enregistrer le nom"',
+      'bouton="Enregistrer l\'apparence"',
+      'bouton="Enregistrer la part"',
+      'bouton="Enregistrer le choix des cours"',
+      'bouton="Enregistrer le fuseau"',
+    ]) {
       expect(code).toContain(bouton);
     }
-    // Quatre formulaires, quatre boutons : aucun ne s'appelle « Enregistrer » tout court.
+    // Cinq formulaires, cinq boutons : aucun ne s'appelle « Enregistrer » tout court.
     expect(code).not.toContain('bouton="Enregistrer"');
-    expect(code.match(/<FormulaireAction/g)).toHaveLength(4);
+    expect(code.match(/<FormulaireAction/g)).toHaveLength(5);
   });
 
   it("les cartes de l'écran ne mentent pas sur ce qu'elles portent", () => {

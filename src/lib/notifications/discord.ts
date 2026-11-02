@@ -1,3 +1,4 @@
+import { retoursALaLigne } from "@/lib/retours-ligne";
 import { baseUrl } from "@/lib/env";
 import { identite, type Identite } from "@/lib/identite";
 
@@ -127,7 +128,7 @@ export function embedBorne(embed: DiscordEmbed): DiscordEmbed {
   const borne: DiscordEmbed = {
     ...embed,
     ...(embed.title === undefined ? {} : { title: tronquerDiscord(embed.title, LIMITES_DISCORD.titre) }),
-    ...(embed.description === undefined ? {} : { description: tronquerDiscord(embed.description, LIMITES_DISCORD.description) }),
+    ...(embed.description === undefined ? {} : { description: tronquerDiscord(retoursALaLigne(embed.description), LIMITES_DISCORD.description) }),
     ...(embed.footer === undefined ? {} : { footer: { text: tronquerDiscord(embed.footer.text, LIMITES_DISCORD.piedDePage) } }),
     ...(embed.fields === undefined
       ? {}
@@ -135,7 +136,7 @@ export function embedBorne(embed: DiscordEmbed): DiscordEmbed {
           fields: embed.fields.slice(0, LIMITES_DISCORD.champs).map((c) => ({
             ...c,
             name: tronquerDiscord(c.name, LIMITES_DISCORD.nomChamp),
-            value: tronquerDiscord(c.value, LIMITES_DISCORD.valeurChamp),
+            value: tronquerDiscord(retoursALaLigne(c.value), LIMITES_DISCORD.valeurChamp),
           })),
         }),
   };

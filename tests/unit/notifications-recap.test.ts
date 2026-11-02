@@ -392,13 +392,13 @@ describe("email de rappel aux personnes sans réponse", () => {
   const args = { prenom: "Juliett", seance: SEANCE, chiffres: { presents: 4, invites: 18 }, urlApp: "https://x.fr", urlDesinscription: "https://x.fr/desinscription/j" };
 
   it("dit le délai restant dans l'objet, à J-7 comme à J-2", () => {
-    expect(emailRappelSansReponse({ ...args, jours: 7 }).sujet).toBe("🗡️ Cours dans une semaine (jeudi 24 sept.) — tu viens ?");
-    expect(emailRappelSansReponse({ ...args, jours: 2 }).sujet).toBe("🗡️ Cours dans deux jours (jeudi 24 sept.) — tu viens ?");
+    expect(emailRappelSansReponse({ ...args, jours: 7 }).sujet).toBe("🗡️ Cours dans 7 jours (jeudi 24 sept.) — tu viens ?");
+    expect(emailRappelSansReponse({ ...args, jours: 2 }).sujet).toBe("🗡️ Cours dans 2 jours (jeudi 24 sept.) — tu viens ?");
   });
 
   it("reprend le contenu commun, invite à répondre et porte la désinscription", () => {
     const { contenu } = emailRappelSansReponse({ ...args, jours: 2 });
-    expect(contenu.paragraphes[0]).toBe("Il reste deux jours avant le cours, et tu n'as pas encore dit si tu venais.");
+    expect(contenu.paragraphes[0]).toBe("Il reste 2 jours avant le cours, et tu n'as pas encore dit si tu venais.");
     expect(contenu.paragraphes[1]).toContain("✅ 4 présents / 18 — 22 %");
     expect(contenu.boutons).toEqual([{ label: "Répondre en un appui", url: "https://x.fr" }]);
     const pied = contenu.piedDePage?.at(-1) ?? "";

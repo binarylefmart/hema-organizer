@@ -12,6 +12,10 @@ import { seanceCommencee } from "@/lib/dates";
 import { signalerDesistementTardif } from "@/lib/notifications/desistement";
 import { can } from "@/lib/permissions";
 import { presenceAutruiSchema, presencesEnMasseSchema } from "@/lib/validation/presences";
+import { planReponse, succesReponse } from "@/components/seances/reponse-periode";
+import { effacerChoixSiAbsent } from "@/lib/choix-cours";
+import { natureChoisissable } from "@/components/seances/choix-cours";
+import { getChoixCoursActif } from "@/lib/settings";
 
 const schema = z.object({
   sessionId: z.string().min(1).max(64),
@@ -65,6 +69,7 @@ export async function indiquerPresence(input: { sessionId: string; statut: strin
     create: { userId: user.id, sessionId, statut },
     update: { statut },
   });
+  await effacerChoixSiAbsent([user.id], [sessionId], statut);
   /*
    * **Après l'écriture, et sans pouvoir la défaire** : `signalerDesistementTardif` ne lève jamais,
    * et décide seul (transition, fenêtre de deux heures, séance, préférences). Seul ce chemin — le
@@ -84,6 +89,125 @@ async function reponseAvant(userId: string, sessionId: string): Promise<string |
   } catch {
     return null;
   }
+}
+
+const reponsePeriodeSchema = z.object({
+  periodId: z.string().min(1).max(64),
+  statut: z.enum(ATTENDANCE_STATUTS),
+  garderReponses: z.boolean(),
+});
+
+/**
+ * **Répondre pour toutes les séances à venir d'une période**, en un geste (retours du club d'Arras).
+ *
+ * Les verrous sont ceux d'`indiquerPresence`, lus une fois pour la période : `attendances.own`,
+ * période ACTIVE, membre invité. Les séances annulées, commencées ou passées sont **ignorées** — ce
+ * sont celles où la réponse à l'unité serait refusée. Avec `garderReponses` (coché par défaut à
+ * l'écran), une réponse déjà donnée n'est pas touchée ; sans lui, elle est remplacée. Le tri est
+ * celui de l'écran (`planReponse`), refait ici sur les lectures du serveur.
+ *
+ * **Les notifications : celles de la réponse à l'unité, pas une de plus.** Une réponse ne prévient
+ * personne, sauf le désistement de dernière minute — qui ne concerne qu'une séance dans les deux
+ * heures : `signalerDesistementTardif` est appelé pour chaque réponse remplacée, et décide seul (il
+ * écarte en une lecture légère tout ce qui n'est pas dans la fenêtre).
+ */
+export async function repondrePourLaPeriode(input: { periodId: string; statut: string; garderReponses: boolean }): Promise<{ succes?: string; erreur?: string }> {
+  const user = await getCurrentUser();
+  if (!user || !can(user, "attendances.own")) return { erreur: "Ta session a expiré. Reconnecte-toi." };
+  const parsed = reponsePeriodeSchema.safeParse(input);
+  if (!parsed.success) return { erreur: "Réponse non reconnue." };
+  const { periodId, statut, garderReponses } = parsed.data;
+
+  const periode = await db.period.findUnique({
+    where: { id: periodId },
+    select: { statut: true, membres: { where: { userId: user.id }, select: { userId: true } } },
+  });
+  if (!periode || periode.statut !== "ACTIVE" || periode.membres.length === 0) return { erreur: "Cette période n'est pas disponible." };
+
+  const seances = await db.session.findMany({
+    where: { periodId },
+    select: { id: true, date: true, heureDebut: true, annulee: true, attendances: { where: { userId: user.id }, select: { statut: true } } },
+  });
+  const lues = seances.map((s) => ({
+    id: s.id,
+    annulee: s.annulee,
+    commencee: seanceCommencee(s.date, s.heureDebut),
+    monStatut: s.attendances[0]?.statut ?? null,
+  }));
+  const plan = planReponse(lues, statut, garderReponses);
+  if (plan.aEcrire.length > 0) {
+    await db.$transaction(
+      plan.aEcrire.map((sessionId) =>
+        db.attendance.upsert({
+          where: { userId_sessionId: { userId: user.id, sessionId } },
+          create: { userId: user.id, sessionId, statut },
+          update: { statut },
+        }),
+      ),
+    );
+    await effacerChoixSiAbsent([user.id], plan.aEcrire, statut);
+    const avant = new Map(lues.map((s) => [s.id, s.monStatut]));
+    for (const sessionId of plan.aEcrire) {
+      const precedent = avant.get(sessionId) ?? null;
+      if (precedent !== null) await signalerDesistementTardif({ sessionId, userId: user.id, avant: precedent, apres: statut });
+    }
+    await touchSession();
+    revalidatePath("/seances");
+    revalidatePath("/");
+  }
+  return { succes: succesReponse(statut, plan) };
+}
+
+const choixCoursSchema = z.object({ partieId: z.string().min(1).max(64), choisi: z.boolean() });
+
+/**
+ * **Choisir (ou ne plus choisir) un cours** d'une séance où l'on a répondu « Présent » — facultatif,
+ * plusieurs par séance (retours du club d'Arras). Les verrous sont ceux d'`indiquerPresence` (période
+ * active, membre invité, séance ni annulée ni commencée), plus trois : le club a ouvert le réglage,
+ * l'élément est un cours, une option ou un atelier (jamais l'échauffement), et la réponse de la
+ * personne à cette séance est « Présent ». Aucun journal, aucune notification : comme une réponse.
+ */
+export async function choisirCours(input: { partieId: string; choisi: boolean }): Promise<{ ok: true } | { ok: false; erreur: string }> {
+  const user = await getCurrentUser();
+  if (!user || !can(user, "attendances.own")) return { ok: false, erreur: "Ta session a expiré. Reconnecte-toi." };
+  const parsed = choixCoursSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, erreur: "Choix non reconnu." };
+  if (!(await getChoixCoursActif())) return { ok: false, erreur: "Le choix des cours n'est pas ouvert par le club." };
+  const { partieId, choisi } = parsed.data;
+
+  const partie = await db.sessionPartie.findUnique({
+    where: { id: partieId },
+    select: {
+      nature: true,
+      session: {
+        select: {
+          id: true,
+          date: true,
+          heureDebut: true,
+          annulee: true,
+          period: { select: { statut: true, membres: { where: { userId: user.id }, select: { userId: true } } } },
+          attendances: { where: { userId: user.id }, select: { statut: true } },
+        },
+      },
+    },
+  });
+  if (!partie || !natureChoisissable(partie.nature)) return { ok: false, erreur: "Ce cours ne se choisit pas." };
+  const s = partie.session;
+  if (s.period.statut !== "ACTIVE" || s.period.membres.length === 0) return { ok: false, erreur: "Cette séance n'est pas disponible." };
+  if (s.annulee) return { ok: false, erreur: "Cette séance est annulée." };
+  if (seanceCommencee(s.date, s.heureDebut)) return { ok: false, erreur: "Le cours a déjà commencé : le choix n'est plus modifiable." };
+  if (s.attendances[0]?.statut !== "PRESENT") return { ok: false, erreur: "Réponds d'abord « Présent » pour choisir tes cours." };
+
+  if (choisi) {
+    await db.attendanceChoix.upsert({ where: { userId_partieId: { userId: user.id, partieId } }, create: { userId: user.id, partieId }, update: {} });
+  } else {
+    await db.attendanceChoix.deleteMany({ where: { userId: user.id, partieId } });
+  }
+  await touchSession();
+  revalidatePath("/seances");
+  revalidatePath(`/seances/${s.id}`);
+  revalidatePath("/");
+  return { ok: true };
 }
 
 export type ResultatPresenceAutrui = { ok: true; statut: string | null } | { ok: false; erreur: string };
@@ -152,6 +276,7 @@ export async function modifierPresenceMembre(input: {
       update: { statut },
     });
   }
+  await effacerChoixSiAbsent([userId], [sessionId], statut);
   // Écrire à la place de quelqu'un se justifie toujours après coup : la trace nomme l'acteur,
   // la personne visée et ce qui a été remplacé.
   await audit(user, "presence.modifiee_par_admin", userId, { sessionId, avant, apres: statut });
@@ -305,6 +430,7 @@ export async function modifierPresencesEnMasse(input: {
     );
   }
 
+  await effacerChoixSiAbsent(aEcrire, [sessionId], statut);
   for (const userId of aEcrire) {
     await audit(user, "presence.modifiee_par_admin", userId, { sessionId, avant: avantParUser.get(userId) ?? null, apres: statut, enMasse: true });
   }

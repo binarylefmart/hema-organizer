@@ -102,6 +102,7 @@ model User {
   templatesMenes      CoursTemplateElement[] @relation("TemplateInstructeur")
   templatesAssistes   CoursTemplateElement[] @relation("TemplateInstructeurSecond")
   attendances         Attendance[]
+  choixCours          AttendanceChoix[]
   ateliers            Atelier[]
   ateliersAnimes      Atelier[]              @relation("AtelierAnimateur")
   ateliersSeconde     Atelier[]              @relation("AtelierAnimateurSecond")
@@ -332,6 +333,7 @@ model SessionPartie {
   instructeurSecond User?    @relation("PartieInstructeurSecond", fields: [instructeurSecondId], references: [id], onDelete: SetNull)
   atelier           Atelier? @relation(fields: [atelierId], references: [id], onDelete: SetNull)
   modifiePar        User?    @relation("PartieModifiePar", fields: [modifieParId], references: [id], onDelete: SetNull)
+  choix             AttendanceChoix[]
 
   @@index([sessionId, ordre])
 }
@@ -358,6 +360,23 @@ model Attendance {
 
   @@id([userId, sessionId])
   @@index([sessionId])
+}
+
+/// **Le cours qu'un membre présent choisit de suivre** (retours du club d'Arras) : facultatif, un
+/// élément COURS, OPTION ou ATELIER du programme (jamais l'échauffement), plusieurs par séance.
+/// `Attendance` reste la référence — taux, rappels et alertes ne lisent jamais cette table. Les
+/// choix d'une personne pour une séance sont effacés quand sa réponse passe à ABSENT
+/// (`effacerChoixSiAbsent`, src/lib/choix-cours.ts), et suivent en cascade le compte et l'élément.
+model AttendanceChoix {
+  userId    String
+  partieId  String
+  createdAt DateTime @default(now())
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partie SessionPartie @relation(fields: [partieId], references: [id], onDelete: Cascade)
+
+  @@id([userId, partieId])
+  @@index([partieId])
 }
 
 /// Proposition d'atelier. statut : PROPOSE | VALIDE | REFUSE | PLANIFIE

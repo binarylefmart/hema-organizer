@@ -1,6 +1,6 @@
 import { boutonClasses } from "@/components/ui/Bouton";
 import { Icone } from "@/components/ui/Icone";
-import { couleurNature, grouperParPartie } from "@/components/seances/programme-cours";
+import { couleurNature, grouperParPartie, SEPARATEUR_PARTIE } from "@/components/seances/programme-cours";
 import { EcuNature } from "@/components/seances/EcuNature";
 import { classesPartie } from "@/components/seances/teintes";
 import { PastilleNiveau } from "@/components/ui/Pastille";
@@ -48,8 +48,9 @@ export function ResumeSeance({ seance, compact = false }: { seance: SeancePartag
            liste est rendue par le serveur et n'est jamais réordonnée à l'écran, et elle ne porte
            volontairement aucun identifiant de ligne (voir `CasePartage`). */
         <ul className="flex flex-col gap-3 border-t border-bordure/50 pt-3" aria-label="Programme">
-          {grouperParPartie(seance.programme).map((p) => (
-            <li key={p.bloc} className={`flex min-w-0 flex-col gap-1 ${p.nom ? `${classesPartie(p.bloc).bande} pl-3` : ""}`}>
+          {grouperParPartie(seance.programme).map((p, i) => (
+            // Le pointillé entre deux parties, comme dans l'application (`SEPARATEUR_PARTIE`).
+            <li key={p.bloc} className={`flex min-w-0 flex-col gap-1 ${p.nom ? `${classesPartie(p.bloc).bande} pl-3` : ""} ${i > 0 ? `${SEPARATEUR_PARTIE} pt-3` : ""}`}>
               {/* Une seule partie affichée (`nom: null`) : ni titre ni bande, le programme se lit
                   comme avant les parties (`partiesNommees`). Sinon le titre et la bande à gauche
                   prennent la teinte de la partie (`classesPartie`), comme dans l'application. */}
@@ -83,7 +84,7 @@ export function ResumeSeance({ seance, compact = false }: { seance: SeancePartag
                         on l'écrit annonce qu'elle est publiée (voir `CaseEditeur`). Vide, elle ne rend
                         rien du tout, pas même son intitulé : la même règle que pour les membres. Sur sa
                         propre ligne, parce que c'est une phrase et non une étiquette. */}
-                    {c.description && <span className="text-texte-secondaire">{c.description}</span>}
+                    {c.description && <span className="whitespace-pre-line break-words text-texte-secondaire">{c.description}</span>}
                   </li>
                 ))}
               </ul>

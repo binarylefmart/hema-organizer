@@ -234,3 +234,12 @@ export function couleurNature(nature: NatureElement, teinte: Teinte | null = nul
   // une classe vide : une étiquette sans couleur se lirait comme un défaut d'affichage.
   return APLAT_TEINTE[teinte ?? 1];
 }
+
+/**
+ * **Le pointillé entre deux parties du programme** (retours du club d'Arras) — le même dans
+ * l'application (`ProgrammeCours`) et sur les pages de partage (`Resume`) : il marque chaque
+ * changement de partie, lisible même sans voir les couleurs. Il se pose sur l'élément qui porte
+ * aussi la bande de couleur de la partie (`classesPartie`) : la couleur du haut est donc forcée
+ * (`border-t-bordure`) et la bande de gauche reste pleine (`border-left-style: solid`).
+ */
+export const SEPARATEUR_PARTIE = "border-t-2 border-dashed border-t-bordure [border-left-style:solid]";

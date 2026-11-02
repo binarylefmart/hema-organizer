@@ -5,8 +5,16 @@ import { indiquerPresence } from "@/actions/presences";
 import { ATTENDANCE_STATUTS, type AttendanceStatut } from "@/lib/constants";
 import { STATUT_LABELS } from "@/lib/presences";
 import { Icone, type NomIcone } from "@/components/ui/Icone";
+import { ChoixCours } from "./ChoixCours";
+import type { ChoixCoursCarte } from "./choix-cours";
 
-type Props = { sessionId: string; statut: string | null; verrouille: boolean };
+type Props = {
+  sessionId: string;
+  statut: string | null;
+  verrouille: boolean;
+  /** Le choix des cours par présence, quand le club l'a ouvert : il suit la réponse affichée. */
+  choix?: ChoixCoursCarte | null;
+};
 
 // `text-primaire-texte` = blanc en clair, encre en sombre : le libellé du bouton choisi reste lisible
 // sur le vert / la rouille / l'ocre éclaircis du mode sombre (le blanc y tombait sous le seuil AA).
@@ -35,7 +43,7 @@ const STYLES: Record<AttendanceStatut, { icone: NomIcone; actif: string; inactif
  * Les 3 grands boutons Présent / Absent / Peut-être : un tap = enregistré (affichage optimiste),
  * confirmation visuelle, puis retour en arrière + message si le serveur refuse.
  */
-export function BoutonsPresence({ sessionId, statut, verrouille }: Props) {
+export function BoutonsPresence({ sessionId, statut, verrouille, choix }: Props) {
   const [optimiste, setOptimiste] = useOptimistic<string | null, string>(statut, (_prev, next) => next);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
@@ -117,6 +125,7 @@ export function BoutonsPresence({ sessionId, statut, verrouille }: Props) {
           "Tu n'as pas encore répondu."
         ) : null}
       </p>
+      {choix ? <ChoixCours choix={choix} statut={optimiste} verrouille={verrouille} /> : null}
     </div>
   );
 }

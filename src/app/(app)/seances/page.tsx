@@ -21,6 +21,7 @@ import { CarteSeance } from "@/components/seances/CarteSeance";
 import { ListeSeances } from "@/components/seances/ListeSeances";
 import { CaseSeance, SelectionSeances } from "@/components/seances/SelectionSeances";
 import type { LigneSeance } from "@/components/seances/selection-seances";
+import { ReponsePeriode } from "@/components/seances/ReponsePeriode";
 import { getLieux } from "@/lib/planning";
 import { ecritureFermee } from "@/lib/constants";
 import { Historique } from "@/components/presences/Historique";
@@ -418,12 +419,36 @@ async function Liste({
       ) : enEdition ? (
         <SelectionEdition seances={seances} periodes={periodes} vue={vue} partEffectifMin={partEffectifMin} peutSupprimer={peutSupprimer} cibleId={cibleId} />
       ) : (
-        <ListeSeances
-          cartes={seances.map((x) => <CarteSeance key={x.id} seance={x} aujourdHui={vue.aujourdHui} partEffectifMin={partEffectifMin} cible={x.id === cibleId} />)}
-        />
+        <>
+          {vue.quand === "avenir" && !vue.date && <ReponsePeriodeDe toutes={toutes} choisie={choisie} periodes={periodes} />}
+          <ListeSeances
+            cartes={seances.map((x) => <CarteSeance key={x.id} seance={x} aujourdHui={vue.aujourdHui} partEffectifMin={partEffectifMin} cible={x.id === cibleId} />)}
+          />
+        </>
       )}
       <AllerALaSeanceCible />
     </>
+  );
+}
+
+/**
+ * **« Répondre pour toutes les séances à venir »**, pour la période affichée — à défaut, celle du
+ * prochain cours. Seulement sur une période ACTIVE où la personne est invitée : ailleurs, le serveur
+ * refuserait chaque réponse (`indiquerPresence`), et un bouton qui ne mène qu'à un refus n'a pas sa
+ * place.
+ */
+async function ReponsePeriodeDe({ toutes, choisie, periodes }: { toutes: SeanceCarte[]; choisie: { id: string } | null; periodes: Promise<PeriodeOption[]> }) {
+  const periodId = choisie?.id ?? toutes.find((x) => !x.annulee && !x.commencee)?.periodId;
+  if (!periodId) return null;
+  const periode = (await periodes).find((p) => p.id === periodId);
+  const duPeriode = toutes.filter((x) => x.periodId === periodId);
+  if (!periode || periode.statut !== "ACTIVE" || !duPeriode.some((x) => x.inscrit)) return null;
+  return (
+    <ReponsePeriode
+      periodId={periodId}
+      periodNom={periode.nom}
+      seances={duPeriode.map((x) => ({ id: x.id, annulee: x.annulee, commencee: x.commencee, monStatut: x.monStatut }))}
+    />
   );
 }
 
@@ -468,6 +493,7 @@ async function SelectionEdition({
           annulee: x.annulee,
           commencee: seanceCommencee(x.date, x.heureDebut, vue.maintenant),
           reponses: x.compteurs.presents + x.compteurs.absents + x.compteurs.peutEtre,
+          elements: x.elements,
         },
   );
   return (

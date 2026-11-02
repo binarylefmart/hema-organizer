@@ -19,6 +19,10 @@ import { LIGNES_VISIBLES } from "@/components/seances/listes";
 import { lireTri, trierMembres, TRI_LABELS, type TriMembres } from "./tri";
 import { TableauMembres } from "./TableauMembres";
 import { DeuxPiles } from "@/components/ui/DeuxPiles";
+import { getChoixCoursActif } from "@/lib/settings";
+import { choixDesPresents } from "@/lib/choix-cours";
+import { statsChoix, type LigneStat } from "@/components/seances/choix-cours";
+import { libelleNiveau } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
 
@@ -187,6 +191,59 @@ async function TauxParMembre({ stats, tri, lienTri }: IlotProps & { tri: TriMemb
  * attendu par la page : le titre, l'export et le choix de période sont là tout de suite, puis les
  * taux par séance, puis — dans son propre `<Suspense>` — le tableau par membre.
  */
+/** Un petit tableau de la carte « Choix des cours » : une ligne par cours, niveau ou mois. */
+function TableStat({ titre, lignes }: { titre: string; lignes: LigneStat[] }) {
+  return (
+    <div className="min-w-0">
+      <h3 className="mb-1 text-base font-semibold">{titre}</h3>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-texte-secondaire">
+            <th className="py-1 pr-2 font-normal">{titre.replace("Par ", "").replace(/^./, (c) => c.toUpperCase())}</th>
+            <th className="py-1 pr-2 text-right font-normal">Choix</th>
+            <th className="py-1 text-right font-normal">Séances</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lignes.map((l) => (
+            <tr key={l.cle} className="border-t border-bordure/50">
+              <td className="py-1 pr-2">{l.libelle}</td>
+              <td className="py-1 pr-2 text-right tabular-nums">{l.choix}</td>
+              <td className="py-1 text-right tabular-nums">{l.seances}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * **Le choix des cours** (retours du club d'Arras), sur les séances de la fenêtre affichée : combien
+ * de présents ont choisi chaque cours, chaque niveau, chaque mois. Rien quand le club n'a pas ouvert
+ * le réglage.
+ */
+async function ChoixDesCours({ stats }: IlotProps) {
+  const [s, actif] = await Promise.all([stats, getChoixCoursActif()]);
+  if (!s || !actif) return null;
+  const ids = s.seances.filter((x) => !x.annulee).map((x) => x.id);
+  const st = statsChoix(await choixDesPresents(s.period.id, ids), libelleNiveau);
+  return (
+    <Carte titre={`Choix des cours — ${st.total} choix`}>
+      {st.total === 0 ? (
+        <p className="text-texte-secondaire">Aucun présent n&apos;a encore choisi de cours sur ces séances.</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <TableStat titre="Par cours" lignes={st.parCours} />
+          <TableStat titre="Par niveau" lignes={st.parNiveau} />
+          <TableStat titre="Par mois" lignes={st.parMois} />
+        </div>
+      )}
+      <p className="mt-2 text-sm text-texte-secondaire">Seuls comptent les choix des personnes qui ont répondu « Présent ».</p>
+    </Carte>
+  );
+}
+
 export default async function PageTableauDeBord({ searchParams }: Props) {
   const user = await requirePermission("dashboard.view");
   const { periode, h, tri: triBrut } = await searchParams;
@@ -265,6 +322,9 @@ export default async function PageTableauDeBord({ searchParams }: Props) {
           </Suspense>
         }
       />
+      <Suspense fallback={null}>
+        <ChoixDesCours stats={stats} />
+      </Suspense>
     </div>
   );
 }

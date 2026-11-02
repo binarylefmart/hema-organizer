@@ -5,13 +5,13 @@ import { lignesSeance, themePrincipal, type ChiffresSeance, type SeanceResume } 
 import { LIBELLE_LIEN_DESINSCRIPTION } from "@/lib/notifications/desinscription";
 import { STATUT_LABELS } from "@/lib/presences";
 import type { EmailContenu } from "./layout";
-import type { Jalon } from "@/lib/notifications/planification";
+import { delaiCours, JALONS, phraseJalons, type Jalon } from "@/lib/notifications/planification";
 
 /**
  * Emails de rappel autour d'une séance :
  * - **récap de la veille** aux membres inscrits Présent ou Peut-être (un email par personne, jamais
  *   de destinataires visibles entre eux — c'est l'appelant qui boucle) ;
- * - **rappel aux personnes sans réponse**, une semaine puis deux jours avant le cours.
+ * - **rappel aux personnes sans réponse**, aux délais réglés par le club (7 puis 2 jours avant par défaut).
  *
  * Les deux reprennent le *contenu commun* de `src/lib/notifications/contenu.ts` (date en toutes
  * lettres, horaire, lieu, thème, chiffres) et portent en pied le lien de désinscription en un clic.
@@ -115,28 +115,35 @@ export type ArgsRappelSansReponse = {
   prenom: string;
   seance: SeanceResume;
   chiffres: ChiffresSeance;
-  /** 7 ou 2 : jours restants avant le cours */
+  /** Jours restants avant le cours (un des jalons réglés) */
   jours: Jalon;
+  /** Tous les jalons réglés, pour le pied de page (défaut : 7 puis 2) */
+  jalons?: readonly number[];
   urlApp: string;
   urlDesinscription: string;
 };
 
-/** Rappel aux invités qui n'ont pas encore répondu (J-7 puis J-2). */
+/** « Il reste 7 jours », « C'est demain » — la phrase d'ouverture du rappel personnel. */
+function resteAvant(jours: number): string {
+  return jours === 1 ? "Le cours a lieu demain" : `Il reste ${jours} jours avant le cours`;
+}
+
+/** Rappel aux invités qui n'ont pas encore répondu (aux jalons réglés par le club). */
 export function emailRappelSansReponse(a: ArgsRappelSansReponse): { sujet: string; contenu: EmailContenu } {
-  const delai = a.jours === 7 ? "dans une semaine" : "dans deux jours";
+  const delai = delaiCours(a.jours);
   return {
     sujet: `🗡️ Cours ${delai} (${formatDateCourte(a.seance.date).toLowerCase()}) — tu viens ?`,
     contenu: {
       titre: `Bonjour ${a.prenom},`,
       paragraphes: [
-        `Il reste ${a.jours === 7 ? "une semaine" : "deux jours"} avant le cours, et tu n'as pas encore dit si tu venais.`,
+        `${resteAvant(a.jours)}, et tu n'as pas encore dit si tu venais.`,
         lignesSeance(a.seance, a.chiffres).join("\n"),
         "Un appui suffit : Présent, Absent ou Peut-être. Ça aide l'équipe à préparer le cours (et à ne pas l'annuler pour rien).",
       ],
       boutons: [{ label: "Répondre en un appui", url: a.urlApp }],
       piedDePage: piedDePage(
         a.urlDesinscription,
-        `Message automatique envoyé une semaine puis deux jours avant le cours du ${formatDateLongue(a.seance.date).toLowerCase()}.`,
+        `Message automatique envoyé ${phraseJalons(a.jalons ?? JALONS)} — ici, pour le cours du ${formatDateLongue(a.seance.date).toLowerCase()}.`,
       ),
     },
   };
@@ -145,8 +152,10 @@ export function emailRappelSansReponse(a: ArgsRappelSansReponse): { sujet: strin
 export type ArgsRappelListe = {
   seance: SeanceResume;
   chiffres: ChiffresSeance;
-  /** 7 ou 2 : jours restants avant le cours */
+  /** Jours restants avant le cours (un des jalons réglés) */
   jours: Jalon;
+  /** Tous les jalons réglés, pour le pied de page (défaut : 7 puis 2) */
+  jalons?: readonly number[];
   /** Combien d'invités n'ont pas encore répondu — le message ne nomme personne */
   sansReponse: number;
   nomApp: string;
@@ -166,7 +175,7 @@ export type ArgsRappelListe = {
  * pas répondu » ne rappelle rien du tout (voir `notifications/rappels.ts`).
  */
 export function emailRappelListe(a: ArgsRappelListe): { sujet: string; contenu: EmailContenu } {
-  const delai = a.jours === 7 ? "dans une semaine" : "dans deux jours";
+  const delai = delaiCours(a.jours);
   const pluriel = a.sansReponse > 1;
   const compteur = `${a.sansReponse} personne${pluriel ? "s" : ""} n'${pluriel ? "ont" : "a"} pas encore répondu pour le cours du ${formatDateCourte(a.seance.date).toLowerCase()}.`;
   return {
@@ -181,7 +190,7 @@ export function emailRappelListe(a: ArgsRappelListe): { sujet: string; contenu: 
       boutons: [{ label: "Répondre en un appui", url: `${baseUrl()}/seances` }],
       piedDePage: piedDePageListe(
         a.nomApp,
-        `Message automatique envoyé à la liste du club une semaine puis deux jours avant le cours du ${formatDateLongue(a.seance.date).toLowerCase()}.`,
+        `Message automatique envoyé à la liste du club ${phraseJalons(a.jalons ?? JALONS)} — ici, pour le cours du ${formatDateLongue(a.seance.date).toLowerCase()}.`,
       ),
     },
   };

@@ -26,6 +26,8 @@ type MembreFaux = {
 };
 
 const faux = vi.hoisted(() => ({
+  /** Délais de rappel réglés par le club (`rappels.jalons`) */
+  jalons: [7, 2] as number[],
   seances: [] as Array<Record<string, unknown>>,
   logs: [] as Array<Record<string, unknown>>,
   emails: [] as Array<{ to: string; sujet: string; ref?: string }>,
@@ -116,6 +118,7 @@ vi.mock("@/lib/settings", () => ({
     else faux.reglages.set(cle, valeur);
   }),
   getRecapHour: vi.fn(async () => "18:00"),
+  getJalonsRappel: vi.fn(async () => faux.jalons),
   heureRecap: vi.fn(async () => "18:00"),
   getDiscordWebhookUrl: vi.fn(async () => ({ url: faux.webhook, source: "env" as const })),
 }));
@@ -215,6 +218,7 @@ function cle(id: string, date: string, heureDebut = "19:30") {
 const CLE_S1 = cle("s1", "2026-09-24");
 
 beforeEach(() => {
+  faux.jalons = [7, 2];
   faux.seances = [];
   faux.logs = [];
   faux.emails = [];
@@ -556,8 +560,8 @@ describe("rappels aux personnes sans réponse", () => {
     expect(bilan).toEqual({ seances: 2, emails: 2 });
     expect(faux.emails.map((e) => e.to)).toEqual(["anne@club.test", "anne@club.test"]);
     expect(faux.emails.map((e) => e.sujet)).toEqual([
-      "🗡️ Cours dans une semaine (jeudi 1 oct.) — tu viens ?",
-      "🗡️ Cours dans deux jours (samedi 26 sept.) — tu viens ?",
+      "🗡️ Cours dans 7 jours (jeudi 1 oct.) — tu viens ?",
+      "🗡️ Cours dans 2 jours (samedi 26 sept.) — tu viens ?",
     ]);
     expect(faux.logs.map((l) => l.dedupKey).sort()).toEqual([
       "rappel_j2_sj2_2026-09-26-1930_u4",
@@ -567,6 +571,18 @@ describe("rappels aux personnes sans réponse", () => {
     ]);
     expect(cleRappel(cle("sj7", "2026-10-01"), "u4", 7)).toBe("rappel_j7_sj7_2026-10-01-1930_u4");
     expect(cleRappelPush(cle("sj7", "2026-10-01"), "u4", 7)).toBe("rappel_push_j7_sj7_2026-10-01-1930_u4");
+  });
+
+  it("suit les délais réglés par le club, et n'envoie rien quand la liste est vide", async () => {
+    faux.jalons = [2];
+    expect(await envoyerRappelsSansReponse(JOUR)).toEqual({ seances: 1, emails: 1 });
+    expect(faux.emails.map((e) => e.sujet)).toEqual(["🗡️ Cours dans 2 jours (samedi 26 sept.) — tu viens ?"]);
+    // La clé est celle d'avant le réglage : un rejeu du même jour ne renvoie rien.
+    expect(faux.logs.map((l) => l.dedupKey)).toContain("rappel_j2_sj2_2026-09-26-1930_u4");
+    faux.emails = [];
+    faux.jalons = [];
+    expect(await envoyerRappelsSansReponse(JOUR)).toEqual({ seances: 0, emails: 0 });
+    expect(faux.emails).toEqual([]);
   });
 
   it("ne relance pas un invité sans accès actif, par aucun canal personnel", async () => {
@@ -581,7 +597,7 @@ describe("rappels aux personnes sans réponse", () => {
   it("pose la même question sur le téléphone, aux mêmes personnes", async () => {
     await envoyerRappelsSansReponse(JOUR);
     expect(faux.push.map((p) => p.userId)).toEqual(["u4", "u4"]);
-    expect(faux.push.map((p) => p.titre)).toEqual(["Cours dans une semaine", "Cours dans deux jours"]);
+    expect(faux.push.map((p) => p.titre)).toEqual(["Cours dans 7 jours", "Cours dans 2 jours"]);
     expect(faux.push[0].corps).toBe("Jeudi 1 oct. à 19h30, Gymnase municipal — tu viens ?");
     expect(faux.push.every((p) => p.url === "/seances")).toBe(true);
     // Deux jalons, deux clés : le second rappel n'est pas avalé par le premier.

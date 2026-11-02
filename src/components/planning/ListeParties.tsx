@@ -1,5 +1,6 @@
 "use client";
 
+import { SEPARATEUR_PARTIE } from "@/components/seances/programme-cours";
 import { useState } from "react";
 
 import { ajouterPartie, deplacerElement, retirerPartie } from "@/actions/planning";
@@ -113,7 +114,7 @@ export function ListeParties({ sessionId, parties, compact = false }: { sessionI
   const intitules = partiesNommees(modifiable ? nbParties : groupes.length);
   return (
     <div className="flex flex-col gap-3">
-      {groupes.map((groupe) => {
+      {groupes.map((groupe, i) => {
         const { elements } = groupe;
         const idTitre = `${sessionId}-partie-${groupe.bloc}`;
         const couleur = classesPartie(groupe.bloc);
@@ -121,7 +122,7 @@ export function ListeParties({ sessionId, parties, compact = false }: { sessionI
           // Sans intitulé, la partie n'est plus une région nommée : une `section` sans nom ne se
           // distingue de rien, la liste suffit. Avec, la bande de sa teinte borde tout le bloc —
           // titre, éléments et menu d'ajout —, sans fond.
-          <section key={groupe.bloc} aria-labelledby={intitules ? idTitre : undefined} className={`flex min-w-0 flex-col gap-2 ${intitules ? `${couleur.bande} pl-3` : ""}`}>
+          <section key={groupe.bloc} aria-labelledby={intitules ? idTitre : undefined} className={`flex min-w-0 flex-col gap-2 ${intitules ? `${couleur.bande} pl-3` : ""} ${i > 0 ? `${SEPARATEUR_PARTIE} pt-3` : ""}`}>
             {intitules && (
               <h3 id={idTitre} className={`font-titre text-base font-semibold ${couleur.titre}`}>
                 {nomPartie(groupe.bloc)}

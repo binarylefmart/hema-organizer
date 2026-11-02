@@ -17,7 +17,7 @@
       une période, corriger les présences — une par une ou par lots —, tenir l’annuaire et les liens personnels,
       changer les rôles, nommer les administrateurs, régler la part d’effectif et ce que le
       club envoie, réparer les pannes d’accès.</p>
-    <p class="couverture-pied">Version 0.79.0 — 7 octobre 2026 · organizer.mon-club.fr</p>
+    <p class="couverture-pied">Version 0.80.0 — 7 octobre 2026 · organizer.mon-club.fr</p>
   </section>
 
   <section class="sommaire">
@@ -682,11 +682,31 @@
     veille</strong> — 18:00 par défaut, à l’heure du club (le fuseau se règle dans <strong>Club</strong>). Cochez ensuite, message par message, ce qui part
     par email, sur le téléphone, dans Discord, sur Telegram ou sur le site du club.</p>
 
+  <h3>Choisir quand partent les rappels</h3>
+
+  <figure class="pc">
+    <img src="../../previews/admin-rappels-jalons/pc-clair.jpg" alt="Notifications : la carte Rappels aux personnes sans réponse, trois cases jours avant">
+    <figcaption>Trois rappels au plus, de la veille à trente jours avant.</figcaption>
+  </figure>
+
+  <ol class="etapes">
+    <li>Carte <strong>« Rappels aux personnes sans réponse »</strong>, sous l’heure du récap.</li>
+    <li>Écrivez dans chaque case le nombre de <strong>jours avant le cours</strong> : de 1 (la veille) à
+      30, trois rappels au plus, jamais deux le même jour.</li>
+    <li>Laissez une case vide pour en avoir moins ; toutes vides, plus aucun rappel ne part.</li>
+    <li>Appuyez sur <strong>« Enregistrer les rappels »</strong>.</li>
+  </ol>
+
+  <p>Le titre du message s’adapte tout seul : « Cours demain », « Cours dans 7 jours ». La carte
+    <strong>« Combien d’emails partent »</strong> compte un envoi par rappel réglé.</p>
+
+  <div class="clear"></div>
+
   <table>
     <thead><tr><th>Message</th><th>Qui le reçoit, et quand</th></tr></thead>
     <tbody>
       <tr><td><strong>Récap de la veille</strong></td><td>La veille du cours, à l’heure réglée, aux inscrits Présent ou Peut-être, et sur le salon</td></tr>
-      <tr><td><strong>Rappel aux personnes sans réponse</strong></td><td>Une semaine, puis deux jours avant le cours</td></tr>
+      <tr><td><strong>Rappel aux personnes sans réponse</strong></td><td>Aux délais réglés juste en dessous — 7 puis 2 jours avant le cours par défaut</td></tr>
       <tr><td><strong>Séance annulée</strong></td><td>Dès l’annulation, à tous les invités et sur le salon</td></tr>
       <tr><td><strong>Alerte « peu de monde »</strong></td><td>Le matin, aux instructeurs, dans les 3 jours avant le cours, sous la part d’effectif réglée</td></tr>
       <tr><td><strong>Désistement de dernière minute</strong></td><td>Dès qu’un membre retire son Présent (ou son Peut-être) dans les 2 heures avant le cours, à tous les instructeurs du club (sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être), par email et téléphone seulement — chacun peut la couper depuis Mon profil : il nomme la personne</td></tr>
@@ -761,6 +781,26 @@
     écrit sur chaque carte de cours : <strong>Peu de monde</strong>, <strong>Effectif juste</strong>,
     <strong>Bien rempli</strong>. Il ne descend jamais sous <strong>4 personnes</strong>, et se recalcule
     sur l’effectif invité de chaque trimestre.</p>
+
+  <h3>Ouvrir le choix des cours</h3>
+
+  <figure class="pc">
+    <img src="../../previews/admin-club-choix-cours/pc-clair.jpg" alt="Administration → Club : la carte Choix des cours">
+    <figcaption>Fermé à l’installation : rien ne change pour les membres avant que vous l’ouvriez.</figcaption>
+  </figure>
+
+  <ol class="etapes">
+    <li>Espace admin → <strong>Club</strong>, carte <strong>Choix des cours</strong>.</li>
+    <li>Cochez <strong>« Les membres présents peuvent indiquer le ou les cours qu’ils suivront »</strong>.</li>
+    <li>Appuyez sur <strong>« Enregistrer le choix des cours »</strong>.</li>
+  </ol>
+
+  <p>Après « Présent », chaque carte de séance propose alors une case par cours, option ou atelier — pas
+    l’échauffement — avec le nombre d’inscrits, et le tableau de bord gagne sa carte
+    <strong>Choix des cours</strong>. Répondre « Absent » efface les choix. Les taux, les rappels et les
+    alertes ne changent pas. Décocher masque tout ; les choix déjà faits reviennent si vous rouvrez.</p>
+
+  <div class="clear"></div>
 
   <!-- ================================================================= 11 -->
   <h2 id="p11">11. Connaître les rendez-vous quotidiens</h2>
@@ -861,7 +901,7 @@
   <p>Mettre le serveur à jour : <code>docs/DEPLOIEMENT.md</code>. Ce qui protège les accès :
     <code>docs/SECURITE.md</code>.</p>
 
-  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.79.0 — 7 octobre 2026 ·
+  <p class="fin">HEMA Organizer — Guide de l’administrateur · Version 0.80.0 — 7 octobre 2026 ·
     Mon club d'AMHE · organizer.mon-club.fr — à lire après les guides du
     membre et de l’instructeur.</p>
 </div>

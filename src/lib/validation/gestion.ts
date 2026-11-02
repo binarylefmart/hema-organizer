@@ -257,12 +257,15 @@ const seancesDuLot = z
   .max(SELECTION_MAX, "Sélection trop grande.")
   .transform((ids) => [...new Set(ids)]);
 
-export const GESTES_SEANCES_MASSE = ["annuler", "retablir", "lieu", "horaire", "supprimer"] as const;
+export const GESTES_SEANCES_MASSE = ["retirer", "annuler", "retablir", "lieu", "horaire", "supprimer"] as const;
 export type GesteSeancesMasse = (typeof GESTES_SEANCES_MASSE)[number];
 
 export const seancesEnMasseSchema = z.discriminatedUnion("geste", [
   z.object({ geste: z.literal("annuler"), sessionIds: seancesDuLot, motif: annulationSchema.shape.motif }),
   z.object({ geste: z.literal("retablir"), sessionIds: seancesDuLot }),
+  // L'élément se désigne par son nom calculé (« Partie 2 · Option ») : c'est sa place dans chaque
+  // séance, et la seule chose que les séances d'un lot ont en commun.
+  z.object({ geste: z.literal("retirer"), sessionIds: seancesDuLot, libelle: texteCourt(120).min(1, "Choisis l'élément à retirer.") }),
   z.object({ geste: z.literal("lieu"), sessionIds: seancesDuLot, lieu: texteCourt(120).min(1, "Indique le lieu."), adresse: texteCourt(200) }),
   z
     .object({ geste: z.literal("horaire"), sessionIds: seancesDuLot, heureDebut: heureSchema, heureFin: heureSchema })
@@ -351,6 +354,27 @@ export const decisionAtelierSchema = z.object({
 });
 
 export const recapHourSchema = z.object({ recapHour: heureSchema });
+
+/** Plafonds des délais de rappel (réglage `rappels.jalons`). */
+export const JALONS_RAPPEL_MAX = 3;
+export const JALON_RAPPEL_JOURS_MAX = 30;
+
+/**
+ * **Les délais des rappels aux personnes sans réponse** : de 0 à 3 nombres de jours, entiers, tous
+ * différents, entre 1 et 30 — rangés du plus lointain au plus proche, l'ordre où ils partent. Une
+ * liste vide coupe les rappels (la matrice des notifications reste l'autre façon de le faire).
+ */
+export const jalonsRappelSchema = z
+  .array(
+    z
+      .number({ error: "Indique un nombre de jours." })
+      .int("Un nombre de jours entier.")
+      .min(1, "Au moins 1 jour avant le cours.")
+      .max(JALON_RAPPEL_JOURS_MAX, `Au plus ${JALON_RAPPEL_JOURS_MAX} jours avant le cours.`),
+  )
+  .max(JALONS_RAPPEL_MAX, `Au plus ${JALONS_RAPPEL_MAX} rappels.`)
+  .refine((j) => new Set(j).size === j.length, "Deux rappels ne peuvent pas tomber le même jour.")
+  .transform((j) => [...j].sort((a, b) => b - a));
 
 /**
  * **Deux réglages, deux formulaires**.

@@ -1,3 +1,4 @@
+import { retoursALaLigne } from "@/lib/retours-ligne";
 import { libelleDuree } from "@/components/evenements/libelles";
 import { enParallele, type NatureElement, type Niveau } from "./constants";
 import { addDays, formatDateLongue, formatHoraire, todayIso } from "./dates";
@@ -151,7 +152,7 @@ export function versSeancePublique(s: SeancePartagee): SeancePublique {
       libelle: c.libelle,
       estOption: enParallele(c.nature),
       theme: c.theme,
-      description: c.description,
+      description: retoursALaLigne(c.description),
       niveau: c.niveau,
       atelier: c.atelier,
     })),

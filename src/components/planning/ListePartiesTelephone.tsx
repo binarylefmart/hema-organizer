@@ -1,5 +1,6 @@
 "use client";
 
+import { SEPARATEUR_PARTIE } from "@/components/seances/programme-cours";
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type PointerEvent as EvenementPointeur, type ReactNode } from "react";
 import { deplacerElement, retirerPartie } from "@/actions/planning";
 import { enParallele, nomElement, nomPartie, partiesNommees } from "@/lib/constants";
@@ -308,13 +309,13 @@ export function ListePartiesTelephone({
         {erreurDeplacement}
       </p>
       <div ref={conteneur} className="relative flex flex-col gap-3">
-        {groupes.map((groupe) => {
+        {groupes.map((groupe, i) => {
           const idTitre = `${sessionId}-partie-tel-${groupe.bloc}`;
           const couleur = classesPartie(groupe.bloc);
           return (
             // Avec plusieurs parties, chacune prend sa teinte (`classesPartie`) : titre et bande à
             // gauche du bloc entier, sans fond — la même lecture que sur l'ordinateur.
-            <section key={groupe.bloc} aria-labelledby={intitules ? idTitre : undefined} className={`flex min-w-0 flex-col gap-2 ${intitules ? `${couleur.bande} pl-2` : ""}`}>
+            <section key={groupe.bloc} aria-labelledby={intitules ? idTitre : undefined} className={`flex min-w-0 flex-col gap-2 ${intitules ? `${couleur.bande} pl-2` : ""} ${i > 0 ? `${SEPARATEUR_PARTIE} pt-3` : ""}`}>
               {intitules && (
                 <h3 id={idTitre} className={`font-titre text-base font-semibold ${couleur.titre}`}>
                   {nomPartie(groupe.bloc)}

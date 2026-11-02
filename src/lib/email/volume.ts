@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { addDays, todayIso } from "@/lib/dates";
+import { JALONS, phraseJalons } from "@/lib/notifications/planification";
 import {
   DESCRIPTIONS,
   TYPES_ROUTABLES,
@@ -75,6 +76,8 @@ export type AssietteEnvois = {
   coursParSemaine: number;
   instructeurs: number;
   prefs: PreferencesNotifications;
+  /** Les délais des rappels réglés par le club (`getJalonsRappel`) : une vague par jalon. Défaut : 7 puis 2. */
+  jalonsRappel?: readonly number[];
 };
 
 /** Le coût d'un envoi : le nombre de destinataires, ou **un** message si la notification passe par la liste. */
@@ -83,7 +86,7 @@ function coutUnitaire(mode: ModeEnvoi, destinataires: number): number {
 }
 
 /** Estimation complète (fonction pure : aucune base, tout arrive en argument). */
-export function estimerEnvois({ membresAvecEmail, coursParSemaine, instructeurs, prefs }: AssietteEnvois): EstimationEnvois {
+export function estimerEnvois({ membresAvecEmail, coursParSemaine, instructeurs, prefs, jalonsRappel = JALONS }: AssietteEnvois): EstimationEnvois {
   const mode = (type: TypeNotification) => modeEnvoiDans(prefs, type);
   const recap = coutUnitaire(mode("recap_veille"), membresAvecEmail);
   const rappel = coutUnitaire(mode("rappel_sans_reponse"), membresAvecEmail);
@@ -93,9 +96,10 @@ export function estimerEnvois({ membresAvecEmail, coursParSemaine, instructeurs,
   // du club, et toujours « par membre » (il nomme quelqu'un, il n'est pas routable).
   const desistement = coutUnitaire(mode("desistement_tardif"), instructeurs);
   const evenement = coutUnitaire(mode("evenement_nouveau"), membresAvecEmail);
-  // Un récap par cours, et deux rappels par cours (J-7 puis J-2) : c'est tout le régulier.
-  const parSemaine = coursParSemaine * (recap + 2 * rappel);
-  const pireJour = recap + 2 * rappel;
+  // Un récap par cours, et un rappel par jalon réglé (J-7 puis J-2 par défaut) : c'est tout le régulier.
+  const vagues = jalonsRappel.length;
+  const parSemaine = coursParSemaine * (recap + vagues * rappel);
+  const pireJour = recap + vagues * rappel;
   const lignes: LigneVolume[] = [
     { type: "recap_veille", titre: DESCRIPTIONS.recap_veille.titre, mode: mode("recap_veille"), parEnvoi: recap, parSemaine: coursParSemaine * recap, cadence: "la veille de chaque cours" },
     {
@@ -103,8 +107,8 @@ export function estimerEnvois({ membresAvecEmail, coursParSemaine, instructeurs,
       titre: DESCRIPTIONS.rappel_sans_reponse.titre,
       mode: mode("rappel_sans_reponse"),
       parEnvoi: rappel,
-      parSemaine: coursParSemaine * 2 * rappel,
-      cadence: "deux fois par cours (une semaine puis deux jours avant)",
+      parSemaine: coursParSemaine * vagues * rappel,
+      cadence: vagues === 0 ? "aucun rappel réglé" : `${vagues === 1 ? "une fois" : vagues === 2 ? "deux fois" : "trois fois"} par cours (${phraseJalons(jalonsRappel)})`,
     },
     { type: "seance_annulee", titre: DESCRIPTIONS.seance_annulee.titre, mode: mode("seance_annulee"), parEnvoi: annulation, parSemaine: null, cadence: "à chaque annulation" },
     { type: "effectif_faible", titre: DESCRIPTIONS.effectif_faible.titre, mode: mode("effectif_faible"), parEnvoi: effectif, parSemaine: null, cadence: "au plus une fois par cours menacé" },

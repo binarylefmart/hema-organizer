@@ -2,6 +2,21 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.80.0
+
+### Nouveautés
+
+- **seances** : lisibilité du programme — la description garde ses retours à la ligne (écran, pages de partage, emails, Discord, Telegram, API ; les « \n » écrits en toutes lettres sont rétablis) et un pointillé sépare les parties
+- **presences** : choix des cours par présence (facultatif, réglage du club) — cases après « Présent », compteur par cours sur la carte, statistiques par cours, niveau et mois au tableau de bord ; migration `choix_des_cours`
+- **notifications** : délais des rappels aux personnes sans réponse réglables par le club (0 à 3, de 1 à 30 jours ; titres « Cours demain » / « Cours dans N jours »)
+- **presences** : répondre pour toutes les séances à venir d'une période en un geste (réponses déjà données gardées par défaut)
+- **seances** : retirer un élément du programme de plusieurs séances à la fois (choisi par son nom ; séances annulées ou commencées et ateliers liés laissés de côté)
+
+### Autres changements
+
+- guides, README, SECURITE et cahier des charges pour les retours du 2/11
+- état du 2/11 — retours du club d'Arras
+
 ## 0.79.0
 
 ### Nouveautés

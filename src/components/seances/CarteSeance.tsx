@@ -8,6 +8,7 @@ import { BoutonPartager } from "@/components/partage/BoutonPartager";
 import { partageSeance } from "@/components/partage/contenu";
 import { BarreTaux, LigneTaux } from "./BarreTaux";
 import { RepartitionPresences } from "./RepartitionPresences";
+import { ChoixCours } from "./ChoixCours";
 import { BoutonsPresence } from "./BoutonsPresence";
 import { ListeParticipants } from "./ListeParticipants";
 
@@ -172,11 +173,15 @@ export function CarteSeance({
           <div className="flex flex-col gap-4">
             <div className="min-w-0">
               {s.inscrit ? (
-                <BoutonsPresence sessionId={s.id} statut={s.monStatut} verrouille={s.commencee} />
+                <BoutonsPresence sessionId={s.id} statut={s.monStatut} verrouille={s.commencee} choix={s.choixCours} />
               ) : (
-                <p className="rounded-xl bg-surface-douce px-3 py-2 text-texte-secondaire">
-                  Tu n&apos;es pas inscrit(e) à la période « {s.periodNom} » : consultation seule.
-                </p>
+                <div className="flex flex-col gap-2">
+                  <p className="rounded-xl bg-surface-douce px-3 py-2 text-texte-secondaire">
+                    Tu n&apos;es pas inscrit(e) à la période « {s.periodNom} » : consultation seule.
+                  </p>
+                  {/* L'encadrement non invité voit quand même comment le cours se répartit. */}
+                  {s.choixCours ? <ChoixCours choix={s.choixCours} statut={null} verrouille /> : null}
+                </div>
               )}
             </div>
             {/* Le grand chiffre (coloré par le palier de remplissage), puis la répartition des trois

@@ -14,6 +14,7 @@ import {
   getPreferencesNotifications,
 } from "@/lib/notifications/preferences";
 import { chiffresDuClub, estimerEnvois } from "@/lib/email/volume";
+import { getJalonsRappel } from "@/lib/settings";
 import { enregistrerListeEmail, testerEnvoiEmail } from "@/actions/admin";
 import { Alerte } from "@/components/ui/Alerte";
 import { Carte } from "@/components/ui/Carte";
@@ -46,7 +47,7 @@ export default async function PageCanalEmail() {
       select: { id: true, type: true, statut: true, erreur: true, date: true, user: { select: { prenom: true, nom: true } } },
     }),
   ]);
-  const volume = estimerEnvois({ ...chiffres, prefs });
+  const volume = estimerEnvois({ ...chiffres, prefs, jalonsRappel: await getJalonsRappel() });
   const surEmail = TYPES_NOTIFICATION.filter((t) => COUPLES_EMIS[t].includes("email"));
   const lignes: Array<{ cle: string; valeur: string }> = [
     { cle: "Serveur", valeur: e.SMTP_HOST ? `${e.SMTP_HOST}:${e.SMTP_PORT}` : "non renseigné" },

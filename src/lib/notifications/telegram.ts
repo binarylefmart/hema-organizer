@@ -1,3 +1,4 @@
+import { retoursALaLigne } from "@/lib/retours-ligne";
 import { chiffrer, dechiffrer, masquer } from "@/lib/crypto";
 import { env } from "@/lib/env";
 import { CLES, getSetting, setSetting } from "@/lib/settings";
@@ -144,9 +145,9 @@ export function texteTelegram(embed: DiscordEmbed): string {
     // Un titre cliquable, quand l'embed en portait un : c'est le lien vers la page de l'annonce.
     lignes.push(embed.url ? `<a href="${echapperTelegram(embed.url)}">${titre}</a>` : titre);
   }
-  if (embed.description) lignes.push(echapperTelegram(embed.description));
+  if (embed.description) lignes.push(echapperTelegram(retoursALaLigne(embed.description)));
   for (const champ of embed.fields ?? []) {
-    const valeur = echapperTelegram(champ.value).trim();
+    const valeur = echapperTelegram(retoursALaLigne(champ.value)).trim();
     lignes.push(valeur ? `<b>${echapperTelegram(champ.name)}</b> — ${valeur}` : `<b>${echapperTelegram(champ.name)}</b>`);
   }
   if (embed.footer?.text) lignes.push(`<i>${echapperTelegram(embed.footer.text)}</i>`);

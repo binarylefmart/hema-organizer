@@ -7,7 +7,8 @@ import { urlDesinscription } from "./desinscription";
 import { clesDejaEnvoyees, journaliser, marquerEchec, notifierParPush, pushPossible } from "./journal";
 import type { ChargePush } from "./push";
 import { seancesAvecInvites, type MembreSeance, type SeanceAvecInvites } from "./invites";
-import { datesJalons, empreinteCreneau, jalonPour, type Jalon, type SeanceCle } from "./planification";
+import { datesJalons, empreinteCreneau, jalonPour, titreRappel, type Jalon, type SeanceCle } from "./planification";
+import { getJalonsRappel } from "@/lib/settings";
 import { envoiPossible } from "./canaux";
 import { adresseListePour, destinataireRetenu, envoiCollectifDans, getPreferencesNotifications, type PreferencesNotifications } from "./preferences";
 import { identite } from "@/lib/identite";
@@ -76,7 +77,7 @@ export function destinatairesRappelPush(prefs: PreferencesNotifications, membres
  */
 export function chargeRappelPush(s: SeanceAvecInvites, jalon: Jalon): ChargePush {
   return {
-    titre: jalon === 7 ? "Cours dans une semaine" : "Cours dans deux jours",
+    titre: titreRappel(jalon),
     corps: `${formatDateCourte(s.seance.date)} à ${formatHeure(s.seance.heureDebut)}, ${s.seance.lieu} — tu viens ?`,
     url: "/seances",
     tag: `rappel-${s.id}`,
@@ -85,7 +86,10 @@ export function chargeRappelPush(s: SeanceAvecInvites, jalon: Jalon): ChargePush
 
 export type BilanRappels = { seances: number; emails: number };
 
-/** Rappels du jour : séances à J-7 et à J-2. Retourne ce qui est réellement parti. */
+/**
+ * Rappels du jour : séances à chacun des jalons réglés par le club (`rappels.jalons`, J-7 et J-2 par
+ * défaut, aucun si la liste est vide). Retourne ce qui est réellement parti.
+ */
 export async function envoyerRappelsSansReponse(now = new Date()): Promise<BilanRappels> {
   const bilan: BilanRappels = { seances: 0, emails: 0 };
   /*
@@ -96,16 +100,18 @@ export async function envoyerRappelsSansReponse(now = new Date()): Promise<Bilan
    */
   const [parEmail, parPush] = await Promise.all([envoiPossible("rappel_sans_reponse", "email"), pushPossible("rappel_sans_reponse")]);
   if (!parEmail && !parPush) return bilan;
+  const jalons = await getJalonsRappel();
+  if (jalons.length === 0) return bilan;
   const aujourdHui = todayIso(now);
-  const seances = await seancesAvecInvites(datesJalons(aujourdHui), now);
+  const seances = await seancesAvecInvites(datesJalons(aujourdHui, jalons), now);
   bilan.seances = seances.length;
   if (seances.length === 0) return bilan;
   const prefs = await getPreferencesNotifications();
   for (const s of seances) {
-    const jalon = jalonPour(s.seance.date, aujourdHui);
-    if (jalon === null) continue; // ceinture et bretelles : la requête ne ramène que J-7 et J-2
+    const jalon = jalonPour(s.seance.date, aujourdHui, jalons);
+    if (jalon === null) continue; // ceinture et bretelles : la requête ne ramène que les jalons réglés
     if (parEmail) {
-      bilan.emails += envoiCollectifDans(prefs, "rappel_sans_reponse") ? await envoyerRappelListe(s, jalon, prefs) : await envoyerRappelsSeance(s, jalon, prefs, now);
+      bilan.emails += envoiCollectifDans(prefs, "rappel_sans_reponse") ? await envoyerRappelListe(s, jalon, prefs, jalons) : await envoyerRappelsSeance(s, jalon, prefs, now, jalons);
     }
     // Le push ne peut ni retarder ni faire échouer les emails : `notifierParPush` avale tout.
     if (parPush) await envoyerRappelsPush(s, jalon, prefs);
@@ -129,7 +135,7 @@ export async function envoyerRappelsSansReponse(now = new Date()): Promise<Bilan
  * destinataires. Quelqu'un qui a coupé ses rappels compte quand même comme une réponse manquante, et
  * quelqu'un sans accès actif aussi : il est invité, sa réponse manque.
  */
-async function envoyerRappelListe(s: SeanceAvecInvites, jalon: Jalon, prefs: PreferencesNotifications): Promise<number> {
+async function envoyerRappelListe(s: SeanceAvecInvites, jalon: Jalon, prefs: PreferencesNotifications, jalons: readonly number[]): Promise<number> {
   const adresse = adresseListePour(prefs, "rappel_sans_reponse");
   if (adresse === null) return 0;
   const sansReponse = s.membres.filter((m) => m.statut === null && m.actif !== false).length;
@@ -138,7 +144,7 @@ async function envoyerRappelListe(s: SeanceAvecInvites, jalon: Jalon, prefs: Pre
   const club = await identite();
   // Le message d'abord, la clé ensuite : `messageCollectif` lève, et une clé posée avant la levée
   // éteindrait le rappel pour toujours (voir `envoyerRecapListe`, qui l'explique en détail).
-  const message = messageCollectif(emailRappelListe({ seance: s.seance, chiffres: s.chiffres, jours: jalon, sansReponse, nomApp: club.nomCourt }));
+  const message = messageCollectif(emailRappelListe({ seance: s.seance, chiffres: s.chiffres, jours: jalon, jalons, sansReponse, nomApp: club.nomCourt }));
   if (!(await journaliser({ type: TYPE_RAPPEL, canal: "EMAIL", sessionId: s.id, userId: null, dedupKey: cle, statut: "ENVOYE" }))) return 0;
   enqueueEmailListe(adresse, message, cle, (err) => {
     if (err) void marquerEchec(cle, err.message);
@@ -157,7 +163,7 @@ async function envoyerRappelsPush(s: SeanceAvecInvites, jalon: Jalon, prefs: Pre
   });
 }
 
-async function envoyerRappelsSeance(s: SeanceAvecInvites, jalon: Jalon, prefs: PreferencesNotifications, now: Date): Promise<number> {
+async function envoyerRappelsSeance(s: SeanceAvecInvites, jalon: Jalon, prefs: PreferencesNotifications, now: Date, jalons: readonly number[]): Promise<number> {
   const destinataires = destinatairesRappel(prefs, s.membres);
   if (destinataires.length === 0) return 0;
   const deja = await clesDejaEnvoyees(destinataires.map((m) => cleRappel(s, m.id, jalon)));
@@ -171,6 +177,7 @@ async function envoyerRappelsSeance(s: SeanceAvecInvites, jalon: Jalon, prefs: P
       seance: s.seance,
       chiffres: s.chiffres,
       jours: jalon,
+      jalons,
       urlApp: `${baseUrl()}/seances`,
       urlDesinscription: urlDesinscription(m.id, now),
     });

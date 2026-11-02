@@ -9,9 +9,36 @@ import { fuseauCourant } from "@/lib/fuseau";
  * - l'alerte « peu de monde » ne regarde que les cours des trois jours qui viennent.
  */
 
-/** Jalons des rappels aux personnes sans réponse, en jours avant la séance. */
+/**
+ * Jalons par défaut, en jours avant l'échéance : ceux de l'alerte de fin de période (fixes), et
+ * ceux des rappels aux personnes sans réponse tant que le club n'a rien réglé (`rappels.jalons`,
+ * `getJalonsRappel`).
+ */
 export const JALONS = [7, 2] as const;
-export type Jalon = (typeof JALONS)[number];
+/** Un jalon : un nombre de jours avant l'échéance (1 à 30 pour les rappels). */
+export type Jalon = number;
+
+/** « demain », « dans 7 jours » — le délai d'un rappel, dit comme on le dirait. */
+export function delaiCours(jours: number): string {
+  return jours === 1 ? "demain" : `dans ${jours} jours`;
+}
+
+/** Le titre générique d'un rappel : « Cours demain », « Cours dans 7 jours ». */
+export function titreRappel(jours: number): string {
+  return `Cours ${delaiCours(jours)}`;
+}
+
+/**
+ * La cadence des rappels, dite en entier : « 7 jours puis 2 jours avant chaque cours », « 3 jours
+ * avant chaque cours, puis la veille », « la veille de chaque cours ».
+ */
+export function phraseJalons(jalons: readonly number[]): string {
+  const enJours = [...jalons].filter((j) => j > 1).sort((a, b) => b - a).map((j) => `${j} jours`);
+  const veille = jalons.includes(1);
+  const liste = enJours.length <= 1 ? enJours.join("") : `${enJours.slice(0, -1).join(", ")} puis ${enJours[enJours.length - 1]}`;
+  if (!veille) return liste ? `${liste} avant chaque cours` : "";
+  return liste ? `${liste} avant chaque cours, puis la veille` : "la veille de chaque cours";
+}
 
 /** "HH:MM" en heure de Paris à l'instant donné. */
 export function heureParis(now = new Date()): string {
@@ -82,14 +109,14 @@ export function dateRecap(aujourdHui: string): string {
 }
 
 /** Dates des séances concernées par les rappels aujourd'hui : J-7 et J-2. */
-export function datesJalons(aujourdHui: string): string[] {
-  return JALONS.map((j) => addDays(aujourdHui, j));
+export function datesJalons(aujourdHui: string, jalons: readonly number[] = JALONS): string[] {
+  return jalons.map((j) => addDays(aujourdHui, j));
 }
 
 /** Jalon d'une séance pour la journée en cours, ou null si ce n'est ni J-7 ni J-2. */
-export function jalonPour(dateSeance: string, aujourdHui: string): Jalon | null {
+export function jalonPour(dateSeance: string, aujourdHui: string, jalons: readonly number[] = JALONS): Jalon | null {
   const restants = joursAvant(aujourdHui, dateSeance);
-  return (JALONS as readonly number[]).includes(restants) ? (restants as Jalon) : null;
+  return jalons.includes(restants) ? restants : null;
 }
 
 /**

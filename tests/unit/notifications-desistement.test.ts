@@ -472,16 +472,20 @@ describe("le déclencheur : le membre lui-même, et sa réponse avant tout", () 
     expect(faux.emails).toHaveLength(0);
     expect(faux.push).toHaveLength(0);
     expect(faux.logs).toHaveLength(0);
-    // Le geste de masse ne passe pas par le même module, et la source le dit : un seul appel, dans
-    // l'action du membre.
+    // Les corrections du bureau ne passent pas par ce module, et la source le dit : deux appels, tous
+    // deux dans les actions du membre qui répond pour lui-même — sa réponse à une séance
+    // (`indiquerPresence`) et sa réponse à toute une période (`repondrePourLaPeriode`).
     expect(typeof modifierPresencesEnMasse).toBe("function");
     const source = readFileSync(path.join(process.cwd(), "src/actions/presences.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-    expect(source.match(/signalerDesistementTardif\(/g)).toHaveLength(1);
-    const appel = source.indexOf("signalerDesistementTardif(");
-    expect(appel).toBeGreaterThan(source.indexOf("export async function indiquerPresence("));
-    expect(appel).toBeLessThan(source.indexOf("export async function modifierPresenceMembre("));
+    const appels = [...source.matchAll(/signalerDesistementTardif\(/g)].map((m) => m.index ?? -1);
+    expect(appels).toHaveLength(2);
+    const [unitaire, periode] = appels;
+    expect(unitaire).toBeGreaterThan(source.indexOf("export async function indiquerPresence("));
+    expect(periode).toBeGreaterThan(source.indexOf("export async function repondrePourLaPeriode("));
+    for (const appel of appels) expect(appel).toBeLessThan(source.indexOf("export async function modifierPresenceMembre("));
     // Et après l'écriture de la réponse.
-    expect(appel).toBeGreaterThan(source.indexOf("db.attendance.upsert("));
+    expect(unitaire).toBeGreaterThan(source.indexOf("db.attendance.upsert("));
+    expect(periode).toBeGreaterThan(source.indexOf("db.attendance.upsert(", source.indexOf("export async function repondrePourLaPeriode(")));
   });
 });
 

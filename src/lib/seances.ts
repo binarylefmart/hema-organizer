@@ -4,6 +4,8 @@ import { compteursDepuisTotaux, type Compteurs } from "./presences";
 import { isStaff, type UserLike } from "./permissions";
 import { parseDisciplines, type AttendanceStatut } from "./constants";
 import { getThemes, programmeDepuisParties, type ProgrammeSeance } from "./planning";
+import { getChoixCoursActif } from "./settings";
+import { choixDeLaSeance, type ChoixCoursCarte } from "@/components/seances/choix-cours";
 // La borne d'arrivée dans la période n'a qu'une définition, et elle vit là où le taux personnel du
 // bureau se calcule : deux versions de cette règle, c'étaient deux chiffres pour la même personne.
 import { jourDArrivee } from "./tableau-de-bord";
@@ -35,6 +37,14 @@ export type SeanceCarte = {
   ateliers: SeanceAtelier[];
   /** Cases du planning renseignées (partie, instructeur, thème, atelier) */
   programme: ProgrammeSeance;
+  /**
+   * Tous les éléments du programme, vides compris, par leur nom calculé — ce que « Retirer un élément
+   * du programme » propose en sélection multiple. Un élément Atelier qui porte un atelier n'est pas
+   * retirable d'ici (voir `retirerElementEnMasse`).
+   */
+  elements: Array<{ libelle: string; retirable: boolean }>;
+  /** Le choix des cours par présence, quand le club l'a ouvert (`getChoixCoursActif`) — sinon `null`. */
+  choixCours: ChoixCoursCarte | null;
   compteurs: Compteurs;
   /** Statut du membre courant (null = pas encore répondu) */
   monStatut: string | null;
@@ -57,6 +67,7 @@ const INCLUDE_CARTE = {
       instructeur: { select: { prenom: true, nom: true } },
       instructeurSecond: { select: { prenom: true, nom: true } },
       atelier: { select: { id: true, titre: true } },
+      choix: { select: { userId: true } },
     },
   },
   ateliers: {
@@ -163,10 +174,11 @@ export function participantsAPlat(liste: ListesParStatut): ParticipantStatut[] {
   ]);
 }
 
-function versCarte(s: SessionBrute, invites: readonly Participant[], user: UserLike & { id: string }, now: Date, themesClub: readonly string[]): SeanceCarte {
+function versCarte(s: SessionBrute, invites: readonly Participant[], user: UserLike & { id: string }, now: Date, themesClub: readonly string[], choixActif = false): SeanceCarte {
   const userId = user.id;
   // Une seule répartition, lue deux fois : le compteur en est le dénombrement, la liste l'affichage.
   const participants = listeParticipants(s.attendances, invites);
+  const programme = programmeDepuisParties(s.parties, themesClub);
   return {
     id: s.id,
     periodId: s.periodId,
@@ -183,7 +195,11 @@ function versCarte(s: SessionBrute, invites: readonly Participant[], user: UserL
     motifAnnulation: s.motifAnnulation,
     instructeurs: s.instructeurs.map((i) => i.user),
     ateliers: s.ateliers.map((a) => ({ id: a.id, titre: a.titre, animateur: `${a.proposePar.prenom} ${a.proposePar.nom}` })),
-    programme: programmeDepuisParties(s.parties, themesClub),
+    programme,
+    choixCours: choixActif
+      ? choixDeLaSeance(s.parties, new Set(programme.map((l) => l.id)), new Set(participants.presents.map((p) => p.id)), userId)
+      : null,
+    elements: s.parties.map((p) => ({ libelle: p.libelle, retirable: !(p.nature === "ATELIER" && p.atelierId) })),
     compteurs: compteursDeLaListe(participants, invites.length),
     monStatut: s.attendances.find((a) => a.userId === userId)?.statut ?? null,
     inscrit: invites.some((p) => p.id === userId),
@@ -207,8 +223,8 @@ export async function prochainesSeances(user: UserLike & { id: string }, now = n
     include: INCLUDE_CARTE,
   });
   // Une seule lecture de la liste des invités par période concernée, partagée par toutes ses cartes
-  const [invites, themes] = await Promise.all([invitesDesPeriodes(sessions.map((s) => s.periodId)), getThemes()]);
-  return sessions.map((s) => versCarte(s, invites.get(s.periodId) ?? [], user, now, themes));
+  const [invites, themes, choixActif] = await Promise.all([invitesDesPeriodes(sessions.map((s) => s.periodId)), getThemes(), getChoixCoursActif()]);
+  return sessions.map((s) => versCarte(s, invites.get(s.periodId) ?? [], user, now, themes, choixActif));
 }
 
 /**
@@ -227,16 +243,16 @@ export async function seancesDePeriode(periodId: string, user: UserLike & { id: 
     include: INCLUDE_CARTE,
   });
   if (sessions.length === 0) return [];
-  const [parPeriode, themes] = await Promise.all([invitesDesPeriodes([periodId]), getThemes()]);
+  const [parPeriode, themes, choixActif] = await Promise.all([invitesDesPeriodes([periodId]), getThemes(), getChoixCoursActif()]);
   const invites = parPeriode.get(periodId) ?? [];
-  return sessions.map((s) => versCarte(s, invites, user, now, themes));
+  return sessions.map((s) => versCarte(s, invites, user, now, themes, choixActif));
 }
 
 export async function seanceCarte(id: string, user: UserLike & { id: string }, now = new Date()): Promise<SeanceCarte | null> {
   const s = await chargerUne(id);
   if (!s) return null;
-  const [parPeriode, themes] = await Promise.all([invitesDesPeriodes([s.periodId]), getThemes()]);
-  return versCarte(s, parPeriode.get(s.periodId) ?? [], user, now, themes);
+  const [parPeriode, themes, choixActif] = await Promise.all([invitesDesPeriodes([s.periodId]), getThemes(), getChoixCoursActif()]);
+  return versCarte(s, parPeriode.get(s.periodId) ?? [], user, now, themes, choixActif);
 }
 
 /**

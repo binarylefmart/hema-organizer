@@ -22,6 +22,7 @@ import type { ChargePush } from "../src/lib/notifications/push";
 import { urlAnnulation } from "../src/lib/notifications/seances";
 import { jetonDesinscription } from "../src/lib/notifications/desinscription";
 import { PrismaClient } from "@prisma/client";
+import { todayIso } from "../src/lib/dates";
 import { emailAtelierStatut } from "../src/lib/email/templates/ateliers";
 import { emailPlanningModifie } from "../src/lib/email/templates/planning";
 import { contenuPlanningModifie } from "../src/lib/notifications/planning-modifie";
@@ -1241,6 +1242,18 @@ function toutesLesScenes(): Scene[] {
     { nom: "gestion-ateliers", description: "Gestion : un geste par proposition — placer dans le planning (séance pré-remplie) ou refuser", connexion: COMPTES.admin, chemin: "/gestion/ateliers", pleinePage: true },
     { nom: "gestion-tableau-de-bord", description: "Tableau de bord : taux par séance et par membre", connexion: COMPTES.instructeur, chemin: "/gestion/tableau-de-bord", pleinePage: true },
     { nom: "gestion-reglages", description: "Espace admin → Notifications : heure du récap et matrice des canaux", connexion: COMPTES.admin, chemin: "/admin/notifications" },
+    {
+      nom: "admin-rappels-jalons",
+      description: "Espace admin → Notifications : les délais des rappels aux personnes sans réponse (trois cases « jours avant », sous l'heure du récap)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/notifications#rappels",
+      avant: async (page) => {
+        await page.getByRole("heading", { name: "Rappels aux personnes sans réponse" }).evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -110); // l'en-tête collant de l'application
+        });
+      },
+    },
     { nom: "admin-apropos", description: "Administration → À propos : version, contenu de la base, sauvegardes, API publique", connexion: COMPTES.admin, chemin: "/admin/apropos", pleinePage: true },
     { nom: "admin-sessions", description: "Administration : sessions de connexion", connexion: COMPTES.admin, chemin: "/admin/sessions" },
     { nom: "admin-audit", description: "Administration : journal d'audit (filtres, dates, export CSV, raccourcis)", connexion: COMPTES.admin, chemin: "/admin/audit" },
@@ -1382,6 +1395,130 @@ function toutesLesScenes(): Scene[] {
       avant: async (page) => {
         await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }));
         await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+      },
+    },
+    {
+      nom: "action-seances-retirer",
+      description: "Séances en sélection multiple : « Retirer un élément du programme » — l'élément choisi par son nom, le compteur et ce qui reste de côté (téléphone : le volet)",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances?modifier=1",
+      avant: async (page) => {
+        await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }));
+        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        const zone = volet ?? page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first();
+        if (volet) await volet.getByRole("button", { name: /^Retirer un élément du programme/ }).click();
+        else {
+          await zone.getByRole("combobox").first().click();
+          await page.getByRole("option", { name: /^Retirer un élément du programme/ }).click();
+        }
+        await zone.getByRole("combobox", { name: "Élément à retirer" }).click();
+        await page.getByRole("option", { name: /^(Partie 1 · )?Cours/ }).first().click();
+      },
+    },
+    {
+      nom: "action-seances-repondre-periode",
+      description: "Séances d'un membre : « Répondre pour toutes les séances à venir » — Présent choisi, case « Ne pas modifier » décochée, les chiffres avant d'écrire (téléphone : le volet)",
+      connexion: COMPTES.membre,
+      chemin: "/seances",
+      avant: async (page) => {
+        await page.getByRole("button", { name: "Répondre pour toutes les séances à venir" }).click();
+        const zone = (await estTelephone(page))
+          ? page.getByRole("dialog", { name: "Répondre pour toutes les séances à venir" })
+          : page.getByRole("region", { name: "Répondre pour toutes les séances à venir" });
+        await zone.getByRole("group", { name: "Ma réponse pour toutes les séances" }).getByRole("button", { name: "Présent" }).click();
+        // Le membre de démonstration a déjà tout répondu : la case décochée montre ce qui serait remplacé.
+        await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
+      },
+    },
+    {
+      nom: "seances-choix-cours",
+      description: "Séances d'un membre, choix des cours ouvert : après « Présent », une case par cours, option ou atelier, avec le nombre d'inscrits",
+      connexion: COMPTES.membre,
+      chemin: "/seances",
+      avant: async (page) => {
+        await definirChoixCoursDemo(true);
+        await page.reload({ waitUntil: "networkidle" });
+        // Le geste réel : « Présent » sur le premier cours (celui qui porte un programme), puis les cases paraissent.
+        await page.getByRole("group", { name: "Ma réponse" }).first().getByRole("button", { name: "Présent" }).click();
+        const choix = page.getByRole("group", { name: "Quels cours vas-tu suivre ?" }).first();
+        await choix.waitFor();
+        await choix.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      },
+      apres: async () => {
+        await definirChoixCoursDemo(false);
+        await remettreReponseDemo();
+      },
+    },
+    {
+      nom: "admin-club-choix-cours",
+      description: "Espace admin → Club : la carte « Choix des cours » (ouvrir ou masquer le choix des cours aux membres)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/identite",
+      avant: async (page) => {
+        await page.getByRole("heading", { name: "Choix des cours" }).evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -110);
+        });
+      },
+    },
+    {
+      nom: "tableau-de-bord-choix-cours",
+      description: "Tableau de bord, choix des cours ouvert : combien de présents ont choisi chaque cours, chaque niveau, chaque mois",
+      connexion: COMPTES.instructeur,
+      chemin: "/gestion/tableau-de-bord",
+      avant: async (page) => {
+        await definirChoixCoursDemo(true);
+        await page.reload({ waitUntil: "networkidle" });
+        await page.getByRole("heading", { name: /^Choix des cours/ }).evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -110);
+        });
+      },
+      apres: () => definirChoixCoursDemo(false),
+    },
+    {
+      nom: "lisibilite-fiche-seance",
+      description: "Fiche d'une séance : la description garde ses retours à la ligne, et un pointillé sépare les parties du programme",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances",
+      avant: async (page) => {
+        const id = await descriptionMultiligneDemo(true);
+        await allerA(page, `${BASE}/seances/${id}`);
+        await page.getByText("Travail à deux sur les coupes montantes", { exact: false }).first().evaluate((el) => {
+          el.scrollIntoView({ block: "center" });
+        });
+      },
+      apres: async () => {
+        await descriptionMultiligneDemo(false);
+      },
+    },
+    {
+      nom: "lisibilite-partage",
+      description: "Page de partage d'une séance : retours à la ligne de la description et pointillé entre les parties",
+      chemin: "/partage/seance/ID", // remplacé au lancement par une séance à venir
+      avant: async (page) => {
+        await descriptionMultiligneDemo(true);
+        await page.reload({ waitUntil: "networkidle" });
+        await page.getByRole("list", { name: "Programme" }).first().evaluate((el) => el.scrollIntoView({ block: "start" }));
+      },
+      apres: async () => {
+        await descriptionMultiligneDemo(false);
+      },
+    },
+    {
+      nom: "lisibilite-planning",
+      description: "Planning en lecture : la description sur plusieurs lignes et le pointillé à chaque changement de partie",
+      connexion: COMPTES.membre,
+      chemin: "/planning",
+      avant: async (page) => {
+        await descriptionMultiligneDemo(true);
+        await page.reload({ waitUntil: "networkidle" });
+        await page.getByText("Travail à deux sur les coupes montantes", { exact: false }).first().evaluate((el) => {
+          el.scrollIntoView({ block: "center" });
+        });
+      },
+      apres: async () => {
+        await descriptionMultiligneDemo(false);
       },
     },
     {
@@ -1707,7 +1844,7 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "email-rappel-sans-reponse",
-      description: "Email de relance (J-7 puis J-2) à qui n'a pas encore répondu",
+      description: "Email de relance à qui n'a pas encore répondu — aux délais réglés par le club (ici J-2, sur la cadence 7 puis 2)",
       html: renderEmailHtml(
         emailRappelSansReponse({
           prenom: "Golf",
@@ -2257,6 +2394,60 @@ async function prochaineSeanceDemo(): Promise<string> {
 }
 
 /** Scène « comptes désactivés » : bascule un compte repère le temps de la capture. */
+/** Rend au membre de démonstration sa réponse « Peut-être » au premier cours, que la scène du choix des cours a passée à « Présent ». */
+async function remettreReponseDemo(): Promise<void> {
+  const db = new PrismaClient();
+  try {
+    const user = await db.user.findUnique({ where: { email: COMPTES.membre }, select: { id: true } });
+    const seance = await db.session.findFirst({ where: { date: { gte: todayIso() }, annulee: false }, orderBy: [{ date: "asc" }, { heureDebut: "asc" }], select: { id: true } });
+    if (user && seance) await db.attendance.updateMany({ where: { userId: user.id, sessionId: seance.id }, data: { statut: "PEUT_ETRE" } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/**
+ * **Une description sur plusieurs lignes**, posée le temps des scènes de lisibilité sur le premier
+ * cours à thème de la prochaine séance — avec un vrai retour à la ligne et un « \\n » écrit en toutes
+ * lettres, comme un texte collé depuis un tableur. Rend l'identifiant de la séance ; `null` rend la
+ * description d'origine.
+ */
+let descriptionOrigine: { id: string; description: string } | null = null;
+async function descriptionMultiligneDemo(poser: boolean): Promise<string | null> {
+  const db = new PrismaClient();
+  try {
+    if (!poser) {
+      if (descriptionOrigine) await db.sessionPartie.update({ where: { id: descriptionOrigine.id }, data: { description: descriptionOrigine.description } });
+      descriptionOrigine = null;
+      return null;
+    }
+    const partie = await db.sessionPartie.findFirst({
+      where: { nature: "COURS", theme: { not: "" }, session: { annulee: false, date: { gte: todayIso() }, period: { statut: { not: "BROUILLON" } } } },
+      orderBy: [{ session: { date: "asc" } }, { ordre: "asc" }],
+      select: { id: true, description: true, sessionId: true },
+    });
+    if (!partie) return null;
+    descriptionOrigine ??= { id: partie.id, description: partie.description };
+    await db.sessionPartie.update({
+      where: { id: partie.id },
+      data: { description: "Échauffement des poignets, puis garde haute.\nTravail à deux sur les coupes montantes.\\nFin : assauts libres, 3 minutes chacun." },
+    });
+    return partie.sessionId;
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/** Ouvre ou referme le choix des cours (réglage du club, fermé par défaut) le temps d'une scène. */
+async function definirChoixCoursDemo(actif: boolean): Promise<void> {
+  const db = new PrismaClient();
+  try {
+    await db.setting.upsert({ where: { key: "presences.choixCours" }, create: { key: "presences.choixCours", value: actif ? "1" : "0" }, update: { value: actif ? "1" : "0" } });
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 async function definirActifDemo(actif: boolean): Promise<void> {
   const db = new PrismaClient();
   try {

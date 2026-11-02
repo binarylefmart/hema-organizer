@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { env } from "./env";
 import { chiffrer, dechiffrer } from "./crypto";
+import { jalonsRappelSchema } from "./validation/gestion";
 
 /**
  * Paramètres modifiables dans l'app (table Setting, clé/valeur).
@@ -46,6 +47,8 @@ export const CLES = {
   identite: "identite",
   lieux: "lieux",
   telegram: "telegram",
+  rappelsJalons: "rappels.jalons",
+  choixCours: "presences.choixCours",
 } as const;
 
 export async function getSetting(key: string): Promise<string | null> {
@@ -74,6 +77,41 @@ export async function getRecapHour(): Promise<string> {
  */
 export async function heureRecap(): Promise<string> {
   return getRecapHour();
+}
+
+/** Les délais des rappels tant que le club n'a rien réglé : une semaine, puis deux jours avant. */
+export const JALONS_RAPPEL_DEFAUT = "7,2";
+
+/**
+ * **Lit `rappels.jalons`** (« 7,2 », « 3,1 », « » pour aucun rappel). Une valeur illisible — écrite
+ * à la main en base, ou par une version future — retombe sur le défaut plutôt que de couper les
+ * rappels en silence.
+ */
+export function lireJalonsRappel(valeur: string | null): number[] {
+  const brut = valeur ?? JALONS_RAPPEL_DEFAUT;
+  const lu = jalonsRappelSchema.safeParse(brut.trim() === "" ? [] : brut.split(",").map((x) => Number(x.trim())));
+  return lu.success ? lu.data : lireJalonsRappel(JALONS_RAPPEL_DEFAUT);
+}
+
+export async function getJalonsRappel(): Promise<number[]> {
+  return lireJalonsRappel(await getSetting(CLES.rappelsJalons));
+}
+
+export async function setJalonsRappel(jalons: readonly number[]): Promise<void> {
+  await setSetting(CLES.rappelsJalons, jalons.join(","));
+}
+
+/**
+ * **Le choix des cours par présence** est-il ouvert aux membres ? Réglage du club, **fermé** tant
+ * qu'il n'a jamais été enregistré : une mise à jour ne change pas ce que les membres voient sans que
+ * le bureau l'ait décidé.
+ */
+export async function getChoixCoursActif(): Promise<boolean> {
+  return (await getSetting(CLES.choixCours)) === "1";
+}
+
+export async function setChoixCoursActif(actif: boolean): Promise<void> {
+  await setSetting(CLES.choixCours, actif ? "1" : "0");
 }
 
 /** URL effective du webhook : surcharge en base (chiffrée) sinon variable d'environnement. */

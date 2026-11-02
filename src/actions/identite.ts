@@ -20,6 +20,7 @@ import { estThemeConnu } from "@/lib/themes";
 import { z } from "zod";
 import { fuseauValide, poserFuseau } from "@/lib/fuseau";
 import { replanifierFuseau } from "@/lib/taches";
+import { setChoixCoursActif } from "@/lib/settings";
 
 /**
  * **L'identité du club** : son nom, son sigle, son thème, sa couleur de marque, ses logos.
@@ -234,4 +235,20 @@ export async function definirLogo(emplacement: ChampLogo, url: string): Promise<
   await audit(user, valeur ? "identite.logo_change" : "identite.logo_retire", null, { emplacement });
   revalidatePath("/", "layout");
   return { succes: valeur ? "Logo enregistré." : "Logo d'origine rétabli." };
+}
+
+/**
+ * **Le choix des cours par présence** (retours du club d'Arras) : ouvert, les membres présents
+ * peuvent cocher le ou les cours qu'ils suivront, les cartes montrent un compteur par cours et le
+ * tableau de bord ses statistiques ; fermé, tout cela disparaît — les choix déjà faits restent en base
+ * et reviennent si on rouvre. Rien d'autre ne change : les taux, rappels et alertes ne lisent que
+ * les réponses.
+ */
+export async function enregistrerChoixCours(_prev: FormState, fd: FormData): Promise<FormState> {
+  const user = await assertPermission("settings.technical");
+  const actif = caseCochee(fd, "choixCours");
+  await setChoixCoursActif(actif);
+  await audit(user, "identite.choix_cours", null, { actif });
+  revalidatePath("/", "layout");
+  return { succes: actif ? "Choix des cours ouvert aux membres." : "Choix des cours masqué." };
 }

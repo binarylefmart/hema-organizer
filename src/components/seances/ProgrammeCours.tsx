@@ -1,9 +1,10 @@
 import type { ProgrammeSeance } from "@/lib/planning";
 import { Icone } from "@/components/ui/Icone";
 import { PastilleNiveau } from "@/components/ui/Pastille";
-import { couleurNature, lignesProgramme, partiesProgramme, programmeMuet, texteLibre, type LigneProgramme, type PartieProgramme } from "./programme-cours";
+import { couleurNature, lignesProgramme, partiesProgramme, programmeMuet, SEPARATEUR_PARTIE, texteLibre, type LigneProgramme, type PartieProgramme } from "./programme-cours";
 import { EcuNature } from "./EcuNature";
 import { classesPartie } from "./teintes";
+import { retoursALaLigne } from "@/lib/retours-ligne";
 
 /**
  * **Ce qu'on va travailler** — le programme d'un cours en lecture seule : le thème de chaque partie,
@@ -48,8 +49,11 @@ export function ProgrammeCours({
         /* **Partie par partie** : le titre de la partie, puis ses éléments. Les parties muettes ne
            sont pas là — elles n'ont plus d'élément pour les porter (`partiesProgramme`). */
         <ul aria-label="Programme" className={`flex flex-col ${compact ? "gap-1.5" : "gap-3"}`}>
-          {parties.map((p) => (
-            <li key={p.bloc} className="min-w-0">
+          {parties.map((p, i) => (
+            /* **Un pointillé à chaque changement de partie** (retours du club d'Arras) : la bande de
+               couleur dit déjà la partie, le pointillé dit où le bloc suivant commence — lisible
+               même sans voir les couleurs. */
+            <li key={p.bloc} className={`min-w-0 ${i > 0 ? `${SEPARATEUR_PARTIE} ${compact ? "pt-1.5" : "pt-3"}` : ""}`}>
               <BlocPartie partie={p} compact={compact} />
             </li>
           ))}
@@ -191,9 +195,10 @@ function ChampLibre({ icone, intitule, texte, compact }: { icone: "livre" | "bou
   return (
     <p className={`flex items-start gap-2 ${compact ? "" : "text-sm"}`}>
       <Icone nom={icone} taille={compact ? 16 : 18} className="mt-0.5 text-texte-secondaire" />
-      <span className="min-w-0 break-words">
+      {/* `whitespace-pre-line` : les retours à la ligne de l'encadrement se lisent comme il les a écrits. */}
+      <span className="min-w-0 whitespace-pre-line break-words">
         <span className="font-semibold">{intitule} : </span>
-        {texte}
+        {retoursALaLigne(texte)}
       </span>
     </p>
   );

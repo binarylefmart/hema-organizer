@@ -1,5 +1,6 @@
 "use client";
 
+import { retoursALaLigne } from "@/lib/retours-ligne";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { enregistrerCase, programmerAtelierDansCase } from "@/actions/planning";
 import { libelleChoixNiveau, LIBELLE_VIDE, NIVEAU_DEFAUT, NIVEAUX, NOMS_NATURE, PARTIE_DESCRIPTION_MAX, THEME_MAX, type Niveau } from "@/lib/constants";
@@ -434,10 +435,10 @@ export function CaseEditeur({
                quatre valeurs courtes de la rangée les renverrait toutes à la ligne. */
             <div key={c.intitule} className={`flex min-w-0 items-baseline gap-1.5 ${c.intitule === "Description" ? "basis-full" : ""}`}>
               <dt className="shrink-0 text-[0.85em] text-texte-secondaire">{c.intitule}</dt>
-              <dd className="flex min-w-0 items-baseline gap-1 break-words font-semibold">
+              <dd className={`flex min-w-0 items-baseline gap-1 break-words font-semibold ${c.intitule === "Description" ? "whitespace-pre-line" : ""}`}>
                 {pastille[c.intitule] && <PastillePersonne id={pastille[c.intitule]!} taille={8} className="self-center" />}
                 {c.intitule === "Niveau" && <ChevronsNiveau niveau={valeur.niveau} />}
-                {c.valeur}
+                {c.intitule === "Description" ? retoursALaLigne(c.valeur) : c.valeur}
               </dd>
             </div>
           ))}

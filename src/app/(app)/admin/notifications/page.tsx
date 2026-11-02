@@ -2,8 +2,9 @@ import { Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/current-user";
-import { getRecapHour, isPublicApiEnabled } from "@/lib/settings";
-import { definirHeureRecap, enregistrerAlertesSecurite, enregistrerNotifications, enregistrerPublicationCours } from "@/actions/admin";
+import { getJalonsRappel, getRecapHour, isPublicApiEnabled } from "@/lib/settings";
+import { phraseJalons } from "@/lib/notifications/planification";
+import { definirHeureRecap, definirJalonsRappel, enregistrerAlertesSecurite, enregistrerNotifications, enregistrerPublicationCours } from "@/actions/admin";
 import { etatsCanaux, raisonCanalIndisponible } from "@/lib/notifications/canaux";
 import { alertesActivees } from "@/lib/alertes";
 import {
@@ -78,15 +79,16 @@ const CSS_CANAL_COUPE = CANAUX.map(
  */
 export default async function PageNotifications() {
   await requirePermission("settings.technical");
-  const [recapHour, prefs, etats, apiActive, alertesSecurite, chiffres] = await Promise.all([
+  const [recapHour, jalonsRappel, prefs, etats, apiActive, alertesSecurite, chiffres] = await Promise.all([
     getRecapHour(),
+    getJalonsRappel(),
     getPreferencesNotifications(),
     etatsCanaux(),
     isPublicApiEnabled(),
     alertesActivees(),
     chiffresDuClub(),
   ]);
-  const volume = estimerEnvois({ ...chiffres, prefs });
+  const volume = estimerEnvois({ ...chiffres, prefs, jalonsRappel });
   /**
    * **Ce qui est armé derrière la porte fermée** : les annonces dont la case « Site du club » est
    * cochée en base alors que la publication ne l'est pas. Figées et non éteintes (c'est la
@@ -103,6 +105,7 @@ export default async function PageNotifications() {
    */
   const sections: SectionSommaire[] = [
     { ancre: "recap", titre: "Récap de la veille" },
+    { ancre: "rappels", titre: "Rappels aux personnes sans réponse" },
     { ancre: "volume", titre: "Combien d'emails partent" },
     { ancre: "canaux", titre: "Canaux et notifications" },
     { ancre: "publication", titre: "Publication des cours sur le site du club" },
@@ -150,6 +153,36 @@ export default async function PageNotifications() {
           />
         </FormulaireAction>
       </Carte>
+      {/* **Les délais des rappels**, juste sous l'heure du récap : les deux réglages disent *quand*
+          le club écrit autour d'un cours. Trois cases au plus, vides ignorées. */}
+      <Carte id="rappels" titre="Rappels aux personnes sans réponse">
+        <p className="mb-3 text-texte-secondaire">
+          {jalonsRappel.length === 0
+            ? "Aucun rappel ne part pour l'instant."
+            : `Aujourd'hui : un rappel ${phraseJalons(jalonsRappel)}, à qui n'a pas encore répondu.`}
+        </p>
+        <FormulaireAction action={definirJalonsRappel} bouton="Enregistrer les rappels">
+          <div className="grid max-w-md grid-cols-3 gap-3">
+            {[0, 1, 2].map((i) => (
+              <Champ
+                key={i}
+                label={`${i + 1}${i === 0 ? "er" : "e"} rappel`}
+                name={`jalon${i + 1}`}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={30}
+                defaultValue={jalonsRappel[i] !== undefined ? String(jalonsRappel[i]) : ""}
+                aide="jours avant"
+              />
+            ))}
+          </div>
+          <p className="text-sm text-texte-secondaire">
+            Entre 1 (la veille) et 30 jours, trois rappels au plus. Laisse une case vide pour en avoir moins ; toutes vides, plus aucun rappel. Le titre
+            s&apos;adapte : « Cours demain », « Cours dans 7 jours ».
+          </p>
+        </FormulaireAction>
+      </Carte>
       {/* **Annoncer le volume, avant le mur.** Un SMTP gratuit coupe au milieu de la liste : les
           derniers ne reçoivent rien, en silence, et le club ne s'en aperçoit qu'à un cours vide.
           Le chiffre est donc affiché ici, à côté du réglage qui le fait varier. */}
@@ -160,11 +193,11 @@ export default async function PageNotifications() {
           <strong>
             {volume.parSemaine} envoi{volume.parSemaine > 1 ? "s" : ""} par semaine
           </strong>{" "}
-          (récap de la veille + les deux rappels).
+          (récap de la veille + {jalonsRappel.length === 0 ? "aucun rappel" : jalonsRappel.length === 1 ? "le rappel" : `les ${jalonsRappel.length} rappels`}).
         </p>
         <p className="mt-1 text-texte-secondaire">
           Un soir de cours : {volume.recapParSoirDeCours} email{volume.recapParSoirDeCours > 1 ? "s" : ""} pour le seul récap. Le pire jour possible — un récap
-          et les deux vagues de rappel le même jour — coûte {volume.pireJour} envois.
+          et toutes les vagues de rappel le même jour — coûte {volume.pireJour} envois.
         </p>
         {volume.quotaJour === null ? (
           <p className="mt-2 text-sm text-texte-secondaire">

@@ -519,6 +519,39 @@ async function main() {
   }
   console.info(`[seed] ${EVENEMENTS.filter((e) => e.publie).length} événements publiés + 1 brouillon.`);
 
+  /*
+   * **Le choix des cours** (retours du club d'Arras) : quelques présents des cours à venir ont coché
+   * un ou deux cours, de façon déterministe. Le réglage du club reste fermé — c'est le défaut —, les
+   * captures l'ouvrent le temps de leurs scènes.
+   */
+  await db.attendanceChoix.deleteMany({});
+  const avenir = await db.session.findMany({
+    where: { date: { gte: aujourdHui }, annulee: false },
+    select: {
+      // Seulement des éléments qui disent quelque chose (thème, encadrant ou atelier) : l'écran ne propose jamais un élément muet.
+      parties: {
+        where: { nature: { in: ["COURS", "OPTION", "ATELIER"] }, OR: [{ theme: { not: "" } }, { instructeurId: { not: null } }, { atelierId: { not: null } }] },
+        orderBy: { ordre: "asc" },
+        select: { id: true },
+      },
+      attendances: { where: { statut: "PRESENT" }, orderBy: { userId: "asc" }, select: { userId: true } },
+    },
+  });
+  let choixCrees = 0;
+  for (const seance of avenir) {
+    if (seance.parties.length === 0) continue;
+    for (const [i, a] of seance.attendances.entries()) {
+      if (i % 4 === 3) continue; // tout le monde ne choisit pas : c'est facultatif
+      const choisis = new Set([seance.parties[i % seance.parties.length].id]);
+      if (i % 3 === 0 && seance.parties.length > 1) choisis.add(seance.parties[(i + 1) % seance.parties.length].id);
+      for (const partieId of choisis) {
+        await db.attendanceChoix.create({ data: { userId: a.userId, partieId } });
+        choixCrees += 1;
+      }
+    }
+  }
+  console.info(`[seed] ${choixCrees} choix de cours (réglage fermé par défaut).`);
+
   // ---- Liens d'accès personnels : jeton fixe par compte (captures, e2e) ; certains jamais ouverts
   await db.invitation.deleteMany({ where: { periodId: period.id } });
   for (const [i, m] of MEMBRES.entries()) {

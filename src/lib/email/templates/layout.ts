@@ -1,3 +1,4 @@
+import { retoursALaLigne } from "@/lib/retours-ligne";
 import { baseUrl } from "@/lib/env";
 import type { Identite } from "@/lib/identite";
 
@@ -59,7 +60,7 @@ export function renderEmailHtml(c: EmailContenu, club: ClubEmail): string {
     )
     .join("");
   const paragraphes = c.paragraphes
-    .map((p) => `<p style="margin:0 0 14px 0;font-size:17px;line-height:1.5;color:#282828;">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
+    .map((p) => `<p style="margin:0 0 14px 0;font-size:17px;line-height:1.5;color:#282828;">${escapeHtml(retoursALaLigne(p)).replace(/\n/g, "<br>")}</p>`)
     .join("");
   const pied = (c.piedDePage ?? [])
     .map((l) => `<p style="margin:0 0 6px 0;font-size:13px;line-height:1.4;color:#6B6059;">${linkify(l)}</p>`)

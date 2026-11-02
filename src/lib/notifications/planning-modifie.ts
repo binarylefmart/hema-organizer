@@ -495,15 +495,24 @@ function purgerRetraits(now: number): void {
   }
 }
 
+/** Un élément retiré, mis à la forme du message (fonction pure) — `null` pour une nature qui ne s'annonce pas. */
+export function changementRetrait(
+  partie: ElementLu & { id: string; sessionId: string; nature: string; bloc: number; ordre: number; libelle: string },
+  horodatage = Date.now(),
+): ChangementElement | null {
+  const nature = estNatureElement(partie.nature) ? partie.nature : "COURS";
+  if (!NATURES_ANNONCEES.includes(nature)) return null;
+  const vide: EtatElement = { theme: "", instructeur: null, instructeurSecond: null, niveau: NIVEAU_DEFAUT, description: "" };
+  return { partieId: partie.id, sessionId: partie.sessionId, nature, libelle: partie.libelle, bloc: partie.bloc, ordre: partie.ordre, avant: etat(partie), apres: vide, horodatage, retire: true };
+}
+
 export function differerRetraitPlanning(
   auteur: SignalementPlanning["auteur"],
   partie: ElementLu & { id: string; sessionId: string; nature: string; bloc: number; ordre: number; libelle: string },
 ): void {
   try {
-    const nature = estNatureElement(partie.nature) ? partie.nature : "COURS";
-    if (!NATURES_ANNONCEES.includes(nature)) return;
-    const vide: EtatElement = { theme: "", instructeur: null, instructeurSecond: null, niveau: NIVEAU_DEFAUT, description: "" };
-    const retrait: ChangementElement = { partieId: partie.id, sessionId: partie.sessionId, nature, libelle: partie.libelle, bloc: partie.bloc, ordre: partie.ordre, avant: etat(partie), apres: vide, horodatage: Date.now(), retire: true };
+    const retrait = changementRetrait(partie);
+    if (!retrait) return;
     // Supprimé après un réglage resté en attente (fiche) : l'annonce part de l'état d'avant ce réglage
     const precedent = enAttente.get(auteur.id)?.changements.get(partie.id);
     if (precedent) enAttente.get(auteur.id)!.changements.delete(partie.id);

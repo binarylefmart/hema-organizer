@@ -7,11 +7,13 @@ import { audit } from "@/lib/audit";
 import { assertPermission, exigerReauth, requireUser } from "@/lib/auth/current-user";
 import { indiquerPresence } from "@/actions/presences";
 import { champ, zodToFormState, type FormState } from "@/lib/form";
-import { ecritureFermee, REFUS_PERIODE_CLOSE } from "@/lib/constants";
+import { ecritureFermee, libelleNiveau, REFUS_PERIODE_CLOSE } from "@/lib/constants";
 import { annulationSchema, seancesEnMasseSchema, seanceSchema } from "@/lib/validation/gestion";
 import { notifierAnnulation, phraseAnnulation, porteurJetonAnnulation } from "@/lib/notifications/seances";
 import { checkRateLimit } from "@/lib/auth/rate-limit";
-import { libererAteliersDesSeances, partiesInitiales } from "@/lib/planning";
+import { libererAteliersDesSeances, partiesInitiales, rangerParties, SELECTION_RANGEMENT, synchroniserSeance } from "@/lib/planning";
+import { changementRetrait, signalerModificationsPlanning, type ChangementElement } from "@/lib/notifications/planning-modifie";
+import type { CurrentUser } from "@/lib/auth/current-user";
 import { formatDateSansAnnee, seanceCommencee } from "@/lib/dates";
 import { seanceAnnulable, seanceReglable, seanceRetablissable } from "@/components/seances/gestes-seance";
 
@@ -424,6 +426,8 @@ export async function appliquerGesteSeancesEnMasse(entree: unknown): Promise<Res
     return { erreur: fin ? fin.message : "Sélection invalide : coche des séances, puis choisis le geste." };
   }
   const demande = lu.data;
+  // Retirer un élément est un geste du planning : la serrure de `retirerPartie`.
+  if (demande.geste === "retirer") return retirerElementEnMasse(await assertPermission("planning.edit"), demande.sessionIds, demande.libelle);
   const geste = demande.geste;
   // Effacer des réponses de membres appartient au bureau : la serrure de `supprimerSeance`.
   if (geste === "supprimer") await assertPermission("periods.manage");
@@ -537,6 +541,107 @@ export async function appliquerGesteSeancesEnMasse(entree: unknown): Promise<Res
   ];
   if (dejas > 0) phrases.push(`${seances(dejas)} y ${dejas > 1 ? "étaient" : "était"} déjà.`);
   phrases.push("Personne n'est prévenu : c'est la règle de la séance modifiée seule.");
+  return { succes: phrases.join(" ") };
+}
+
+/**
+ * **Retirer le même élément du programme de plusieurs séances** — « Retirer un élément du
+ * programme », depuis l'onglet Séances en sélection multiple (retours du club d'Arras).
+ *
+ * L'élément se désigne par **son nom calculé** (« Partie 2 · Option ») : c'est sa place dans la
+ * séance (`libelleElement`), et la seule chose que des séances différentes ont en commun. Dans
+ * chaque séance, l'élément qui porte ce nom est retiré, puis les voisins et les parties suivantes se
+ * renumérotent (`rangerParties`), dans **une seule transaction** pour tout le lot.
+ *
+ * Ce qui diffère du retrait unitaire (`retirerPartie`), et pourquoi :
+ *
+ * - **les séances annulées et commencées sont écartées, pas refusées** : un lot coché sur six semaines
+ *   en contient presque toujours une, et c'est un état ordinaire, pas un écran périmé. Elles sont
+ *   comptées dans la réponse. Un trimestre clos ou une séance disparue refusent en revanche le lot
+ *   entier, comme pour les autres gestes de masse ;
+ * - **un élément Atelier qui porte un atelier n'est jamais retiré d'ici** : le retirer rendrait la
+ *   proposition d'un membre à la file. Ce geste-là reste au planning, élément par élément, derrière
+ *   `ateliers.moderate` ;
+ * - **l'annonce aux instructeurs part tout de suite, en un seul message** (`planning_modifie`) : il
+ *   n'y a pas d'« Appliquer » sur cet écran pour l'attendre, et un message par séance serait la
+ *   notification unitaire multipliée.
+ *
+ * Le journal : une entrée `planning.partie.retrait` par séance, avec ce que l'élément portait — la
+ * même action que l'unitaire, plus `enMasse: true`.
+ */
+async function retirerElementEnMasse(acteur: CurrentUser, sessionIds: readonly string[], libelle: string): Promise<ResultatSeancesEnMasse> {
+  const lues: Array<NonNullable<Awaited<ReturnType<typeof seancePourEcriture>>["seance"]>> = [];
+  const refus = new Set<string>();
+  let introuvables = 0;
+  for (const id of sessionIds) {
+    const ouverte = await seancePourEcriture(id);
+    if (ouverte.erreur) {
+      if (ouverte.erreur === SEANCE_INTROUVABLE) introuvables += 1;
+      else refus.add(ouverte.erreur);
+      continue;
+    }
+    lues.push(ouverte.seance);
+  }
+  if (refus.size > 0 || introuvables > 0) {
+    const phrases = ["Rien n'a été écrit : le lot entier est refusé.", ...refus];
+    if (introuvables > 0) phrases.push(`${seances(introuvables)} de la sélection ${introuvables > 1 ? "sont introuvables" : "est introuvable"} : recharge l'écran.`);
+    return { erreur: phrases.join(" ") };
+  }
+  lues.sort((a, b) => (a.date === b.date ? a.heureDebut.localeCompare(b.heureDebut) : a.date.localeCompare(b.date)));
+  const ouvertes = lues.filter((s) => !s.annulee && !commencee(s));
+  const ecartees = lues.length - ouvertes.length;
+
+  const retraits = await db.$transaction(async (tx) => {
+    const faits = [];
+    for (const s of ouvertes) {
+      const elements = await tx.sessionPartie.findMany({
+        where: { sessionId: s.id },
+        select: {
+          ...SELECTION_RANGEMENT,
+          sessionId: true,
+          atelierId: true,
+          theme: true,
+          description: true,
+          niveau: true,
+          instructeur: { select: { prenom: true, nom: true } },
+          instructeurSecond: { select: { prenom: true, nom: true } },
+        },
+      });
+      const cible = elements.find((e) => e.libelle === libelle && !(e.nature === "ATELIER" && e.atelierId));
+      if (!cible) continue;
+      await tx.sessionPartie.delete({ where: { id: cible.id } });
+      for (const ecriture of rangerParties(elements.filter((e) => e.id !== cible.id), tx)) await ecriture;
+      faits.push({ seance: s, partie: cible });
+    }
+    return faits;
+  });
+
+  const nom = (p: { prenom: string; nom: string } | null) => (p ? `${p.prenom} ${p.nom}` : null);
+  for (const { seance, partie } of retraits) {
+    await synchroniserSeance(seance.id);
+    await audit(acteur, "planning.partie.retrait", seance.id, {
+      date: seance.date,
+      partie: partie.libelle,
+      bloc: partie.bloc,
+      nature: partie.nature,
+      theme: partie.theme,
+      instructeur: nom(partie.instructeur),
+      instructeurSecond: nom(partie.instructeurSecond),
+      description: partie.description,
+      niveau: libelleNiveau(partie.niveau),
+      enMasse: true,
+    });
+  }
+  const horodatage = Date.now();
+  const changements = retraits.map(({ partie }) => changementRetrait(partie, horodatage)).filter((c): c is ChangementElement => c !== null);
+  if (changements.length > 0) await signalerModificationsPlanning({ auteur: acteur, changements });
+  rafraichir();
+
+  const n = retraits.length;
+  const sans = ouvertes.length - n;
+  const phrases = [n === 0 ? `Aucun changement : aucune séance ouverte ne porte « ${libelle} ».` : `« ${libelle} » retiré de ${seances(n)}.`];
+  if (n > 0 && sans > 0) phrases.push(`${seances(sans)} ne le ${sans > 1 ? "portaient" : "portait"} pas.`);
+  if (ecartees > 0) phrases.push(`${seances(ecartees)} ${ecartees > 1 ? "sont restées" : "est restée"} de côté : annulée${accord(ecartees)} ou déjà commencée${accord(ecartees)}.`);
   return { succes: phrases.join(" ") };
 }
 
