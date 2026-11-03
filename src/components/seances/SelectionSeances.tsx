@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, useTransition, 
 import { useRouter } from "next/navigation";
 import { appliquerGesteSeancesEnMasse } from "@/actions/seances";
 import type { Lieu } from "@/lib/lieux";
-import { Bouton } from "@/components/ui/Bouton";
+import { Bouton, LienBouton } from "@/components/ui/Bouton";
 import { Champ } from "@/components/ui/Champ";
 import { ChoixGeste } from "@/components/ui/ChoixGeste";
 import { Icone } from "@/components/ui/Icone";
@@ -19,11 +19,10 @@ import {
   lignesSelectionnees,
   restreindre,
   retirer,
-  selectionApresInterrupteur,
   texteHorsAffichage,
   texteRepliees,
 } from "@/components/ui/selection";
-import { InterrupteurSelection } from "@/components/ui/InterrupteurSelection";
+import { BoutonCrayon } from "@/components/ui/BoutonCrayon";
 import { BarreSelection, BoutonQueFaire, ReserveBarreSelection } from "@/components/ui/BarreSelection";
 import { GestesVolet } from "@/components/ui/GestesVolet";
 import { VoletBas } from "@/components/ui/VoletBas";
@@ -33,6 +32,7 @@ import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
 import { CartesDevoilees } from "./ListeSeances";
 import { useDevoilement } from "./ListeRepliee";
 import { SEANCES_VISIBLES } from "./listes";
+import { ReponseLot, type SeanceLot } from "./ReponseLot";
 import {
   ciblesGeste,
   compteurSeances,
@@ -66,12 +66,15 @@ import {
  * compteur, même « Annuler la sélection » — mais **pas collante** : voir plus bas). Un bureau qui a
  * appris le geste sur un écran le retrouve ici.
  *
- * **Un interrupteur « Sélection multiple » ouvre les cases** (`InterrupteurSelection`, commun aux
- * trois écrans de masse). Sans lui, les cartes restent ce qu'elles
- * sont en mode modification — chacune son « Que veux-tu faire ? » au pied. Une case par carte posée
- * d'office ajouterait un contrôle de plus devant la date de chaque cours, pour un geste qu'on fait
- * rarement ; l'interrupteur la montre quand on la demande, et la referme (sélection comprise) quand on
- * a fini.
+ * **Le bouton crayon ouvre les cases** (`BoutonCrayon` : rond et flottant au téléphone, sous le titre
+ * sur ordinateur). **Il est le même pour tout le monde** :
+ * un membre y répond pour plusieurs séances (et coche ses cours), l'encadrement y trouve en plus
+ * « Modifier ces séances ». Il remplace « Répondre pour les séances à venir » et « Modifier les
+ * séances ». Sans lui, les cartes restent ce qu'elles sont ; « Terminé » referme (sélection comprise).
+ *
+ * **Pendant qu'on coche, rien ne cache la liste** : au téléphone, la barre du bas tient sur une ligne
+ * (le compte, « Les N affichées », ✕) et un seul bouton, « Continuer », ouvre le volet de la réponse
+ * et des gestes.
  *
  * **La sélection ne porte que sur ce qui est affiché** : les cartes dépliées du trimestre et de la
  * fenêtre choisis. La case maîtresse le dit (« Sélectionner les 5 séances affichées »), un second
@@ -97,6 +100,11 @@ export function SelectionSeances({
   lignes,
   lieux,
   peutSupprimer,
+  equipe,
+  reponses,
+  actifInitial = false,
+  lienNouvelle,
+  lienTerminer,
 }: {
   /** Les cartes rendues par le serveur, dans l'ordre de la liste. */
   cartes: ReactNode[];
@@ -109,10 +117,20 @@ export function SelectionSeances({
   lieux: Lieu[];
   /** `periods.manage` et session forte : sans les deux, « Supprimer » n'est pas proposé. */
   peutSupprimer: boolean;
+  /** L'encadrement (`sessions.manage`) : « Modifier ces séances » et les gestes de chaque carte. */
+  equipe: boolean;
+  /** Les séances auxquelles la personne peut répondre (période active où elle est invitée). */
+  reponses: SeanceLot[];
+  /** La sélection s'ouvre d'emblée (ancienne adresse `?modifier=1`). */
+  actifInitial?: boolean;
+  /** « Nouvelle séance », pour qui peut en créer : en tête de la sélection. */
+  lienNouvelle?: string;
+  /** Où mène « Terminé » quand la sélection est venue par l'adresse (`?modifier=1` à retirer). */
+  lienTerminer?: string;
 }) {
   const router = useRouter();
   const devoilement = useDevoilement(cartes.length, { tranche: SEANCES_VISIBLES, debut: SEANCES_VISIBLES });
-  const [actif, setActif] = useState(false);
+  const [actif, setActif] = useState(actifInitial);
   const [brute, setSelection] = useState<ReadonlySet<string>>(() => new Set());
   const [gesteChoisi, setGesteChoisi] = useState<GesteSeances | "">("");
   const [motif, setMotif] = useState("");
@@ -140,7 +158,11 @@ export function SelectionSeances({
     if (caseMaitresse.current) caseMaitresse.current.indeterminate = etatCases === "partielle";
   }, [etatCases]);
 
-  const applicables = gestesSeancesApplicables(lot, { supprimer: peutSupprimer });
+  const applicables = equipe ? gestesSeancesApplicables(lot, { supprimer: peutSupprimer }) : [];
+  // La moitié « Ma réponse » : les séances cochées qui attendent une réponse de la personne.
+  const reponsesLot = reponses.filter((r) => selection.has(r.id));
+  const ouvertesLot = reponsesLot.filter((r) => !r.annulee && !r.commencee);
+  const avecReponse = reponses.length > 0;
   const geste = gesteRetenu(gesteChoisi, applicables);
   useEffect(() => {
     if (geste !== gesteChoisi) setGesteChoisi("");
@@ -219,6 +241,12 @@ export function SelectionSeances({
   };
 
   const compteurAnnonce = compteurSeances(selection.size);
+  /** La réponse est écrite : on le dit, on referme le volet et on vide le lot. */
+  const reponseFaite = (texte: string) => {
+    setMessage({ type: "ok", texte });
+    setVoletOuvert(false);
+    setSelection(new Set());
+  };
   const horsAffichage = texteHorsAffichage(compterHorsAffichage(selection, affichees), MOTS_SEANCES);
   const sansCase = texteSansCaseSeances(lignes.length - selectionnables.length);
   const montrerBarre = actif && barreDeMasseVisible(selection);
@@ -334,35 +362,64 @@ export function SelectionSeances({
 
   return (
     <Selection.Provider value={{ actif, selection, basculer: (id) => setSelection((s) => basculer(s, id)) }}>
-      <div className="flex flex-col gap-1">
-        {/* **L'interrupteur « Sélection multiple »**, commun aux écrans de masse : éteint, ni case
-            ni barre ; l'éteindre vide le lot (`selectionApresInterrupteur`). */}
-        <InterrupteurSelection
-          actif={actif}
-          disabled={selectionnables.length === 0}
-          onChange={(suite) => {
-            setActif(suite);
-            setSelection((s) => selectionApresInterrupteur(s, suite));
-            if (!suite) remettreAZero();
-            setMessage(null);
-          }}
-        />
+      {/* Un seul bloc pour la liste : fermée, la sélection ne doit laisser aucun blanc au-dessus des cartes. */}
+      <div className="flex flex-col gap-3">
+      <div className={actif ? "flex flex-col gap-1" : "contents"}>
+        {/* **Le bouton crayon** : fermé, ni case ni barre. Il n'existe que s'il y a quelque chose à cocher. */}
+        {!actif && selectionnables.length > 0 && (equipe || avecReponse) && (
+          <BoutonCrayon
+            libelle="Sélectionner des séances"
+            cle="seances"
+            onClick={() => {
+              setActif(true);
+              setMessage(null);
+            }}
+          />
+        )}
 
         {actif && (
           <>
-            {/* La case maîtresse : 48 px et une case de 24 px, comme à l'annuaire et aux présences. */}
-            <label className="inline-flex min-h-12 w-fit cursor-pointer items-center gap-2 font-semibold">
-              <input
-                ref={caseMaitresse}
-                type="checkbox"
-                checked={etatCases === "toutes"}
-                disabled={affichees.length === 0}
-                onChange={() => setSelection((s) => (etatCases === "toutes" ? retirer(s, idsAffiches) : ajouter(s, idsAffiches)))}
-                className="size-6 accent-primaire"
-              />
-              {/* Le libellé **nomme ce sur quoi la case agit**, jamais « Tout ». */}
-              {libelleToutesSeances(affichees.length)}
-            </label>
+            {/* En tête de la sélection : « Tout sélectionner » (les séances **affichées**, et le nombre
+                est dit à côté), « Terminé », et « Nouvelle séance » pour qui peut en créer. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <label className="inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border-2 border-bordure bg-surface px-3 font-semibold">
+                <input
+                  ref={caseMaitresse}
+                  type="checkbox"
+                  checked={etatCases === "toutes"}
+                  disabled={affichees.length === 0}
+                  aria-label={libelleToutesSeances(affichees.length)}
+                  onChange={() => setSelection((s) => (etatCases === "toutes" ? retirer(s, idsAffiches) : ajouter(s, idsAffiches)))}
+                  className="size-6 accent-primaire"
+                />
+                Tout sélectionner
+              </label>
+              <span className="text-base text-texte-secondaire">
+                {nbSeances(affichees.length)} {affichees.length > 1 ? "affichées" : "affichée"}
+              </span>
+              <span className="ml-auto flex flex-wrap gap-2">
+                {lienNouvelle && (
+                  <LienBouton href={lienNouvelle} variante="secondaire" taille="petite" enCours>
+                    <Icone nom="plus" taille={18} />
+                    Nouvelle séance
+                  </LienBouton>
+                )}
+                <Bouton
+                  type="button"
+                  taille="petite"
+                  onClick={() => {
+                    setActif(false);
+                    setSelection(new Set());
+                    remettreAZero();
+                    setMessage(null);
+                    setVoletOuvert(false);
+                    if (lienTerminer) router.replace(lienTerminer, { scroll: false });
+                  }}
+                >
+                  Terminé
+                </Bouton>
+              </span>
+            </div>
             {(repliees.length > 0 || sansCase) && (
               <p className="text-base text-texte-secondaire">{[texteRepliees(repliees, selection), sansCase].filter(Boolean).join(" ")}</p>
             )}
@@ -409,6 +466,9 @@ export function SelectionSeances({
           </div>
           {horsAffichage ? <p className="text-sm text-texte-secondaire">{horsAffichage}</p> : null}
 
+          {avecReponse && <ReponseLot seances={reponsesLot} ignorees={selection.size - ouvertesLot.length} onFait={reponseFaite} />}
+          {equipe && <h3 className="mt-2 text-base font-bold tracking-wide text-texte-secondaire uppercase">Modifier ces séances</h3>}
+          {equipe && (
           <ChoixGeste
             id="geste-seances-en-masse"
             gestes={applicables}
@@ -426,6 +486,7 @@ export function SelectionSeances({
           >
             {reglages}
           </ChoixGeste>
+          )}
         </div>
       )}
       {/* **Au téléphone, la barre sombre du bas et le volet des gestes** : mêmes gestes, mêmes
@@ -444,7 +505,7 @@ export function SelectionSeances({
           enCours={enCours}
         >
           <BoutonQueFaire
-            libelle={questionSelection(selection.size, MOTS_SEANCES)}
+            libelle="Continuer"
             onClick={() => {
               // Le volet s'ouvre sur la liste des gestes ; les réglages déjà saisis sont gardés.
               setGesteChoisi("");
@@ -454,7 +515,11 @@ export function SelectionSeances({
           />
         </BarreSelection>
       )}
-      <VoletBas ouvert={telephone && montrerBarre && voletOuvert} titre={questionSelection(selection.size, MOTS_SEANCES)} onFermer={() => setVoletOuvert(false)}>
+      <VoletBas ouvert={telephone && montrerBarre && voletOuvert} titre={compteurAnnonce} onFermer={() => setVoletOuvert(false)}>
+        {avecReponse && <ReponseLot seances={reponsesLot} ignorees={selection.size - ouvertesLot.length} onFait={reponseFaite} />}
+        {!avecReponse && !equipe && <p className="text-base text-texte-secondaire">{questionSelection(selection.size, MOTS_SEANCES)}</p>}
+        {equipe && <h3 className="mt-4 text-base font-bold tracking-wide text-texte-secondaire uppercase">Modifier ces séances</h3>}
+        {equipe && (
         <GestesVolet
           gestes={applicables}
           valeur={geste}
@@ -473,13 +538,14 @@ export function SelectionSeances({
         >
           {reglages}
         </GestesVolet>
+        )}
       </VoletBas>
 
       {/* Région vivante permanente : montée avant le premier appui, sans quoi il serait muet. */}
       <p className="sr-only" aria-live="polite">
         {actif ? [compteurAnnonce, horsAffichage].filter(Boolean).join(" ") : ""}
       </p>
-      <p className="min-h-6 text-base" aria-live="polite">
+      <p className={message ? "text-base" : "sr-only"} aria-live="polite">
         {message ? <span className={message.type === "ok" ? "font-semibold text-vert" : "font-semibold text-rouge"}>{message.texte}</span> : null}
       </p>
 
@@ -488,6 +554,7 @@ export function SelectionSeances({
         <CartesDevoilees cartes={cartes} visibles={SEANCES_VISIBLES} devoilement={devoilement} />
       </ZoneCochable>
       {montrerBarre && telephone && <ReserveBarreSelection />}
+      </div>
     </Selection.Provider>
   );
 }
@@ -509,4 +576,14 @@ export function CaseSeance({ id, jour }: { id: string; jour: string }) {
       <input type="checkbox" data-case-selection checked={contexte.selection.has(id)} onChange={() => contexte.basculer(id)} className="size-6 accent-primaire" />
     </label>
   );
+}
+
+/**
+ * Ce qu'une carte ne montre **que pendant la sélection** : les gestes de la séance pour l'encadrement
+ * (« Que veux-tu faire ? »). Hors sélection, la carte garde son allure de lecture.
+ */
+export function SiSelection({ children }: { children: ReactNode }) {
+  const contexte = useContext(Selection);
+  if (!contexte || !contexte.actif) return null;
+  return <>{children}</>;
 }

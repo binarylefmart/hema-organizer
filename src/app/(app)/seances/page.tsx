@@ -10,7 +10,6 @@ import { formatDateLongue, formatDateSansAnnee, formatHoraire, minuscule, seance
 import { prochainesSeances, seancesDePeriode, type SeanceCarte } from "@/lib/seances";
 import { Alerte } from "@/components/ui/Alerte";
 import { LienBouton } from "@/components/ui/Bouton";
-import { EntreeModification } from "@/components/ui/EntreeModification";
 import { Carte } from "@/components/ui/Carte";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
 import { Icone } from "@/components/ui/Icone";
@@ -18,10 +17,9 @@ import { Bloc, CarteSquelette, SelecteurPeriodeSquelette } from "@/components/ui
 import { GestesSeance } from "@/components/seances/GestesSeance";
 import { modeEditionDemande } from "@/components/planning/mode-edition";
 import { CarteSeance } from "@/components/seances/CarteSeance";
-import { ListeSeances } from "@/components/seances/ListeSeances";
-import { CaseSeance, SelectionSeances } from "@/components/seances/SelectionSeances";
+import { CaseSeance, SelectionSeances, SiSelection } from "@/components/seances/SelectionSeances";
+import type { SeanceLot } from "@/components/seances/ReponseLot";
 import type { LigneSeance } from "@/components/seances/selection-seances";
-import { ReponsePeriode } from "@/components/seances/ReponsePeriode";
 import type { CoursARepondre } from "@/components/seances/reponse-periode";
 import type { ChoixCoursCarte } from "@/components/seances/choix-cours";
 import { getLieux } from "@/lib/planning";
@@ -212,57 +210,6 @@ async function Confirmation({ contenu, note, s }: { contenu: Promise<Contenu>; n
   );
 }
 
-/**
- * L'action d'organisation de cet écran : elle emporte la période affichée, il lui faut donc son
- * identifiant. Pas la date : ce bouton ouvre un **trimestre** — le formulaire d'une nouvelle séance
- * —, jamais un jour. Y glisser la date en douce ferait arriver le formulaire filtré sur un jour
- * qu'on n'a pas redemandé.
- *
- * **Le bouton « Planning » est parti**. Il doublait l'onglet « Planning » de l'en-tête, présent sur
- * tous les écrans et à la même portée de pouce : deux chemins vers la même page, dont l'un occupait
- * la rangée des actions juste sous les filtres. Et depuis que chaque carte porte « Programme de la
- * séance », le planning se rejoint aussi **depuis la séance qu'on regarde**, ce qui est le chemin
- * qu'on emprunte vraiment.
- *
- * Elle n'est montrée qu'à l'encadrement (`sessions.manage`, vérifié côté serveur au rendu), et la
- * page d'arrivée redemande la même permission : un membre qui taperait l'adresse à la main est
- * renvoyé à l'accueil.
- */
-async function ActionsOrganisation({
-  contenu,
-  enEdition,
-  lien,
-}: {
-  contenu: Promise<Contenu>;
-  enEdition: boolean;
-  lien: (extra?: Record<string, string | undefined>) => string;
-}) {
-  if (!enEdition) {
-    return (
-      // **Visible sans chercher** : bouton plein, taille normale, toute la largeur sur téléphone —
-      // c'est la seule porte vers les gestes d'organisation, elle ne doit pas se lire comme un lien.
-      <EntreeModification href={lien({ modifier: "1" })}>Modifier les séances</EntreeModification>
-    );
-  }
-  const { periodeLue, toutes } = await contenu;
-  const id = periodeLue?.id ?? toutes[0]?.periodId;
-  // En modification, un bandeau le dit — on ne doit jamais se demander dans quel mode on est — et
-  // la sortie est le bouton plein, à la place de l'entrée. Plus de phrase d'explication : le cadre
-  // primaire et « Terminer les modifications » suffisent à le dire ; le nom du bandeau reste pour
-  // la synthèse vocale.
-  return (
-    <div role="status" aria-label="Mode modification" className="flex w-full flex-col gap-3 rounded-xl border-2 border-primaire bg-surface p-4">
-      <div className="flex flex-wrap gap-2">
-        <LienBouton href={lien({ modifier: "" })} className="w-full sm:w-auto">
-          Terminer les modifications
-        </LienBouton>
-        <LienBouton href={`/seances/nouvelle${id ? `?periode=${id}` : ""}`} variante="secondaire" className="w-full sm:w-auto" enCours>
-          Nouvelle séance
-        </LienBouton>
-      </div>
-    </div>
-  );
-}
 
 /**
  * Tous les filtres au même endroit, dans un volet replié : la saison et la période, puis le jour
@@ -339,6 +286,7 @@ async function Liste({
   periodes,
   vue,
   enEdition,
+  equipe,
   peutSupprimer,
   lien,
 }: {
@@ -346,6 +294,8 @@ async function Liste({
   periodes: Promise<PeriodeOption[]>;
   vue: Vue;
   enEdition: boolean;
+  /** L'encadrement (`sessions.manage`) : gestes de masse et gestes de chaque carte. */
+  equipe: boolean;
   /** `periods.manage` **et** session forte : la serrure de `supprimerSeance`, lue au rendu. */
   peutSupprimer: boolean;
   lien: (extra?: Record<string, string | undefined>) => string;
@@ -418,56 +368,25 @@ async function Liste({
             </LienBouton>
           </p>
         </Alerte>
-      ) : enEdition ? (
-        <SelectionEdition seances={seances} periodes={periodes} vue={vue} partEffectifMin={partEffectifMin} peutSupprimer={peutSupprimer} cibleId={cibleId} />
       ) : (
-        <>
-          {vue.quand === "avenir" && !vue.date && <ReponsePeriodeDe affichees={seances} filtree={vue.horizon !== "periode"} choisie={choisie} periodes={periodes} />}
-          <ListeSeances
-            cartes={seances.map((x) => <CarteSeance key={x.id} seance={x} aujourdHui={vue.aujourdHui} partEffectifMin={partEffectifMin} cible={x.id === cibleId} />)}
-          />
-        </>
+        <SelectionCartes
+          seances={seances}
+          periodes={periodes}
+          vue={vue}
+          partEffectifMin={partEffectifMin}
+          peutSupprimer={peutSupprimer}
+          cibleId={cibleId}
+          equipe={equipe}
+          actifInitial={enEdition}
+          lienTerminer={enEdition ? lien({ modifier: "" }) : undefined}
+          lienNouvelle={equipe ? lienNouvelleSeance(choisie?.id ?? seances[0]?.periodId) : undefined}
+        />
       )}
       <AllerALaSeanceCible />
     </>
   );
 }
 
-/**
- * **« Répondre pour les séances à venir »** (toutes, ou des dates choisies), pour la période affichée — à défaut, celle du
- * prochain cours. Seulement sur une période ACTIVE où la personne est invitée : ailleurs, le serveur
- * refuserait chaque réponse (`indiquerPresence`), et un bouton qui ne mène qu'à un refus n'a pas sa
- * place.
- *
- * **Le geste suit le filtre** : il reçoit les séances **affichées**, pas la période
- * entière. Avec une fenêtre plus courte que la période (« 2 semaines »…), « Toutes les séances »
- * devient « Les N séances affichées » et le serveur reçoit leurs identifiants (`filtree`) — une
- * sélection ne prend jamais ce qui n'est pas affiché.
- */
-async function ReponsePeriodeDe({ affichees, filtree, choisie, periodes }: { affichees: SeanceCarte[]; filtree: boolean; choisie: { id: string } | null; periodes: Promise<PeriodeOption[]> }) {
-  const periodId = choisie?.id ?? affichees.find((x) => !x.annulee && !x.commencee)?.periodId;
-  if (!periodId) return null;
-  const periode = (await periodes).find((p) => p.id === periodId);
-  const duPeriode = affichees.filter((x) => x.periodId === periodId);
-  if (!periode || periode.statut !== "ACTIVE" || !duPeriode.some((x) => x.inscrit)) return null;
-  return (
-    <ReponsePeriode
-      periodId={periodId}
-      filtree={filtree}
-      periodNom={periode.nom}
-      seances={duPeriode.map((x) => ({
-        id: x.id,
-        annulee: x.annulee,
-        commencee: x.commencee,
-        monStatut: x.monStatut,
-        date: x.date,
-        heureDebut: x.heureDebut,
-        // Le choix des cours, quand le club l'a ouvert : ce que la carte propose, et ce qui est déjà coché.
-        ...(x.choixCours ? { cours: coursARepondre(x.choixCours) } : {}),
-      }))}
-    />
-  );
-}
 
 /** Les cours au choix d'une carte, tels que la réponse groupée les propose. */
 function coursARepondre(choix: ChoixCoursCarte): CoursARepondre[] {
@@ -485,13 +404,22 @@ function coursARepondre(choix: ChoixCoursCarte): CoursARepondre[] {
  * `supprimerSeance`), et les lieux du club pour « Changer le lieu ». Les réponses comptées pour la
  * suppression sont celles de la carte : le journal, lui, garde le décompte exact fait par le serveur.
  */
-async function SelectionEdition({
+/** « Nouvelle séance », dans la période affichée quand on la connaît. */
+function lienNouvelleSeance(periodId: string | undefined): string {
+  return `/seances/nouvelle${periodId ? `?periode=${periodId}` : ""}`;
+}
+
+async function SelectionCartes({
   seances,
   periodes,
   vue,
   partEffectifMin,
   peutSupprimer,
   cibleId,
+  equipe,
+  actifInitial,
+  lienTerminer,
+  lienNouvelle,
 }: {
   seances: SeanceCarte[];
   periodes: Promise<PeriodeOption[]>;
@@ -499,9 +427,28 @@ async function SelectionEdition({
   partEffectifMin: number;
   peutSupprimer: boolean;
   cibleId: string | null;
+  equipe: boolean;
+  actifInitial: boolean;
+  lienTerminer?: string;
+  lienNouvelle?: string;
 }) {
   const [liste, lieux] = await Promise.all([periodes, getLieux()]);
   const close = new Set(liste.filter((p) => ecritureFermee(p.statut)).map((p) => p.id));
+  // Les périodes où l'on peut répondre : actives (le serveur refuserait toute autre réponse).
+  const actives = new Set(liste.filter((p) => p.statut === "ACTIVE").map((p) => p.id));
+  const reponses: SeanceLot[] = seances
+    .filter((x) => x.inscrit && actives.has(x.periodId))
+    .map((x) => ({
+      id: x.id,
+      periodId: x.periodId,
+      annulee: x.annulee,
+      commencee: x.commencee,
+      monStatut: x.monStatut,
+      date: x.date,
+      heureDebut: x.heureDebut,
+      // Le choix des cours, quand le club l'a ouvert : ce que la carte propose, et ce qui est déjà coché.
+      ...(x.choixCours ? { cours: coursARepondre(x.choixCours) } : {}),
+    }));
   const lignes: (LigneSeance | null)[] = seances.map((x) =>
     close.has(x.periodId)
       ? null
@@ -524,6 +471,11 @@ async function SelectionEdition({
       lignes={lignes}
       lieux={lieux}
       peutSupprimer={peutSupprimer}
+      equipe={equipe}
+      reponses={reponses}
+      actifInitial={actifInitial}
+      lienNouvelle={lienNouvelle}
+      lienTerminer={lienTerminer}
       cartes={seances.map((x, i) => (
         <CarteSeance
           key={x.id}
@@ -532,7 +484,13 @@ async function SelectionEdition({
           partEffectifMin={partEffectifMin}
           cible={x.id === cibleId}
           selection={lignes[i] ? <CaseSeance id={x.id} jour={lignes[i].jour} /> : undefined}
-          actions={<GestesSeance id={x.id} annulee={x.annulee} passee={seanceCommencee(x.date, x.heureDebut, vue.maintenant)} ouvrir />}
+          actions={
+            equipe ? (
+              <SiSelection>
+                <GestesSeance id={x.id} annulee={x.annulee} passee={seanceCommencee(x.date, x.heureDebut, vue.maintenant)} ouvrir />
+              </SiSelection>
+            ) : undefined
+          }
         />
       ))}
     />
@@ -678,13 +636,6 @@ export default async function PageSeances({ searchParams }: Props) {
           {ongletVue("historique", "Historique")}
         </nav>
       </div>
-      {/* L'entrée en modification (ou le bandeau du mode), à la place commune à tous les onglets : sous
-          le titre, avant les filtres et la liste — plus dans la colonne de côté. */}
-      {equipe && !vue.historique && (
-        <Suspense fallback={<Bloc className="h-12 w-full rounded-xl sm:ml-auto sm:w-56" />}>
-          <ActionsOrganisation contenu={contenu} enEdition={enEdition} lien={lien} />
-        </Suspense>
-      )}
       {vue.historique ? (
         <Historique userId={user.id} tout={tout === "1"} />
       ) : (
@@ -711,6 +662,7 @@ export default async function PageSeances({ searchParams }: Props) {
                 periodes={periodes}
                 vue={vue}
                 enEdition={enEdition}
+                equipe={equipe}
                 peutSupprimer={can(user, "periods.manage") && user.sessionForte}
                 lien={lien}
               />

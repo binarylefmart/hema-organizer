@@ -220,6 +220,9 @@ const SEMES_SANS_MIROIR: Record<string, string> = {
   // Le lieu choisi pour « Changer le lieu » d'un lot de séances : un réglage du geste en cours, semé
   // par la seule présence (ou non) de lieux du club — il ne reflète aucune valeur enregistrée.
   "src/components/seances/SelectionSeances.tsx::SelectionSeances::choixLieu": "réglage d'un geste en cours, pas une valeur enregistrée",
+  // La sélection ouverte d'emblée par l'ancienne adresse `?modifier=1` : un état d'écran (cases
+  // visibles ou non), jamais écrit en base. « Terminé » le referme et retire le paramètre.
+  "src/components/seances/SelectionSeances.tsx::SelectionSeances::actif": "état d'affichage (sélection ouverte ou non)",
   // Position d'un dépliant : un état d'écran, jamais écrit en base. Rien à écraser, rien à suivre.
   "src/components/accueil/Frise.tsx::Frise::ouvert": "état d'affichage (quelle colonne est ouverte)",
   "src/components/accueil/FriseDetail.tsx::FriseDetail::ouvert": "état d'affichage (animation déjà jouée)",

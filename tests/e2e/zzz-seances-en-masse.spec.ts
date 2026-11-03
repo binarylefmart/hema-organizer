@@ -2,18 +2,18 @@ import { expect, test, type Page } from "@playwright/test";
 import { COMPTES, connecter } from "./helpers";
 
 /**
- * **Agir sur plusieurs séances à la fois**, depuis l'onglet Séances en mode modification.
+ * **Agir sur plusieurs séances à la fois**, depuis l'onglet Séances, par le bouton crayon.
  *
  * Ce que ce scénario garde :
  *
- * - **éteint, l'interrupteur « Sélection multiple » ne laisse aucune case** — les cartes gardent
- *   leur allure, chacune son « Que veux-tu faire ? » au pied ;
+ * - **sélection fermée, aucune case** — les cartes gardent leur allure de lecture ; ouverte, chacune
+ *   a sa case et son « Que veux-tu faire ? » au pied ;
  * - **la case maîtresse nomme sa portée** (« Sélectionner les N séances affichées »), jamais « Tout »,
  *   et la phrase d'invite vit sous elle tant que rien n'est coché ;
  * - **la barre n'existe qu'avec une sélection**, et la confirmation d'une annulation annonce
  *   **combien d'annonces partent** — une par séance ;
  * - **au téléphone** (la campagne ne tourne qu'au format « mobile ») : toucher la carte la coche, la
- *   barre sombre du bas porte le compte et « Que faire sur ces 2 séances ? », qui ouvre le volet des
+ *   barre du bas porte le compte et « Continuer », qui ouvre le volet des
  *   gestes — liste de gros boutons, réglages dans le même volet, bouton qui dit ce qu'il fait ;
  * - **remise en état** : les deux séances annulées sont rétablies par le même geste de masse, pour
  *   que la campagne suivante retrouve le jeu de démonstration.
@@ -22,11 +22,12 @@ import { COMPTES, connecter } from "./helpers";
 const barre = (page: Page) => page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" });
 const article = (page: Page, id: string) => page.locator("article").filter({ has: page.locator(`[data-geste-seance="${id}"]`) });
 
-const volet = (page: Page) => page.getByRole("dialog", { name: /^Que faire sur / });
+const volet = (page: Page) => page.getByRole("dialog", { name: /séances? sélectionnées?$/ });
 
 /** Ouvre le volet depuis la barre du bas, puis choisit le geste dans sa liste de gros boutons. */
 async function choisirGeste(page: Page, n: number, entree: RegExp): Promise<void> {
-  await barre(page).getByRole("button", { name: `Que faire sur ces ${n} séances ?` }).click();
+  await expect(barre(page).getByText(`${n} séances`)).toBeVisible();
+  await barre(page).getByRole("button", { name: "Continuer" }).click();
   await expect(volet(page)).toBeVisible();
   await volet(page).getByRole("button", { name: entree }).click();
 }
@@ -35,15 +36,16 @@ test("annuler puis rétablir deux séances d'un seul geste", async ({ page }) =>
   // Le compte d'administration, qui entre par mot de passe : ce fichier passe après `zz-liens`, qui a
   // régénéré tous les liens personnels de démonstration (celui de l'instructeur ne mène plus nulle part).
   await connecter(page, COMPTES.admin);
-  await page.goto("/seances?modifier=1");
-  const interrupteur = page.getByRole("switch", { name: /Sélection multiple/ });
-  await expect(interrupteur).toBeVisible();
+  await page.goto("/seances");
+  // Le bouton crayon ouvre la sélection ; fermée, aucune case.
+  const crayon = page.getByRole("button", { name: "Sélectionner des séances" });
+  await expect(crayon).toBeVisible();
   await expect(page.getByLabel(/^Sélectionner la séance du/)).toHaveCount(0);
 
-  await interrupteur.check();
+  await crayon.click();
+  await expect(page.getByText("Tout sélectionner")).toBeVisible();
   await expect(page.getByText("Coche des lignes pour agir sur plusieurs séances à la fois.")).toBeVisible();
   await expect(page.getByLabel(/^Sélectionner les \d+ séances affichées$/)).toBeVisible();
-  await expect(page.getByText(/Sélectionner tout/)).toHaveCount(0);
   await expect(barre(page)).toHaveCount(0);
 
   // Deux séances encore annulables parmi les cartes affichées : les dernières, pour ne pas toucher
@@ -86,7 +88,7 @@ test("annuler puis rétablir deux séances d'un seul geste", async ({ page }) =>
   await expect(page.getByText(/2 séances rétablies/)).toBeVisible({ timeout: 30_000 });
   for (const id of ids) await expect(page.locator(`[data-geste-seance="${id}"][data-annulable="true"]`)).toBeVisible({ timeout: 20_000 });
 
-  // Éteindre l'interrupteur referme les cases.
-  await interrupteur.uncheck();
+  // « Terminé » referme les cases.
+  await page.getByRole("button", { name: "Terminé" }).click();
   await expect(page.getByLabel(/^Sélectionner la séance du/)).toHaveCount(0);
 });

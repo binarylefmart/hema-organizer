@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.81.0
+
+### Nouveautés
+
+- **seances** : bouton crayon et sélection des séances pour tous
+
 ## 0.80.2
 
 ### Nouveautés

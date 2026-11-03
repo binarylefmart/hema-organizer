@@ -43,12 +43,17 @@ describe("la case du planning", () => {
   });
 });
 
-describe("le bandeau « Mode modification » des séances", () => {
+describe("la sélection des séances (bouton crayon)", () => {
   const page = lire("src/app/(app)/seances/page.tsx");
-  it("garde sa sortie et l'ajout, sans phrase d'explication", () => {
-    expect(page).toContain('aria-label="Mode modification"');
-    expect(page).toContain("Terminer les modifications");
-    expect(page).toContain("Nouvelle séance");
+  const selection = lire("src/components/seances/SelectionSeances.tsx");
+  it("s'ouvre par le crayon, garde sa sortie et l'ajout, sans phrase d'explication", () => {
+    expect(selection).toContain('<BoutonCrayon\n            libelle="Sélectionner des séances"');
+    expect(selection).toContain("Terminé");
+    expect(selection).toContain("Nouvelle séance");
+    expect(page).toContain("lienNouvelle={equipe ?");
     expect(page).not.toContain("les gestes de chaque séance sont au pied de sa carte");
+  });
+  it("les gestes d'une carte ne paraissent qu'en sélection, et seulement pour l'encadrement", () => {
+    expect(page).toContain("equipe ? (\n              <SiSelection>");
   });
 });

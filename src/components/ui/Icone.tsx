@@ -6,6 +6,7 @@ import type { SVGProps } from "react";
  */
 const TRACES = {
   check: "M5 12.5l4.5 4.5L19 7.5",
+  crayon: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   croix: "M6 6l12 12M18 6L6 18",
   question: "M9.5 9.5a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.1.9-1.1 1.8M12 17h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
   calendrier: "M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z",

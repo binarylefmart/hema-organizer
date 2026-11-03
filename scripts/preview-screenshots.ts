@@ -693,7 +693,7 @@ function toutesLesScenes(): Scene[] {
     // Le planning tel que l'encadrement le **trouve** : en lecture seule, comme un membre, avec le
     // seul bouton qui ouvre la saisie. C'est le défaut depuis cette date, et c'est précisément ce
     // que la scène doit montrer — l'écran d'avant était un mur de listes déroulantes.
-    { nom: "planning-instructeur", description: "Planning (équipe) : en lecture seule par défaut, avec le bouton « Modifier le planning »", connexion: COMPTES.instructeur, chemin: "/planning" },
+    { nom: "planning-instructeur", description: "Planning (équipe) : en lecture seule par défaut, avec le bouton crayon « Modifier le planning »", connexion: COMPTES.instructeur, chemin: "/planning" },
     { nom: "planning-semaine", description: "Planning (équipe) : fenêtre resserrée sur les deux prochaines semaines", connexion: COMPTES.instructeur, chemin: "/planning?h=2semaines" },
     {
       nom: "accueil",
@@ -974,7 +974,7 @@ function toutesLesScenes(): Scene[] {
       pleinePage: true,
     },
     { nom: "ateliers-membre", description: "Proposer un atelier : formulaire sans champ obligatoire, puis mes propositions", connexion: COMPTES.refuse, chemin: "/ateliers", pleinePage: true },
-    { nom: "seances-equipe", description: "Séances vues par l'encadrement : en lecture seule, avec « Modifier les séances »", connexion: COMPTES.instructeur, chemin: "/seances" },
+    { nom: "seances-equipe", description: "Séances vues par l'encadrement : en lecture seule, avec le bouton crayon", connexion: COMPTES.instructeur, chemin: "/seances" },
     {
       nom: "seances-equipe-modif",
       description: "Séances en mode modification : bandeau, « Terminer », et « Que veux-tu faire ? » au pied des cartes (ici : annuler, motif demandé)",
@@ -1389,12 +1389,12 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "action-seances-volet",
-      description: "Séances sur téléphone : le volet « Que faire sur ces 3 séances ? » ouvert (sur PC, la barre de l'ordinateur)",
+      description: "Séances, encadrement : trois séances cochées, puis « Continuer » — « Ma réponse » et « Modifier ces séances » (sur PC, le panneau sous la sélection)",
       connexion: COMPTES.instructeur,
       chemin: "/seances?modifier=1",
       avant: async (page) => {
         await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }));
-        await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        await ouvrirVoletSeances(page);
       },
     },
     {
@@ -1404,7 +1404,7 @@ function toutesLesScenes(): Scene[] {
       chemin: "/seances?modifier=1",
       avant: async (page) => {
         await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }));
-        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        const volet = await ouvrirVoletSeances(page);
         const zone = volet ?? page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first();
         if (volet) await volet.getByRole("button", { name: /^Retirer un élément du programme/ }).click();
         else {
@@ -1416,52 +1416,33 @@ function toutesLesScenes(): Scene[] {
       },
     },
     {
+      nom: "seances-crayon",
+      description: "Séances d'un membre : le bouton crayon (rond et flottant au téléphone, sous le titre sur PC), qui ouvre la sélection",
+      connexion: COMPTES.membre,
+      chemin: "/seances",
+    },
+    {
+      nom: "action-seances-selection-membre",
+      description: "Séances d'un membre : le crayon a ouvert la sélection — « Tout sélectionner », deux séances cochées, et la barre du bas sur une ligne avec « Continuer »",
+      connexion: COMPTES.membre,
+      chemin: "/seances",
+      avant: async (page) => {
+        await selectionnerSeancesMembre(page);
+      },
+    },
+    {
       nom: "action-seances-repondre-periode",
-      description: "Séances d'un membre : « Répondre pour les séances à venir » (bouton plein) — Présent choisi, case « Ne pas modifier » décochée, les chiffres avant d'écrire (téléphone : le volet)",
+      description: "Séances d'un membre : deux séances cochées, « Continuer », puis « Ma réponse » — Absent choisi, case « Ne pas modifier » décochée, les chiffres avant d'écrire",
       connexion: COMPTES.membre,
       chemin: "/seances",
       avant: async (page) => {
-        await page.getByRole("button", { name: "Répondre pour les séances à venir" }).click();
-        const zone = (await estTelephone(page))
-          ? page.getByRole("dialog", { name: "Répondre pour les séances à venir" })
-          : page.getByRole("region", { name: "Répondre pour les séances à venir" });
-        await zone.getByRole("group", { name: "Ma réponse pour ces séances" }).getByRole("button", { name: "Présent" }).click();
-        // Le membre de démonstration a déjà tout répondu : la case décochée montre ce qui serait remplacé.
+        await selectionnerSeancesMembre(page, [1, 2]);
+        const zone = (await ouvrirVoletSeances(page)) ?? page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first();
+        await zone.getByRole("group", { name: "Ma réponse pour les séances cochées" }).getByRole("button", { name: "Absent" }).click();
         await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
       },
     },
-    {
-      nom: "action-seances-repondre-dates",
-      description: "Séances d'un membre : « Répondre pour les séances à venir » sur des dates choisies — deux dates cochées, Absent, les chiffres avant d'écrire (téléphone : le volet)",
-      connexion: COMPTES.membre,
-      chemin: "/seances",
-      avant: async (page) => {
-        await page.getByRole("button", { name: "Répondre pour les séances à venir" }).click();
-        const zone = (await estTelephone(page))
-          ? page.getByRole("dialog", { name: "Répondre pour les séances à venir" })
-          : page.getByRole("region", { name: "Répondre pour les séances à venir" });
-        await zone.getByRole("button", { name: "Choisir des dates" }).click();
-        const cases = zone.getByRole("list", { name: "Séances à venir" }).getByRole("checkbox");
-        await cases.nth(1).check();
-        await cases.nth(2).check();
-        await zone.getByRole("group", { name: "Ma réponse pour ces séances" }).getByRole("button", { name: "Absent" }).click();
-        await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
-      },
-    },
-    {
-      nom: "action-seances-repondre-filtre",
-      description: "Séances d'un membre filtrées sur 2 semaines : « Répondre pour les séances à venir » ne vise que les séances affichées (« Les N séances affichées »)",
-      connexion: COMPTES.membre,
-      chemin: "/seances?h=2semaines",
-      avant: async (page) => {
-        await page.getByRole("button", { name: "Répondre pour les séances à venir" }).click();
-        const zone = (await estTelephone(page))
-          ? page.getByRole("dialog", { name: "Répondre pour les séances à venir" })
-          : page.getByRole("region", { name: "Répondre pour les séances à venir" });
-        await zone.getByRole("group", { name: "Ma réponse pour ces séances" }).getByRole("button", { name: "Peut-être" }).click();
-        await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
-      },
-    },
+
     {
       nom: "seances-choix-cours",
       description: "Séances d'un membre, choix des cours ouvert : après « Présent », une case par cours, option ou atelier, avec le nombre d'inscrits",
@@ -1483,28 +1464,28 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "action-seances-repondre-cours",
-      description: "Séances d'un membre, choix des cours ouvert : « Répondre pour les séances à venir » avec Présent propose les cours des séances visées, par nom, à cocher d'un coup",
+      description: "Séances d'un membre, choix des cours ouvert : séances cochées, « Ma réponse » avec Présent, puis tous les cours des séances visées à cocher (« Ce que je suivrai »)",
       connexion: COMPTES.membre,
       chemin: "/seances",
       avant: async (page) => {
         await definirChoixCoursDemo(true);
+        await programmeDemo(true);
         await page.reload({ waitUntil: "networkidle" });
-        await page.getByRole("button", { name: "Répondre pour les séances à venir" }).click();
-        const zone = (await estTelephone(page))
-          ? page.getByRole("dialog", { name: "Répondre pour les séances à venir" })
-          : page.getByRole("region", { name: "Répondre pour les séances à venir" });
-        await zone.getByRole("group", { name: "Ma réponse pour ces séances" }).getByRole("button", { name: "Présent" }).click();
-        // La démo répond « Peut-être » à la seule séance qui porte un programme : sans décocher, elle serait gardée.
+        await selectionnerSeancesMembre(page, [1, 2, 3]);
+        const zone = (await ouvrirVoletSeances(page)) ?? page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first();
+        await zone.getByRole("group", { name: "Ma réponse pour les séances cochées" }).getByRole("button", { name: "Présent" }).click();
         await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
-        const cours = zone.getByRole("group", { name: "Quels cours vas-tu suivre ?" });
+        const cours = zone.locator("fieldset").filter({ hasText: "Ce que je suivrai" });
         await cours.waitFor();
         await cours.getByRole("checkbox").first().check();
         await cours.evaluate((el) => el.scrollIntoView({ block: "center" }));
       },
       apres: async () => {
         await definirChoixCoursDemo(false);
+        await programmeDemo(false);
       },
     },
+
     {
       nom: "admin-club-choix-cours",
       description: "Espace admin → Club : la carte « Choix des cours » (ouvrir ou masquer le choix des cours aux membres)",
@@ -2451,6 +2432,33 @@ async function prochaineSeanceDemo(): Promise<string> {
 
 /** Scène « comptes désactivés » : bascule un compte repère le temps de la capture. */
 /** Rend au membre de démonstration sa réponse « Peut-être » au premier cours, que la scène du choix des cours a passée à « Présent ». */
+/**
+ * **Un programme sur les trois prochaines séances non commencées**, le temps de la scène du choix des
+ * cours : la démo n'en porte que sur la séance du jour, qui a peut-être déjà commencé à l'heure des
+ * captures. Les éléments ajoutés sont repérés par leur description et retirés par `programmeDemo(false)`.
+ */
+const MARQUE_PROGRAMME_DEMO = "[aperçu choix des cours]";
+async function programmeDemo(poser: boolean): Promise<void> {
+  const db = new PrismaClient();
+  try {
+    await db.sessionPartie.deleteMany({ where: { description: MARQUE_PROGRAMME_DEMO } });
+    if (!poser) return;
+    const seances = await db.session.findMany({ where: { date: { gt: todayIso() }, annulee: false }, orderBy: [{ date: "asc" }, { heureDebut: "asc" }], take: 3, select: { id: true, parties: { select: { ordre: true } } } });
+    const themes = [["Messer", "Dague"], ["Épée longue", "Dague"], ["Sparring", "Messer"]];
+    for (const [i, s] of seances.entries()) {
+      const depart = s.parties.reduce((m, p) => Math.max(m, p.ordre + 1), 0);
+      await db.sessionPartie.createMany({
+        data: [
+          { sessionId: s.id, libelle: "Cours", nature: "COURS", bloc: 1, ordre: depart, theme: themes[i][0], teinte: 1, description: MARQUE_PROGRAMME_DEMO },
+          { sessionId: s.id, libelle: "Option", nature: "OPTION", bloc: 1, ordre: depart + 1, theme: themes[i][1], teinte: 2, description: MARQUE_PROGRAMME_DEMO },
+        ],
+      });
+    }
+  } finally {
+    await db.$disconnect();
+  }
+}
+
 async function remettreReponseDemo(): Promise<void> {
   const db = new PrismaClient();
   try {
@@ -2538,7 +2546,9 @@ async function fermerDemoGestes(page: Page): Promise<void> {
  * l'en-tête collant en haut intercepteraient sinon le clic.
  */
 async function cocherPlusieurs(page: Page, cases: Locator, indices: readonly number[] = [0, 1, 2]): Promise<void> {
-  await page.getByRole("switch", { name: "Sélection multiple" }).first().check();
+  // Le planning garde son interrupteur ; les séances s'ouvrent par le crayon (ou `?modifier=1`).
+  const interrupteur = page.getByRole("switch", { name: "Sélection multiple" }).first();
+  if (await interrupteur.count()) await interrupteur.check();
   await cases.first().waitFor();
   const total = await cases.count();
   for (const i of indices) {
@@ -2565,6 +2575,21 @@ async function ouvrirVoletSelection(page: Page, question: RegExp): Promise<Locat
   const volet = page.getByRole("dialog", { name: question });
   await volet.waitFor();
   return volet;
+}
+
+/** Séances au téléphone : « Continuer » ouvre le volet de la sélection (réponse et gestes). Sur PC, rien. */
+async function ouvrirVoletSeances(page: Page): Promise<Locator | null> {
+  if (!(await estTelephone(page))) return null;
+  await page.getByRole("button", { name: "Continuer" }).click();
+  const volet = page.getByRole("dialog", { name: /séances? sélectionnées?$/ });
+  await volet.waitFor();
+  return volet;
+}
+
+/** Séances d'un membre : le crayon ouvre la sélection, puis quelques séances sont cochées. */
+async function selectionnerSeancesMembre(page: Page, indices: readonly number[] = [0, 1]): Promise<void> {
+  await page.getByRole("button", { name: "Sélectionner des séances" }).first().click();
+  await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }), indices);
 }
 
 /** « Régler des éléments », première étape : deux éléments réglables cochés. */

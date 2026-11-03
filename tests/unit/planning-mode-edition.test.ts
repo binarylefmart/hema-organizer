@@ -61,8 +61,8 @@ describe("la grille n'ouvre ses cases qu'en mode modification", () => {
     expect(grille).toContain("enEdition ? optionsDepuis(p) : optionsDepuis({ ...p, modifiable: false, peutProgrammer: false })");
     // Le droit de remplir et le mode sont deux choses : le bouton d'entrée suit le droit.
     expect(grille).toContain("const peutModifier = p.modifiable");
-    // Le bouton d'entrée vit sous le titre de la page, à la place commune à tous les onglets.
-    expect(lire("src/app/(app)/planning/page.tsx")).toContain("<EntreeModification");
+    // Le bouton d'entrée est le bouton crayon (rond au téléphone, sous le titre sur ordinateur).
+    expect(lire("src/app/(app)/planning/page.tsx")).toContain('<BoutonCrayon href={lien} libelle="Modifier le planning"');
   });
 
   /**

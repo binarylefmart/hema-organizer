@@ -2,7 +2,7 @@ import { PLEINE_LARGEUR } from "@/components/ui/pleine-largeur";
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { EntreeModification } from "@/components/ui/EntreeModification";
+import { BoutonCrayon } from "@/components/ui/BoutonCrayon";
 import { requireUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
@@ -189,11 +189,14 @@ async function SousLesFiltres({ planning, temps }: Omit<IlotPlanning, "choisie">
   );
 }
 
-/** « Modifier le planning », pour qui a le droit de remplir les cases — sous le titre, comme partout. */
+/**
+ * « Modifier le planning », pour qui a le droit de remplir les cases : le bouton crayon — rond et
+ * flottant au téléphone, sous le titre sur ordinateur (`BoutonCrayon`).
+ */
 async function EntreePlanning({ planning, lien }: { planning: Promise<Planning | null>; lien: string }) {
   const p = await planning;
   if (!p?.modifiable) return null;
-  return <EntreeModification href={lien}>Modifier le planning</EntreeModification>;
+  return <BoutonCrayon href={lien} libelle="Modifier le planning" cle="planning" />;
 }
 
 /**
