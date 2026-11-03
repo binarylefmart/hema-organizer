@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { confirmationReponse, planReponse, succesReponse } from "@/components/seances/reponse-periode";
+import { confirmationReponse, coursProposes, partiesAChoisir, planReponse, seancesPresentesApres, succesReponse } from "@/components/seances/reponse-periode";
 
 /**
  * **« Répondre pour toutes les séances à venir »** : le tri (séances ouvertes seulement, réponses
@@ -28,12 +28,41 @@ describe("planReponse", () => {
   });
 });
 
+describe("choix des cours dans la réponse groupée", () => {
+  const avecCours = [
+    { ...s("a", null), cours: [{ partieId: "a1", nom: "Épée longue", choisi: false }, { partieId: "a2", nom: "Messer", choisi: false }] },
+    { ...s("b", "ABSENT"), cours: [{ partieId: "b1", nom: "épée longue ", choisi: false }] },
+    { ...s("c", "PRESENT"), cours: [{ partieId: "c1", nom: "Épée longue", choisi: true }, { partieId: "c2", nom: "Dague", choisi: false }] },
+    { ...s("d", null, { annulee: true }), cours: [{ partieId: "d1", nom: "Épée longue", choisi: false }] },
+  ];
+  it("ne vise que les séances qui seront « Présent » après le geste", () => {
+    expect(seancesPresentesApres(avecCours, "PRESENT", true)).toEqual(["a", "c"]);
+    expect(seancesPresentesApres(avecCours, "PRESENT", false)).toEqual(["a", "b", "c"]);
+    expect(seancesPresentesApres(avecCours, "PRESENT", false, new Set(["b"]))).toEqual(["b"]);
+    expect(seancesPresentesApres(avecCours, "PEUT_ETRE", false)).toEqual([]);
+  });
+  it("propose chaque nom une fois, sans tenir compte de la casse", () => {
+    expect(coursProposes(avecCours, ["a", "b", "c"])).toEqual([
+      { cle: "épée longue", nom: "Épée longue", seances: 3 },
+      { cle: "dague", nom: "Dague", seances: 1 },
+      { cle: "messer", nom: "Messer", seances: 1 },
+    ]);
+  });
+  it("coche les éléments du nom retenu sans reprendre ceux déjà choisis", () => {
+    expect(partiesAChoisir(avecCours, ["a", "b", "c"], new Set(["épée longue"]))).toEqual(["a1", "b1"]);
+    expect(partiesAChoisir(avecCours, ["a", "c"], new Set())).toEqual([]);
+  });
+});
+
 const faux = vi.hoisted(() => ({
   user: { id: "u1", role: "MEMBRE", estAdmin: false, actif: true } as Record<string, unknown> | null,
   periode: { statut: "ACTIVE", membres: [{ userId: "u1" }] } as { statut: string; membres: unknown[] } | null,
   seances: [] as Array<{ id: string; date: string; heureDebut: string; annulee: boolean; attendances: Array<{ statut: string }> }>,
   ecrites: [] as Array<{ sessionId: string; statut: string }>,
   desistements: [] as Array<{ sessionId: string; avant: string | null }>,
+  choixActif: true,
+  parties: [] as Array<{ id: string; sessionId: string; nature: string; choix: unknown[] }>,
+  choixEcrits: [] as string[],
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -45,6 +74,18 @@ vi.mock("@/lib/db", () => ({
         faux.ecrites.push({ sessionId: create.sessionId, statut: create.statut });
         return {};
       }),
+    },
+    sessionPartie: {
+      findMany: vi.fn(async ({ where }: { where: { id: { in: string[] }; sessionId: { in: string[] } } }) =>
+        faux.parties.filter((p) => where.id.in.includes(p.id) && where.sessionId.in.includes(p.sessionId)),
+      ),
+    },
+    attendanceChoix: {
+      upsert: vi.fn(async ({ create }: { create: { partieId: string } }) => {
+        faux.choixEcrits.push(create.partieId);
+        return {};
+      }),
+      deleteMany: vi.fn(async () => ({ count: 0 })),
     },
     $transaction: vi.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
   },
@@ -60,6 +101,7 @@ vi.mock("@/lib/notifications/desistement", () => ({
   }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/settings", () => ({ getChoixCoursActif: vi.fn(async () => faux.choixActif) }));
 
 const { repondrePourLaPeriode } = await import("@/actions/presences");
 
@@ -74,6 +116,15 @@ beforeEach(() => {
   ];
   faux.ecrites = [];
   faux.desistements = [];
+  faux.choixActif = true;
+  faux.parties = [
+    { id: "p1", sessionId: "s1", nature: "COURS", choix: [] },
+    { id: "p2", sessionId: "s2", nature: "OPTION", choix: [] },
+    { id: "p3", sessionId: "s2", nature: "ECHAUFFEMENT", choix: [] },
+    { id: "p4", sessionId: "s3", nature: "COURS", choix: [] },
+    { id: "p5", sessionId: "s2", nature: "COURS", choix: [{ userId: "u1" }] },
+  ];
+  faux.choixEcrits = [];
 });
 
 describe("repondrePourLaPeriode", () => {
@@ -92,6 +143,25 @@ describe("repondrePourLaPeriode", () => {
     const res = await repondrePourLaPeriode({ periodId: "p1", statut: "ABSENT", garderReponses: false, seanceIds: ["s2", "s3", "s4", "inconnue"] });
     expect(faux.ecrites).toEqual([{ sessionId: "s2", statut: "ABSENT" }]);
     expect(res.succes).toBe("C'est noté : Absent pour 1 séance. 1 réponse déjà donnée a été remplacée.");
+  });
+  it("coche les cours demandés sur les séances « Présent », jamais l'échauffement ni une séance annulée", async () => {
+    const res = await repondrePourLaPeriode({ periodId: "p1", statut: "PRESENT", garderReponses: true, partieIds: ["p1", "p2", "p3", "p4", "p5"] });
+    expect(faux.ecrites).toEqual([{ sessionId: "s1", statut: "PRESENT" }]);
+    expect(faux.choixEcrits).toEqual(["p1", "p2"]);
+    expect(res.succes).toBe("C'est noté : Présent pour 1 séance. 1 séance porte déjà cette réponse. 2 cours ajoutés à tes choix.");
+  });
+  it("ajoute des cours même quand aucune réponse ne change", async () => {
+    const res = await repondrePourLaPeriode({ periodId: "p1", statut: "PRESENT", garderReponses: true, seanceIds: ["s2"], partieIds: ["p2"] });
+    expect(faux.ecrites).toEqual([]);
+    expect(faux.choixEcrits).toEqual(["p2"]);
+    expect(res.succes).toBe("C'est noté : 1 cours ajouté à tes choix.");
+  });
+  it("ne coche aucun cours quand le club n'a pas ouvert le choix, ou pour une autre réponse que « Présent »", async () => {
+    faux.choixActif = false;
+    await repondrePourLaPeriode({ periodId: "p1", statut: "PRESENT", garderReponses: true, partieIds: ["p1"] });
+    faux.choixActif = true;
+    await repondrePourLaPeriode({ periodId: "p1", statut: "PEUT_ETRE", garderReponses: true, partieIds: ["p1"] });
+    expect(faux.choixEcrits).toEqual([]);
   });
   it("refuse une liste de dates vide", async () => {
     expect((await repondrePourLaPeriode({ periodId: "p1", statut: "ABSENT", garderReponses: true, seanceIds: [] })).erreur).toBe("Réponse non reconnue.");

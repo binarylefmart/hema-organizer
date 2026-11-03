@@ -1482,6 +1482,30 @@ function toutesLesScenes(): Scene[] {
       },
     },
     {
+      nom: "action-seances-repondre-cours",
+      description: "Séances d'un membre, choix des cours ouvert : « Répondre pour les séances à venir » avec Présent propose les cours des séances visées, par nom, à cocher d'un coup",
+      connexion: COMPTES.membre,
+      chemin: "/seances",
+      avant: async (page) => {
+        await definirChoixCoursDemo(true);
+        await page.reload({ waitUntil: "networkidle" });
+        await page.getByRole("button", { name: "Répondre pour les séances à venir" }).click();
+        const zone = (await estTelephone(page))
+          ? page.getByRole("dialog", { name: "Répondre pour les séances à venir" })
+          : page.getByRole("region", { name: "Répondre pour les séances à venir" });
+        await zone.getByRole("group", { name: "Ma réponse pour ces séances" }).getByRole("button", { name: "Présent" }).click();
+        // La démo répond « Peut-être » à la seule séance qui porte un programme : sans décocher, elle serait gardée.
+        await zone.getByRole("checkbox", { name: "Ne pas modifier mes réponses déjà données" }).uncheck();
+        const cours = zone.getByRole("group", { name: "Quels cours vas-tu suivre ?" });
+        await cours.waitFor();
+        await cours.getByRole("checkbox").first().check();
+        await cours.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      },
+      apres: async () => {
+        await definirChoixCoursDemo(false);
+      },
+    },
+    {
       nom: "admin-club-choix-cours",
       description: "Espace admin → Club : la carte « Choix des cours » (ouvrir ou masquer le choix des cours aux membres)",
       connexion: COMPTES.admin,

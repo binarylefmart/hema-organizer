@@ -10,8 +10,14 @@ import { pluriel } from "@/components/ui/choix-geste";
  * sert qu'à annoncer les chiffres avant l'appui.
  */
 
-/** Ce que l'écran sait d'une séance pour ce geste (date et heure : pour la liste « Choisir des dates »). */
-export type SeanceARepondre = { id: string; annulee: boolean; commencee: boolean; monStatut: string | null; date?: string; heureDebut?: string };
+/** Un cours proposé au choix sur une séance (`choixDeLaSeance`), et s'il est déjà coché par la personne. */
+export type CoursARepondre = { partieId: string; nom: string; choisi: boolean };
+
+/**
+ * Ce que l'écran sait d'une séance pour ce geste (date et heure : pour la liste « Choisir des dates » ;
+ * `cours` : les cours au choix, seulement quand le club a ouvert le choix des cours).
+ */
+export type SeanceARepondre = { id: string; annulee: boolean; commencee: boolean; monStatut: string | null; date?: string; heureDebut?: string; cours?: CoursARepondre[] };
 
 /** Les séances encore ouvertes à une réponse : ni annulées, ni commencées (donc ni passées). */
 export function seancesOuvertes<T extends SeanceARepondre>(seances: readonly T[]): T[] {
@@ -81,4 +87,63 @@ export function confirmationReponse(statut: AttendanceStatut, plan: PlanReponse)
 export function succesReponse(statut: AttendanceStatut, plan: PlanReponse): string {
   if (plan.aEcrire.length === 0) return ["Rien à changer.", ...phrasesPlan(plan)].join(" ");
   return [`C'est noté : ${libelleReponse(statut, plan.aEcrire.length)}.`, ...phrasesPlan(plan).map((p) => p.replace("seront remplacées", "ont été remplacées").replace("sera remplacée", "a été remplacée"))].join(" ");
+}
+
+/* ─────────── Le choix des cours dans la réponse groupée ─────────── */
+
+/**
+ * **Les séances où la personne sera « Présent » après le geste** — les seules où l'on peut choisir des
+ * cours : celles qui reçoivent « Présent » (`aEcrire`) et celles qui le portent déjà. Une réponse
+ * gardée autrement (case cochée) ne reçoit aucun cours. Rien si la réponse choisie n'est pas « Présent ».
+ */
+export function seancesPresentesApres(seances: readonly SeanceARepondre[], statut: AttendanceStatut, garder: boolean, choisies?: ReadonlySet<string>): string[] {
+  if (statut !== "PRESENT") return [];
+  const ecrites = new Set(planReponse(seances, statut, garder, choisies).aEcrire);
+  return seancesOuvertes(seances)
+    .filter((s) => (!choisies || choisies.has(s.id)) && (ecrites.has(s.id) || s.monStatut === "PRESENT"))
+    .map((s) => s.id);
+}
+
+/** La clé d'un nom de cours : « Épée longue » et « épée longue » sont le même cours. */
+export const cleCours = (nom: string) => nom.trim().toLocaleLowerCase("fr");
+
+export type CoursPropose = { cle: string; nom: string; seances: number };
+
+/**
+ * **Les cours qu'on peut cocher d'un coup** : les noms des cours au choix (`nomOption` — le thème,
+ * sinon le titre de l'atelier, sinon le nom de l'élément) des séances visées, chacun une fois, avec
+ * le nombre de séances qui le proposent. Rangés du plus fréquent au plus rare, puis par nom.
+ */
+export function coursProposes(seances: readonly SeanceARepondre[], cibles: readonly string[]): CoursPropose[] {
+  const visees = new Set(cibles);
+  const parCle = new Map<string, { nom: string; seances: Set<string> }>();
+  for (const s of seances) {
+    if (!visees.has(s.id)) continue;
+    for (const c of s.cours ?? []) {
+      const cle = cleCours(c.nom);
+      const ligne = parCle.get(cle) ?? { nom: c.nom.trim(), seances: new Set<string>() };
+      ligne.seances.add(s.id);
+      parCle.set(cle, ligne);
+    }
+  }
+  return [...parCle]
+    .map(([cle, l]) => ({ cle, nom: l.nom, seances: l.seances.size }))
+    .sort((a, b) => b.seances - a.seances || a.nom.localeCompare(b.nom, "fr"));
+}
+
+/**
+ * **Les éléments à cocher** pour les noms retenus, sur les séances visées : ceux qui portent un de ces
+ * noms et ne sont pas déjà choisis. **Rien n'est jamais décoché** : le geste ajoute des cours, il
+ * n'en retire aucun — décocher se fait sur la carte de la séance.
+ */
+export function partiesAChoisir(seances: readonly SeanceARepondre[], cibles: readonly string[], cles: ReadonlySet<string>): string[] {
+  if (cles.size === 0) return [];
+  const visees = new Set(cibles);
+  return seances.filter((s) => visees.has(s.id)).flatMap((s) => (s.cours ?? []).filter((c) => !c.choisi && cles.has(cleCours(c.nom))).map((c) => c.partieId));
+}
+
+/** « 3 cours ajoutés », la phrase qui suit la réponse quand des cours ont été cochés. */
+export function phraseCours(n: number, fait: boolean): string {
+  if (n === 0) return "";
+  return fait ? `${pluriel(n, "cours", "cours")} ${n > 1 ? "ajoutés" : "ajouté"} à tes choix.` : `${pluriel(n, "cours", "cours")} ${n > 1 ? "seront ajoutés" : "sera ajouté"} à tes choix.`;
 }

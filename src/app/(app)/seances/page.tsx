@@ -22,6 +22,8 @@ import { ListeSeances } from "@/components/seances/ListeSeances";
 import { CaseSeance, SelectionSeances } from "@/components/seances/SelectionSeances";
 import type { LigneSeance } from "@/components/seances/selection-seances";
 import { ReponsePeriode } from "@/components/seances/ReponsePeriode";
+import type { CoursARepondre } from "@/components/seances/reponse-periode";
+import type { ChoixCoursCarte } from "@/components/seances/choix-cours";
 import { getLieux } from "@/lib/planning";
 import { ecritureFermee } from "@/lib/constants";
 import { Historique } from "@/components/presences/Historique";
@@ -453,9 +455,24 @@ async function ReponsePeriodeDe({ affichees, filtree, choisie, periodes }: { aff
       periodId={periodId}
       filtree={filtree}
       periodNom={periode.nom}
-      seances={duPeriode.map((x) => ({ id: x.id, annulee: x.annulee, commencee: x.commencee, monStatut: x.monStatut, date: x.date, heureDebut: x.heureDebut }))}
+      seances={duPeriode.map((x) => ({
+        id: x.id,
+        annulee: x.annulee,
+        commencee: x.commencee,
+        monStatut: x.monStatut,
+        date: x.date,
+        heureDebut: x.heureDebut,
+        // Le choix des cours, quand le club l'a ouvert : ce que la carte propose, et ce qui est déjà coché.
+        ...(x.choixCours ? { cours: coursARepondre(x.choixCours) } : {}),
+      }))}
     />
   );
+}
+
+/** Les cours au choix d'une carte, tels que la réponse groupée les propose. */
+function coursARepondre(choix: ChoixCoursCarte): CoursARepondre[] {
+  const mes = new Set(choix.mesChoix);
+  return choix.options.map((o) => ({ partieId: o.partieId, nom: o.nom, choisi: mes.has(o.partieId) }));
 }
 
 /**

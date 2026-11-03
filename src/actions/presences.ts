@@ -12,7 +12,7 @@ import { seanceCommencee } from "@/lib/dates";
 import { signalerDesistementTardif } from "@/lib/notifications/desistement";
 import { can } from "@/lib/permissions";
 import { presenceAutruiSchema, presencesEnMasseSchema } from "@/lib/validation/presences";
-import { planReponse, succesReponse } from "@/components/seances/reponse-periode";
+import { phraseCours, planReponse, seancesPresentesApres, succesReponse } from "@/components/seances/reponse-periode";
 import { effacerChoixSiAbsent } from "@/lib/choix-cours";
 import { natureChoisissable } from "@/components/seances/choix-cours";
 import { getChoixCoursActif } from "@/lib/settings";
@@ -97,6 +97,8 @@ const reponsePeriodeSchema = z.object({
   garderReponses: z.boolean(),
   /** Dates précises (« Choisir des dates ») ; absent = toutes les séances à venir de la période. */
   seanceIds: z.array(z.string().min(1).max(64)).min(1).max(200).optional(),
+  /** Cours à cocher en même temps (choix des cours ouvert, réponse « Présent ») ; jamais de décochage. */
+  partieIds: z.array(z.string().min(1).max(64)).max(1000).optional(),
 });
 
 /**
@@ -117,12 +119,18 @@ const reponsePeriodeSchema = z.object({
  * un identifiant qui n'est pas une séance de la période ne touche rien, une séance annulée ou
  * commencée reste ignorée.
  */
-export async function repondrePourLaPeriode(input: { periodId: string; statut: string; garderReponses: boolean; seanceIds?: string[] }): Promise<{ succes?: string; erreur?: string }> {
+export async function repondrePourLaPeriode(input: {
+  periodId: string;
+  statut: string;
+  garderReponses: boolean;
+  seanceIds?: string[];
+  partieIds?: string[];
+}): Promise<{ succes?: string; erreur?: string }> {
   const user = await getCurrentUser();
   if (!user || !can(user, "attendances.own")) return { erreur: "Ta session a expiré. Reconnecte-toi." };
   const parsed = reponsePeriodeSchema.safeParse(input);
   if (!parsed.success) return { erreur: "Réponse non reconnue." };
-  const { periodId, statut, garderReponses, seanceIds } = parsed.data;
+  const { periodId, statut, garderReponses, seanceIds, partieIds } = parsed.data;
 
   const periode = await db.period.findUnique({
     where: { id: periodId },
@@ -140,8 +148,10 @@ export async function repondrePourLaPeriode(input: { periodId: string; statut: s
     commencee: seanceCommencee(s.date, s.heureDebut),
     monStatut: s.attendances[0]?.statut ?? null,
   }));
-  const plan = planReponse(lues, statut, garderReponses, seanceIds ? new Set(seanceIds) : undefined);
-  if (plan.aEcrire.length > 0) {
+  const portee = seanceIds ? new Set(seanceIds) : undefined;
+  const plan = planReponse(lues, statut, garderReponses, portee);
+  const cours = partieIds?.length ? await coursAAjouter(user.id, periodId, seancesPresentesApres(lues, statut, garderReponses, portee), partieIds) : [];
+  if (plan.aEcrire.length > 0 || cours.length > 0) {
     await db.$transaction(
       plan.aEcrire.map((sessionId) =>
         db.attendance.upsert({
@@ -152,6 +162,11 @@ export async function repondrePourLaPeriode(input: { periodId: string; statut: s
       ),
     );
     await effacerChoixSiAbsent([user.id], plan.aEcrire, statut);
+    // Après les réponses : un cours ne se coche que sur une séance où l'on est « Présent ».
+    if (cours.length > 0)
+      await db.$transaction(
+        cours.map((partieId) => db.attendanceChoix.upsert({ where: { userId_partieId: { userId: user.id, partieId } }, create: { userId: user.id, partieId }, update: {} })),
+      );
     const avant = new Map(lues.map((s) => [s.id, s.monStatut]));
     for (const sessionId of plan.aEcrire) {
       const precedent = avant.get(sessionId) ?? null;
@@ -161,7 +176,24 @@ export async function repondrePourLaPeriode(input: { periodId: string; statut: s
     revalidatePath("/seances");
     revalidatePath("/");
   }
-  return { succes: succesReponse(statut, plan) };
+  if (plan.aEcrire.length === 0 && cours.length > 0) return { succes: `C'est noté : ${phraseCours(cours.length, true)}` };
+  return { succes: [succesReponse(statut, plan), phraseCours(cours.length, true)].filter(Boolean).join(" ") };
+}
+
+/**
+ * **Les cours à cocher pour de bon**, parmi ceux que l'écran demande : le club a ouvert le choix des
+ * cours ; l'élément appartient à une séance de cette période où la personne sera « Présent » après le
+ * geste (`seancesPresentesApres` — donc ni annulée, ni commencée, ni hors des dates choisies) ; c'est
+ * un cours, une option ou un atelier ; et il n'est pas déjà choisi. Le reste est ignoré en silence,
+ * comme une date choisie devenue annulée.
+ */
+async function coursAAjouter(userId: string, periodId: string, seancesPresentes: readonly string[], partieIds: readonly string[]): Promise<string[]> {
+  if (seancesPresentes.length === 0 || !(await getChoixCoursActif())) return [];
+  const parties = await db.sessionPartie.findMany({
+    where: { id: { in: [...new Set(partieIds)] }, sessionId: { in: [...seancesPresentes] }, session: { periodId } },
+    select: { id: true, nature: true, choix: { where: { userId }, select: { userId: true } } },
+  });
+  return parties.filter((p) => natureChoisissable(p.nature) && p.choix.length === 0).map((p) => p.id);
 }
 
 const choixCoursSchema = z.object({ partieId: z.string().min(1).max(64), choisi: z.boolean() });

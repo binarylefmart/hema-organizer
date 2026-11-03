@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.80.2
+
+### Nouveautés
+
+- **presences** : choisir ses cours dans la réponse groupée
+
 ## 0.80.1
 
 ### Nouveautés

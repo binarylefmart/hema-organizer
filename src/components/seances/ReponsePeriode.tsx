@@ -10,7 +10,19 @@ import { Icone, type NomIcone } from "@/components/ui/Icone";
 import { VoletBas } from "@/components/ui/VoletBas";
 import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
 import { capitale, formatDateSansAnnee, formatHeure } from "@/lib/dates";
-import { confirmationReponse, libelleReponse, phrasesPlan, planReponse, seancesOuvertes, type SeanceARepondre } from "./reponse-periode";
+import { pluriel } from "@/components/ui/choix-geste";
+import {
+  confirmationReponse,
+  coursProposes,
+  libelleReponse,
+  partiesAChoisir,
+  phraseCours,
+  phrasesPlan,
+  planReponse,
+  seancesOuvertes,
+  seancesPresentesApres,
+  type SeanceARepondre,
+} from "./reponse-periode";
 
 const STYLES: Record<AttendanceStatut, { icone: NomIcone; actif: string; inactif: string }> = {
   PRESENT: { icone: "check", actif: "bg-vert text-primaire-texte border-vert", inactif: "bg-surface border-bordure text-vert hover:border-vert" },
@@ -28,6 +40,11 @@ const TITRE = "Répondre pour les séances à venir";
  * **des dates choisies**, cochées dans la liste), trois boutons de réponse, la case « Ne pas modifier
  * mes réponses déjà données » (cochée par défaut), ce qui va changer en chiffres, et un seul bouton
  * qui écrit — après confirmation.
+ *
+ * **Choix des cours** (quand le club l'a ouvert : les séances arrivent avec leurs `cours`) : avec
+ * « Présent », la liste des cours proposés par les séances visées, **par nom** (un même thème se
+ * coche une fois pour toutes les séances qui le proposent). Le geste **ajoute** des cours, il n'en
+ * retire jamais ; il vaut aussi pour les séances déjà répondues « Présent ».
  */
 export function ReponsePeriode({ periodId, periodNom, seances, filtree = false }: { periodId: string; periodNom: string; seances: SeanceARepondre[]; filtree?: boolean }) {
   const router = useRouter();
@@ -37,6 +54,7 @@ export function ReponsePeriode({ periodId, periodNom, seances, filtree = false }
   const [garder, setGarder] = useState(true);
   const [parDates, setParDates] = useState(false);
   const [choisies, setChoisies] = useState<ReadonlySet<string>>(new Set());
+  const [coursCoches, setCoursCoches] = useState<ReadonlySet<string>>(new Set());
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
 
@@ -44,6 +62,17 @@ export function ReponsePeriode({ periodId, periodNom, seances, filtree = false }
   if (ouvertes.length === 0) return null;
   const portee = parDates ? choisies : undefined;
   const plan = statut && (!parDates || choisies.size > 0) ? planReponse(seances, statut, garder, portee) : null;
+  const cibles = statut && plan ? seancesPresentesApres(seances, statut, garder, portee) : [];
+  const proposes = coursProposes(seances, cibles);
+  const aCocher = partiesAChoisir(seances, cibles, coursCoches);
+  const aFaire = plan ? plan.aEcrire.length + aCocher.length : 0;
+  const basculerCours = (cle: string) =>
+    setCoursCoches((avant) => {
+      const apres = new Set(avant);
+      if (apres.has(cle)) apres.delete(cle);
+      else apres.add(cle);
+      return apres;
+    });
   const basculer = (id: string) =>
     setChoisies((avant) => {
       const apres = new Set(avant);
@@ -53,18 +82,26 @@ export function ReponsePeriode({ periodId, periodNom, seances, filtree = false }
     });
 
   const lancer = () => {
-    if (!statut || !plan || plan.aEcrire.length === 0) return;
-    if (!window.confirm(confirmationReponse(statut, plan))) return;
+    if (!statut || !plan || aFaire === 0) return;
+    const question = plan.aEcrire.length === 0 ? `Ajouter ${pluriel(aCocher.length, "cours", "cours")} à tes choix ?` : [confirmationReponse(statut, plan), phraseCours(aCocher.length, false)].filter(Boolean).join(" ");
+    if (!window.confirm(question)) return;
     setMessage(null);
     demarrer(async () => {
       try {
                 // Filtrée, « toutes » veut dire « celles affichées » : le serveur reçoit leurs identifiants.
         const seanceIds = parDates ? [...choisies] : filtree ? ouvertes.map((s) => s.id) : undefined;
-        const res = await repondrePourLaPeriode({ periodId, statut, garderReponses: garder, ...(seanceIds ? { seanceIds } : {}) });
+        const res = await repondrePourLaPeriode({
+          periodId,
+          statut,
+          garderReponses: garder,
+          ...(seanceIds ? { seanceIds } : {}),
+          ...(aCocher.length > 0 ? { partieIds: aCocher } : {}),
+        });
         if (res.erreur) return setMessage({ type: "erreur", texte: res.erreur });
         setMessage({ type: "ok", texte: res.succes ?? "C'est noté." });
         setStatut(null);
         setChoisies(new Set());
+        setCoursCoches(new Set());
         setOuvert(false);
         router.refresh();
       } catch {
@@ -143,16 +180,42 @@ export function ReponsePeriode({ periodId, periodNom, seances, filtree = false }
         <input type="checkbox" checked={garder} onChange={(e) => setGarder(e.target.checked)} className="size-6 accent-primaire" />
         Ne pas modifier mes réponses déjà données
       </label>
+      {statut === "PRESENT" && proposes.length > 0 && (
+        <fieldset className="flex flex-col gap-1 rounded-xl border border-bordure px-3 py-2">
+          <legend className="sr-only">Quels cours vas-tu suivre ?</legend>
+          <p className="font-semibold">
+            Quels cours vas-tu suivre ? <span className="font-normal text-texte-secondaire">(facultatif, plusieurs possibles)</span>
+          </p>
+          <div className="flex max-h-60 flex-col overflow-y-auto">
+            {proposes.map((c) => (
+              <label key={c.cle} className="flex min-h-12 cursor-pointer items-center gap-3">
+                <input type="checkbox" checked={coursCoches.has(c.cle)} onChange={() => basculerCours(c.cle)} className="size-6 shrink-0 accent-primaire" />
+                <span className="min-w-0 flex-1 font-semibold">{c.nom}</span>
+                <span className="text-sm text-texte-secondaire">{cibles.length > 1 && c.seances === cibles.length ? "toutes les séances" : pluriel(c.seances, "séance")}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-sm text-texte-secondaire">Les cours déjà choisis restent choisis ; pour en retirer un, passe par la séance.</p>
+        </fieldset>
+      )}
       {statut && plan && (
         <div className="rounded-xl bg-surface-douce px-3 py-2 text-base" aria-live="polite">
-          <p className="font-semibold">{plan.aEcrire.length === 0 ? "Rien ne changerait." : `${libelleReponse(statut, plan.aEcrire.length)}.`}</p>
-          {phrasesPlan(plan).map((p) => (
+          <p className="font-semibold">{aFaire === 0 ? "Rien ne changerait." : plan.aEcrire.length === 0 ? "Ta réponse ne change pas." : `${libelleReponse(statut, plan.aEcrire.length)}.`}</p>
+          {[...phrasesPlan(plan), phraseCours(aCocher.length, false)].filter(Boolean).map((p) => (
             <p key={p}>{p}</p>
           ))}
         </div>
       )}
-      <Bouton type="button" onClick={lancer} disabled={enCours || !statut || !plan || plan.aEcrire.length === 0} className="w-full sm:w-auto sm:self-start">
-        {parDates && choisies.size === 0 ? "Coche des dates" : !statut || !plan ? "Choisis ta réponse" : plan.aEcrire.length === 0 ? "Rien à changer" : libelleReponse(statut, plan.aEcrire.length)}
+      <Bouton type="button" onClick={lancer} disabled={enCours || !statut || !plan || aFaire === 0} className="w-full sm:w-auto sm:self-start">
+        {parDates && choisies.size === 0
+          ? "Coche des dates"
+          : !statut || !plan
+            ? "Choisis ta réponse"
+            : aFaire === 0
+              ? "Rien à changer"
+              : plan.aEcrire.length === 0
+                ? `Ajouter ${pluriel(aCocher.length, "cours", "cours")}`
+                : libelleReponse(statut, plan.aEcrire.length)}
       </Bouton>
     </div>
   );
