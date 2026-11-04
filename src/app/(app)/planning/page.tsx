@@ -191,7 +191,7 @@ async function SousLesFiltres({ planning, temps }: Omit<IlotPlanning, "choisie">
 
 /**
  * « Modifier le planning », pour qui a le droit de remplir les cases : le bouton crayon — rond et
- * flottant au téléphone, sous le titre sur ordinateur (`BoutonCrayon`).
+ * flottant en bas à droite, au téléphone comme sur ordinateur (`BoutonCrayon`).
  */
 async function EntreePlanning({ planning, lien }: { planning: Promise<Planning | null>; lien: string }) {
   const p = await planning;

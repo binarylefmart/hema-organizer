@@ -64,8 +64,8 @@ import {
  * compteur, même « Annuler la sélection » — mais **pas collante** : voir plus bas). Un bureau qui a
  * appris le geste sur un écran le retrouve ici.
  *
- * **Le bouton crayon ouvre les cases** (`BoutonCrayon` : rond et flottant au téléphone, sous le titre
- * sur ordinateur). **Il est le même pour tout le monde** :
+ * **Le bouton crayon ouvre les cases** (`BoutonCrayon` : rond et flottant en bas à droite, au téléphone
+ * comme sur ordinateur). **Il est le même pour tout le monde** :
  * un membre y répond pour plusieurs séances (et coche ses cours), l'encadrement y trouve en plus
  * « Modifier ces séances ». Il remplace « Répondre pour les séances à venir » et « Modifier les
  * séances ». Sans lui, les cartes restent ce qu'elles sont ; ✕ referme (sélection comprise, confirmation si rien n'est appliqué).
@@ -182,6 +182,18 @@ export function SelectionSeances({
     setChoixLieu(lieux.length > 0 ? LIEU_VIDE : LIEU_AUTRE);
     setLieuLibre({ lieu: "", adresse: "" });
     setHoraire({ heureDebut: "", heureFin: "" });
+  };
+
+  /** ✕ : quitter la sélection. Des séances cochées ou un geste commencé ne sont pas appliqués : on le dit avant de tout lâcher. */
+  const quitter = () => {
+    const enAttente = selection.size > 0 || gesteChoisi !== "";
+    if (enAttente && !window.confirm(`${compteurSeances(selection.size) || "Un geste est commencé"} : rien n'est appliqué. Quitter sans appliquer ?`)) return;
+    setActif(false);
+    setSelection(new Set());
+    remettreAZero();
+    setMessage(null);
+    setVoletOuvert(false);
+    if (lienTerminer) router.replace(lienTerminer, { scroll: false });
   };
 
   const lancer = () => {
@@ -343,6 +355,9 @@ export function SelectionSeances({
             {/* En tête de la sélection : « Tout sélectionner » (les séances **affichées**, et le nombre
                 est dit à côté), ✕, et « Nouvelle séance » pour qui peut en créer. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              {/* Au téléphone, « Tout sélectionner » et ✕ vivent dans la barre du bas : en tête, il ne reste que « Nouvelle séance ». */}
+              {!telephone && (
+              <>
               <label className="inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border-2 border-bordure bg-surface px-3 font-semibold">
                 <input
                   ref={caseMaitresse}
@@ -358,34 +373,28 @@ export function SelectionSeances({
               <span className="text-base text-texte-secondaire">
                 {nbSeances(affichees.length)} {affichees.length > 1 ? "affichées" : "affichée"}
               </span>
+              </>
+              )}
               <span className="ml-auto flex flex-wrap gap-2">
                 {lienNouvelle && (
-                  <LienBouton href={lienNouvelle} variante="secondaire" taille="petite" enCours>
+                  <LienBouton href={lienNouvelle} variante="primaire" taille="petite" enCours>
                     <Icone nom="plus" taille={18} />
                     Nouvelle séance
                   </LienBouton>
                 )}
-                {/* ✕ : quitter la sélection. Des séances cochées ou un geste commencé ne sont pas
-                    appliqués : on le dit avant de tout lâcher. */}
-                <button
-                  type="button"
-                  aria-label="Quitter la sélection"
-                  title="Quitter la sélection"
-                  disabled={enCours}
-                  onClick={() => {
-                    const enAttente = selection.size > 0 || gesteChoisi !== "";
-                    if (enAttente && !window.confirm(`${compteurSeances(selection.size) || "Un geste est commencé"} : rien n'est appliqué. Quitter sans appliquer ?`)) return;
-                    setActif(false);
-                    setSelection(new Set());
-                    remettreAZero();
-                    setMessage(null);
-                    setVoletOuvert(false);
-                    if (lienTerminer) router.replace(lienTerminer, { scroll: false });
-                  }}
-                  className="inline-flex size-12 items-center justify-center rounded-xl border-2 border-bordure bg-surface text-texte transition hover:bg-surface-douce disabled:opacity-60"
-                >
-                  <Icone nom="croix" taille={22} />
-                </button>
+                {/* ✕ : quitter la sélection. Au téléphone, il est dans la barre du bas. */}
+                {!telephone && (
+                  <button
+                    type="button"
+                    aria-label="Quitter la sélection"
+                    title="Quitter la sélection"
+                    disabled={enCours}
+                    onClick={quitter}
+                    className="inline-flex size-12 items-center justify-center rounded-xl border-2 border-bordure bg-surface text-texte transition hover:bg-surface-douce disabled:opacity-60"
+                  >
+                    <Icone nom="croix" taille={22} />
+                  </button>
+                )}
               </span>
             </div>
             {(repliees.length > 0 || sansCase) && (
@@ -459,7 +468,7 @@ export function SelectionSeances({
       )}
       {/* **Au téléphone, la barre sombre du bas et le volet des gestes** : mêmes gestes, mêmes
           réglages, mêmes confirmations (`lancer`) — seule la présentation change. */}
-      {montrerBarre && telephone && (
+      {actif && telephone && (
         <BarreSelection
           nom="Agir sur plusieurs séances à la fois"
           n={selection.size}
@@ -469,12 +478,14 @@ export function SelectionSeances({
           libelleCocherAffichees={libelleToutesSeances(affichees.length)}
           onCocherAffichees={() => setSelection((s) => ajouter(s, idsAffiches))}
           onDecocherAffichees={() => setSelection((s) => retirer(s, idsAffiches))}
-          onVider={() => setSelection(new Set())}
+          onVider={quitter}
+          libelleVider="Quitter la sélection"
           horsAffichage={horsAffichage}
           enCours={enCours}
         >
           <BoutonQueFaire
             libelle="Continuer"
+            disabled={selection.size === 0}
             onClick={() => {
               // Le volet s'ouvre sur la liste des gestes ; les réglages déjà saisis sont gardés.
               setGesteChoisi("");
@@ -522,7 +533,7 @@ export function SelectionSeances({
       <ZoneCochable actif={telephone && actif}>
         <CartesDevoilees cartes={cartes} visibles={SEANCES_VISIBLES} devoilement={devoilement} />
       </ZoneCochable>
-      {montrerBarre && telephone && <ReserveBarreSelection />}
+      {actif && telephone && <ReserveBarreSelection />}
       </div>
     </Selection.Provider>
   );

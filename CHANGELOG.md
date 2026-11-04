@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.83.0
+
+### Nouveautés
+
+- **selection** : commandes du mode dans la barre du bas au téléphone, crayon flottant sur PC
+
 ## 0.82.0
 
 ### Nouveautés

@@ -41,9 +41,11 @@ export function BarreSelection({
   onCocherAffichees,
   onDecocherAffichees,
   onVider,
+  libelleVider = "Annuler la sélection",
   horsAffichage,
   enCours = false,
   auDessus = false,
+  actions,
   children,
 }: {
   /** Le nom du groupe pour le lecteur d'écran : celui de la barre de l'ordinateur. */
@@ -63,7 +65,16 @@ export function BarreSelection({
    * le bouton d'avant (annuaire, présences).
    */
   onDecocherAffichees?: () => void;
-  onVider: () => void;
+  /** Absent : pas de ✕ sur la ligne 1 (le planning porte le sien avec « Appliquer », ligne 2). */
+  onVider?: () => void;
+  /**
+   * Le nom de ✕. Aux Séances et au Planning, la barre est **toute la commande du mode** au téléphone
+   * (« Tout sélectionner », ✕ et « Appliquer » n'y sont qu'une fois) : ✕ y quitte la sélection, il ne
+   * se contente pas de la vider.
+   */
+  libelleVider?: string;
+  /** Une ligne 3, sous le gros bouton, calée à droite : ✕ et « Appliquer » du planning. */
+  actions?: ReactNode;
   /** Ce que le lot emporte hors de l'écran (`texteHorsAffichage`), compté et dit. */
   horsAffichage?: string | null;
   enCours?: boolean;
@@ -111,20 +122,26 @@ export function BarreSelection({
             {libelleAffichees(affichees, mots)}
           </button>
         )}
+        {onVider && (
         <button
           type="button"
-          aria-label="Annuler la sélection"
+          aria-label={libelleVider}
+          title={libelleVider}
           disabled={enCours}
           onClick={onVider}
           className="grid size-12 shrink-0 place-items-center rounded-xl border-2 border-bordure bg-surface text-texte transition active:scale-[0.98] disabled:opacity-50"
         >
           <Icone nom="croix" taille={20} />
         </button>
+        )}
       </div>
       {horsAffichage ? (
         <p className="text-base text-texte-secondaire">{horsAffichage}</p>
       ) : null}
       {children}
+      {/* ✕ et « Appliquer » du planning : une ligne à eux, sous « Continuer », calés à droite et
+          séparés d'un trait. */}
+      {actions ? <div className="mt-1 flex justify-end border-t border-bordure/60 pt-3">{actions}</div> : null}
     </div>
   );
 }
@@ -135,10 +152,13 @@ export function BarreSelection({
  */
 export function ReserveBarreSelection({
   auDessus = false,
+  haute = false,
 }: {
   auDessus?: boolean;
+  /** La barre porte une ligne de plus (✕ et « Appliquer » du planning). */
+  haute?: boolean;
 }) {
-  return <div aria-hidden className={auDessus ? "h-[calc(10rem+var(--hauteur-barre-edition,4rem))]" : "h-36"} />;
+  return <div aria-hidden className={auDessus ? "h-[calc(10rem+var(--hauteur-barre-edition,4rem))]" : haute ? "h-56" : "h-36"} />;
 }
 
 /**

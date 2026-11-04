@@ -46,7 +46,7 @@ test("annuler puis rétablir deux séances d'un seul geste", async ({ page }) =>
   await expect(page.getByText("Tout sélectionner")).toBeVisible();
   await expect(page.getByText("Coche des lignes pour agir sur plusieurs séances à la fois.")).toBeVisible();
   await expect(page.getByLabel(/^Sélectionner les \d+ séances affichées$/)).toBeVisible();
-  await expect(barre(page)).toHaveCount(0);
+  await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
 
   // Deux séances encore annulables parmi les cartes affichées : les dernières, pour ne pas toucher
   // celles que les autres scénarios visent en tête de liste.
@@ -63,7 +63,7 @@ test("annuler puis rétablir deux séances d'un seul geste", async ({ page }) =>
   await expect(barre(page)).toBeVisible();
   await expect(barre(page).getByText("2 séances sélectionnées")).toBeVisible();
   // Le bouton qui coche ce qui est affiché nomme sa portée — jamais « Tout ».
-  await expect(barre(page).getByRole("button", { name: /^Sélectionner les \d+ séances affichées$/ })).toHaveText(/^Les \d+ affichées$/);
+  await expect(barre(page).getByRole("checkbox", { name: /^Sélectionner les \d+ séances affichées$/ })).toBeVisible();
   await choisirGeste(page, 2, /^Annuler les séances \(2 séances\)$/);
   await expect(volet(page).getByRole("button", { name: "Retour", exact: true })).toBeVisible();
   await volet(page).getByLabel(/Motif/).fill("Test e2e en masse");
@@ -76,7 +76,7 @@ test("annuler puis rétablir deux séances d'un seul geste", async ({ page }) =>
   await expect(page.getByText(/2 séances annulées/)).toBeVisible({ timeout: 30_000 });
   expect(question).toContain("2 annonces d'annulation partiront");
   // Le lot est passé : la sélection se vide, la barre et le volet se referment.
-  await expect(barre(page)).toHaveCount(0);
+  await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
   await expect(volet(page)).toHaveCount(0);
   for (const id of ids) await expect(page.locator(`[data-geste-seance="${id}"][data-retablissable="true"]`)).toBeVisible({ timeout: 20_000 });
 

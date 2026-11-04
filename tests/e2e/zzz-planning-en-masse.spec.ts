@@ -49,14 +49,14 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
   await expect(page.getByRole("switch", { name: /Sélection multiple/ })).toHaveCount(0);
   await expect(page.getByText(/^Coche des lignes pour régler des éléments/)).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /^Sélectionner (les \d+ séances affichées|la séance affichée)$/ })).toBeVisible();
-  await expect(barre(page)).toHaveCount(0);
+  await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
 
   // Toucher la poignée ⋮⋮ d'une ligne ne coche pas sa séance : la poignée déplace, elle ne coche pas.
   const premiereCase = page.getByRole("checkbox", { name: /^Sélectionner la séance du/ }).first();
   const idCarte = await premiereCase.evaluate((el) => el.closest("article")?.id ?? "");
   await page.locator(`article#${idCarte} [title="Tenir puis glisser pour déplacer"]`).first().click();
   await expect(premiereCase).not.toBeChecked();
-  await expect(barre(page)).toHaveCount(0);
+  await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
 
   // Les puces des jours : la première (le premier jour de la semaine présent).
   const jours = page.getByRole("group", { name: "Sélectionner par jour" });
@@ -70,11 +70,11 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
 
   // Appuyée de nouveau, la puce décoche ces séances.
   await puce.click();
-  await expect(barre(page)).toHaveCount(0);
+  await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
   await puce.click();
   await expect(barre(page)).toBeVisible();
 
-  // Une seule barre en bas désormais : ✕ et « Appliquer » sont en tête de la sélection.
+  // Une seule barre en bas : ✕ et « Appliquer » y sont, à côté de « Continuer ».
   await expect(page.locator('[data-barre-basse="edition"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Annuler les modifications" })).toBeVisible();
 
@@ -153,8 +153,8 @@ test("ajouter une option dans la partie 1 d'une séance cochée, puis la retirer
   expect(question).toContain("enregistré tout de suite");
   // Le geste fait, le volet revient à la liste des gestes ; on le referme, et on vide la sélection.
   await volet(page).getByRole("button", { name: "Fermer" }).click();
-  await barre(page).getByRole("button", { name: "Annuler la sélection" }).click();
-  await expect(barre(page)).toHaveCount(0);
+  await cases.last().uncheck();
+  await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
   const apres = page.locator(`article#${id}`).getByRole("button", { name: /^Retirer « (Partie 1 · )?Option( \d+)? »$/ });
   await expect(apres).toHaveCount(avant + 1, { timeout: 20_000 });
 

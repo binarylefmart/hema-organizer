@@ -1417,7 +1417,7 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "seances-crayon",
-      description: "Séances d'un membre : le bouton crayon seul, sans texte (rond et flottant au téléphone, sous le titre sur PC), qui ouvre la sélection",
+      description: "Séances d'un membre : le bouton crayon seul, sans texte (rond et flottant en bas à droite, téléphone et PC), qui ouvre la sélection",
       connexion: COMPTES.membre,
       chemin: "/seances",
     },

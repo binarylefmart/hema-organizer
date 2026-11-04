@@ -711,7 +711,8 @@ export function SelectionPlanning({
           séances **affichées**, le nombre dit à côté), puis ✕ et « Appliquer ». */}
       <div className="flex flex-col gap-1">
             <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-              {selectionnables.length > 0 && (
+              {/* Au téléphone, « Tout sélectionner », ✕ et « Appliquer » vivent dans la barre du bas. */}
+              {selectionnables.length > 0 && !telephone && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <label className="inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border-2 border-bordure bg-surface px-3 font-semibold">
                     <input
@@ -752,7 +753,7 @@ export function SelectionPlanning({
                   />
                 </div>
               )}
-              {actions && <div className="ml-auto">{actions}</div>}
+              {actions && !telephone && <div className="ml-auto">{actions}</div>}
             </div>
             {/* **Au téléphone, une puce par jour** à la place de la liste : « Les mardis (4) »,
                 appuyée quand ses séances sont toutes cochées — l'appuyer de nouveau les retire. */}
@@ -848,7 +849,8 @@ export function SelectionPlanning({
 
       {/* **Au téléphone, la barre sombre du bas** : une ligne pendant qu'on coche, et « Continuer »
           ouvre le volet des gestes — comme l'onglet Séances. */}
-      {montrerBarre && telephone && (
+      {/* Au téléphone, la barre du bas est là tout le mode durant : c'est elle qui porte ✕ et « Appliquer ». */}
+      {telephone && (
         <BarreSelection
           nom="Agir sur plusieurs séances à la fois"
           n={selection.size}
@@ -858,12 +860,13 @@ export function SelectionPlanning({
           libelleCocherAffichees={libelleToutesSeancesPlanning(affichees.length)}
           onCocherAffichees={() => setSelection((s) => ajouter(s, idsAffiches))}
           onDecocherAffichees={() => setSelection((s) => retirer(s, idsAffiches))}
-          onVider={() => setSelection(new Set())}
           horsAffichage={horsAffichage}
           enCours={enCours}
+          actions={actions}
         >
           <BoutonQueFaire
             libelle="Continuer"
+            disabled={selection.size === 0}
             onClick={() => {
               setGesteChoisi("");
               setEtapeElements("cocher");
@@ -882,7 +885,7 @@ export function SelectionPlanning({
         {visibles}
         <SeancesRepliees cachees={cachees} restantes={restantes} tout={deplie} onBasculer={setDeplie} />
       </ZoneCochable>
-      {montrerBarre && telephone && <ReserveBarreSelection />}
+      {telephone && <ReserveBarreSelection haute />}
     </Selection.Provider>
   );
 }
