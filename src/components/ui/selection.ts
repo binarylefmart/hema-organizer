@@ -304,22 +304,35 @@ export type JourPropose = {
   nom: (typeof NOMS_JOURS)[number];
   /** Les lignes de ce jour, dans l'ordre de la liste. */
   ids: string[];
-  /** Toutes déjà cochées : l'entrée devient « Retirer les mardis », et la choisir les **retire**. */
+  /** Toutes déjà cochées : l'entrée porte ✓, et la choisir les **retire**. */
   complet: boolean;
   libelle: string;
 };
 
 /**
- * **Le libellé d'un raccourci** : « Tous les mardis (6) », « Le mardi (1) » — et, quand ces séances
- * sont déjà toutes cochées, « Retirer les mardis (6) », « Retirer le mardi (1) » : l'entrée dit alors
- * ce qu'elle fait, puisque la choisir les retire du lot.
+ * **Le libellé d'un raccourci** : « Tous les mardis (6) », « Le mardi (1) » — précédé de **✓** quand ces
+ * séances sont déjà toutes cochées : la liste montre ainsi ce qui est pris, et choisir de nouveau l'entrée
+ * les retire du lot (comme on décoche une case).
  *
  * Il ne compte **que** les lignes affichées, comme la case maîtresse : « Tous les mardis » d'un
  * planning replié à cinq cartes n'emporte que les mardis de ces cinq cartes, et le chiffre l'écrit.
  */
 export function libelleJour(nom: string, n: number, complet = false): string {
-  if (complet) return n === 1 ? `Retirer le ${nom} (1)` : `Retirer les ${nom}s (${n})`;
-  return n === 1 ? `Le ${nom} (1)` : `Tous les ${nom}s (${n})`;
+  const texte = n === 1 ? `Le ${nom} (1)` : `Tous les ${nom}s (${n})`;
+  return complet ? `✓ ${texte}` : texte;
+}
+
+/**
+ * **Ce que la liste fermée affiche** : « Choisir un jour… » tant qu'aucun jour n'est entièrement coché,
+ * sinon les jours pris — « ✓ Tous les mardis », « ✓ Mardis et vendredis ». Sans lui, la liste revenait
+ * toujours à « Choisir un jour… » et rien ne disait que les mardis étaient sélectionnés.
+ */
+export function resumeJours(jours: readonly Pick<JourPropose, "nom" | "complet">[]): string {
+  const pris = jours.filter((j) => j.complet).map((j) => `${j.nom}s`);
+  if (pris.length === 0) return CHOIX_JOUR_VIDE.libelle;
+  if (pris.length === 1) return `✓ Tous les ${pris[0]}`;
+  const liste = `${pris.slice(0, -1).join(", ")} et ${pris[pris.length - 1]}`;
+  return `✓ ${liste.charAt(0).toUpperCase()}${liste.slice(1)}`;
 }
 
 /**
@@ -335,7 +348,10 @@ export function libellePuceJour(nom: string, n: number): string {
 export const LIBELLE_PAR_JOUR = "Sélectionner par jour";
 export const CHOIX_JOUR_VIDE = { valeur: "", libelle: "Choisir un jour…" } as const;
 
-/** Les entrées de la liste « Sélectionner par jour » : « Choisir un jour… », puis un jour par entrée. */
+/**
+ * Les entrées de la liste « Sélectionner par jour » : « Choisir un jour… », puis un jour par entrée.
+ * La liste **fermée** affiche, elle, le résumé des jours pris (`resumeJours`, prop `affichage`).
+ */
 export function entreesJours(jours: readonly JourPropose[]): { valeur: string; libelle: string }[] {
   return [{ ...CHOIX_JOUR_VIDE }, ...jours.map((j) => ({ valeur: String(j.jour), libelle: j.libelle }))];
 }
@@ -375,7 +391,7 @@ export function joursProposes(lignes: readonly { id: string; date: string }[], s
 
 /**
  * **Choisir « Tous les mardis »** : ajoute les mardis affichés au lot — et les en **retire** s'ils y
- * étaient déjà tous (l'entrée s'appelle alors « Retirer les mardis »). C'est le geste de la case
+ * étaient déjà tous (l'entrée porte alors ✓). C'est le geste de la case
  * maîtresse, limité à un jour : il ne touche ni aux autres jours ni à ce qui a été coché ailleurs.
  */
 export function basculerJour(selection: ReadonlySet<string>, jour: Pick<JourPropose, "ids" | "complet">): Set<string> {

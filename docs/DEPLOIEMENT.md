@@ -563,7 +563,7 @@ docker exec hema-organizer node reparer.cjs --seulement=teintes --reparer
    conteneur à chaque requête et suit sa nouvelle adresse. Symptôme d'un bloc qui ne le fait pas : le
    site marche, et **seuls `/invitation/`, `/reinitialiser/`, `/annuler/` et `/desinscription/`
    répondent 502** — exactement les chemins qu'on ne teste pas en ouvrant l'application.
-9. Ouvrir l'application et vérifier un écran ou deux — la liste des séances, le planning. **Et ouvrir
+9. Ouvrir l'application et vérifier un écran ou deux — la liste des séances, le programme. **Et ouvrir
    un lien personnel**, qui passe par le bloc du § 5.
 
 L'interruption dure quelques secondes. Les données ne sont pas touchées par le remplacement de

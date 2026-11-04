@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.84.1
+
+### Nouveautés
+
+- **selection** : les jours sélectionnés se voient dans la liste
+
+### Autres changements
+
+- « Programme » dans le README et la doc, état v0.84.0
+
 ## 0.84.0
 
 ### Nouveautés

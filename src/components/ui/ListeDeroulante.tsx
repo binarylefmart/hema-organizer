@@ -77,9 +77,14 @@ type Props = {
   disabled?: boolean;
   /** Identifiants des phrases qui décrivent le champ (aide, erreur), comme sur un `<input>`. */
   decritPar?: string;
+  /**
+   * Ce que le déclencheur affiche **à la place** du libellé de l'entrée choisie — « Sélectionner par
+   * jour » y montre les jours déjà pris (« ✓ Tous les mardis ») sans les répéter en tête de la liste.
+   */
+  affichage?: string;
 };
 
-export function ListeDeroulante({ id, libelleId, libelle, valeur, entrees, onChoisir, className = "", style, onPointerDown, onFocus, disabled = false, decritPar }: Props) {
+export function ListeDeroulante({ id, libelleId, libelle, valeur, entrees, onChoisir, className = "", style, onPointerDown, onFocus, disabled = false, decritPar, affichage }: Props) {
   const [ouverte, setOuverte] = useState(false);
   const [actif, setActif] = useState(-1);
   const [recherche, setRecherche] = useState("");
@@ -120,7 +125,7 @@ export function ListeDeroulante({ id, libelleId, libelle, valeur, entrees, onCho
    */
   const aucunResultat = visibles.length === 0 || (recherche.trim() !== "" && visibles.every(estEntreeVide));
   // Une valeur absente de la liste reste affichée telle quelle : mieux vaut un thème brut qu'une case vide.
-  const affiche = entrees.find((e) => e.valeur === valeur)?.libelle ?? valeur;
+  const affiche = affichage ?? entrees.find((e) => e.valeur === valeur)?.libelle ?? valeur;
 
   const ouvrir = (index: number, parClavier = false) => {
     focusChamp.current = parClavier;
@@ -442,7 +447,7 @@ export function ListeDeroulante({ id, libelleId, libelle, valeur, entrees, onCho
                       qu'elle est partout ailleurs dans le projet. */}
                   {entree.couleur && <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: entree.couleur }} />}
                   <span className="min-w-0 flex-1">{entree.libelle}</span>
-                  {entree.valeur === valeur && <Icone nom="check" taille={16} />}
+                  {entree.valeur === valeur && affichage === undefined && <Icone nom="check" taille={16} />}
                 </li>
               ));
               /*

@@ -18,6 +18,7 @@ import {
   CHOIX_JOUR_VIDE,
   compterHorsAffichage,
   entreesJours,
+  resumeJours,
   joursProposes,
   LIBELLE_PAR_JOUR,
   etatToutCocher,
@@ -391,6 +392,7 @@ export function SelectionSeances({
                     libelle={LIBELLE_PAR_JOUR}
                     valeur={CHOIX_JOUR_VIDE.valeur}
                     entrees={entreesJours(jours)}
+          affichage={resumeJours(jours)}
                     disabled={enCours}
                     onChoisir={(v) => {
                       const jour = jours.find((j) => String(j.jour) === v);

@@ -8,7 +8,7 @@ import {
   libelleAffichees,
   suffixeSelection,
 } from "./barre-selection";
-import { basculerJour, CHOIX_JOUR_VIDE, entreesJours, LIBELLE_PAR_JOUR, type JourPropose, type MotsLignes } from "./selection";
+import { basculerJour, CHOIX_JOUR_VIDE, entreesJours, LIBELLE_PAR_JOUR, resumeJours, type JourPropose, type MotsLignes } from "./selection";
 
 /**
  * **La barre de la sélection multiple, au téléphone** — la même sur les quatre écrans
@@ -156,6 +156,7 @@ export function BarreSelection({
           libelle={LIBELLE_PAR_JOUR}
           valeur={CHOIX_JOUR_VIDE.valeur}
           entrees={entreesJours(jours)}
+          affichage={resumeJours(jours)}
           disabled={enCours}
           onChoisir={(v) => {
             const jour = jours.find((j) => String(j.jour) === v);

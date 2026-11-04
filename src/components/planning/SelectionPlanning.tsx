@@ -29,10 +29,10 @@ import {
   CHOIX_JOUR_VIDE,
   compterHorsAffichage,
   entreesJours,
+  resumeJours,
   etatToutCocher,
   joursProposes,
   LIBELLE_PAR_JOUR,
-  libellePuceJour,
   lignesSelectionnees,
   restreindre,
   retirer,
@@ -113,7 +113,7 @@ import {
  * **Ce que le planning ajoute : « Sélectionner par jour ».** Une liste dépliante à côté de la case
  * maîtresse, une entrée par jour de la semaine présent parmi les cartes affichées (« Tous les mardis
  * (6) », « Tous les vendredis (5) »). La choisir ajoute ces séances au lot, puis la liste revient à
- * « Choisir un jour… » ; quand elles y sont toutes, l'entrée devient « Retirer les mardis (6) ».
+ * « Choisir un jour… » ; quand elles y sont toutes, l'entrée porte ✓ (« ✓ Tous les mardis (6) ») et la liste fermée le dit.
  *
  * **Quatre gestes.**
  *
@@ -745,6 +745,7 @@ export function SelectionPlanning({
                     libelle={LIBELLE_PAR_JOUR}
                     valeur={CHOIX_JOUR_VIDE.valeur}
                     entrees={entreesJours(jours)}
+          affichage={resumeJours(jours)}
                     onChoisir={(v) => {
                       const jour = jours.find((j) => String(j.jour) === v);
                       if (jour) setSelection((s) => basculerJour(s, jour));

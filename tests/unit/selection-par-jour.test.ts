@@ -2,13 +2,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { addDays, isoWeekday } from "@/lib/dates";
-import { basculerJour, CHOIX_JOUR_VIDE, entreesJours, jourDeSemaine, joursProposes, LIBELLE_PAR_JOUR, libelleJour } from "@/components/ui/selection";
+import { basculerJour, CHOIX_JOUR_VIDE, entreesJours, jourDeSemaine, joursProposes, LIBELLE_PAR_JOUR, libelleJour, resumeJours } from "@/components/ui/selection";
 
 /**
  * **« Sélectionner par jour »** — la liste dépliante posée à côté de la case maîtresse du planning en
  * mode modification : une entrée par jour de la semaine présent parmi les cartes affichées, du lundi
  * au dimanche, jamais deux jours groupés. Choisir ajoute ces séances ; quand elles y sont toutes,
- * l'entrée devient « Retirer les mardis » et les retire.
+ * l'entrée porte ✓ (et la liste fermée l'affiche) ; la choisir les retire.
  */
 
 /** Un trimestre du mardi et du vendredi : trois semaines à partir du mardi 6 octobre 2026. */
@@ -58,13 +58,18 @@ describe("les entrées proposées", () => {
     expect(joursProposes([], new Set())).toEqual([]);
   });
 
-  it("devient « Retirer les mardis » quand tous les mardis affichés sont cochés", () => {
+  it("porte ✓ quand tous les mardis affichés sont cochés, et la liste fermée le dit", () => {
     const jours = joursProposes(seances, new Set(["ma-0", "ma-7", "ma-14", "ve-0"]));
     expect(jours.map((j) => [j.libelle, j.complet])).toEqual([
-      ["Retirer les mardis (3)", true],
+      ["✓ Tous les mardis (3)", true],
       ["Tous les vendredis (3)", false],
     ]);
-    expect(libelleJour("mardi", 1, true)).toBe("Retirer le mardi (1)");
+    expect(libelleJour("mardi", 1, true)).toBe("✓ Le mardi (1)");
+    expect(resumeJours(jours)).toBe("✓ Tous les mardis");
+    expect(entreesJours(jours)[0]).toEqual({ ...CHOIX_JOUR_VIDE });
+    const deux = joursProposes(seances, new Set(["ma-0", "ma-7", "ma-14", "ve-0", "ve-7", "ve-14"]));
+    expect(resumeJours(deux)).toBe("✓ Mardis et vendredis");
+    expect(resumeJours(joursProposes(seances, new Set()))).toBe("Choisir un jour…");
   });
 
   it("la liste s'ouvre sur « Choisir un jour… », puis un jour par entrée", () => {

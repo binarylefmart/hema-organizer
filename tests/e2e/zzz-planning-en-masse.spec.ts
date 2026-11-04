@@ -9,7 +9,7 @@ import { COMPTES, connecter } from "./helpers";
  *
  * - **le crayon ouvre les cases d'emblée** (plus d'interrupteur), **la case maîtresse nomme sa portée** et **« Sélectionner par jour »**, une liste dans la barre du bas (« Tous les mardis (N) »…) :
  *   choisir un jour coche ces séances, le choisir de nouveau
- *   (« Retirer les mardis ») les décoche ;
+ *   (« ✓ Tous les mardis ») les décoche ;
  * - la barre sombre du bas ouvre le volet ; **« Régler des éléments »** y montre les séances cochées
  *   avec leurs éléments, on coche ceux qu'on veut, « Suivant », puis les réglages ;
  * - **ce réglage n'écrit rien** : les cases entrent dans le brouillon, chacune dit « modifié », la
@@ -70,8 +70,9 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
   const n = Number(/\((\d+)\)$/.exec(premier)![1]);
   await expect(barre(page).getByText(n === 1 ? "1 séance sélectionnée" : `${n} séances sélectionnées`)).toBeVisible();
 
-  // Choisi de nouveau (« Retirer les mardis »), le jour décoche ces séances.
-  await choisirJour(/^Retirer (les \S+s|le \S+) \(\d+\)$/);
+  // La liste fermée dit le jour pris ; choisi de nouveau (« ✓ Tous les mardis »), il décoche ces séances.
+  await expect(barre(page).getByRole("combobox", { name: "Sélectionner par jour" })).toContainText("✓");
+  await choisirJour(/^✓ (Tous les \S+s|Le \S+) \(\d+\)$/);
   await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
   await choisirJour(/^(Tous les \S+s|Le \S+) \(\d+\)$/);
   await expect(barre(page).getByText(n === 1 ? "1 séance sélectionnée" : `${n} séances sélectionnées`)).toBeVisible();
