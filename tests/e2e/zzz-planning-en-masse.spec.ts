@@ -7,14 +7,13 @@ import { COMPTES, connecter } from "./helpers";
  *
  * Ce que ce scénario garde :
  *
- * - **éteint, l'interrupteur « Sélection multiple » ne laisse aucune case** sur les cartes ;
- * - allumé, **la case maîtresse nomme sa portée** et **une puce par jour** (« Les mardis (N) »…)
+ * - **le crayon ouvre les cases d'emblée** (plus d'interrupteur), **la case maîtresse nomme sa portée** et **une puce par jour** (« Les mardis (N) »…)
  *   remplace la liste « Sélectionner par jour » : l'appuyer coche ces séances, l'appuyer de nouveau
  *   (puce enfoncée) les décoche ;
  * - la barre sombre du bas ouvre le volet ; **« Régler des éléments »** y montre les séances cochées
  *   avec leurs éléments, on coche ceux qu'on veut, « Suivant », puis les réglages ;
  * - **ce réglage n'écrit rien** : les cases entrent dans le brouillon, chacune dit « modifié », la
- *   barre du bas les compte, et **« Annuler » les jette** ;
+ *   compteur à côté de ✕ et « Appliquer » les compte, et **✕ les jette** (après confirmation) ;
  * - **« Ajouter dans une partie »** (partie 1, option) part tout de suite ; l'option ajoutée est
  *   retirée depuis sa carte pour rendre le jeu de démonstration tel qu'il était.
  */
@@ -37,7 +36,7 @@ async function choisir(page: Page, liste: string | RegExp, entree: RegExp, dans 
 
 /** Ouvre le volet depuis la barre du bas, puis choisit le geste dans sa liste de gros boutons. */
 async function ouvrirGeste(page: Page, geste: RegExp): Promise<void> {
-  await barre(page).getByRole("button", { name: /^Que faire sur (ces \d+ séances|cette séance) \?$/ }).click();
+  await barre(page).getByRole("button", { name: "Continuer" }).click();
   await expect(volet(page)).toBeVisible();
   await volet(page).getByRole("button", { name: geste }).click();
 }
@@ -46,11 +45,8 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
   // Le compte d'administration, qui entre par mot de passe : ce fichier passe après `zz-liens`.
   await connecter(page, COMPTES.admin);
   await page.goto("/planning?modifier=1");
-  const interrupteur = page.getByRole("switch", { name: /Sélection multiple/ });
-  await expect(interrupteur).toBeVisible();
-  await expect(page.getByLabel(/^Sélectionner la séance du/)).toHaveCount(0);
-
-  await interrupteur.check();
+  // Le crayon a ouvert les cases : plus d'interrupteur.
+  await expect(page.getByRole("switch", { name: /Sélection multiple/ })).toHaveCount(0);
   await expect(page.getByText(/^Coche des lignes pour régler des éléments/)).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /^Sélectionner (les \d+ séances affichées|la séance affichée)$/ })).toBeVisible();
   await expect(barre(page)).toHaveCount(0);
@@ -78,22 +74,9 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
   await puce.click();
   await expect(barre(page)).toBeVisible();
 
-  // Les deux barres du bas s'empilent sans se chevaucher, même quand la barre d'édition grandit
-  // (l'aide « i » ouverte) : la barre de sélection se cale sur sa hauteur réelle.
-  const edition = page.locator('[data-barre-basse="edition"]');
-  const aide = page.getByRole("button", { name: "Ce qui s'enregistre tout de suite" });
-  for (const ouverte of [false, true]) {
-    if (ouverte) await aide.click();
-    await expect(aide).toHaveAttribute("aria-expanded", String(ouverte));
-    await expect
-      .poll(async () => {
-        const b = (await barre(page).boundingBox())!;
-        const e = (await edition.boundingBox())!;
-        return b.y + b.height <= e.y + 0.5;
-      })
-      .toBe(true);
-  }
-  await aide.click();
+  // Une seule barre en bas désormais : ✕ et « Appliquer » sont en tête de la sélection.
+  await expect(page.locator('[data-barre-basse="edition"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Annuler les modifications" })).toBeVisible();
 
   // « Régler des éléments » : les séances cochées et leurs éléments. On coche le cours de chacune
   // (une séance au modèle en porte un), sans toucher aux autres éléments.
@@ -132,15 +115,12 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
   // c'est le résumé de la ligne qui porte « · modifié ».
   const telephone = (page.viewportSize()?.width ?? 1280) < 768;
   await expect(telephone ? page.getByText(/^\s*·\s*modifié$/) : page.getByText("Modifié — pas encore appliqué")).toHaveCount(poses);
-  // La barre du bas compte : la phrase entière sur PC, « · N modifiées » sur téléphone.
-  await expect(
-    page.getByText(telephone ? new RegExp(`^\\s*·\\s*${poses}\\s*modifiées?$`) : new RegExp(`^${poses} cases? modifiées?, pas encore appliquées?$`)),
-  ).toBeVisible();
+  // Le compteur, sous ✕ et « Appliquer ».
+  await expect(page.getByText(new RegExp(`^${poses} modifications? non appliquées?$`))).toBeVisible();
 
-  // « Annuler » jette le brouillon : rien n'a touché la base. La barre de sélection est posée au-dessus
-  // d'« Annuler · Appliquer », qui reste à portée pendant qu'on coche.
+  // ✕ jette le brouillon, après confirmation : rien n'a touché la base.
   page.once("dialog", (d) => void d.accept());
-  await page.getByRole("button", { name: "Annuler", exact: true }).click();
+  await page.getByRole("button", { name: "Annuler les modifications" }).click();
   await page.waitForURL((url) => !url.search.includes("modifier=1"));
   await expect(page.getByText("Thème posé en masse")).toHaveCount(0);
 });
@@ -148,7 +128,6 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
 test("ajouter une option dans la partie 1 d'une séance cochée, puis la retirer", async ({ page }) => {
   await connecter(page, COMPTES.admin);
   await page.goto("/planning?modifier=1");
-  await page.getByRole("switch", { name: /Sélection multiple/ }).check();
   // La dernière carte cochable affichée, pour ne pas toucher celles que les autres scénarios visent.
   const cases = page.getByRole("checkbox", { name: /^Sélectionner la séance du/ });
   // La carte de la dernière case : retrouvée depuis la case elle-même (un `filter({ has })` évaluerait

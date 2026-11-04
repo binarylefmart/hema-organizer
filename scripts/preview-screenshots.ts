@@ -693,6 +693,17 @@ function toutesLesScenes(): Scene[] {
     // Le planning tel que l'encadrement le **trouve** : en lecture seule, comme un membre, avec le
     // seul bouton qui ouvre la saisie. C'est le défaut depuis cette date, et c'est précisément ce
     // que la scène doit montrer — l'écran d'avant était un mur de listes déroulantes.
+    {
+      nom: "planning-modification",
+      description: "Planning ouvert par le crayon : les cases d'emblée, « Tout sélectionner », puis ✕ et « Appliquer » en tête — plus d'interrupteur ni de barre du bas",
+      connexion: COMPTES.instructeur,
+      chemin: "/planning?modifier=1",
+      avant: async (page) => {
+        if (await estTelephone(page)) await fermerDemoGestes(page);
+        await page.getByRole("button", { name: "Annuler les modifications" }).first().waitFor();
+        await page.evaluate(() => window.scrollTo(0, 0));
+      },
+    },
     { nom: "planning-instructeur", description: "Planning (équipe) : en lecture seule par défaut, avec le bouton crayon « Modifier le planning »", connexion: COMPTES.instructeur, chemin: "/planning" },
     { nom: "planning-semaine", description: "Planning (équipe) : fenêtre resserrée sur les deux prochaines semaines", connexion: COMPTES.instructeur, chemin: "/planning?h=2semaines" },
     {
@@ -1286,19 +1297,8 @@ function toutesLesScenes(): Scene[] {
       },
     },
     {
-      nom: "action-planning-aide",
-      description: "Planning en modification : l'aide « i » de la barre d'édition ouverte — ce qui s'enregistre tout de suite",
-      connexion: COMPTES.instructeur,
-      chemin: "/planning?modifier=1",
-      avant: async (page) => {
-        if (await estTelephone(page)) await fermerDemoGestes(page);
-        await page.getByRole("button", { name: "Ce qui s'enregistre tout de suite" }).click();
-        await page.locator("#barre-edition-aide").waitFor();
-      },
-    },
-    {
       nom: "action-planning-selection",
-      description: "Planning en modification : la sélection multiple allumée, trois séances cochées et la barre sombre « Que faire sur ces 3 séances ? » (sur PC, la barre de l'ordinateur)",
+      description: "Planning en modification (ouvert par le crayon) : cases d'emblée, ✕ et « Appliquer » en tête, trois séances cochées et la barre sombre « Continuer » (sur PC, la barre de l'ordinateur)",
       connexion: COMPTES.instructeur,
       chemin: "/planning?modifier=1",
       avant: async (page) => {
@@ -1307,12 +1307,12 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "action-planning-volet",
-      description: "Planning sur téléphone : le volet « Que faire sur ces 3 séances ? » ouvert, avec ses gestes (sur PC, la barre de l'ordinateur)",
+      description: "Planning : « Continuer » ouvre le volet des gestes du programme — régler, remplacer, ajouter, retirer (sur PC, la barre de l'ordinateur)",
       connexion: COMPTES.instructeur,
       chemin: "/planning?modifier=1",
       avant: async (page) => {
         await selectionnerSeancesPlanning(page);
-        await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        await ouvrirVoletPlanning(page);
       },
     },
     {
@@ -1322,7 +1322,7 @@ function toutesLesScenes(): Scene[] {
       chemin: "/planning?modifier=1",
       avant: async (page) => {
         await selectionnerSeancesPlanning(page);
-        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        const volet = await ouvrirVoletPlanning(page);
         if (volet) return cocherElementsPlanning(volet);
         // Sur ordinateur, on choisit le geste dans « Que veux-tu faire ? », puis on coche ses deux
         // premiers éléments, qui déplient chacun leurs réglages.
@@ -1341,7 +1341,7 @@ function toutesLesScenes(): Scene[] {
       chemin: "/planning?modifier=1",
       avant: async (page) => {
         await selectionnerSeancesPlanning(page);
-        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        const volet = await ouvrirVoletPlanning(page);
         const cadre = volet ?? page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first();
         if (!volet) {
           await cadre.getByRole("combobox").first().click();
@@ -1359,7 +1359,7 @@ function toutesLesScenes(): Scene[] {
       chemin: "/planning?modifier=1",
       avant: async (page) => {
         await selectionnerSeancesPlanning(page);
-        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        const volet = await ouvrirVoletPlanning(page);
         if (volet) await cocherElementsPlanning(volet);
       },
     },
@@ -1370,7 +1370,7 @@ function toutesLesScenes(): Scene[] {
       chemin: "/planning?modifier=1",
       avant: async (page) => {
         await selectionnerSeancesPlanning(page);
-        const volet = await ouvrirVoletSelection(page, /^Que faire sur ces 3 séances/);
+        const volet = await ouvrirVoletPlanning(page);
         if (!volet) return;
         await cocherElementsPlanning(volet);
         await volet.getByRole("button", { name: /^Suivant : / }).click();
@@ -1398,13 +1398,13 @@ function toutesLesScenes(): Scene[] {
       },
     },
     {
-      nom: "action-seances-retirer",
-      description: "Séances en sélection multiple : « Retirer un élément du programme » — l'élément choisi par son nom, le compteur et ce qui reste de côté (téléphone : le volet)",
+      nom: "action-planning-retirer",
+      description: "Planning en sélection : « Retirer un élément du programme » — l'élément choisi par son nom, le compteur et ce qui reste de côté (téléphone : le volet)",
       connexion: COMPTES.instructeur,
-      chemin: "/seances?modifier=1",
+      chemin: "/planning?modifier=1",
       avant: async (page) => {
-        await cocherPlusieurs(page, page.getByRole("checkbox", { name: /^Sélectionner la séance du / }));
-        const volet = await ouvrirVoletSeances(page);
+        await selectionnerSeancesPlanning(page);
+        const volet = await ouvrirVoletPlanning(page);
         const zone = volet ?? page.getByRole("group", { name: "Agir sur plusieurs séances à la fois" }).first();
         if (volet) await volet.getByRole("button", { name: /^Retirer un élément du programme/ }).click();
         else {
@@ -1417,7 +1417,7 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "seances-crayon",
-      description: "Séances d'un membre : le bouton crayon (rond et flottant au téléphone, sous le titre sur PC), qui ouvre la sélection",
+      description: "Séances d'un membre : le bouton crayon seul, sans texte (rond et flottant au téléphone, sous le titre sur PC), qui ouvre la sélection",
       connexion: COMPTES.membre,
       chemin: "/seances",
     },
@@ -2546,9 +2546,7 @@ async function fermerDemoGestes(page: Page): Promise<void> {
  * l'en-tête collant en haut intercepteraient sinon le clic.
  */
 async function cocherPlusieurs(page: Page, cases: Locator, indices: readonly number[] = [0, 1, 2]): Promise<void> {
-  // Le planning garde son interrupteur ; les séances s'ouvrent par le crayon (ou `?modifier=1`).
-  const interrupteur = page.getByRole("switch", { name: "Sélection multiple" }).first();
-  if (await interrupteur.count()) await interrupteur.check();
+  // Plus d'interrupteur : le crayon (ou `?modifier=1`) ouvre les cases, au planning comme aux séances.
   await cases.first().waitFor();
   const total = await cases.count();
   for (const i of indices) {
@@ -2573,6 +2571,15 @@ async function ouvrirVoletSelection(page: Page, question: RegExp): Promise<Locat
   if (!(await estTelephone(page))) return null;
   await page.getByRole("button", { name: question }).click();
   const volet = page.getByRole("dialog", { name: question });
+  await volet.waitFor();
+  return volet;
+}
+
+/** Planning au téléphone : « Continuer » ouvre le volet « Que faire sur ces N séances ? ». Sur PC, rien. */
+async function ouvrirVoletPlanning(page: Page): Promise<Locator | null> {
+  if (!(await estTelephone(page))) return null;
+  await page.getByRole("button", { name: "Continuer" }).click();
+  const volet = page.getByRole("dialog", { name: /^Que faire sur ces/ });
   await volet.waitFor();
   return volet;
 }

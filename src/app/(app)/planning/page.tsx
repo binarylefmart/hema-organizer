@@ -196,7 +196,7 @@ async function SousLesFiltres({ planning, temps }: Omit<IlotPlanning, "choisie">
 async function EntreePlanning({ planning, lien }: { planning: Promise<Planning | null>; lien: string }) {
   const p = await planning;
   if (!p?.modifiable) return null;
-  return <BoutonCrayon href={lien} libelle="Modifier le planning" cle="planning" />;
+  return <BoutonCrayon href={lien} libelle="Modifier le planning" />;
 }
 
 /**

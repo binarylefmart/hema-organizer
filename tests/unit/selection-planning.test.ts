@@ -11,6 +11,11 @@ import {
   CHAMPS_INCHANGES,
   choisirInstructeur,
   confirmationPlanning,
+  confirmationRetrait,
+  elementsRetirablesPlanning,
+  expliquerRetrait,
+  libelleBoutonRetrait,
+  seancesARetirer,
   ECRIRE,
   ENTREES_TETE,
   expliquerAjout,
@@ -73,30 +78,43 @@ describe("les gestes proposés", () => {
       // Seule « b » porte un thème (hors atelier).
       ["remplacer", 1, "Remplacer un thème (1 séance)"],
       ["ajouter", 3, "Ajouter dans une partie (3 séances)"],
+      // « c » n'a qu'une case d'atelier : rien à retirer d'ici.
+      ["retirer", 2, "Retirer un élément du programme (2 séances)"],
     ]);
   });
 
   it("« Remplacer un thème » n'est proposé que si un thème est présent — celui du brouillon compris", () => {
-    expect(gestesPlanningApplicables([a]).map((g) => g.geste)).toEqual(["regler", "ajouter"]);
+    expect(gestesPlanningApplicables([a]).map((g) => g.geste)).toEqual(["regler", "ajouter", "retirer"]);
     const brouillon = new Map([["a3", { ...VIDE, theme: "Dague" }]]);
-    expect(gestesPlanningApplicables([a], brouillon).map((g) => g.geste)).toEqual(["regler", "remplacer", "ajouter"]);
+    expect(gestesPlanningApplicables([a], brouillon).map((g) => g.geste)).toEqual(["regler", "remplacer", "ajouter", "retirer"]);
     // Un thème vidé dans le brouillon ne compte plus.
-    expect(gestesPlanningApplicables([b], new Map([["b1", { ...VIDE }]])).map((g) => g.geste)).toEqual(["regler", "ajouter"]);
+    expect(gestesPlanningApplicables([b], new Map([["b1", { ...VIDE }]])).map((g) => g.geste)).toEqual(["regler", "ajouter", "retirer"]);
     // Le thème d'un atelier (son titre) ne se remplace pas.
     const atelier = seance("t", [partie("t1", "Partie 1 · Cours", { atelier: true, serveur: { ...VIDE, theme: "Lutte" } })]);
     expect(gestesPlanningApplicables([atelier]).map((g) => g.geste)).toEqual(["ajouter"]);
   });
 
-  it("la phrase d'invite nomme les trois gestes", () => {
-    expect(INVITE_PLANNING).toBe("Coche des lignes pour régler des éléments, remplacer un thème ou ajouter un élément sur plusieurs séances à la fois.");
+  it("la phrase d'invite nomme les quatre gestes", () => {
+    expect(INVITE_PLANNING).toBe("Coche des lignes pour régler des éléments, remplacer un thème, ajouter ou retirer un élément sur plusieurs séances à la fois.");
   });
 
   it("une séance dont toutes les parties portent un atelier n'a rien à régler", () => {
     expect(gestesPlanningApplicables([c]).map((g) => g.geste)).toEqual(["ajouter"]);
   });
 
-  it("aucun geste de retrait en masse", () => {
-    expect(gestesPlanningApplicables([a]).map((g) => g.geste)).not.toContain("retirer");
+  it("retirer un élément : les noms du lot, comptés, sans les cases d'atelier", () => {
+    expect(elementsRetirablesPlanning([a, b, c])).toEqual([
+      { libelle: "Partie 1 · Cours", nombre: 2 },
+      { libelle: "Partie 2 · Cours", nombre: 2 },
+      { libelle: "Partie 2 · Option", nombre: 1 },
+    ]);
+    expect(seancesARetirer([a, b, c], "Partie 2 · Option").map((l) => l.id)).toEqual(["a"]);
+    expect(seancesARetirer([a, b, c], "")).toEqual([]);
+    expect(libelleBoutonRetrait(2)).toBe("Retirer de 2 séances");
+    expect(confirmationRetrait("Partie 1 · Cours", 2, 1)).toBe("Retirer « Partie 1 · Cours » de 2 séances ? 1 séance de la sélection reste de côté. Rien ne se récupère.");
+    const e = expliquerRetrait([a, b], "Partie 2 · Option");
+    expect(e.titre).toBe("« Partie 2 · Option » disparaît du programme de la séance.");
+    expect(e.phrases.join(" ")).toContain("1 séance ne porte pas cet élément");
   });
 
   it("le libellé de la case maîtresse nomme les séances affichées, jamais « Tout »", () => {
@@ -270,7 +288,7 @@ describe("régler plusieurs éléments d'un appui", () => {
     expect(libelleBoutonReglages(plan)).toBe("Appliquer aux 6 séances");
     expect(expliquerReglages(plan).titre).toBe("12 éléments sont réglés sur 6 séances, dans le brouillon.");
     expect(expliquerReglages(plan).phrases).toContain("« Partie 1 · Échauffement » : réglé sur 6 séances.");
-    expect(messageReglages(plan)).toBe("12 éléments réglés sur 6 séances, pas encore appliqués : « Appliquer les modifications » les enregistre.");
+    expect(messageReglages(plan)).toBe("12 éléments réglés sur 6 séances, pas encore appliqués : « Appliquer » les enregistre.");
   });
 
   it("chaque élément suit les règles d'un seul : atelier de côté, refus de la case, déjà au réglage", () => {
@@ -396,7 +414,7 @@ describe("remplacer un thème", () => {
     expect(e.phrases.join(" ")).toMatch(/Rien n'est encore enregistré/);
     expect(e.phrases.join(" ")).toMatch(/1 atelier porte aussi ce thème : il garde son titre, figé/);
     expect(messageRemplacement("Messer", "Sabre", plan)).toBe(
-      "« Messer » remplacé par « Sabre » sur 3 éléments (2 séances), pas encore appliqués : « Appliquer les modifications » les enregistre.",
+      "« Messer » remplacé par « Sabre » sur 3 éléments (2 séances), pas encore appliqués : « Appliquer » les enregistre.",
     );
   });
 
@@ -513,8 +531,7 @@ describe("ce qu'« Appliquer » envoie", () => {
 describe("les deux barres du bas du planning", () => {
   const source = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
 
-  it("la barre d'édition publie sa hauteur, la barre de sélection s'y cale", () => {
-    expect(source("src/components/planning/BarreEdition.tsx")).toContain("setProperty(VARIABLE_HAUTEUR_BARRE_EDITION");
+  it("la barre de sélection lit la hauteur publiée quand elle se pose au-dessus d'une autre", () => {
     const selection = source("src/components/ui/BarreSelection.tsx");
     // Le nom publié et le nom lu sont le même : une faute de frappe ferait retomber sur la valeur par défaut.
     expect(selection).toContain(`var(${VARIABLE_HAUTEUR_BARRE_EDITION},`);
@@ -531,8 +548,8 @@ describe("l'écran", () => {
     expect(code).toContain("brouillon.poserPlusieurs(planTheme.ecritures)");
     expect(code).toContain("brouillon.poserPlusieurs(planElements.ecritures)");
     expect(code).not.toContain("enregistrerCase");
-    // Les seuls appels au serveur sont les ajouts, confirmés.
-    expect(code.match(/await \w+\(/g)).toEqual(["await ajouterPartiesEnMasse("]);
+    // Les seuls appels au serveur sont les ajouts et les retraits, confirmés.
+    expect(code.match(/await \w+\(/g)).toEqual(["await appliquerGesteSeancesEnMasse(", "await ajouterPartiesEnMasse("]);
   });
 
   it("la case reprend ce que le brouillon lui impose, et se monte sur le brouillon en cours", () => {
@@ -555,10 +572,11 @@ describe("l'écran", () => {
     expect(texteSansCasePlanning(1, 2)).toMatch(/1 séance annulée .* 2 séances commencées n'ont pas de case/);
   });
 
-  it("la barre est la forme commune : interrupteur, « Que veux-tu faire ? », visible avec une sélection", () => {
+  it("le crayon ouvre les cases d'emblée : plus d'interrupteur, « Que veux-tu faire ? » avec une sélection", () => {
     const code = source("src/components/planning/SelectionPlanning.tsx");
-    expect(code).toContain("<InterrupteurSelection");
+    expect(code).not.toContain("InterrupteurSelection");
     expect(code).toContain("<ChoixGeste");
-    expect(code).toContain("actif && barreDeMasseVisible(selection)");
+    expect(code).toContain("const montrerBarre = barreDeMasseVisible(selection);");
+    expect(code).toContain('libelle="Continuer"');
   });
 });

@@ -265,7 +265,7 @@ describe("Régler des éléments, au planning", () => {
     expect(libelleReglerElements(1)).toBe("Régler 1 élément");
     expect(libelleReglerElements(4)).toBe("Régler 4 éléments");
     expect(messageElementsRegles(3)).toBe(
-      "3 éléments réglés, pas encore appliqués : « Appliquer les modifications » les enregistre.",
+      "3 éléments réglés, pas encore appliqués : « Appliquer » les enregistre.",
     );
     expect(expliquerReglageElements(null, 2).titre).toBe(
       "2 éléments : choisis ce qui change.",

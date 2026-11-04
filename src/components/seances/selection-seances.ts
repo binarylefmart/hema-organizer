@@ -1,7 +1,6 @@
 import { pluriel, type Explication } from "@/components/ui/choix-geste";
 import { texteInviteMasse, type MotsLignes } from "@/components/ui/selection";
 import { seanceAnnulable, seanceReglable, seanceRetablissable } from "./gestes-seance";
-import { lienPlanning } from "@/components/planning/mode-edition";
 
 /**
  * **Agir sur plusieurs séances à la fois** — la partie sans React ni base, donc testable.
@@ -26,7 +25,7 @@ import { lienPlanning } from "@/components/planning/mode-edition";
 /** Une séance cochable, telle que l'écran la connaît. Une séance d'un trimestre clos n'en a pas. */
 export type LigneSeance = {
   id: string;
-  /** Le trimestre de la séance : « Modifier le programme » ouvre le planning sur lui. */
+  /** Le trimestre de la séance. */
   periodId: string;
   /** « mardi 6 octobre » : le nom de la case, et celui des séances citées. */
   jour: string;
@@ -39,18 +38,9 @@ export type LigneSeance = {
   commencee: boolean;
   /** Réponses déjà données par les membres : ce qu'une suppression emporte. */
   reponses: number;
-  /**
-   * **Les éléments de son programme**, dans l'ordre de lecture, vides compris : ce que « Retirer un
-   * élément du programme » propose. `retirable` est faux pour un élément Atelier qui porte un
-   * atelier — le retirer rendrait la proposition d'un membre à la file, et ce geste-là se fait au
-   * planning, élément par élément.
-   */
-  elements: ElementLigne[];
 };
 
-export type ElementLigne = { libelle: string; retirable: boolean };
-
-export type GesteSeances = "programme" | "retirer" | "annuler" | "retablir" | "lieu" | "horaire" | "supprimer";
+export type GesteSeances = "annuler" | "retablir" | "lieu" | "horaire" | "supprimer";
 
 /** Les mots de cet écran pour la phrase partagée `texteHorsAffichage` : on y coche des *séances*. */
 export const MOTS_SEANCES: MotsLignes = { singulier: "séance", pluriel: "séances", accord: "f" };
@@ -81,12 +71,7 @@ export function libelleAfficherEtSelectionner(total: number): string {
 export function ciblesGeste(geste: GesteSeances, lot: readonly LigneSeance[]): LigneSeance[] {
   if (geste === "annuler") return lot.filter((l) => seanceAnnulable({ annulee: l.annulee, passee: l.commencee }));
   if (geste === "retablir") return lot.filter((l) => seanceRetablissable({ annulee: l.annulee, passee: l.commencee }));
-  // Une séance annulée verrouille son programme (`partiePourEcriture`) : le planning ne l'ouvrirait pas.
-  // Une séance commencée aussi, et sa date, son horaire et son lieu avec (`seanceReglable`).
-  if (geste === "programme") return lot.filter((l) => !l.annulee && seanceReglable({ passee: l.commencee }));
-  // Retirer touche au programme : mêmes séances que « Modifier le programme », et seulement celles
-  // qui ont au moins un élément retirable.
-  if (geste === "retirer") return lot.filter((l) => !l.annulee && seanceReglable({ passee: l.commencee }) && l.elements.some((e) => e.retirable));
+  // Une séance commencée ne change plus de date, d'horaire ni de lieu (`seanceReglable`).
   if (geste === "lieu" || geste === "horaire") return lot.filter((l) => seanceReglable({ passee: l.commencee }));
   return [...lot];
 }
@@ -99,15 +84,13 @@ export type GesteSeancesOffert = { geste: GesteSeances; libelle: string; nombre:
  */
 export function gestesSeancesApplicables(lot: readonly LigneSeance[], { supprimer }: { supprimer: boolean }): GesteSeancesOffert[] {
   const noms: Record<GesteSeances, string> = {
-    programme: "Modifier le programme",
-    retirer: "Retirer un élément du programme",
     annuler: "Annuler les séances",
     retablir: "Rétablir les séances",
     lieu: "Changer le lieu",
     horaire: "Changer l'horaire",
     supprimer: "Supprimer les séances",
   };
-  const ordre: GesteSeances[] = ["programme", "retirer", "annuler", "retablir", "lieu", "horaire", ...(supprimer ? (["supprimer"] as const) : [])];
+  const ordre: GesteSeances[] = ["annuler", "retablir", "lieu", "horaire", ...(supprimer ? (["supprimer"] as const) : [])];
   return ordre
     .map((geste) => ({ geste, nombre: ciblesGeste(geste, lot).length }))
     .filter((g) => g.nombre > 0)
@@ -115,25 +98,7 @@ export function gestesSeancesApplicables(lot: readonly LigneSeance[], { supprime
 }
 
 /** Le réglage qu'un geste demande, tel que l'écran l'a saisi. */
-export type ReglageSeances = { motif?: string; lieu?: string; adresse?: string; heureDebut?: string; heureFin?: string; element?: string };
-
-/**
- * **Les éléments qu'on peut retirer du lot, par leur nom** (« Partie 2 · Option »), chacun avec le
- * nombre de séances qui le portent. Le nom est calculé par la place de l'élément (`libelleElement`) :
- * retirer « Partie 2 · Option » retire, dans chaque séance, l'élément qui occupe cette place. Ordre :
- * celui de la première séance qui le porte, puis des suivantes — l'ordre de lecture du programme.
- * Les séances que le geste écarte (annulées, commencées) ne proposent rien.
- */
-export function elementsRetirables(lot: readonly LigneSeance[]): Array<{ libelle: string; nombre: number }> {
-  const comptes = new Map<string, number>();
-  for (const l of ciblesGeste("retirer", lot)) {
-    for (const libelle of new Set(l.elements.filter((e) => e.retirable).map((e) => e.libelle))) comptes.set(libelle, (comptes.get(libelle) ?? 0) + 1);
-  }
-  return [...comptes].map(([libelle, nombre]) => ({ libelle, nombre }));
-}
-
-/** Une séance porte-t-elle cet élément, retirable ? */
-const porteElement = (l: LigneSeance, libelle: string) => l.elements.some((e) => e.retirable && e.libelle === libelle);
+export type ReglageSeances = { motif?: string; lieu?: string; adresse?: string; heureDebut?: string; heureFin?: string };
 
 /**
  * **Les séances que le geste changerait vraiment** : pour le lieu et l'horaire, celles qui sont déjà à
@@ -143,7 +108,6 @@ const porteElement = (l: LigneSeance, libelle: string) => l.elements.some((e) =>
 export function seancesQuiChangent(geste: GesteSeances, lot: readonly LigneSeance[], reglage: ReglageSeances = {}): LigneSeance[] {
   const cibles = ciblesGeste(geste, lot);
   if (geste === "lieu" && reglage.lieu) return cibles.filter((l) => l.lieu !== reglage.lieu || l.adresse !== (reglage.adresse ?? ""));
-  if (geste === "retirer" && reglage.element) return cibles.filter((l) => porteElement(l, reglage.element!));
   if (geste === "horaire" && reglage.heureDebut && reglage.heureFin) return cibles.filter((l) => l.heureDebut !== reglage.heureDebut || l.heureFin !== reglage.heureFin);
   return cibles;
 }
@@ -160,7 +124,6 @@ export function horaireValide(heureDebut = "", heureFin = ""): boolean {
 export function reglageManquant(geste: GesteSeances, lot: readonly LigneSeance[], reglage: ReglageSeances): boolean {
   if (geste === "annuler" && !reglage.motif?.trim()) return true;
   if (geste === "lieu" && !reglage.lieu?.trim()) return true;
-  if (geste === "retirer" && !reglage.element) return true;
   if (geste === "horaire" && !horaireValide(reglage.heureDebut, reglage.heureFin)) return true;
   return seancesQuiChangent(geste, lot, reglage).length === 0;
 }
@@ -169,10 +132,6 @@ export function reglageManquant(geste: GesteSeances, lot: readonly LigneSeance[]
 export function libelleBoutonSeances(geste: GesteSeances, n: number): string {
   const s = nbSeances(n);
   switch (geste) {
-    case "programme":
-      return n === 1 ? "Ouvrir la séance dans le planning" : `Ouvrir ${s} dans le planning`;
-    case "retirer":
-      return `Retirer de ${s}`;
     case "annuler":
       return `Annuler ${s}`;
     case "retablir":
@@ -191,7 +150,7 @@ export function libelleBoutonSeances(geste: GesteSeances, n: number): string {
  * réponses. C'est la couleur de leurs jumeaux sur la carte (`gestesSeance`).
  */
 export function gesteSeancesDefinitif(geste: GesteSeances): boolean {
-  return geste === "annuler" || geste === "supprimer" || geste === "retirer";
+  return geste === "annuler" || geste === "supprimer";
 }
 
 /** « 3 annonces d'annulation partiront » — le chiffre qu'on ne rattrape pas. */
@@ -232,36 +191,6 @@ export function expliquerGesteSeances(geste: GesteSeances, lot: readonly LigneSe
   const n = touchees.length;
   const reste = (phrases: (string | null)[]) => phrases.filter((p): p is string => Boolean(p));
   switch (geste) {
-    case "programme": {
-      const annulees = lot.filter((l) => l.annulee).length;
-      const commencees = lot.filter((l) => !l.annulee && l.commencee).length;
-      return {
-        titre: `Le planning s'ouvre en modification, sur ${n === 1 ? "cette séance" : `ces ${n} séances`} seulement.`,
-        phrases: reste([
-          "Tu y règles cours, options, instructeurs et thèmes, puis « Appliquer les modifications » enregistre tout d'un coup.",
-          annulees > 0 ? `${nbSeances(annulees)} annulée${annulees > 1 ? "s" : ""} reste${annulees > 1 ? "nt" : ""} de côté : une séance annulée ne se programme plus.` : null,
-          phraseCommencees(commencees),
-        ]),
-      };
-    }
-    case "retirer": {
-      const ecartees = lot.length - ciblesGeste("retirer", lot).length;
-      const sans = reglage.element ? ciblesGeste("retirer", lot).length - n : 0;
-      return {
-        titre: reglage.element
-          ? `« ${reglage.element} » disparaît du programme de ${n === 1 ? "la séance" : `${n} séances`}.`
-          : "Choisis l'élément à retirer : il disparaît du programme de chaque séance qui le porte.",
-        phrases: reste([
-          "Les parties suivantes se renumérotent, comme quand on retire un élément au planning. Ce qu'il portait (thème, instructeurs, description) est perdu, et reste lisible au journal.",
-          sans > 0 ? `${nbSeances(sans)} ne ${sans > 1 ? "portent" : "porte"} pas cet élément : rien n'y change.` : null,
-          ecartees > 0
-            ? `${nbSeances(ecartees)} ${ecartees > 1 ? "restent" : "reste"} de côté : annulée${ecartees > 1 ? "s" : ""}, déjà commencée${ecartees > 1 ? "s" : ""}, ou sans élément à retirer.`
-            : null,
-          "Un atelier placé sur une séance n'est jamais retiré d'ici : il se retire au planning, et retourne alors dans la file des propositions.",
-          "Les instructeurs reçoivent un seul message « Planning modifié » pour tout le lot.",
-        ]),
-      };
-    }
     case "annuler":
       return {
         titre: `${phraseAnnonces(n)} : chaque séance annulée prévient tout le club, tout de suite.`,
@@ -312,12 +241,6 @@ export function confirmationSeances(geste: GesteSeances, lot: readonly LigneSean
   const n = touchees.length;
   const s = nbSeances(n);
   switch (geste) {
-    case "programme":
-      return "";
-    case "retirer": {
-      const ecartees = lot.length - n;
-      return `Retirer « ${reglage.element ?? ""} » de ${s} ?${ecartees > 0 ? ` ${nbSeances(ecartees)} de la sélection ${ecartees > 1 ? "restent" : "reste"} de côté.` : ""} Rien ne se récupère.`;
-    }
     case "annuler":
       return `Annuler ${s} ? ${phraseAnnonces(n)} — une par séance, aux invités et aux salons du club —, avec le motif « ${reglage.motif?.trim() ?? ""} ».`;
     case "retablir":
@@ -348,15 +271,4 @@ export function texteSansCaseSeances(verrouillees: number): string | null {
   return verrouillees === 1
     ? "1 séance n'a pas de case : son trimestre est clos, elle ne se modifie plus."
     : `${verrouillees} séances n'ont pas de case : leur trimestre est clos, elles ne se modifient plus.`;
-}
-
-/**
- * **Le planning en modification, réduit aux séances choisies** — le geste « Modifier le programme ».
- * Il n'écrit rien : il ouvre l'écran où l'on règle les parties, avec son brouillon et ses deux boutons.
- * Le trimestre est celui de la première séance : l'onglet Séances n'en montre qu'un à la fois.
- */
-export function lienProgrammeSeances(lot: readonly LigneSeance[]): string | null {
-  const cibles = ciblesGeste("programme", lot);
-  if (cibles.length === 0) return null;
-  return lienPlanning({ periode: cibles[0].periodId, seances: cibles.map((l) => l.id).join(",") }, true);
 }

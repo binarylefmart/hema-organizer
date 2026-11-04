@@ -258,7 +258,7 @@ describe("l'écran", () => {
 
   it("le défilement automatique mesure les barres collées en bas", () => {
     expect(telephone).toContain('querySelectorAll<HTMLElement>("[data-barre-basse]")');
-    expect(lire("src/components/planning/BarreEdition.tsx")).toContain('data-barre-basse="edition"');
+    // La barre d'édition n'est plus collée en bas (✕ et « Appliquer » sont en tête) : seule la sélection l'est.
     expect(lire("src/components/ui/BarreSelection.tsx")).toContain('data-barre-basse="selection"');
   });
 

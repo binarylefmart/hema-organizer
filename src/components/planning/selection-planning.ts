@@ -10,12 +10,12 @@ import { normaliserTheme, type Teinte } from "@/components/seances/teintes";
 /**
  * **Agir sur plusieurs séances du planning à la fois** — la partie sans React ni base, donc testable.
  *
- * Le planning, en mode modification, donne une case à chaque carte de séance quand l'interrupteur
- * « Sélection multiple » est allumé. La mécanique vient du module partagé
+ * Le planning, en mode modification (ouvert par le bouton crayon), donne une case à chaque carte de
+ * séance. La mécanique vient du module partagé
  * (`src/components/ui/selection.ts` : cocher, case maîtresse, raccourcis « Tous les mardis »), la
  * forme de la question de `ChoixGeste` ; **ce qui se duplique ici, ce sont les mots** du planning.
  *
- * Trois gestes :
+ * Quatre gestes :
  *
  * - **régler des éléments** : on coche, parmi les noms calculés des séances cochées (« Partie 1 ·
  *   Échauffement », « Partie 1 · Cours », « Partie 2 · Option 2 »…), **un ou plusieurs** éléments, et
@@ -28,7 +28,7 @@ import { normaliserTheme, type Teinte } from "@/components/seances/teintes";
  *   qui le portent (atelier excepté) reçoivent le nouveau ;
  *
  *   pour ces deux-là, **rien ne part** : les réglages entrent dans le brouillon, comme si chaque case
- *   avait été réglée à la main, et c'est « Appliquer les modifications » qui les enregistre
+ *   avait été réglée à la main, et c'est « Appliquer » qui les enregistre
  *   (`enregistrerCases`, ses verrous, son tout-ou-rien, son journal — et la teinte, recalculée côté
  *   serveur pour chaque case dont le thème change) ;
  * - **ajouter un élément** — un échauffement, un cours ou une option — dans la partie choisie
@@ -37,8 +37,11 @@ import { normaliserTheme, type Teinte } from "@/components/seances/teintes";
  *   d'identifiant à donner au brouillon. Les ateliers n'y sont pas : un atelier ne se pose qu'une
  *   fois, sur une séance, depuis sa carte.
  *
- * **Pas de retrait en masse** : retirer une partie emporte ce qui y est écrit, sans brouillon pour
- * revenir en arrière. Le geste reste sur chaque carte, avec sa confirmation.
+ * - **retirer un élément du programme** (« Partie 2 · Option ») de chaque séance cochée qui le porte :
+ *   lui aussi s'enregistre **tout de suite**, après confirmation (`appliquerGesteSeancesEnMasse`,
+ *   geste `retirer`). Une case occupée par un atelier n'est jamais retirée d'ici : elle se retire sur
+ *   sa carte, et l'atelier retourne dans la file. Ce geste vivait dans la sélection de l'onglet
+ *   Séances ; il est revenu ici avec les autres gestes du programme.
  */
 
 /** Une partie d'une séance cochable, telle que la sélection la connaît. */
@@ -72,7 +75,7 @@ export type LignePlanning = {
   parties: PartieLigne[];
 };
 
-export type GestePlanning = "regler" | "remplacer" | "ajouter";
+export type GestePlanning = "regler" | "remplacer" | "ajouter" | "retirer";
 
 /** Ce que l'ajout en masse pose : une nature, dans une partie. */
 export type ChoixAjout = { bloc: number; nature: NatureAjoutable };
@@ -81,7 +84,7 @@ export type ChoixAjout = { bloc: number; nature: NatureAjoutable };
 export const MOTS_PLANNING: MotsLignes = { singulier: "séance", pluriel: "séances", accord: "f" };
 
 /** La phrase posée sous la case maîtresse tant que rien n'est coché (`texteInviteMasse`). */
-export const INVITE_PLANNING = texteInviteMasse("régler des éléments, remplacer un thème ou ajouter un élément sur plusieurs séances à la fois");
+export const INVITE_PLANNING = texteInviteMasse("régler des éléments, remplacer un thème, ajouter ou retirer un élément sur plusieurs séances à la fois");
 
 const nbSeances = (n: number) => pluriel(n, "séance");
 const nbElements = (n: number) => pluriel(n, "élément");
@@ -152,7 +155,63 @@ export function gestesPlanningApplicables(lot: readonly LignePlanning[], brouill
   const avecTheme = lot.filter((l) => l.parties.some((p) => !p.atelier && themeActuel(p, brouillon) !== "")).length;
   if (avecTheme > 0) offres.push({ geste: "remplacer", nombre: avecTheme, libelle: `Remplacer un thème (${nbSeances(avecTheme)})` });
   if (lot.length > 0) offres.push({ geste: "ajouter", nombre: lot.length, libelle: `Ajouter dans une partie (${nbSeances(lot.length)})` });
+  const avecRetirable = lot.filter((l) => l.parties.some(partieRetirable)).length;
+  if (avecRetirable > 0) offres.push({ geste: "retirer", nombre: avecRetirable, libelle: `Retirer un élément du programme (${nbSeances(avecRetirable)})` });
   return offres;
+}
+
+/* ------------------------------------------------------------------ */
+/* Retirer un élément du programme                                      */
+/* ------------------------------------------------------------------ */
+
+/** Une case occupée par un atelier ne se retire pas en masse : elle se retire sur sa carte. */
+const partieRetirable = (p: PartieLigne) => !p.atelier;
+
+/**
+ * **Les éléments qu'on peut retirer du lot, par leur nom** (« Partie 2 · Option »), chacun avec le
+ * nombre de séances cochées qui le portent — dans l'ordre de lecture des séances. Le nom est calculé
+ * par la place de l'élément : retirer « Partie 2 · Option » retire, dans chaque séance, celui qui
+ * occupe cette place (le serveur refait ce calcul, `retirerElementEnMasse`).
+ */
+export function elementsRetirablesPlanning(lot: readonly LignePlanning[]): Array<{ libelle: string; nombre: number }> {
+  const comptes = new Map<string, number>();
+  for (const l of lot) {
+    for (const libelle of new Set(l.parties.filter(partieRetirable).map((p) => p.libelle))) comptes.set(libelle, (comptes.get(libelle) ?? 0) + 1);
+  }
+  return [...comptes].map(([libelle, nombre]) => ({ libelle, nombre }));
+}
+
+/** Les séances cochées qui portent cet élément, retirable : celles que le retrait touche. */
+export function seancesARetirer(lot: readonly LignePlanning[], libelle: string): LignePlanning[] {
+  if (!libelle) return [];
+  return lot.filter((l) => l.parties.some((p) => partieRetirable(p) && p.libelle === libelle));
+}
+
+/** L'unique bouton du retrait : « Retirer de 3 séances ». */
+export function libelleBoutonRetrait(n: number): string {
+  return n === 0 ? "Retirer" : `Retirer de ${nbSeances(n)}`;
+}
+
+/** La question d'avant : ce qui disparaît, et que rien ne se récupère. */
+export function confirmationRetrait(libelle: string, n: number, ecartees: number): string {
+  return `Retirer « ${libelle} » de ${nbSeances(n)} ?${ecartees > 0 ? ` ${nbSeances(ecartees)} de la sélection ${ecartees > 1 ? "restent" : "reste"} de côté.` : ""} Rien ne se récupère.`;
+}
+
+/** Le retrait expliqué avant d'agir : quel élément, combien de séances, ce qui se perd. */
+export function expliquerRetrait(lot: readonly LignePlanning[], libelle: string): Explication {
+  const n = seancesARetirer(lot, libelle).length;
+  const sans = libelle ? lot.length - n : 0;
+  return {
+    titre: libelle
+      ? `« ${libelle} » disparaît du programme de ${n === 1 ? "la séance" : `${n} séances`}.`
+      : "Choisis l'élément à retirer : il disparaît du programme de chaque séance cochée qui le porte.",
+    phrases: [
+      "Les parties suivantes se renumérotent, comme quand on retire un élément sur une carte. Ce qu'il portait (thème, instructeurs, description) est perdu, et reste lisible au journal. Le retrait s'enregistre tout de suite.",
+      ...(sans > 0 ? [`${nbSeances(sans)} ne ${sans > 1 ? "portent" : "porte"} pas cet élément : rien n'y change.`] : []),
+      "Un atelier placé sur une séance n'est jamais retiré d'ici : il se retire sur sa carte, et retourne alors dans la file des propositions.",
+      "Les instructeurs reçoivent un seul message « Planning modifié » pour tout le lot.",
+    ],
+  };
 }
 
 /** Le thème que la case montre : celui du brouillon s'il y a lieu, sinon celui du serveur. */
@@ -391,7 +450,7 @@ function seancesTouchees(lot: readonly LignePlanning[], ecritures: readonly Ecri
 
 const PHRASE_NE_PAS_CHANGER = "Chaque réglage reste « Ne pas changer » tant que tu n'y touches pas ; « ---------- » vide le champ.";
 const PHRASE_BROUILLON =
-  "Rien n'est encore enregistré : chaque case réglée dit « Modifié — pas encore appliqué », et « Appliquer les modifications » écrit tout d'un coup, avec ce que tu as réglé à la main.";
+  "Rien n'est encore enregistré : chaque case réglée dit « Modifié — pas encore appliqué », et « Appliquer » écrit tout d'un coup, avec ce que tu as réglé à la main.";
 
 /** L'unique bouton de « Régler des éléments » : « Appliquer aux 6 séances ». */
 export function libelleBoutonReglages(plan: PlanReglages | null): string {
@@ -426,7 +485,7 @@ export function expliquerReglages(plan: PlanReglages | null): Explication {
 /** Ce que dit le message, une fois les cases posées dans le brouillon. */
 export function messageReglages(plan: PlanReglages): string {
   const n = plan.ecritures.length;
-  return `${nbElements(n)} ${n > 1 ? "réglés" : "réglé"} sur ${nbSeances(plan.seances)}, pas encore ${n > 1 ? "appliqués" : "appliqué"} : « Appliquer les modifications » ${n > 1 ? "les enregistre" : "l'enregistre"}.`;
+  return `${nbElements(n)} ${n > 1 ? "réglés" : "réglé"} sur ${nbSeances(plan.seances)}, pas encore ${n > 1 ? "appliqués" : "appliqué"} : « Appliquer » ${n > 1 ? "les enregistre" : "l'enregistre"}.`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -682,7 +741,7 @@ export function expliquerRemplacement(trouve: ThemeTrouve | null, nouveau: strin
 /** Ce que dit le message, une fois les cases posées dans le brouillon. */
 export function messageRemplacement(ancien: string, nouveau: string, plan: PlanRemplacement): string {
   const n = plan.ecritures.length;
-  return `« ${ancien} » remplacé par « ${nouveau.trim()} » sur ${nbElements(n)} (${nbSeances(plan.seances)}), pas encore ${n > 1 ? "appliqués" : "appliqué"} : « Appliquer les modifications » ${n > 1 ? "les enregistre" : "l'enregistre"}.`;
+  return `« ${ancien} » remplacé par « ${nouveau.trim()} » sur ${nbElements(n)} (${nbSeances(plan.seances)}), pas encore ${n > 1 ? "appliqués" : "appliqué"} : « Appliquer » ${n > 1 ? "les enregistre" : "l'enregistre"}.`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -696,7 +755,7 @@ export function libelleBoutonAjout(n: number, ajout: ChoixAjout | null): string 
 
 /** La question d'avant, pour le geste qui écrit tout de suite. Régler et remplacer n'en ont pas : rien ne part. */
 export function confirmationPlanning(ajout: ChoixAjout, n: number): string {
-  return `Ajouter ${AJOUT_NATURE[ajout.nature]} dans la partie ${ajout.bloc} de ${nbSeances(n)} ? C'est enregistré tout de suite, sans passer par « Appliquer les modifications ».`;
+  return `Ajouter ${AJOUT_NATURE[ajout.nature]} dans la partie ${ajout.bloc} de ${nbSeances(n)} ? C'est enregistré tout de suite, sans passer par « Appliquer ».`;
 }
 
 /** **L'ajout expliqué avant d'agir** : ce qui arrive, quand c'est écrit, et où l'élément se range. */
@@ -719,7 +778,7 @@ export function expliquerAjout(lot: readonly LignePlanning[], ajout: ChoixAjout 
     phrases: [
       "Comme le menu de la carte : son nom se calcule (« Partie 2 · Cours », « Partie 2 · Option 2 »…), et il naît vide, à remplir.",
       ...nouvelles,
-      "C'est enregistré sans attendre « Appliquer les modifications », et « Annuler » ne le défait pas : on retire un élément depuis sa carte.",
+      "C'est enregistré sans attendre « Appliquer », et « Annuler » ne le défait pas : on retire un élément depuis sa carte.",
       "Tout ou rien : si une séance refuse (trop d'éléments), aucune n'est modifiée.",
     ],
   };
@@ -739,7 +798,7 @@ export function expliquerAjout(lot: readonly LignePlanning[], ajout: ChoixAjout 
  * c'est ce qu'on règle. Le réglage vise donc des **identifiants**, plus des noms. Le reste ne change
  * pas : même `issueReglage` (les règles de la case), même point de départ (le brouillon s'il y a lieu,
  * sinon le serveur), mêmes écritures — elles entrent dans le brouillon (`poserPlusieurs`), et c'est
- * « Appliquer les modifications » qui les enregistre.
+ * « Appliquer » qui les enregistre.
  *
  * Un atelier n'est pas cochable : son thème est son titre, figé côté serveur, et le réglage en masse
  * l'a toujours laissé de côté.
@@ -830,8 +889,8 @@ export function libelleReglerElements(n: number): string {
 
 /** Ce que dit le message, une fois les cases posées dans le brouillon. */
 export function messageElementsRegles(n: number): string {
-  if (n === 1) return "1 élément réglé, pas encore appliqué : « Appliquer les modifications » l'enregistre.";
-  return `${n} éléments réglés, pas encore appliqués : « Appliquer les modifications » les enregistre.`;
+  if (n === 1) return "1 élément réglé, pas encore appliqué : « Appliquer » l'enregistre.";
+  return `${n} éléments réglés, pas encore appliqués : « Appliquer » les enregistre.`;
 }
 
 /** L'explication de la seconde étape, avant d'appuyer : même promesse que sur l'ordinateur. */
@@ -841,7 +900,7 @@ export function expliquerReglageElements(plan: PlanElements | null, retenus: num
   return {
     titre: n === 0 ? "Aucune case ne changerait avec ce réglage." : `${n === 1 ? "1 élément est réglé" : `${n} éléments sont réglés`} dans le brouillon.`,
     phrases: [
-      "Rien n'est encore enregistré : chaque case réglée dit « Modifié — pas encore appliqué », et « Appliquer les modifications » écrit tout d'un coup, avec ce que tu as réglé à la main.",
+      "Rien n'est encore enregistré : chaque case réglée dit « Modifié — pas encore appliqué », et « Appliquer » écrit tout d'un coup, avec ce que tu as réglé à la main.",
       ...(plan.deja > 0 ? [`${nbElements(plan.deja)} ${plan.deja > 1 ? "portent" : "porte"} déjà ce réglage : rien n'y change.`] : []),
       ...phrasesEcartsElements(plan.ecarts),
     ],

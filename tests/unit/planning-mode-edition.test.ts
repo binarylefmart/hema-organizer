@@ -137,47 +137,24 @@ describe("la barre d'édition ne promet que ce qu'elle tient", () => {
     expect(envoi.indexOf("brouillon.vider()")).toBeGreaterThan(envoi.indexOf("if (res.erreur)"));
   });
 
-  it("porte les trois libellés demandés : entrer, sortir, et jeter", () => {
-    /*
-     * Delta, : « au lieu de faire enregistrer annuler, fais plutôt deux boutons, modifier le
-     * planning et appliquer les modifications », puis « pour rentrer et sortir du mode
-     * modification » ; **et** : « ajoute dans le mode modification de planning un bouton annuler a
-     * coté de appliquer les modifications ».
-     *
-     * Le libellé d'application ne compte pas les cases (un bouton dont le texte change de longueur à
-     * chaque réglage se déplace sous le doigt) ; le chiffre vit dans la phrase à gauche.
-     */
+  it("se réduit à ✕ et « Appliquer »", () => {
     expect(fs.readFileSync(path.join(process.cwd(), "src/app/(app)/planning/page.tsx"), "utf8")).toContain("Modifier le planning");
-    expect(barre).toContain("Appliquer les modifications");
-    expect(barre).toContain(">\n            Annuler\n          <");
-  });
-
-  /**
-   * **« Annuler » est un bouton, toujours montré, et il n'écrit pas**.
-   *
-   * C'était un lien, et il n'apparaissait **que** sur un brouillon non vide : entré par erreur dans le
-   * mode, on avait sous les yeux un seul geste, et il s'appelait « Appliquer ». Les trois assertions
-   * ci-dessous gardent les trois moitiés de la demande — la forme (un bouton), la présence (toujours),
-   * et la nature (secondaire : le geste qui écrit reste le seul bouton plein de la barre).
-   */
-  it("et « Annuler » ne dépend pas du brouillon pour s'afficher", () => {
-    // La zone des deux boutons : entre la phrase qui compte les cases et le message d'erreur.
-    const gestes = barre.slice(barre.indexOf("</p>"), barre.indexOf("{erreur &&"));
-    expect(gestes).toContain("onClick={annuler}");
-    expect(gestes).toContain('variante="secondaire"');
-    // Aucune condition sur le nombre de cases dans la zone des deux boutons : c'est tout l'objet du
-    // revirement. Un `{nb > 0 && (` ici ramènerait le lien d'hier sous forme de bouton.
-    expect(gestes).not.toContain("nb > 0");
-    // Et il est **avant** « Appliquer » : on ne met pas ce qui jette sous le pouce qui valide.
+    const gestes = barre.slice(barre.indexOf("return ("), barre.indexOf("{erreur &&"));
+    expect(gestes).toContain('aria-label="Annuler les modifications"');
+    expect(gestes).toContain('<Icone nom="croix"');
+    expect(gestes).toContain('"Appliquer"');
+    // ✕ est toujours là, sans condition, et avant « Appliquer » : on ne met pas ce qui jette sous le pouce qui valide.
     expect(gestes.indexOf("onClick={annuler}")).toBeLessThan(gestes.indexOf("onClick={enregistrer}"));
+    expect(gestes.slice(0, gestes.indexOf("onClick={enregistrer}"))).not.toContain("nb > 0");
+    // Plus de barre collée en bas ni de « i ».
+    expect(barre).not.toContain("sticky bottom-");
+    expect(barre).not.toContain("aria-expanded");
   });
 
   /**
-   * **Annuler désarme la garde de fermeture.** Le registre de `garde-fermeture.ts` porte une clé par
-   * case réglée, et seul `vider()` les retire. Sans lui, on quitterait le mode en laissant la garde
-   * armée : le navigateur poserait sa question sur un planning en lecture seule, où il n'y a plus rien
-   * à perdre — et un avertissement qu'on apprend à fermer sans lire ne vaut plus rien le jour où il
-   * compte. C'est la raison pour laquelle ce geste ne peut pas être un simple `<Link>`.
+   * **✕ désarme la garde de fermeture.** Le registre de `garde-fermeture.ts` porte une clé par case
+   * réglée, et seul `vider()` les retire : sans lui, le navigateur poserait sa question sur un planning
+   * en lecture seule.
    */
   it("jette le brouillon avant de quitter l'adresse, et pas seulement l'adresse", () => {
     const geste = barre.slice(barre.indexOf("const annuler"), barre.indexOf("return ("));
@@ -185,22 +162,9 @@ describe("la barre d'édition ne promet que ce qu'elle tient", () => {
     expect(geste.indexOf("brouillon?.vider()")).toBeLessThan(geste.indexOf("router.push"));
   });
 
-  /**
-   * **La barre ne vole pas un tiers du téléphone**.
-   *
-   * Ajouter « Annuler » avait fait **passer les deux boutons à la ligne** : mesurée à 390 × 844, la
-   * barre montait à **258 px, soit 31 % de l'écran**, et recouvrait le champ qu'on était en train de
-   * régler. Deux corrections, mesurées après : rangée **sans `flex-wrap`** (les deux boutons tiennent
-   * sur une ligne, « Annuler » en taille réduite) et phrase ramenée de quatre lignes à trois —
-   * **189 px, 22 %**.
-   *
-   * Un test unitaire ne mesure pas un navigateur ; il garde la **cause**. `flex-wrap` sur cette
-   * rangée est exactement ce qui a produit le défaut, et c'est ce qui le reproduirait.
-   */
-  it("garde ses deux boutons sur une seule rangée", () => {
-    const gestes = barre.slice(barre.indexOf("</p>"), barre.indexOf("{erreur &&"));
-    expect(gestes).not.toContain("flex-wrap");
-    expect(gestes).toContain('taille="petite"');
+  it("confirme « Appliquer » quand des cases attendent", () => {
+    const envoi = barre.slice(barre.indexOf("const enregistrer"), barre.indexOf("const annuler"));
+    expect(envoi).toContain("window.confirm(`Appliquer ${nb} modification");
   });
 
   it("compte les cases en attente plutôt que de dire « des modifications »", () => {

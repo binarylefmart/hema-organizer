@@ -394,21 +394,22 @@ function coursARepondre(choix: ChoixCoursCarte): CoursARepondre[] {
   return choix.options.map((o) => ({ partieId: o.partieId, nom: o.nom, choisi: mes.has(o.partieId) }));
 }
 
+/** « Nouvelle séance », dans la période affichée quand on la connaît. */
+function lienNouvelleSeance(periodId: string | undefined): string {
+  return `/seances/nouvelle${periodId ? `?periode=${periodId}` : ""}`;
+}
+
 /**
- * **Les cartes en mode modification** : chacune garde son « Que veux-tu faire ? » au pied, et
- * `SelectionSeances` ajoute l'interrupteur « Sélection multiple », la case de chaque carte et la barre
- * des gestes de masse.
+ * **Les cartes et leur sélection** : le bouton crayon ouvre une case par carte, puis « Ma réponse »
+ * (présences, pour qui est invité) et, pour l'encadrement, « Modifier ces séances » (annuler,
+ * rétablir, lieu, horaire ; supprimer pour le bureau). Le programme des séances se règle au
+ * planning — jamais d'ici.
  *
  * Ce qui se décide ici, côté serveur : quelles séances ont une case (pas celles d'un trimestre clos —
  * leur geste serait refusé par `seancePourEcriture`), si « Supprimer » est proposé (la serrure de
  * `supprimerSeance`), et les lieux du club pour « Changer le lieu ». Les réponses comptées pour la
  * suppression sont celles de la carte : le journal, lui, garde le décompte exact fait par le serveur.
  */
-/** « Nouvelle séance », dans la période affichée quand on la connaît. */
-function lienNouvelleSeance(periodId: string | undefined): string {
-  return `/seances/nouvelle${periodId ? `?periode=${periodId}` : ""}`;
-}
-
 async function SelectionCartes({
   seances,
   periodes,
@@ -463,7 +464,6 @@ async function SelectionCartes({
           annulee: x.annulee,
           commencee: seanceCommencee(x.date, x.heureDebut, vue.maintenant),
           reponses: x.compteurs.presents + x.compteurs.absents + x.compteurs.peutEtre,
-          elements: x.elements,
         },
   );
   return (

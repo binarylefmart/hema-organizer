@@ -39,6 +39,7 @@ export function BarreSelection({
   toutesCochees,
   libelleCocherAffichees,
   onCocherAffichees,
+  onDecocherAffichees,
   onVider,
   horsAffichage,
   enCours = false,
@@ -56,6 +57,12 @@ export function BarreSelection({
   /** Son nom complet, celui de la case maîtresse (« Sélectionner les 5 séances affichées »). */
   libelleCocherAffichees: string;
   onCocherAffichees: () => void;
+  /**
+   * Fourni, le bouton « Les N affichées » devient une **case « Tout sélectionner »** qui coche et
+   * décoche les lignes affichées (Séances et Planning). Sans lui,
+   * le bouton d'avant (annuaire, présences).
+   */
+  onDecocherAffichees?: () => void;
   onVider: () => void;
   /** Ce que le lot emporte hors de l'écran (`texteHorsAffichage`), compté et dit. */
   horsAffichage?: string | null;
@@ -80,7 +87,20 @@ export function BarreSelection({
           {/* À l'oreille, « 3 séances » ne dit pas qu'elles sont cochées : la fin de phrase est lue, pas montrée. */}
           <span className="sr-only">{suffixeSelection(n, mots)}</span>
         </p>
-        {affichees > 0 && (
+        {affichees > 0 && onDecocherAffichees && (
+          <label className="inline-flex min-h-12 shrink-0 cursor-pointer items-center gap-2 rounded-xl border-2 border-bordure bg-surface px-3 font-semibold text-texte">
+            <input
+              type="checkbox"
+              aria-label={libelleCocherAffichees}
+              checked={toutesCochees}
+              disabled={enCours}
+              onChange={() => (toutesCochees ? onDecocherAffichees() : onCocherAffichees())}
+              className="size-6 accent-primaire"
+            />
+            Tout sélectionner
+          </label>
+        )}
+        {affichees > 0 && !onDecocherAffichees && (
           <button
             type="button"
             aria-label={libelleCocherAffichees}

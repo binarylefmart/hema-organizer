@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.82.0
+
+### Nouveautés
+
+- **planning** : menus du programme au planning, ✕ et Appliquer, crayon seul
+
 ## 0.81.0
 
 ### Nouveautés

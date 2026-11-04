@@ -52,7 +52,7 @@ describe("toute barre collée en bas tient compte de ce qui occupe déjà le bas
       .map((f) => fs.readFileSync(f, "utf8"))
       .join("\n")
       .match(/\bsticky bottom-/g);
-    expect(toutes?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(toutes?.length ?? 0).toBeGreaterThanOrEqual(1);
   });
 });
 

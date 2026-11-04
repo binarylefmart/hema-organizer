@@ -43,16 +43,12 @@ async function deplierSurTelephone(page: Page, partie: string): Promise<void> {
 }
 
 /**
- * **Le compte de la barre flottante.** Sur PC, la phrase entière (« 1 case modifiée, pas encore
- * appliquée ») ; sur téléphone, « · 1 modifiée » suit le titre « Modification des séances » — la
- * phrase longue est encore dans la page, mais cachée. Le compte reste la promesse vérifiée : un brouillon non
- * vide se voit, un brouillon revenu à zéro ne compte plus rien.
+ * **Le compte des modifications non appliquées**, sous ✕ et « Appliquer ». Le compte reste la promesse
+ * vérifiée : un brouillon non vide se voit, un brouillon revenu à zéro ne compte plus rien.
  */
 function compteurBarre(page: Page, n?: number): Locator {
   const nb = n === undefined ? "\\d+" : String(n);
-  return (page.viewportSize()?.width ?? 1280) < 768
-    ? page.getByText(new RegExp(`^\\s*·\\s*${nb}\\s*modifiées?$`))
-    : page.getByText(new RegExp(`${nb} cases? modifiées?, pas encore appliquées?`));
+  return page.getByText(new RegExp(`^${nb} modifications? non appliquées?$`));
 }
 
 /** Les deux listes d'une même case, et la boîte qui porte l'état d'enregistrement. */
@@ -105,7 +101,7 @@ async function choisirLibelle(page: Page, controle: Locator, libelle: string): P
  * cases : ils entrent donc dans le mode, comme on y entre à la main.
  *
  * Et ce qu'ils vérifient a changé de nature avec lui : une case ne s'enregistre plus toute seule, elle
- * s'accumule dans un brouillon que « Appliquer les modifications » écrit d'un coup. Les trois
+ * s'accumule dans un brouillon que « Appliquer » écrit d'un coup. Les trois
  * promesses tenues ici sont donc celles du **brouillon** : régler une case n'en bloque aucune autre,
  * une application qui échoue le dit sans rien perdre, et fermer l'onglet sur des cases pas appliquées
  * pose une question.
@@ -136,7 +132,8 @@ test("une case que l'on vient de remplir reste réglable, et c'est le dernier r�
   await expect(page.getByText("Modifié — pas encore appliqué").first()).toBeVisible();
   await expect(compteurBarre(page, 1)).toBeVisible();
 
-  await page.getByRole("button", { name: "Appliquer les modifications" }).click();
+  page.once("dialog", (d) => void d.accept()); // « Appliquer N modifications ? »
+  await page.getByRole("button", { name: "Appliquer", exact: true }).click();
   await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
 
   // Et le serveur a reçu le **dernier** réglage, pas les intermédiaires : on le relit du serveur.
@@ -156,7 +153,8 @@ test("une application qui échoue le dit, sans emporter la page ni le brouillon"
     const r = route.request();
     return r.method() === "POST" && r.headers()["next-action"] ? route.abort("failed") : route.continue();
   });
-  await page.getByRole("button", { name: "Appliquer les modifications" }).click();
+  page.once("dialog", (d) => void d.accept()); // « Appliquer N modifications ? »
+  await page.getByRole("button", { name: "Appliquer", exact: true }).click();
 
   await expect(page.getByText(/Impossible d'appliquer les modifications/)).toBeVisible();
   // La page est toujours là, les cases toujours réglables…
@@ -169,7 +167,8 @@ test("une application qui échoue le dit, sans emporter la page ni le brouillon"
 
   // Le serveur revient : le même geste passe, toujours sans recharger.
   await page.unroute("**/planning**");
-  await page.getByRole("button", { name: "Appliquer les modifications" }).click();
+  page.once("dialog", (d) => void d.accept()); // « Appliquer N modifications ? »
+  await page.getByRole("button", { name: "Appliquer", exact: true }).click();
   await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
   expect(choix).not.toHaveLength(0);
 });
@@ -216,7 +215,8 @@ test("fermer l'onglet sur des cases pas appliquées pose une question, et pas au
 
   // Et après une application, la question ne se pose plus non plus.
   await choisir(page, theme, 1);
-  await page.getByRole("button", { name: "Appliquer les modifications" }).click();
+  page.once("dialog", (d) => void d.accept()); // « Appliquer N modifications ? »
+  await page.getByRole("button", { name: "Appliquer", exact: true }).click();
   await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
   expect(await fermetureRetenue(page)).toBe(false);
 });
@@ -240,9 +240,9 @@ test("une ligne réglée puis repliée retient toujours la fermeture de l'onglet
   await expect(compteurBarre(page, 1)).toBeVisible();
   expect(await fermetureRetenue(page)).toBe(true);
 
-  // « Annuler » jette le brouillon : il n'y a plus rien à perdre.
+  // ✕ jette le brouillon : il n'y a plus rien à perdre.
   page.once("dialog", (d) => void d.accept());
-  await page.getByRole("button", { name: "Annuler", exact: true }).click();
+  await page.getByRole("button", { name: "Annuler les modifications" }).click();
   await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
   expect(await fermetureRetenue(page)).toBe(false);
 });
@@ -280,7 +280,8 @@ test("retirer un élément qui porte un réglage ne bloque pas « Appliquer »",
   await expect(options).toHaveCount(avant, { timeout: 20_000 });
   await expect(compteurBarre(page)).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Appliquer les modifications" }).click();
+  page.once("dialog", (d) => void d.accept()); // « Appliquer N modifications ? »
+  await page.getByRole("button", { name: "Appliquer", exact: true }).click();
   await page.waitForURL((u) => !u.searchParams.has("modifier"), { timeout: 30_000 });
   await expect(page.getByText(/Cette partie n'existe plus/)).toHaveCount(0);
 });

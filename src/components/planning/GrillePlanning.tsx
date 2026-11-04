@@ -308,8 +308,8 @@ export function GrillePlanning({
            brouillon s'enregistre toute seule — c'est ce qui garde la fiche d'une séance inchangée. */
         <FournisseurBrouillon>
           <div className="flex flex-col gap-3">
-            {/* **La sélection multiple** (interrupteur, case maîtresse, « Sélectionner par jour »,
-                « Que veux-tu faire ? ») enveloppe la grille : elle doit savoir ce qui est déplié. */}
+            {/* **La sélection** (« Tout sélectionner », « Sélectionner par jour », ✕ et « Appliquer »,
+                « Continuer ») enveloppe la grille : elle doit savoir ce qui est déplié. */}
             <SelectionPlanning
               lignes={colonnes.map(lignePlanning)}
               visibles={decoupe.visibles}
@@ -317,10 +317,11 @@ export function GrillePlanning({
               restantes={decoupe.restantes}
               nbVisibles={Math.min(colonnes.length, SEANCES_VISIBLES)}
               commencees={colonnes.filter((c) => c.commencee && !c.annulee).length}
+              peutRetirer={gestion}
+              // ✕ et « Appliquer », en tête de la sélection. Les éléments d'un cours commencé ne
+              // s'écrivent plus : un réglage resté au brouillon depuis avant son début est écarté (et dit).
+              actions={<BarreEdition lienLecture={lienLecture} partiesAffichees={colonnes.filter((c) => !c.commencee).flatMap((c) => c.parties.map((x) => x.id))} />}
             />
-            {/* Les éléments d'un cours commencé ne s'écrivent plus : un réglage resté au brouillon depuis
-                avant son début est écarté (et dit), au lieu de faire refuser tout le lot. */}
-            <BarreEdition lienLecture={lienLecture} partiesAffichees={colonnes.filter((c) => !c.commencee).flatMap((c) => c.parties.map((x) => x.id))} />
           </div>
         </FournisseurBrouillon>
       ) : (

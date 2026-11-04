@@ -3,13 +3,13 @@
 import { createContext, useContext, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ajouterPartiesEnMasse } from "@/actions/planning";
+import { appliquerGesteSeancesEnMasse } from "@/actions/seances";
 import { libelleChoixNiveau, NIVEAU_LABELS, NIVEAUX, PARTIE_DESCRIPTION_MAX, THEME_MAX, type Niveau } from "@/lib/constants";
 import { couleurPersonne } from "@/lib/couleurs";
 import { Bouton } from "@/components/ui/Bouton";
 import { Champ } from "@/components/ui/Champ";
 import { ChoixGeste } from "@/components/ui/ChoixGeste";
 import { Icone } from "@/components/ui/Icone";
-import { InterrupteurSelection } from "@/components/ui/InterrupteurSelection";
 import { ListeDeroulante } from "@/components/ui/ListeDeroulante";
 import { ZoneTexte } from "@/components/ui/ZoneTexte";
 import { BarreSelection, BoutonQueFaire, ReserveBarreSelection } from "@/components/ui/BarreSelection";
@@ -20,7 +20,7 @@ import { questionSelection } from "@/components/ui/barre-selection";
 import { useEcranTelephone } from "@/components/ui/useEcranTelephone";
 import { EcuNature } from "@/components/seances/EcuNature";
 import type { EntreeListe } from "@/components/ui/liste-deroulante";
-import { gesteRetenu, varianteGeste, type Explication } from "@/components/ui/choix-geste";
+import { gesteRetenu, pluriel, varianteGeste, type Explication } from "@/components/ui/choix-geste";
 import {
   ajouter,
   barreDeMasseVisible,
@@ -36,7 +36,6 @@ import {
   lignesSelectionnees,
   restreindre,
   retirer,
-  selectionApresInterrupteur,
   texteHorsAffichage,
   texteRepliees,
 } from "@/components/ui/selection";
@@ -50,6 +49,11 @@ import {
   CHAMPS_INCHANGES,
   choisirInstructeur,
   compteurPlanning,
+  confirmationRetrait,
+  elementsRetirablesPlanning,
+  expliquerRetrait,
+  libelleBoutonRetrait,
+  seancesARetirer,
   confirmationPlanning,
   ECRIRE,
   elementsProposes,
@@ -99,9 +103,9 @@ import {
 /**
  * **Cocher plusieurs séances du planning, puis agir une seule fois** — le planning en mode modification.
  *
- * C'est le geste de l'onglet Séances (`SelectionSeances`), de l'annuaire et des présences : même
- * interrupteur « Sélection multiple » (`InterrupteurSelection`), même case maîtresse qui nomme sa
- * portée, même phrase d'invite, même barre « Que veux-tu faire ? » (`ChoixGeste`) — **cadre, compteur,
+ * C'est la base de l'onglet Séances (`SelectionSeances`) : **le bouton crayon** ouvre le mode
+ * modification et les cases sont là d'emblée — plus d'interrupteur « Sélection multiple » à côté —,
+ * « Tout sélectionner » qui dit sa portée, ✕ et « Appliquer » en tête (`actions`, la barre du mode), même phrase d'invite, même barre « Que veux-tu faire ? » (`ChoixGeste`) — **cadre, compteur,
  * « Annuler la sélection » et collage sous l'en-tête compris** — visible seulement avec une sélection.
  * La mécanique vient de `src/components/ui/selection.ts` ; les mots du planning de
  * `selection-planning.ts`.
@@ -111,7 +115,7 @@ import {
  * (6) », « Tous les vendredis (5) »). La choisir ajoute ces séances au lot, puis la liste revient à
  * « Choisir un jour… » ; quand elles y sont toutes, l'entrée devient « Retirer les mardis (6) ».
  *
- * **Trois gestes.**
+ * **Quatre gestes.**
  *
  * - **« Régler des éléments »** : les noms des éléments des séances cochées (« Partie 1 ·
  *   Échauffement (6 séances) », « Partie 1 · Cours (6 séances) »…) sont des **cases à cocher** ; chaque
@@ -123,10 +127,13 @@ import {
  *   qui le portent) et son remplaçant, pris dans la liste du club de la bonne nature.
  * - **« Ajouter dans une partie »** — choisir la partie (1 à la dernière + 1), puis l'échauffement, le
  *   cours ou l'option — s'enregistre tout de suite, comme le menu de la carte (`ajouterPartiesEnMasse`).
+ * - **« Retirer un élément du programme »** — choisir l'élément par son nom ; s'enregistre tout de
+ *   suite, après confirmation (`appliquerGesteSeancesEnMasse`, geste `retirer`). Réservé à qui gère
+ *   les séances (`peutRetirer`, la serrure du serveur).
  *
  * **Régler et remplacer n'écrivent rien** : ils posent les cases dans le brouillon du mode
  * modification (`poserPlusieurs`), exactement comme si on les avait réglées à la main — et c'est la
- * barre du bas, « Appliquer les modifications », qui les enregistre avec tous ses verrous. La teinte
+ * bouton « Appliquer » du mode qui les enregistre avec tous ses verrous. La teinte
  * d'un cours ou d'une option dont le thème change s'y recalcule, case par case, dans la transaction
  * (l'action d'« Appliquer », `teinteAEnregistrer`) : d'ici là, la carte garde sa couleur d'avant, comme
  * pour un thème changé à la main.
@@ -137,7 +144,7 @@ import {
  * verrouillé —, et un trimestre clos n'ouvre pas le mode modification du tout.
  */
 
-type Contexte = { actif: boolean; selection: ReadonlySet<string>; basculer: (id: string) => void };
+type Contexte = { selection: ReadonlySet<string>; basculer: (id: string) => void };
 
 const Selection = createContext<Contexte | null>(null);
 
@@ -163,7 +170,13 @@ export function SelectionPlanning({
   restantes,
   nbVisibles,
   commencees = 0,
+  actions,
+  peutRetirer = false,
 }: {
+  /** ✕ et « Appliquer » : la sortie du mode, posée en tête (`BarreEdition`). */
+  actions?: ReactNode;
+  /** `sessions.manage` en plus de `planning.edit` : la serrure de « Retirer un élément ». */
+  peutRetirer?: boolean;
   /** Une entrée par carte de séance, dans l'ordre de la grille — `null` pour une séance annulée ou commencée. */
   lignes: (LignePlanning | null)[];
   /** Parmi les `null` de `lignes`, les séances commencées (non annulées) : la phrase les distingue. */
@@ -180,7 +193,6 @@ export function SelectionPlanning({
   const brouillon = useBrouillon();
   const modifiees = brouillon?.modifiees ?? new Map();
   const options = useOptionsCase();
-  const [actif, setActif] = useState(false);
   const [deplie, setDeplie] = useState(false);
   const [brute, setSelection] = useState<ReadonlySet<string>>(() => new Set());
   const [gesteChoisi, setGesteChoisi] = useState<GestePlanning | "">("");
@@ -195,6 +207,8 @@ export function SelectionPlanning({
   const [remplacantChoisi, setRemplacantChoisi] = useState("");
   const [blocChoisi, setBlocChoisi] = useState("");
   const [natureChoisie, setNatureChoisie] = useState("");
+  /** « Retirer un élément du programme » : le nom de l'élément (« Partie 2 · Option »). */
+  const [elementARetirer, setElementARetirer] = useState("");
   const [message, setMessage] = useState<{ type: "ok" | "erreur"; texte: string } | null>(null);
   const [enCours, demarrer] = useTransition();
   const caseMaitresse = useRef<HTMLInputElement>(null);
@@ -225,7 +239,7 @@ export function SelectionPlanning({
     if (caseMaitresse.current) caseMaitresse.current.indeterminate = etatCases === "partielle";
   }, [etatCases]);
 
-  const applicables = gestesPlanningApplicables(lot, modifiees);
+  const applicables = gestesPlanningApplicables(lot, modifiees).filter((g) => peutRetirer || g.geste !== "retirer");
   const geste = gesteRetenu(gesteChoisi, applicables);
   useEffect(() => {
     if (geste !== gesteChoisi) setGesteChoisi("");
@@ -289,6 +303,11 @@ export function SelectionPlanning({
   const bloc = blocs.includes(Number(blocChoisi)) ? Number(blocChoisi) : null;
   const ajout: ChoixAjout | null = geste === "ajouter" && bloc !== null && estNatureAjoutable(natureChoisie) ? { bloc, nature: natureChoisie } : null;
 
+  /* ---- Retirer un élément : son nom, parmi ceux des séances cochées ; un choix disparu retombe à vide. ---- */
+  const retirables = elementsRetirablesPlanning(lot);
+  const element = retirables.some((e) => e.libelle === elementARetirer) ? elementARetirer : "";
+  const aRetirer = geste === "retirer" ? seancesARetirer(lot, element) : [];
+
   /** L'explication, le bouton et son inertie, pour le geste choisi — les mêmes sur ordinateur et au téléphone. */
   const vue: VueGeste =
     geste === "regler"
@@ -297,7 +316,9 @@ export function SelectionPlanning({
         ? { explication: expliquerRemplacement(trouve, remplacant, planTheme), bouton: libelleBoutonRemplacement(planTheme), inerte: !planTheme || planTheme.ecritures.length === 0 }
         : geste === "ajouter"
           ? { explication: expliquerAjout(lot, ajout), bouton: libelleBoutonAjout(lot.length, ajout), inerte: !ajout }
-          : { explication: null, bouton: "Appliquer", inerte: true };
+          : geste === "retirer"
+            ? { explication: expliquerRetrait(lot, element), bouton: libelleBoutonRetrait(aRetirer.length), inerte: aRetirer.length === 0 }
+            : { explication: null, bouton: "Appliquer", inerte: true };
 
   const remettreAZero = () => {
     setGesteChoisi("");
@@ -309,6 +330,7 @@ export function SelectionPlanning({
     setRemplacantChoisi("");
     setBlocChoisi("");
     setNatureChoisie("");
+    setElementARetirer("");
   };
 
   const lancer = () => {
@@ -328,6 +350,27 @@ export function SelectionPlanning({
       setMessage({ type: "ok", texte: messageRemplacement(trouve.theme, remplacant, planTheme) });
       setThemeARemplacer("");
       setRemplacantChoisi("");
+      return;
+    }
+    if (geste === "retirer") {
+      if (aRetirer.length === 0 || !window.confirm(confirmationRetrait(element, aRetirer.length, lot.length - aRetirer.length))) return;
+      setMessage(null);
+      demarrer(async () => {
+        try {
+          const res = await appliquerGesteSeancesEnMasse({ geste: "retirer", sessionIds: aRetirer.map((l) => l.id), libelle: element });
+          if (res.erreur) {
+            setMessage({ type: "erreur", texte: res.erreur });
+            return;
+          }
+          setMessage({ type: "ok", texte: res.succes ?? "C'est fait." });
+          remettreAZero();
+          router.refresh();
+        } catch (e) {
+          const texte = e instanceof Error ? e.message : "";
+          if (texte.includes("NEXT_REDIRECT")) return;
+          setMessage({ type: "erreur", texte: "Le retrait n'a pas abouti — vérifie ta connexion. Rien n'a été retiré." });
+        }
+      });
       return;
     }
     if (!ajout || !window.confirm(confirmationPlanning(ajout, lot.length))) return;
@@ -376,7 +419,7 @@ export function SelectionPlanning({
   const compteurAnnonce = compteurPlanning(selection.size);
   const horsAffichage = texteHorsAffichage(compterHorsAffichage(selection, affichees), MOTS_PLANNING);
   const sansCase = texteSansCasePlanning(lignes.length - selectionnables.length - commencees, commencees);
-  const montrerBarre = actif && barreDeMasseVisible(selection);
+  const montrerBarre = barreDeMasseVisible(selection);
 
   /* ---- Les champs des gestes : les mêmes dans la barre de l'ordinateur et dans le volet du téléphone. ---- */
   const champsAjout = (
@@ -402,6 +445,19 @@ export function SelectionPlanning({
         }}
       />
     </div>
+  );
+
+  const champsRetrait = (
+    <Liste
+      id="element-planning-en-masse"
+      libelle="Élément à retirer"
+      valeur={element}
+      entrees={[{ valeur: "", libelle: "Choisir un élément…" }, ...retirables.map((e) => ({ valeur: e.libelle, libelle: `${e.libelle} (${pluriel(e.nombre, "séance")})` }))]}
+      onChoisir={(v) => {
+        setElementARetirer(v);
+        setMessage(null);
+      }}
+    />
   );
 
   /**
@@ -643,40 +699,37 @@ export function SelectionPlanning({
       <GestesVolet {...communs} explication={vue.explication} bouton={vue.bouton} inerte={vue.inerte} onLancer={lancer}>
         {geste === "remplacer" && champsRemplacement}
         {geste === "ajouter" && champsAjout}
+        {geste === "retirer" && champsRetrait}
       </GestesVolet>
     );
   };
 
   return (
-    <Selection.Provider value={{ actif, selection, basculer: (id) => setSelection((s) => basculer(s, id)) }}>
+    <Selection.Provider value={{ selection, basculer: (id) => setSelection((s) => basculer(s, id)) }}>
+      {/* **Les cases sont là d'emblée** : le bouton crayon a ouvert le mode, et c'est lui la sélection —
+          plus d'interrupteur à côté. En tête, comme l'onglet Séances : « Tout sélectionner » (les
+          séances **affichées**, le nombre dit à côté), puis ✕ et « Appliquer ». */}
       <div className="flex flex-col gap-1">
-        {/* L'interrupteur commun : éteint, ni case ni barre ; l'éteindre vide le lot. */}
-        <InterrupteurSelection
-          actif={actif}
-          disabled={selectionnables.length === 0}
-          onChange={(suite) => {
-            setActif(suite);
-            setSelection((s) => selectionApresInterrupteur(s, suite));
-            if (!suite) remettreAZero();
-            setMessage(null);
-          }}
-        />
-
-        {actif && (
-          <>
             <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-              {/* La case maîtresse : 48 px et une case de 24 px, comme sur les autres écrans de masse. */}
-              <label className="inline-flex min-h-12 w-fit cursor-pointer items-center gap-2 font-semibold">
-                <input
-                  ref={caseMaitresse}
-                  type="checkbox"
-                  checked={etatCases === "toutes"}
-                  disabled={affichees.length === 0}
-                  onChange={() => setSelection((s) => (etatCases === "toutes" ? retirer(s, idsAffiches) : ajouter(s, idsAffiches)))}
-                  className="size-6 accent-primaire"
-                />
-                {libelleToutesSeancesPlanning(affichees.length)}
-              </label>
+              {selectionnables.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <label className="inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border-2 border-bordure bg-surface px-3 font-semibold">
+                    <input
+                      ref={caseMaitresse}
+                      type="checkbox"
+                      checked={etatCases === "toutes"}
+                      disabled={affichees.length === 0}
+                      aria-label={libelleToutesSeancesPlanning(affichees.length)}
+                      onChange={() => setSelection((s) => (etatCases === "toutes" ? retirer(s, idsAffiches) : ajouter(s, idsAffiches)))}
+                      className="size-6 accent-primaire"
+                    />
+                    Tout sélectionner
+                  </label>
+                  <span className="text-base text-texte-secondaire">
+                    {pluriel(affichees.length, "séance")} {affichees.length > 1 ? "affichées" : "affichée"}
+                  </span>
+                </div>
+              )}
               {/* **Sélectionner par jour** : une entrée par jour de la semaine présent parmi les cartes
                   affichées, jamais deux jours groupés. Choisir ajoute (ou retire, si tout y est), puis la
                   liste revient d'elle-même à « Choisir un jour… » — elle commande, elle ne mémorise rien. */}
@@ -699,6 +752,7 @@ export function SelectionPlanning({
                   />
                 </div>
               )}
+              {actions && <div className="ml-auto">{actions}</div>}
             </div>
             {/* **Au téléphone, une puce par jour** à la place de la liste : « Les mardis (4) »,
                 appuyée quand ses séances sont toutes cochées — l'appuyer de nouveau les retire. */}
@@ -739,9 +793,7 @@ export function SelectionPlanning({
                 {libelleAfficherEtSelectionnerPlanning(selectionnables.length)}
               </Bouton>
             )}
-            {!montrerBarre && <p className="text-base text-texte-secondaire">{INVITE_PLANNING}</p>}
-          </>
-        )}
+            {!montrerBarre && selectionnables.length > 0 && <p className="text-base text-texte-secondaire">{INVITE_PLANNING}</p>}
       </div>
 
       {/* La barre n'existe qu'avec une sélection — celle de l'onglet Séances, classe pour classe.
@@ -781,20 +833,21 @@ export function SelectionPlanning({
             {geste === "ajouter" && champsAjout}
             {geste === "remplacer" && champsRemplacement}
             {geste === "regler" && champsReglagesOrdi}
+            {geste === "retirer" && champsRetrait}
           </ChoixGeste>
         </div>
       )}
 
       {/* Région vivante permanente : montée avant le premier appui, sans quoi elle serait muette. */}
       <p className="sr-only" aria-live="polite">
-        {actif ? [compteurAnnonce, horsAffichage].filter(Boolean).join(" ") : ""}
+        {[compteurAnnonce, horsAffichage].filter(Boolean).join(" ")}
       </p>
       <p className="min-h-6 text-base" aria-live="polite">
         {message ? <span className={message.type === "ok" ? "font-semibold text-vert" : "font-semibold text-rouge"}>{message.texte}</span> : null}
       </p>
 
-      {/* **Au téléphone, la barre sombre du bas, posée au-dessus d'« Annuler · Appliquer »** — les
-          deux restent à portée : on coche, on règle, puis on applique sans avoir à vider le lot. */}
+      {/* **Au téléphone, la barre sombre du bas** : une ligne pendant qu'on coche, et « Continuer »
+          ouvre le volet des gestes — comme l'onglet Séances. */}
       {montrerBarre && telephone && (
         <BarreSelection
           nom="Agir sur plusieurs séances à la fois"
@@ -804,13 +857,13 @@ export function SelectionPlanning({
           toutesCochees={etatCases === "toutes"}
           libelleCocherAffichees={libelleToutesSeancesPlanning(affichees.length)}
           onCocherAffichees={() => setSelection((s) => ajouter(s, idsAffiches))}
+          onDecocherAffichees={() => setSelection((s) => retirer(s, idsAffiches))}
           onVider={() => setSelection(new Set())}
           horsAffichage={horsAffichage}
           enCours={enCours}
-          auDessus
         >
           <BoutonQueFaire
-            libelle={questionSelection(selection.size, MOTS_PLANNING)}
+            libelle="Continuer"
             onClick={() => {
               setGesteChoisi("");
               setEtapeElements("cocher");
@@ -825,11 +878,11 @@ export function SelectionPlanning({
       </VoletBas>
 
       {/* Au téléphone, toucher une carte la coche (`ZoneCochable`) : la case reste, pour le clavier. */}
-      <ZoneCochable actif={telephone && actif} className="grid grid-cols-1 items-start gap-3">
+      <ZoneCochable actif={telephone} className="grid grid-cols-1 items-start gap-3">
         {visibles}
         <SeancesRepliees cachees={cachees} restantes={restantes} tout={deplie} onBasculer={setDeplie} />
       </ZoneCochable>
-      {montrerBarre && telephone && <ReserveBarreSelection auDessus />}
+      {montrerBarre && telephone && <ReserveBarreSelection />}
     </Selection.Provider>
   );
 }
@@ -861,13 +914,13 @@ function Liste({ id, libelle, valeur, entrees, onChoisir, aide }: { id: string; 
 }
 
 /**
- * La case d'une carte du planning. Elle ne se rend que dans une `SelectionPlanning` dont
- * l'interrupteur est allumé : ailleurs — lecture seule, ou modification sans sélection multiple —, la
- * carte garde exactement son allure. 48 × 48 px de cible et une case de 24 px.
+ * La case d'une carte du planning. Elle ne se rend que dans une `SelectionPlanning`, c'est-à-dire en
+ * mode modification (ouvert par le bouton crayon) : en lecture seule, la carte garde exactement son
+ * allure. 48 × 48 px de cible et une case de 24 px.
  */
 export function CaseSeancePlanning({ id, jour }: { id: string; jour: string }) {
   const contexte = useContext(Selection);
-  if (!contexte || !contexte.actif) return null;
+  if (!contexte) return null;
   return (
     <label className="-my-2 -ml-2 inline-flex min-h-12 min-w-12 shrink-0 cursor-pointer items-center justify-center">
       <span className="sr-only">Sélectionner la séance du {jour}</span>

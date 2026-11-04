@@ -37,7 +37,6 @@ import {
   ciblesGeste,
   compteurSeances,
   confirmationSeances,
-  elementsRetirables,
   expliquerGesteSeances,
   gesteSeancesDefinitif,
   gestesSeancesApplicables,
@@ -52,7 +51,6 @@ import {
   texteSansCaseSeances,
   type GesteSeances,
   type LigneSeance,
-  lienProgrammeSeances,
   type ReglageSeances,
 } from "./selection-seances";
 
@@ -70,7 +68,7 @@ import {
  * sur ordinateur). **Il est le même pour tout le monde** :
  * un membre y répond pour plusieurs séances (et coche ses cours), l'encadrement y trouve en plus
  * « Modifier ces séances ». Il remplace « Répondre pour les séances à venir » et « Modifier les
- * séances ». Sans lui, les cartes restent ce qu'elles sont ; « Terminé » referme (sélection comprise).
+ * séances ». Sans lui, les cartes restent ce qu'elles sont ; ✕ referme (sélection comprise, confirmation si rien n'est appliqué).
  *
  * **Pendant qu'on coche, rien ne cache la liste** : au téléphone, la barre du bas tient sur une ligne
  * (le compte, « Les N affichées », ✕) et un seul bouton, « Continuer », ouvre le volet de la réponse
@@ -125,7 +123,7 @@ export function SelectionSeances({
   actifInitial?: boolean;
   /** « Nouvelle séance », pour qui peut en créer : en tête de la sélection. */
   lienNouvelle?: string;
-  /** Où mène « Terminé » quand la sélection est venue par l'adresse (`?modifier=1` à retirer). */
+  /** Où mène ✕ quand la sélection est venue par l'adresse (`?modifier=1` à retirer). */
   lienTerminer?: string;
 }) {
   const router = useRouter();
@@ -134,7 +132,6 @@ export function SelectionSeances({
   const [brute, setSelection] = useState<ReadonlySet<string>>(() => new Set());
   const [gesteChoisi, setGesteChoisi] = useState<GesteSeances | "">("");
   const [motif, setMotif] = useState("");
-  const [element, setElement] = useState("");
   const [choixLieu, setChoixLieu] = useState(lieux.length > 0 ? LIEU_VIDE : LIEU_AUTRE);
   const [lieuLibre, setLieuLibre] = useState({ lieu: "", adresse: "" });
   const [horaire, setHoraire] = useState({ heureDebut: "", heureFin: "" });
@@ -175,21 +172,13 @@ export function SelectionSeances({
     adresse: lieuChoisi ? lieuChoisi.adresse : choixLieu === LIEU_AUTRE ? lieuLibre.adresse.trim() : "",
     heureDebut: horaire.heureDebut,
     heureFin: horaire.heureFin,
-    element,
   };
-  // Les éléments que le lot propose ; un choix qui n'y est plus (séance décochée) retombe à vide.
-  const elementsProposes = elementsRetirables(lot);
-  const elementEncorePropose = element === "" || elementsProposes.some((e) => e.libelle === element);
-  useEffect(() => {
-    if (!elementEncorePropose) setElement("");
-  }, [elementEncorePropose]);
   const touchees = geste === "" ? [] : seancesQuiChangent(geste, lot, reglage);
   const inerte = geste === "" || reglageManquant(geste, lot, reglage);
 
   const remettreAZero = () => {
     setGesteChoisi("");
     setMotif("");
-    setElement("");
     setChoixLieu(lieux.length > 0 ? LIEU_VIDE : LIEU_AUTRE);
     setLieuLibre({ lieu: "", adresse: "" });
     setHoraire({ heureDebut: "", heureFin: "" });
@@ -197,12 +186,6 @@ export function SelectionSeances({
 
   const lancer = () => {
     if (geste === "" || inerte) return;
-    // « Modifier le programme » n'écrit rien : il emmène au planning, réduit aux séances cochées.
-    if (geste === "programme") {
-      const lien = lienProgrammeSeances(lot);
-      if (lien) router.push(lien);
-      return;
-    }
     if (!window.confirm(confirmationSeances(geste, lot, reglage))) return;
     // Les séances que le geste touche, et elles seules : une séance déjà annulée du lot n'est pas
     // envoyée à l'annulation. Le serveur refait le tri de son côté, avec ses propres gardes.
@@ -210,8 +193,6 @@ export function SelectionSeances({
     const entree =
       geste === "annuler"
         ? { geste, sessionIds, motif: motif.trim() }
-        : geste === "retirer"
-          ? { geste, sessionIds: seancesQuiChangent(geste, lot, reglage).map((l) => l.id), libelle: element }
         : geste === "lieu"
           ? { geste, sessionIds, lieu: reglage.lieu, adresse: reglage.adresse }
           : geste === "horaire"
@@ -254,25 +235,6 @@ export function SelectionSeances({
   /** Les réglages du geste choisi : les mêmes champs dans la barre de l'ordinateur et dans le volet du téléphone. */
   const reglages = (
     <>
-      {geste === "retirer" && (
-        <div className="flex flex-col gap-1">
-          <label id="element-seances-en-masse-libelle" htmlFor="element-seances-en-masse" className="text-base font-semibold">
-            Élément à retirer
-          </label>
-          <ListeDeroulante
-            id="element-seances-en-masse"
-            libelleId="element-seances-en-masse-libelle"
-            libelle="Élément à retirer"
-            valeur={element}
-            entrees={[
-              { valeur: "", libelle: "Choisir un élément…" },
-              ...elementsProposes.map((e) => ({ valeur: e.libelle, libelle: `${e.libelle} (${nbSeances(e.nombre)})` })),
-            ]}
-            onChoisir={setElement}
-            className="min-h-12 w-full rounded-xl border-2 border-bordure/70 bg-surface px-3 text-base font-semibold text-texte shadow-carte"
-          />
-        </div>
-      )}
       {geste === "annuler" && (
         <Champ
           label="Motif (envoyé aux membres)"
@@ -369,7 +331,6 @@ export function SelectionSeances({
         {!actif && selectionnables.length > 0 && (equipe || avecReponse) && (
           <BoutonCrayon
             libelle="Sélectionner des séances"
-            cle="seances"
             onClick={() => {
               setActif(true);
               setMessage(null);
@@ -380,7 +341,7 @@ export function SelectionSeances({
         {actif && (
           <>
             {/* En tête de la sélection : « Tout sélectionner » (les séances **affichées**, et le nombre
-                est dit à côté), « Terminé », et « Nouvelle séance » pour qui peut en créer. */}
+                est dit à côté), ✕, et « Nouvelle séance » pour qui peut en créer. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <label className="inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border-2 border-bordure bg-surface px-3 font-semibold">
                 <input
@@ -404,10 +365,16 @@ export function SelectionSeances({
                     Nouvelle séance
                   </LienBouton>
                 )}
-                <Bouton
+                {/* ✕ : quitter la sélection. Des séances cochées ou un geste commencé ne sont pas
+                    appliqués : on le dit avant de tout lâcher. */}
+                <button
                   type="button"
-                  taille="petite"
+                  aria-label="Quitter la sélection"
+                  title="Quitter la sélection"
+                  disabled={enCours}
                   onClick={() => {
+                    const enAttente = selection.size > 0 || gesteChoisi !== "";
+                    if (enAttente && !window.confirm(`${compteurSeances(selection.size) || "Un geste est commencé"} : rien n'est appliqué. Quitter sans appliquer ?`)) return;
                     setActif(false);
                     setSelection(new Set());
                     remettreAZero();
@@ -415,9 +382,10 @@ export function SelectionSeances({
                     setVoletOuvert(false);
                     if (lienTerminer) router.replace(lienTerminer, { scroll: false });
                   }}
+                  className="inline-flex size-12 items-center justify-center rounded-xl border-2 border-bordure bg-surface text-texte transition hover:bg-surface-douce disabled:opacity-60"
                 >
-                  Terminé
-                </Bouton>
+                  <Icone nom="croix" taille={22} />
+                </button>
               </span>
             </div>
             {(repliees.length > 0 || sansCase) && (
@@ -500,6 +468,7 @@ export function SelectionSeances({
           toutesCochees={etatCases === "toutes"}
           libelleCocherAffichees={libelleToutesSeances(affichees.length)}
           onCocherAffichees={() => setSelection((s) => ajouter(s, idsAffiches))}
+          onDecocherAffichees={() => setSelection((s) => retirer(s, idsAffiches))}
           onVider={() => setSelection(new Set())}
           horsAffichage={horsAffichage}
           enCours={enCours}

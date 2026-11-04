@@ -48,7 +48,7 @@ describe("la sélection des séances (bouton crayon)", () => {
   const selection = lire("src/components/seances/SelectionSeances.tsx");
   it("s'ouvre par le crayon, garde sa sortie et l'ajout, sans phrase d'explication", () => {
     expect(selection).toContain('<BoutonCrayon\n            libelle="Sélectionner des séances"');
-    expect(selection).toContain("Terminé");
+    expect(selection).toContain('aria-label="Quitter la sélection"');
     expect(selection).toContain("Nouvelle séance");
     expect(page).toContain("lienNouvelle={equipe ?");
     expect(page).not.toContain("les gestes de chaque séance sont au pied de sa carte");

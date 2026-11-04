@@ -37,12 +37,6 @@ export type SeanceCarte = {
   ateliers: SeanceAtelier[];
   /** Cases du planning renseignées (partie, instructeur, thème, atelier) */
   programme: ProgrammeSeance;
-  /**
-   * Tous les éléments du programme, vides compris, par leur nom calculé — ce que « Retirer un élément
-   * du programme » propose en sélection multiple. Un élément Atelier qui porte un atelier n'est pas
-   * retirable d'ici (voir `retirerElementEnMasse`).
-   */
-  elements: Array<{ libelle: string; retirable: boolean }>;
   /** Le choix des cours par présence, quand le club l'a ouvert (`getChoixCoursActif`) — sinon `null`. */
   choixCours: ChoixCoursCarte | null;
   compteurs: Compteurs;
@@ -199,7 +193,6 @@ function versCarte(s: SessionBrute, invites: readonly Participant[], user: UserL
     choixCours: choixActif
       ? choixDeLaSeance(s.parties, new Set(programme.map((l) => l.id)), new Set(participants.presents.map((p) => p.id)), userId)
       : null,
-    elements: s.parties.map((p) => ({ libelle: p.libelle, retirable: !(p.nature === "ATELIER" && p.atelierId) })),
     compteurs: compteursDeLaListe(participants, invites.length),
     monStatut: s.attendances.find((a) => a.userId === userId)?.statut ?? null,
     inscrit: invites.some((p) => p.id === userId),

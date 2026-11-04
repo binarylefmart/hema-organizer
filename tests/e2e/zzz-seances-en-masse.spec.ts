@@ -88,7 +88,7 @@ test("annuler puis rétablir deux séances d'un seul geste", async ({ page }) =>
   await expect(page.getByText(/2 séances rétablies/)).toBeVisible({ timeout: 30_000 });
   for (const id of ids) await expect(page.locator(`[data-geste-seance="${id}"][data-annulable="true"]`)).toBeVisible({ timeout: 20_000 });
 
-  // « Terminé » referme les cases.
-  await page.getByRole("button", { name: "Terminé" }).click();
+  // ✕ referme les cases (rien n'est coché ni commencé : pas de confirmation).
+  await page.getByRole("button", { name: "Quitter la sélection" }).click();
   await expect(page.getByLabel(/^Sélectionner la séance du/)).toHaveCount(0);
 });
