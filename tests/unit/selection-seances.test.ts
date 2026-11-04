@@ -26,6 +26,7 @@ import { varianteGeste } from "@/components/ui/choix-geste";
 const ligne = (id: string, x: Partial<LigneSeance> = {}): LigneSeance => ({
   id,
   periodId: "p1",
+  date: "2026-11-10",
   jour: `jour ${id}`,
   heureDebut: "19:30",
   heureFin: "21:30",

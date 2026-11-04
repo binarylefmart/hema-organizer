@@ -27,6 +27,8 @@ export type LigneSeance = {
   id: string;
   /** Le trimestre de la séance. */
   periodId: string;
+  /** « AAAA-MM-JJ » : le jour de la semaine de « Sélectionner par jour ». */
+  date: string;
   /** « mardi 6 octobre » : le nom de la case, et celui des séances citées. */
   jour: string;
   heureDebut: string;

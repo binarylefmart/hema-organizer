@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.84.0
+
+### Nouveautés
+
+- **programme** : « Planning » devient « Programme », jours en liste, « Ajouter un élément »
+
+### Autres changements
+
+- **etat** : v0.80.2 à v0.83.0
+
 ## 0.83.0
 
 ### Nouveautés

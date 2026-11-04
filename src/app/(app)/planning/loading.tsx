@@ -3,7 +3,7 @@ import { CarteSquelette, EcranSquelette, EnTeteSquelette, SelecteurHorizonSquele
 /** Attente du planning : même bascule que la page (grille large sur PC, fiches empilées en dessous de 1024 px). */
 export default function ChargementPlanning() {
   return (
-    <EcranSquelette libelle="Chargement du planning">
+    <EcranSquelette libelle="Chargement du programme">
       <EnTeteSquelette largeurTitre="w-64" />
       <SelecteurPeriodeSquelette />
       <SelecteurHorizonSquelette />

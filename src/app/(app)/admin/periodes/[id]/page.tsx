@@ -150,7 +150,7 @@ export default async function PagePeriode({ params }: Props) {
   // avant le premier cours. La confirmation doit le dire, sinon on attend des emails qui ne
   // partiront que des semaines plus tard — et on finit par cliquer deux fois.
   const confirmationActivation =
-    `Activer « ${p.nom} » ? Le trimestre s'ouvre à l'équipe : séances et planning deviennent modifiables. ` +
+    `Activer « ${p.nom} » ? Le trimestre s'ouvre à l'équipe : séances et programme deviennent modifiables. ` +
     `Trois jours avant le premier cours, le lien du trimestre partira tout seul à qui a déjà un lien en service ; ` +
     `les personnes jamais invitées (ou dont le lien a été révoqué) s'invitent depuis la liste des membres` +
     (sansEmail > 0

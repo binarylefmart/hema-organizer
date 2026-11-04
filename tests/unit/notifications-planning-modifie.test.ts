@@ -176,7 +176,7 @@ const signaler = (changements: ChangementElement[], now = NOW) => signalerModifi
 describe("registre : une ligne d'encadrement, email et téléphone seulement", () => {
   it("est déclarée partout où le registre l'attend", () => {
     expect(TYPES_NOTIFICATION).toContain("planning_modifie");
-    expect(DESCRIPTIONS.planning_modifie.titre).toBe("Planning modifié");
+    expect(DESCRIPTIONS.planning_modifie.titre).toBe("Programme modifié");
     expect(CANAUX_PAR_NOTIFICATION.planning_modifie).toEqual(["email", "push"]);
     expect(COUPLES_EMIS.planning_modifie).toEqual(["email", "push"]);
     expect(RAISON_API_EXCLUE.planning_modifie).toBeTruthy();
@@ -246,14 +246,14 @@ describe("la phrase de chaque changement", () => {
       ],
       changements: [MODIF, AJOUT],
     })!;
-    expect(c.intro).toBe("Delta Lefèvre a modifié le planning de 2 cours :");
+    expect(c.intro).toBe("Delta Lefèvre a modifié le programme de 2 cours :");
     expect(c.blocs.map((b) => b.entete)).toEqual(["Vendredi 16 octobre 2026 — 19h30 à 21h30 (Gymnase municipal)", "Vendredi 23 octobre 2026 — 19h30 à 21h30 (Gymnase municipal)"]);
     expect(c.blocs[0].chemin).toBe("/planning?periode=per#seance-s1");
-    expect(c.sujet).toBe("📝 Planning modifié — 2 cours, du vendredi 16 octobre au vendredi 23 octobre");
+    expect(c.sujet).toBe("📝 Programme modifié — 2 cours, du vendredi 16 octobre au vendredi 23 octobre");
     // Le téléphone : une notification par journée, compacte
     expect(c.pushParJour).toEqual([
-      { sessionId: "s1", titre: "Planning modifié · ven. 16 oct 19h30", corps: "Delta Lefèvre : + Cours (Épée longue)", chemin: "/planning?periode=per#seance-s1" },
-      { sessionId: "s2", titre: "Planning modifié · ven. 23 oct 19h30", corps: "Delta Lefèvre : ✎ Option 1 (thème, instructeur)", chemin: "/planning?periode=per#seance-s2" },
+      { sessionId: "s1", titre: "Programme modifié · ven. 16 oct 19h30", corps: "Delta Lefèvre : + Cours (Épée longue)", chemin: "/planning?periode=per#seance-s1" },
+      { sessionId: "s2", titre: "Programme modifié · ven. 23 oct 19h30", corps: "Delta Lefèvre : ✎ Option 1 (thème, instructeur)", chemin: "/planning?periode=per#seance-s2" },
     ]);
 
     const { contenu } = emailPlanningModifie({ prenom: "Charlie", contenu: c });
@@ -299,7 +299,7 @@ describe("destinataires", () => {
     expect(corps).toContain("Vendredi 23 octobre 2026");
     expect(corps).toContain("Ajouté : Cours « Épée longue »");
     expect(corps).toContain("Modifié : Option 1 — thème : « Dussack »");
-    expect(faux.push[0]).toMatchObject({ titre: "Planning modifié · ven. 16 oct 19h30", url: "/planning?periode=per#seance-s1" });
+    expect(faux.push[0]).toMatchObject({ titre: "Programme modifié · ven. 16 oct 19h30", url: "/planning?periode=per#seance-s1" });
   });
 
   it("respecte les préférences de chacun, canal par canal", async () => {

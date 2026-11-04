@@ -24,8 +24,8 @@ export function emailPlanningModifie(args: { prenom: string; contenu: ContenuPla
   ];
   const boutons: EmailBouton[] =
     c.blocs.length > 0 && c.blocs.length <= BOUTONS_MAX && !c.reste
-      ? c.blocs.map((b) => ({ label: c.blocs.length === 1 ? "Voir le planning" : `Voir le ${minuscule(formatDateSansAnnee(b.seance.date))}`, url: `${baseUrl()}${b.chemin}` }))
-      : [{ label: "Voir le planning", url: `${baseUrl()}${c.chemin}` }];
+      ? c.blocs.map((b) => ({ label: c.blocs.length === 1 ? "Voir le programme" : `Voir le ${minuscule(formatDateSansAnnee(b.seance.date))}`, url: `${baseUrl()}${b.chemin}` }))
+      : [{ label: "Voir le programme", url: `${baseUrl()}${c.chemin}` }];
   return {
     sujet: c.sujet,
     contenu: {
@@ -35,7 +35,7 @@ export function emailPlanningModifie(args: { prenom: string; contenu: ContenuPla
       piedDePage: [
         boutons.length > 1 ? "Si les boutons ne fonctionnent pas, copie ces liens dans ton navigateur :" : "Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :",
         ...boutons.map((b) => b.url),
-        "Message automatique envoyé aux instructeurs du club quand un échauffement, un cours ou une option est ajouté, modifié ou supprimé dans le planning d'un cours à venir (jamais à l'auteur du changement). Tu peux le couper dans « Mon profil ».",
+        "Message automatique envoyé aux instructeurs du club quand un échauffement, un cours ou une option est ajouté, modifié ou supprimé dans le programme d'un cours à venir (jamais à l'auteur du changement). Tu peux le couper dans « Mon profil ».",
       ],
     },
   };

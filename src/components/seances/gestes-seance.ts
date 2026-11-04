@@ -63,7 +63,7 @@ export function gestesSeance({
       bouton: "Ouvrir la séance",
       explication: {
         titre: "La fiche de la séance s'ouvre en mode modification.",
-        phrases: ["Date, horaire et lieu s'y règlent ; le programme, dans le planning."],
+        phrases: ["Date, horaire et lieu s'y règlent ; le programme, dans l'onglet Programme."],
       },
       fait: "Ouverture…",
     });

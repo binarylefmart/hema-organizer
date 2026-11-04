@@ -144,7 +144,7 @@ export default async function PageGestionAteliers({ searchParams }: Props) {
               {a.session && (
                 <p className="mt-2 text-sm">
                   {a.statut === "PLANIFIE"
-                    ? "Dans le planning le"
+                    ? "Dans le programme le"
                     : "Séance souhaitée :"}{" "}
                   {formatDateCourte(a.session.date)} à{" "}
                   {formatHeure(a.session.heureDebut)} — {a.session.lieu}

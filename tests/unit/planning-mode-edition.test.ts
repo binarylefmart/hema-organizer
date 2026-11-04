@@ -62,7 +62,7 @@ describe("la grille n'ouvre ses cases qu'en mode modification", () => {
     // Le droit de remplir et le mode sont deux choses : le bouton d'entrée suit le droit.
     expect(grille).toContain("const peutModifier = p.modifiable");
     // Le bouton d'entrée est le bouton crayon (rond au téléphone, sous le titre sur ordinateur).
-    expect(lire("src/app/(app)/planning/page.tsx")).toContain('<BoutonCrayon href={lien} libelle="Modifier le planning"');
+    expect(lire("src/app/(app)/planning/page.tsx")).toContain('<BoutonCrayon href={lien} libelle="Modifier le programme"');
   });
 
   /**

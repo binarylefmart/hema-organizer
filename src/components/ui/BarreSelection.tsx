@@ -2,12 +2,13 @@
 
 import type { ReactNode } from "react";
 import { Icone } from "./Icone";
+import { ListeDeroulante } from "./ListeDeroulante";
 import {
   compteSelection,
   libelleAffichees,
   suffixeSelection,
 } from "./barre-selection";
-import type { MotsLignes } from "./selection";
+import { basculerJour, CHOIX_JOUR_VIDE, entreesJours, LIBELLE_PAR_JOUR, type JourPropose, type MotsLignes } from "./selection";
 
 /**
  * **La barre de la sélection multiple, au téléphone** — la même sur les quatre écrans
@@ -46,6 +47,8 @@ export function BarreSelection({
   enCours = false,
   auDessus = false,
   actions,
+  jours,
+  onSelection,
   children,
 }: {
   /** Le nom du groupe pour le lecteur d'écran : celui de la barre de l'ordinateur. */
@@ -73,6 +76,13 @@ export function BarreSelection({
    * se contente pas de la vider.
    */
   libelleVider?: string;
+  /**
+   * **Sélectionner par jour**, en liste déroulante sous la ligne 1 (« Tous les mardis (4) ») — avec
+   * `onSelection`, qui reçoit la nouvelle sélection. Choisir ajoute (ou retire, si tout y est), puis
+   * la liste revient d'elle-même à « Choisir un jour… » : elle commande, elle ne mémorise rien.
+   */
+  jours?: readonly JourPropose[];
+  onSelection?: (maj: (s: ReadonlySet<string>) => Set<string>) => void;
   /** Une ligne 3, sous le gros bouton, calée à droite : ✕ et « Appliquer » du planning. */
   actions?: ReactNode;
   /** Ce que le lot emporte hors de l'écran (`texteHorsAffichage`), compté et dit. */
@@ -135,6 +145,26 @@ export function BarreSelection({
         </button>
         )}
       </div>
+      {jours && jours.length > 0 && onSelection && (
+        <div>
+        <label id="jours-barre-selection-libelle" htmlFor="jours-barre-selection" className="sr-only">
+          {LIBELLE_PAR_JOUR}
+        </label>
+        <ListeDeroulante
+          id="jours-barre-selection"
+          libelleId="jours-barre-selection-libelle"
+          libelle={LIBELLE_PAR_JOUR}
+          valeur={CHOIX_JOUR_VIDE.valeur}
+          entrees={entreesJours(jours)}
+          disabled={enCours}
+          onChoisir={(v) => {
+            const jour = jours.find((j) => String(j.jour) === v);
+            if (jour) onSelection((s) => basculerJour(s, jour));
+          }}
+          className="min-h-12 w-full rounded-xl border-2 border-bordure bg-surface px-3 text-base font-semibold text-texte"
+        />
+        </div>
+      )}
       {horsAffichage ? (
         <p className="text-base text-texte-secondaire">{horsAffichage}</p>
       ) : null}

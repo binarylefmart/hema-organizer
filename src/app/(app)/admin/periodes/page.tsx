@@ -71,7 +71,7 @@ export default async function PagePeriodes({ searchParams }: Props) {
         <p>
           Une période fixe <strong>le calendrier et les invitations</strong> : ses dates, les membres invités et leurs liens
           personnels, et les créneaux qui créent les séances. <strong>Elle ne règle pas le contenu des cours</strong> : le
-          programme (échauffement, cours, options, instructeurs) se planifie dans le planning, ou s&apos;applique d&apos;un
+          programme (échauffement, cours, options, instructeurs) se planifie dans l&apos;onglet Programme, ou s&apos;applique d&apos;un
           template de cours.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">

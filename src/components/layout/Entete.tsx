@@ -91,7 +91,7 @@ export async function Entete({ user }: { user: CurrentUser }) {
   const activationAFaire = acces.nominatif && !acces.regle;
   // Trois onglets principaux ; les entrées secondaires sont en icônes dans l'en-tête
   const onglets: Onglet[] = [
-    { href: "/planning", label: "Planning", icone: "calendrier" },
+    { href: "/planning", label: "Programme", icone: "calendrier" },
     { href: "/seances", label: "Séances", icone: "epee" },
     { href: "/ateliers", label: "Atelier", icone: "outil" },
   ];

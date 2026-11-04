@@ -125,7 +125,7 @@ import {
  *   un** dans les séances cochées, puis un seul réglage pour tous.
  * - **« Remplacer un thème »** : un thème présent dans les séances cochées (avec le nombre d'éléments
  *   qui le portent) et son remplaçant, pris dans la liste du club de la bonne nature.
- * - **« Ajouter dans une partie »** — choisir la partie (1 à la dernière + 1), puis l'échauffement, le
+ * - **« Ajouter un élément »** — choisir la partie (1 à la dernière + 1), puis l'échauffement, le
  *   cours ou l'option — s'enregistre tout de suite, comme le menu de la carte (`ajouterPartiesEnMasse`).
  * - **« Retirer un élément du programme »** — choisir l'élément par son nom ; s'enregistre tout de
  *   suite, après confirmation (`appliquerGesteSeancesEnMasse`, geste `retirer`). Réservé à qui gère
@@ -298,7 +298,7 @@ export function SelectionPlanning({
   const remplacant = remplacants.includes(remplacantChoisi) ? remplacantChoisi : "";
   const planTheme = geste === "remplacer" && trouve && remplacant ? planRemplacement(lot, trouve.cle, remplacant, options, modifiees) : null;
 
-  /* ---- Ajouter dans une partie : la partie et la nature, rien ne se devine sur plusieurs séances. ---- */
+  /* ---- Ajouter un élément : la partie et la nature, rien ne se devine sur plusieurs séances. ---- */
   const blocs = blocsProposes(lot);
   const bloc = blocs.includes(Number(blocChoisi)) ? Number(blocChoisi) : null;
   const ajout: ChoixAjout | null = geste === "ajouter" && bloc !== null && estNatureAjoutable(natureChoisie) ? { bloc, nature: natureChoisie } : null;
@@ -425,22 +425,22 @@ export function SelectionPlanning({
   const champsAjout = (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <Liste
-        id="bloc-planning-en-masse"
-        libelle="Dans quelle partie"
-        valeur={bloc === null ? "" : String(bloc)}
-        entrees={[{ valeur: "", libelle: "Choisir une partie…" }, ...blocs.map((b) => ({ valeur: String(b), libelle: libelleBlocPropose(b, lot) }))]}
-        onChoisir={(v) => {
-          setBlocChoisi(v);
-          setMessage(null);
-        }}
-      />
-      <Liste
         id="nature-planning-en-masse"
-        libelle="Ce qu'on ajoute"
+        libelle="Quoi ajouter"
         valeur={estNatureAjoutable(natureChoisie) ? natureChoisie : ""}
         entrees={[{ valeur: "", libelle: "Choisir…" }, ...NATURES_AJOUT_MASSE]}
         onChoisir={(v) => {
           setNatureChoisie(v);
+          setMessage(null);
+        }}
+      />
+      <Liste
+        id="bloc-planning-en-masse"
+        libelle="Où le placer"
+        valeur={bloc === null ? "" : String(bloc)}
+        entrees={[{ valeur: "", libelle: "Choisir une partie…" }, ...blocs.map((b) => ({ valeur: String(b), libelle: libelleBlocPropose(b, lot) }))]}
+        onChoisir={(v) => {
+          setBlocChoisi(v);
           setMessage(null);
         }}
       />
@@ -755,26 +755,7 @@ export function SelectionPlanning({
               )}
               {actions && !telephone && <div className="ml-auto">{actions}</div>}
             </div>
-            {/* **Au téléphone, une puce par jour** à la place de la liste : « Les mardis (4) »,
-                appuyée quand ses séances sont toutes cochées — l'appuyer de nouveau les retire. */}
-            {jours.length > 0 && telephone && (
-              <div role="group" aria-label={LIBELLE_PAR_JOUR} className="flex flex-wrap gap-2">
-                {jours.map((j) => (
-                  <button
-                    key={j.jour}
-                    type="button"
-                    aria-pressed={j.complet}
-                    onClick={() => setSelection((s) => basculerJour(s, j))}
-                    className={`inline-flex min-h-12 items-center rounded-full border-2 px-4 text-base font-semibold transition active:scale-[0.98] ${
-                      j.complet ? "border-primaire bg-primaire text-primaire-texte" : "border-bordure/70 bg-surface text-texte"
-                    }`}
-                  >
-                    {j.complet && <Icone nom="check" taille={18} />}
-                    {libellePuceJour(j.nom, j.ids.length)}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Au téléphone, « Sélectionner par jour » est une liste déroulante de la barre du bas. */}
             {(repliees.length > 0 || sansCase) && (
               <p className="text-base text-texte-secondaire">{[texteRepliees(repliees, selection), sansCase].filter(Boolean).join(" ")}</p>
             )}
@@ -863,6 +844,8 @@ export function SelectionPlanning({
           horsAffichage={horsAffichage}
           enCours={enCours}
           actions={actions}
+          jours={jours}
+          onSelection={(maj) => setSelection((s) => maj(s))}
         >
           <BoutonQueFaire
             libelle="Continuer"

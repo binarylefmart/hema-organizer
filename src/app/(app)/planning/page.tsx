@@ -26,7 +26,7 @@ import { ChampDate } from "@/components/filtres/ChampDate";
 import { lienTemps, lireDateFiltre, lireQuand, seanceCible, seancesDuJour, selectionnerSeances, valeurQuand, type Quand } from "@/components/filtres/temps";
 import { AllerALaSeanceCible } from "@/components/filtres/AllerALaSeanceCible";
 
-export const metadata: Metadata = { title: "Planning" };
+export const metadata: Metadata = { title: "Programme" };
 
 type Props = { searchParams: Promise<{ periode?: string; h?: string; quand?: string; date?: string; modifier?: string; seances?: string }> };
 
@@ -169,13 +169,13 @@ async function SousLesFiltres({ planning, temps }: Omit<IlotPlanning, "choisie">
             {temps.seances.length === 1 ? "La séance choisie" : `Les ${temps.seances.length} séances choisies`}
           </span>{" "}
           dans l&apos;onglet Séances, et elles seules.{" "}
-          <Link href={lienPlanning({ periode: p.periode.id }, false)}>Voir tout le planning</Link>
+          <Link href={lienPlanning({ periode: p.periode.id }, false)}>Voir tout le programme</Link>
         </p>
       )}
       {temps.date && temps.seances.length === 0 && (
         <p className="w-full text-sm text-texte-secondaire">
           <span className="font-semibold text-texte">{formatDateLongue(temps.date)}</span> — seul ce jour est affiché.
-          Changer le sens du temps ou la fenêtre dans les filtres ramène le planning du trimestre.
+          Changer le sens du temps ou la fenêtre dans les filtres ramène le programme du trimestre.
         </p>
       )}
       {/* Partager la période affichée : ouvert à tous ceux qui voient le planning — le lien ne montre
@@ -183,7 +183,7 @@ async function SousLesFiltres({ planning, temps }: Omit<IlotPlanning, "choisie">
       <BoutonPartager
         partage={partagePlanning({ periodeId: p.periode.id, periodeNom: p.periode.nom, aVenir: aVenir.length, prochaine: aVenir[0] ?? null })}
         taille="petite"
-        libelle="Partager le planning"
+        libelle="Partager le programme"
       />
     </div>
   );
@@ -196,7 +196,7 @@ async function SousLesFiltres({ planning, temps }: Omit<IlotPlanning, "choisie">
 async function EntreePlanning({ planning, lien }: { planning: Promise<Planning | null>; lien: string }) {
   const p = await planning;
   if (!p?.modifiable) return null;
-  return <BoutonCrayon href={lien} libelle="Modifier le planning" />;
+  return <BoutonCrayon href={lien} libelle="Modifier le programme" />;
 }
 
 /**
@@ -230,7 +230,7 @@ async function CorpsPlanning({
   if (!p)
     return (
       <Alerte type="info" titre="Aucune période">
-        Le planning apparaîtra dès qu&apos;une période sera créée.
+        Le programme apparaîtra dès qu&apos;une période sera créée.
       </Alerte>
     );
   if (p.colonnes.length === 0)
@@ -247,11 +247,11 @@ async function CorpsPlanning({
   if (temps.date && colonnes.length === 0) {
     return (
       <Alerte type="info" titre={`Aucun cours le ${formatDateLongue(temps.date).toLowerCase()}`}>
-        <p>Choisis une autre date, ou efface-la pour revenir au planning du trimestre.</p>
+        <p>Choisis une autre date, ou efface-la pour revenir au programme du trimestre.</p>
         <p className="mt-3">
           <LienBouton href={liens(p.periode.id, temps).sansDate()} variante="secondaire" taille="petite" enCours>
             <Icone nom="calendrier" taille={18} />
-            Revenir au planning
+            Revenir au programme
           </LienBouton>
         </p>
       </Alerte>
@@ -367,7 +367,7 @@ export default async function PagePlanning({ searchParams }: Props) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         {/* Plus de lien vers le journal des modifications sous le titre : il encombrait l'en-tête du
             planning pour un geste de bureau, qui se fait depuis l'espace admin (Journal d'audit). */}
-        <h1 className="text-3xl">Planning de cours</h1>
+        <h1 className="text-3xl">Programme des cours</h1>
       </div>
 
       {/* L'entrée en modification, à la place commune à tous les onglets : sous le titre. */}

@@ -63,7 +63,7 @@ export function emailEffectifFaible(args: {
       ],
       boutons: [
         { label: "Annuler cette séance", url: args.urlAnnulation, couleur: "rouge" },
-        { label: "Voir le planning", url: `${baseUrl()}/planning` },
+        { label: "Voir le programme", url: `${baseUrl()}/planning` },
       ],
       piedDePage: [
         "Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :",

@@ -22,7 +22,7 @@ export function membrePeutModifier(statut: string): boolean {
 
 export const ATELIER_LABELS: Record<AtelierStatut, string> = {
   PROPOSE: "En attente",
-  PLANIFIE: "Dans le planning",
+  PLANIFIE: "Dans le programme",
   REFUSE: "Refusé",
 };
 

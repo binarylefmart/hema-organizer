@@ -227,7 +227,7 @@ export function contenuPlanningModifie(args: { auteur: string; seances: readonly
     return { seance: s, entete: `${formatDateLongue(s.date)} — ${formatHoraire(s.heureDebut, s.heureFin)} (${s.lieu})`, lignes, chemin: cheminPlanning(s) };
   });
   const autres = seances.length - blocs.length;
-  const reste = autres > 0 ? `… et ${autres} autre${autres > 1 ? "s" : ""} cours : tout est dans le planning.` : null;
+  const reste = autres > 0 ? `… et ${autres} autre${autres > 1 ? "s" : ""} cours : tout est dans le programme.` : null;
 
   const premier = seances[0];
   const dernier = seances[seances.length - 1];
@@ -237,15 +237,15 @@ export function contenuPlanningModifie(args: { auteur: string; seances: readonly
   const pushParJour: PushJour[] = seances.slice(0, SEANCES_DETAILLEES_MAX).map((s) => {
     let corps = `${args.auteur} : ${trier(parSeance.get(s.id)!).map(resumeCourt).filter(Boolean).join(" · ")}`;
     if (corps.length > CORPS_PUSH_MAX) corps = `${corps.slice(0, CORPS_PUSH_MAX - 1).trimEnd()}…`;
-    return { sessionId: s.id, titre: `Planning modifié · ${formatDateFrise(s.date)} ${formatHeure(s.heureDebut)}`, corps, chemin: cheminPlanning(s) };
+    return { sessionId: s.id, titre: `Programme modifié · ${formatDateFrise(s.date)} ${formatHeure(s.heureDebut)}`, corps, chemin: cheminPlanning(s) };
   });
 
   return {
-    titre: "📝 Planning modifié",
-    intro: `${args.auteur} a modifié le planning${seances.length > 1 ? ` de ${seances.length} cours` : ""} :`,
+    titre: "📝 Programme modifié",
+    intro: `${args.auteur} a modifié le programme${seances.length > 1 ? ` de ${seances.length} cours` : ""} :`,
     blocs,
     reste,
-    sujet: `📝 Planning modifié — ${quels}`,
+    sujet: `📝 Programme modifié — ${quels}`,
     pushParJour,
     chemin: premier ? cheminPlanning(premier) : "/planning",
   };

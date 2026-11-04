@@ -14,7 +14,12 @@ import {
   ajouter,
   barreDeMasseVisible,
   basculer,
+  basculerJour,
+  CHOIX_JOUR_VIDE,
   compterHorsAffichage,
+  entreesJours,
+  joursProposes,
+  LIBELLE_PAR_JOUR,
   etatToutCocher,
   lignesSelectionnees,
   restreindre,
@@ -148,6 +153,8 @@ export function SelectionSeances({
   const affichees = lignes.slice(0, devoilement.affichees).filter((l): l is LigneSeance => l !== null);
   const repliees = lignes.slice(devoilement.affichees).filter((l): l is LigneSeance => l !== null);
   const idsAffiches = affichees.map((l) => l.id);
+  /** « Tous les mardis (4) » : les séances affichées, jour par jour (liste de la barre au téléphone, en tête sur ordinateur). */
+  const jours = joursProposes(affichees, selection);
   const etatCases = etatToutCocher(affichees, selection);
   const lot = lignesSelectionnees(selectionnables, selection);
 
@@ -373,6 +380,26 @@ export function SelectionSeances({
               <span className="text-base text-texte-secondaire">
                 {nbSeances(affichees.length)} {affichees.length > 1 ? "affichées" : "affichée"}
               </span>
+              {jours.length > 0 && (
+                <div className="min-w-56">
+                  <label id="jours-seances-libelle" htmlFor="jours-seances" className="sr-only">
+                    {LIBELLE_PAR_JOUR}
+                  </label>
+                  <ListeDeroulante
+                    id="jours-seances"
+                    libelleId="jours-seances-libelle"
+                    libelle={LIBELLE_PAR_JOUR}
+                    valeur={CHOIX_JOUR_VIDE.valeur}
+                    entrees={entreesJours(jours)}
+                    disabled={enCours}
+                    onChoisir={(v) => {
+                      const jour = jours.find((j) => String(j.jour) === v);
+                      if (jour) setSelection((s) => basculerJour(s, jour));
+                    }}
+                    className="min-h-12 w-full rounded-xl border-2 border-bordure bg-surface px-3 text-base font-semibold text-texte"
+                  />
+                </div>
+              )}
               </>
               )}
               <span className="ml-auto flex flex-wrap gap-2">
@@ -480,6 +507,8 @@ export function SelectionSeances({
           onDecocherAffichees={() => setSelection((s) => retirer(s, idsAffiches))}
           onVider={quitter}
           libelleVider="Quitter la sélection"
+          jours={jours}
+          onSelection={(maj) => setSelection((s) => maj(s))}
           horsAffichage={horsAffichage}
           enCours={enCours}
         >

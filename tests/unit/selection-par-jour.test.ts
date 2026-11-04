@@ -102,11 +102,12 @@ describe("choisir une entrée", () => {
   });
 });
 
-describe("le planning seulement", () => {
+describe("le planning et les séances", () => {
   const source = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
-  it("la sélection du planning s'en sert, l'onglet Séances non", () => {
+  it("les deux sélections s'en servent, et la barre du bas le propose en liste", () => {
     expect(source("src/components/planning/SelectionPlanning.tsx")).toContain("joursProposes(affichees, selection)");
-    expect(source("src/components/seances/SelectionSeances.tsx")).not.toContain("joursProposes");
+    expect(source("src/components/seances/SelectionSeances.tsx")).toContain("joursProposes(affichees, selection)");
+    expect(source("src/components/ui/BarreSelection.tsx")).toContain("entreesJours(jours)");
   });
 
   it("ne porte que sur les cartes affichées", () => {

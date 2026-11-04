@@ -545,7 +545,7 @@ export async function enregistrerCases(input: {
   if (!parsed.success)
     return {
       erreur:
-        "Ce lot n'a pas pu être lu (une case mal formée, un lot vide ou trop grand) : rien n'a été enregistré. Recharge le planning et recommence.",
+        "Ce lot n'a pas pu être lu (une case mal formée, un lot vide ou trop grand) : rien n'a été enregistré. Recharge le programme et recommence.",
     };
 
   /*

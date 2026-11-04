@@ -238,7 +238,7 @@ export async function deciderAtelier(_prev: FormState, fd: FormData): Promise<Fo
     const id = await seanceValide(sessionId);
     if (!id) return { erreur: "Choisis une séance à venir pour placer l'atelier.", erreurs: { sessionId: "Séance requise." } };
     if (!(await periodeOuverte(id))) {
-      return { erreur: "Cette période est close : le planning n'est plus modifiable.", erreurs: { sessionId: "Période close." } };
+      return { erreur: "Cette période est close : le programme n'est plus modifiable.", erreurs: { sessionId: "Période close." } };
     }
     seance = await db.session.findUniqueOrThrow({ where: { id }, select: { date: true, heureDebut: true, lieu: true } });
     decide = await db.atelier.update({ where: { id: atelierId }, data: { statut, sessionId: id, commentaireInstructeur: commentaire || atelier.commentaireInstructeur } });
@@ -263,6 +263,6 @@ export async function deciderAtelier(_prev: FormState, fd: FormData): Promise<Fo
   rafraichir();
   const prevenu = prevenir ? " — le membre est prévenu par email." : ".";
   return {
-    succes: statut === "PLANIFIE" ? `Atelier placé dans le planning${prevenu}` : statut === "REFUSE" ? `Atelier refusé${prevenu}` : "Atelier remis en attente.",
+    succes: statut === "PLANIFIE" ? `Atelier placé dans le programme${prevenu}` : statut === "REFUSE" ? `Atelier refusé${prevenu}` : "Atelier remis en attente.",
   };
 }

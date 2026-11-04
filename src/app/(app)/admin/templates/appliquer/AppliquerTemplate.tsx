@@ -200,7 +200,7 @@ export function AppliquerTemplate({ templates, templateInitial, periodes, period
         </Alerte>
         {ecart && (
           <Alerte type="attention">
-            <p>Le planning a changé entre l&apos;aperçu et ta validation : certaines dates ont été écartées pour ne rien écraser.</p>
+            <p>Le programme a changé entre l&apos;aperçu et ta validation : certaines dates ont été écartées pour ne rien écraser.</p>
           </Alerte>
         )}
         <Carte titre="Ce qui a été fait">
@@ -208,7 +208,7 @@ export function AppliquerTemplate({ templates, templateInitial, periodes, period
         </Carte>
         <div className="flex flex-wrap gap-3">
           <LienBouton href={lienPlanningPeriode(periodeId)} enCours>
-            Voir le planning
+            Voir le programme
           </LienBouton>
           <LienBouton href="/admin/templates" variante="secondaire" enCours>
             Retour aux templates

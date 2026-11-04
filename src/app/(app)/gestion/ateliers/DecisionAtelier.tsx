@@ -178,7 +178,7 @@ export function DecisionAtelier({
         {state.succes && <Alerte type="succes">{state.succes}</Alerte>}
         {erreurEffacement && <Alerte type="erreur">{erreurEffacement}</Alerte>}
         {!placer && seances.length === 0 && (
-          <p className="text-base text-texte-secondaire">Aucune séance à venir : l&apos;atelier ne peut pas encore être placé dans le planning.</p>
+          <p className="text-base text-texte-secondaire">Aucune séance à venir : l&apos;atelier ne peut pas encore être placé dans le programme.</p>
         )}
 
         {/* Refuser à gauche, Programmer à droite : ce qui valide reste sous le pouce. */}
@@ -240,7 +240,7 @@ export function DecisionAtelier({
       {erreurEffacement && <Alerte type="erreur">{erreurEffacement}</Alerte>}
 
       {statut === "PROPOSE" && seances.length === 0 && (
-        <p className="text-base text-texte-secondaire">Aucune séance à venir : l&apos;atelier ne peut pas encore être placé dans le planning.</p>
+        <p className="text-base text-texte-secondaire">Aucune séance à venir : l&apos;atelier ne peut pas encore être placé dans le programme.</p>
       )}
 
       {gestes.length === 1 ? (

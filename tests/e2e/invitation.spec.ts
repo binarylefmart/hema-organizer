@@ -51,7 +51,7 @@ test("un nouveau membre ouvre l'application depuis son lien, sans mot de passe",
   // depuis les filtres unifiés (étape 5 bis), la page porte aussi les listes « Saison » et « Période »,
   // qui sont de la consultation et n'ont rien à faire dans ce décompte.
   await page.goto("/planning");
-  await expect(page.getByRole("heading", { name: "Planning de cours" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Programme des cours" })).toBeVisible();
   // Attendre la grille : sans elle, les absences vérifiées ensuite seraient vraies pour rien.
   // Depuis ce n'est plus un `<table>` à colonnes fixes mais **une carte par séance**, ancrée sur
   // `#seance-<id>` (`GrillePlanning`) : c'est elle, la grille.

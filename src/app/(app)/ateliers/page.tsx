@@ -80,7 +80,7 @@ export default async function PageAteliers({ searchParams }: Props) {
                 bas de page — où la largeur de 90 rem le laissait seul, loin de tout. */}
             <LienBouton href="/planning" variante="secondaire" taille="petite" className="w-full sm:w-auto">
               <Icone nom="calendrier" taille={18} />
-              Voir le planning
+              Voir le programme
             </LienBouton>
             {ateliers.map((a) => (
         <Carte key={a.id}>
@@ -110,7 +110,7 @@ export default async function PageAteliers({ searchParams }: Props) {
           {a.session && (
             <p className="mt-2 text-sm">
               {a.statut === "PLANIFIE"
-                ? "Dans le planning le"
+                ? "Dans le programme le"
                 : "Séance souhaitée :"}{" "}
               {formatDateCourte(a.session.date)} à{" "}
               {formatHeure(a.session.heureDebut)} — {a.session.lieu}

@@ -49,7 +49,7 @@ describe("l'écu porte le mot « Accueil »", () => {
 
   it("la navigation n'a pas gagné d'entrée : toujours trois onglets", () => {
     const code = lire(ENTETE);
-    expect(code).toContain('{ href: "/planning", label: "Planning", icone: "calendrier" }');
+    expect(code).toContain('{ href: "/planning", label: "Programme", icone: "calendrier" }');
     expect(code).toContain('{ href: "/seances", label: "Séances", icone: "epee" }');
     expect(code).toContain('{ href: "/ateliers", label: "Atelier", icone: "outil" }');
     expect(code).not.toContain('icone: "maison"');

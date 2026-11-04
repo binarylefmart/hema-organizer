@@ -154,7 +154,7 @@ export function gestesPlanningApplicables(lot: readonly LignePlanning[], brouill
   if (reglables > 0) offres.push({ geste: "regler", nombre: reglables, libelle: `Régler des éléments (${nbSeances(reglables)})` });
   const avecTheme = lot.filter((l) => l.parties.some((p) => !p.atelier && themeActuel(p, brouillon) !== "")).length;
   if (avecTheme > 0) offres.push({ geste: "remplacer", nombre: avecTheme, libelle: `Remplacer un thème (${nbSeances(avecTheme)})` });
-  if (lot.length > 0) offres.push({ geste: "ajouter", nombre: lot.length, libelle: `Ajouter dans une partie (${nbSeances(lot.length)})` });
+  if (lot.length > 0) offres.push({ geste: "ajouter", nombre: lot.length, libelle: `Ajouter un élément (${nbSeances(lot.length)})` });
   const avecRetirable = lot.filter((l) => l.parties.some(partieRetirable)).length;
   if (avecRetirable > 0) offres.push({ geste: "retirer", nombre: avecRetirable, libelle: `Retirer un élément du programme (${nbSeances(avecRetirable)})` });
   return offres;
@@ -209,7 +209,7 @@ export function expliquerRetrait(lot: readonly LignePlanning[], libelle: string)
       "Les parties suivantes se renumérotent, comme quand on retire un élément sur une carte. Ce qu'il portait (thème, instructeurs, description) est perdu, et reste lisible au journal. Le retrait s'enregistre tout de suite.",
       ...(sans > 0 ? [`${nbSeances(sans)} ne ${sans > 1 ? "portent" : "porte"} pas cet élément : rien n'y change.`] : []),
       "Un atelier placé sur une séance n'est jamais retiré d'ici : il se retire sur sa carte, et retourne alors dans la file des propositions.",
-      "Les instructeurs reçoivent un seul message « Planning modifié » pour tout le lot.",
+      "Les instructeurs reçoivent un seul message « Programme modifié » pour tout le lot.",
     ],
   };
 }
@@ -264,10 +264,10 @@ export function blocsProposes(lot: readonly LignePlanning[]): number[] {
   return Array.from({ length: max + 1 }, (_, i) => i + 1);
 }
 
-/** « Partie 3 (nouvelle) » quand aucune séance du lot ne l'a encore. */
+/** « Une nouvelle partie » quand aucune séance du lot ne l'a encore : le mot « partie » ne se répète pas. */
 export function libelleBlocPropose(bloc: number, lot: readonly LignePlanning[]): string {
   const existe = lot.some((l) => nombreDeParties(l.parties) >= bloc);
-  return existe ? nomPartie(bloc) : `${nomPartie(bloc)} (nouvelle)`;
+  return existe ? nomPartie(bloc) : "Une nouvelle partie";
 }
 
 /** Les natures qu'on ajoute en masse, dans l'ordre d'une partie. */
@@ -745,7 +745,7 @@ export function messageRemplacement(ancien: string, nouveau: string, plan: PlanR
 }
 
 /* ------------------------------------------------------------------ */
-/* Ajouter dans une partie : les mots du geste                         */
+/* Ajouter un élément : les mots du geste                         */
 /* ------------------------------------------------------------------ */
 
 /** L'unique bouton de l'ajout : un verbe et un nombre. */
@@ -760,7 +760,7 @@ export function confirmationPlanning(ajout: ChoixAjout, n: number): string {
 
 /** **L'ajout expliqué avant d'agir** : ce qui arrive, quand c'est écrit, et où l'élément se range. */
 export function expliquerAjout(lot: readonly LignePlanning[], ajout: ChoixAjout | null): Explication {
-  if (!ajout) return { titre: "Choisis la partie, puis ce qu'on y ajoute.", phrases: ["Un échauffement, un cours ou une option : il naît vide, à remplir."] };
+  if (!ajout) return { titre: "Choisis ce qu'on ajoute, puis où le placer.", phrases: ["Un échauffement, un cours ou une option : il naît vide, à remplir."] };
   const ou = lot.length === 1 ? "la séance" : `chacune des ${lot.length} séances`;
   const sans = seancesSansLaPartie(lot, ajout.bloc);
   // Le serveur range l'élément dans une **nouvelle** partie à la fin d'une séance trop courte : la

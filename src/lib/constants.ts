@@ -59,7 +59,7 @@ export function ecritureFermee(statut: PeriodStatut | string): boolean {
 
 /** Le refus, dans les mots de l'objet auquel on vient de toucher. */
 export const REFUS_PERIODE_CLOSE = {
-  planning: "Cette période est close : le planning n'est plus modifiable.",
+  planning: "Cette période est close : le programme n'est plus modifiable.",
   seance:
     "Ce trimestre est clos : la séance n'est plus modifiable. Ses réponses, son programme et ses envois appartiennent à un trimestre terminé — rouvre la période si c'est vraiment ce que tu veux.",
   /*

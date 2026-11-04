@@ -95,12 +95,12 @@ function decrire(geste: GesteAtelier, p: PropositionAtelier): GesteAtelierOffert
     case "placer":
       return {
         geste,
-        libelle: "Placer dans le planning",
-        bouton: "Placer dans le planning",
+        libelle: "Placer dans le programme",
+        bouton: "Placer dans le programme",
         explication: {
           titre: `${titre} prend la première option libre de la séance choisie.`,
           phrases: [
-            "S'il n'y en a plus, une option de plus est ajoutée à la séance. L'atelier se lit dans le planning et sur la carte du cours.",
+            "S'il n'y en a plus, une option de plus est ajoutée à la séance. L'atelier se lit dans le programme et sur la carte du cours.",
             prevenu(p.prenom),
           ],
         },
@@ -108,8 +108,8 @@ function decrire(geste: GesteAtelier, p: PropositionAtelier): GesteAtelierOffert
     case "retirer":
       return {
         geste,
-        libelle: "Retirer du planning",
-        bouton: "Retirer du planning",
+        libelle: "Retirer du programme",
+        bouton: "Retirer du programme",
         // Rouge : la case est libérée, l'atelier est à replacer (`gesteRouge`).
         definitif: true,
         explication: {

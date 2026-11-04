@@ -502,7 +502,7 @@ export function IndicateursAdmin({ admin: a, seancesPassees, aVenir }: PropsAdmi
         valeur={a.coursSansProgramme}
         libelle="Sans programme"
         detail="parmi les prochains cours"
-        bulle={a.coursSansProgrammeDates.length > 0 ? ["Aucune case du planning remplie :", listeDeDates(a.coursSansProgrammeDates)] : undefined}
+        bulle={a.coursSansProgrammeDates.length > 0 ? ["Aucune case du programme remplie :", listeDeDates(a.coursSansProgrammeDates)] : undefined}
       />,
     );
   }

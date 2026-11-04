@@ -139,10 +139,10 @@ export default async function PageSeance({ params, searchParams }: Props) {
         {enEdition && !carte.annulee && !commencee ? (
           <LienBouton href={`${lienPlanning({ periode: carte.periodId, date: carte.date }, true)}#seance-${id}`} pleineLargeur>
             <Icone nom="livre" taille={20} />
-            Modifier le programme dans le planning
+            Modifier le programme
           </LienBouton>
         ) : (
-          <Carte titre="Programme" actions={<Link href={`/planning?periode=${carte.periodId}`} className="inline-flex min-h-12 items-center text-sm">Voir tout le planning</Link>}>
+          <Carte titre="Programme" actions={<Link href={`/planning?periode=${carte.periodId}`} className="inline-flex min-h-12 items-center text-sm">Voir tout le programme</Link>}>
             {carte.annulee ? (
               // **Une séance annulée n'a plus de programme à lire** : il est verrouillé, et ses ateliers sont
               // repartis dans la file des propositions. La carte le dit comme celle du planning.

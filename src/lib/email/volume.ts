@@ -127,7 +127,7 @@ export function estimerEnvois({ membresAvecEmail, coursParSemaine, instructeurs,
       mode: mode("planning_modifie"),
       parEnvoi: coutUnitaire(mode("planning_modifie"), Math.max(0, instructeurs - 1)),
       parSemaine: null,
-      cadence: "à chaque modification du planning appliquée",
+      cadence: "à chaque modification du programme appliquée",
     },
     { type: "evenement_nouveau", titre: DESCRIPTIONS.evenement_nouveau.titre, mode: mode("evenement_nouveau"), parEnvoi: evenement, parSemaine: null, cadence: "à chaque événement publié" },
   ];

@@ -62,7 +62,7 @@ describe("la fiche d'une séance ne porte plus que date, horaire et lieu", () =>
       expect(code, fichier).not.toContain("ThemeAutosave");
     }
     // En modification, la carte « Programme » ne porte que le lien vers le planning, ouvert sur la séance.
-    expect(source(FICHE)).toContain("Modifier le programme dans le planning");
+    expect(source(FICHE)).toContain("Modifier le programme");
   });
 });
 

@@ -108,7 +108,7 @@ async function choisirLibelle(page: Page, controle: Locator, libelle: string): P
  */
 test.beforeEach(async ({ page }) => {
   await connecter(page, COMPTES.instructeur, "/planning?modifier=1");
-  await expect(page.getByRole("heading", { name: "Planning de cours" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Programme des cours" })).toBeVisible();
   // Les listes déroulantes sont complétées en arrière-plan (voir ContexteOptions) : on attend que la
   // liste des thèmes contienne autre chose que « aucun thème » avant de commencer à cliquer.
   const { theme } = await caseDe(page, "Cours");
@@ -158,7 +158,7 @@ test("une application qui échoue le dit, sans emporter la page ni le brouillon"
 
   await expect(page.getByText(/Impossible d'appliquer les modifications/)).toBeVisible();
   // La page est toujours là, les cases toujours réglables…
-  await expect(page.getByRole("heading", { name: "Planning de cours" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Programme des cours" })).toBeVisible();
   await expect(theme).toBeEnabled();
   await expect(instructeur).toBeEnabled();
   // …et surtout **le brouillon n'est pas perdu** : un refus ne doit rien coûter, on corrige et on

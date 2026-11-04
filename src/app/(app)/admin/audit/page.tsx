@@ -34,7 +34,7 @@ const RACCOURCIS = [
   // Toute la famille `planning.` : la case remplie, mais aussi les parties ajoutées, renommées,
   // retirées ou déplacées — un filtre « planning » qui ne montrerait pas qui a retiré une partie
   // laisserait justement hors du journal le geste qui efface quelque chose.
-  { q: "planning.", label: "planning", prefixes: ["planning."] },
+  { q: "planning.", label: "programme", prefixes: ["planning."] },
   { q: "invitation.", label: "liens", prefixes: ["invitation."] },
   { q: "connexion.", label: "connexions", prefixes: ["connexion."] },
   { q: "deux_fa", label: "2FA", prefixes: ["deux_fa", "admin.deux_fa"] },

@@ -77,7 +77,7 @@ describe("les gestes proposés", () => {
       ["regler", 2, "Régler des éléments (2 séances)"],
       // Seule « b » porte un thème (hors atelier).
       ["remplacer", 1, "Remplacer un thème (1 séance)"],
-      ["ajouter", 3, "Ajouter dans une partie (3 séances)"],
+      ["ajouter", 3, "Ajouter un élément (3 séances)"],
       // « c » n'a qu'une case d'atelier : rien à retirer d'ici.
       ["retirer", 2, "Retirer un élément du programme (2 séances)"],
     ]);
@@ -155,7 +155,7 @@ describe("ajouter dans une partie", () => {
     expect(blocsProposes([a, b, c])).toEqual([1, 2, 3]);
     expect(blocsProposes([c])).toEqual([1, 2]);
     expect(libelleBlocPropose(2, [a, c])).toBe("Partie 2");
-    expect(libelleBlocPropose(3, [a, c])).toBe("Partie 3 (nouvelle)");
+    expect(libelleBlocPropose(3, [a, c])).toBe("Une nouvelle partie");
   });
 
   it("compte les séances trop courtes, où l'élément ouvre une partie à la fin", () => {

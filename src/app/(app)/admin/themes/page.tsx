@@ -71,7 +71,7 @@ export default async function PageThemesAdmin() {
                 variante="secondaire"
               >
                 <ZoneTexte
-                  label="Thèmes proposés dans les échauffements du planning (un par ligne)"
+                  label="Thèmes proposés dans les échauffements du programme (un par ligne)"
                   name="texte"
                   rows={Math.min(12, themesEchauffement.length + 3)}
                   defaultValue={themesEchauffement.join("\n")}
@@ -83,7 +83,7 @@ export default async function PageThemesAdmin() {
             <Carte titre="Thèmes de cours et options">
               <FormulaireAction action={enregistrerThemes} bouton="Enregistrer les thèmes de cours et options" variante="secondaire">
                 <ZoneTexte
-                  label="Thèmes proposés dans les cours et les options du planning (un par ligne)"
+                  label="Thèmes proposés dans les cours et les options du programme (un par ligne)"
                   name="texte"
                   rows={Math.min(16, themes.length + 2)}
                   defaultValue={themes.join("\n")}

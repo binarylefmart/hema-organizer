@@ -13,7 +13,7 @@ export function emailInvitation(args: { prenom: string; periodeNom: string; url:
 } {
   const motif = args.motif ?? "invitation";
   const intro = {
-    invitation: `Les cours de la période « ${args.periodeNom} » arrivent. Pour dire si tu viens à chaque séance, voir le planning et proposer un atelier, utilise l'application ${args.nomApp}.`,
+    invitation: `Les cours de la période « ${args.periodeNom} » arrivent. Pour dire si tu viens à chaque séance, voir le programme et proposer un atelier, utilise l'application ${args.nomApp}.`,
     renouvellement: `Ton lien d'accès à l'application ${args.nomApp} (période « ${args.periodeNom} ») arrive au bout de ses 4 mois : en voici un nouveau. L'ancien cessera de fonctionner, rien d'autre ne change.`,
     securite: `Par sécurité, ton ancien lien d'accès à ${args.nomApp} (période « ${args.periodeNom} ») a été désactivé : il a été ouvert un nombre anormal de fois. Il ne fonctionne plus, et tous tes appareils ont été déconnectés — même celui que tu es en train d'utiliser. Pour revenir, ouvre le nouveau lien ci-dessous (ou connecte-toi avec ton mot de passe, si tu t'en es défini un).`,
     appareils: `Ton lien d'accès à ${args.nomApp} (période « ${args.periodeNom} ») était déjà ouvert sur 3 appareils en même temps : par sécurité, il est remplacé par celui-ci. L'ancien ne fonctionne plus, et tous tes appareils ont été déconnectés — même celui que tu es en train d'utiliser. Pour revenir, ouvre le nouveau lien ci-dessous (ou connecte-toi avec ton mot de passe, si tu t'en es défini un).`,

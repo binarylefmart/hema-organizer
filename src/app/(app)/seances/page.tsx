@@ -456,6 +456,7 @@ async function SelectionCartes({
       : {
           id: x.id,
           periodId: x.periodId,
+          date: x.date,
           jour: jourSansAnnee(x.date),
           heureDebut: x.heureDebut,
           heureFin: x.heureFin,

@@ -354,7 +354,7 @@ export function entreesJours(jours: readonly JourPropose[]): { valeur: string; l
  * propose « Tous les mardis (4) » à côté de la case maîtresse. Le doublon est assumé — l'entrée dit
  * le jour en toutes lettres, et sa présence ne dépend pas d'un filtre qu'on a oublié avoir posé.
  *
- * Seul le planning s'en sert : l'onglet Séances garde sa case maîtresse seule.
+ * Le planning et l'onglet Séances s'en servent (liste de la barre du bas au téléphone).
  */
 export function joursProposes(lignes: readonly { id: string; date: string }[], selection: ReadonlySet<string>): JourPropose[] {
   const parJour = new Map<number, string[]>();

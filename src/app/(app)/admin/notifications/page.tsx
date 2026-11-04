@@ -375,7 +375,7 @@ export default async function PageNotifications() {
           <p className="-mt-2 text-sm text-texte-secondaire">
             <strong>Rien n&apos;est publié tant que cette case n&apos;est pas cochée</strong>, et aucune notification ne l&apos;ouvre à votre place. Une fois
             cochée, ce qui sort est lisible par n&apos;importe qui, depuis n&apos;importe où : <strong>aucun nom</strong> — ni membre, ni instructeur — mais
-            les dates, les horaires, le <strong>lieu et l&apos;adresse de la salle</strong>, les thèmes et les descriptions écrites dans le planning, les
+            les dates, les horaires, le <strong>lieu et l&apos;adresse de la salle</strong>, les thèmes et les descriptions écrites dans le programme, les
             motifs d&apos;annulation et les taux de participation. À ne cocher que si le site du club affiche vraiment les cours. L&apos;adresse à reporter
             dans le plugin WordPress est dans{" "}
             <Link href="/admin/apropos" className="font-semibold text-lien">

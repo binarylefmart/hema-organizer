@@ -303,7 +303,7 @@ describe("réponse à une proposition : ce qui part, et ce qui en reste au journ
   it("place l'atelier quand la période est ouverte : le refus ne vient que de la clôture", async () => {
     // Contre-épreuve de la précédente, sur le même chemin et le même formulaire.
     const res = await deciderAtelier({}, decision("PLANIFIE"));
-    expect(res.succes).toContain("Atelier placé dans le planning");
+    expect(res.succes).toContain("Atelier placé dans le programme");
     expect(faux.ateliers[0].statut).toBe("PLANIFIE");
   });
 

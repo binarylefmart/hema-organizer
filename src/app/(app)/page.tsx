@@ -238,7 +238,7 @@ export default async function PageAccueil({ searchParams }: Props) {
             Ton compte est prêt. Dès qu&apos;un trimestre sera ouvert et que tu y seras invité(e), tes cours apparaîtront ici
             et tu recevras un email — rien à surveiller d&apos;ici là.
           </p>
-          <p className="mt-2">En attendant, le planning du club est ouvert : va voir ce qui s&apos;y prépare.</p>
+          <p className="mt-2">En attendant, le programme du club est ouvert : va voir ce qui s&apos;y prépare.</p>
         </Alerte>
         {/* Un compte sans trimestre n'a pas de colonnes à lire, mais il a le droit de voir le stage
             du mois prochain : l'annonce est rendue ici, et dans la colonne de droite dans l'autre

@@ -7,14 +7,14 @@ import { COMPTES, connecter } from "./helpers";
  *
  * Ce que ce scénario garde :
  *
- * - **le crayon ouvre les cases d'emblée** (plus d'interrupteur), **la case maîtresse nomme sa portée** et **une puce par jour** (« Les mardis (N) »…)
- *   remplace la liste « Sélectionner par jour » : l'appuyer coche ces séances, l'appuyer de nouveau
- *   (puce enfoncée) les décoche ;
+ * - **le crayon ouvre les cases d'emblée** (plus d'interrupteur), **la case maîtresse nomme sa portée** et **« Sélectionner par jour »**, une liste dans la barre du bas (« Tous les mardis (N) »…) :
+ *   choisir un jour coche ces séances, le choisir de nouveau
+ *   (« Retirer les mardis ») les décoche ;
  * - la barre sombre du bas ouvre le volet ; **« Régler des éléments »** y montre les séances cochées
  *   avec leurs éléments, on coche ceux qu'on veut, « Suivant », puis les réglages ;
  * - **ce réglage n'écrit rien** : les cases entrent dans le brouillon, chacune dit « modifié », la
  *   compteur à côté de ✕ et « Appliquer » les compte, et **✕ les jette** (après confirmation) ;
- * - **« Ajouter dans une partie »** (partie 1, option) part tout de suite ; l'option ajoutée est
+ * - **« Ajouter un élément »** (partie 1, option) part tout de suite ; l'option ajoutée est
  *   retirée depuis sa carte pour rendre le jeu de démonstration tel qu'il était.
  */
 
@@ -58,21 +58,23 @@ test("cocher par jour, régler des éléments dans le brouillon, puis annuler", 
   await expect(premiereCase).not.toBeChecked();
   await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
 
-  // Les puces des jours : la première (le premier jour de la semaine présent).
-  const jours = page.getByRole("group", { name: "Sélectionner par jour" });
-  const puce = jours.getByRole("button", { name: /^(Les \S+s|Le \S+) \(\d+\)$/ }).first();
-  await expect(puce).toHaveAttribute("aria-pressed", "false");
-  const n = Number(/\((\d+)\)$/.exec((await puce.textContent())!.trim())![1]);
-  await puce.click();
-  await expect(puce).toHaveAttribute("aria-pressed", "true");
-  await expect(barre(page)).toBeVisible();
+  // « Sélectionner par jour » : une liste déroulante dans la barre du bas (« Tous les mardis (4) »).
+  const choisirJour = async (motif: RegExp) => {
+    await barre(page).getByRole("combobox", { name: "Sélectionner par jour" }).click();
+    const option = page.getByRole("listbox").getByRole("option", { name: motif }).first();
+    const texte = (await option.textContent())!.trim();
+    await option.click();
+    return texte;
+  };
+  const premier = await choisirJour(/^(Tous les \S+s|Le \S+) \(\d+\)$/);
+  const n = Number(/\((\d+)\)$/.exec(premier)![1]);
   await expect(barre(page).getByText(n === 1 ? "1 séance sélectionnée" : `${n} séances sélectionnées`)).toBeVisible();
 
-  // Appuyée de nouveau, la puce décoche ces séances.
-  await puce.click();
+  // Choisi de nouveau (« Retirer les mardis »), le jour décoche ces séances.
+  await choisirJour(/^Retirer (les \S+s|le \S+) \(\d+\)$/);
   await expect(barre(page).getByText(/^0 séance/)).toBeVisible(); // la barre reste là tout le mode
-  await puce.click();
-  await expect(barre(page)).toBeVisible();
+  await choisirJour(/^(Tous les \S+s|Le \S+) \(\d+\)$/);
+  await expect(barre(page).getByText(n === 1 ? "1 séance sélectionnée" : `${n} séances sélectionnées`)).toBeVisible();
 
   // Une seule barre en bas : ✕ et « Appliquer » y sont, à côté de « Continuer ».
   await expect(page.locator('[data-barre-basse="edition"]')).toHaveCount(0);
@@ -140,9 +142,9 @@ test("ajouter une option dans la partie 1 d'une séance cochée, puis la retirer
   const avant = await options.count();
   await cases.last().check();
 
-  await ouvrirGeste(page, /^Ajouter dans une partie \(1 séance\)$/);
-  await choisir(page, "Dans quelle partie", /^Partie 1$/, volet(page));
-  await choisir(page, "Ce qu'on ajoute", /^Option$/, volet(page));
+  await ouvrirGeste(page, /^Ajouter un élément \(1 séance\)$/);
+  await choisir(page, "Où le placer", /^Partie 1$/, volet(page));
+  await choisir(page, "Quoi ajouter", /^Option$/, volet(page));
   let question = "";
   page.once("dialog", (d) => {
     question = d.message();

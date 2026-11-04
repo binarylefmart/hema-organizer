@@ -51,7 +51,7 @@ export default async function PageAnnuler({ params, searchParams }: Props) {
         <div className="flex flex-col gap-4">
           <Alerte type="succes">Les membres invités ont été prévenus par email{seance.motifAnnulation ? ` — motif : ${seance.motifAnnulation}` : ""}.</Alerte>
           <Link href="/planning" className="-ml-2 inline-flex min-h-11 items-center justify-center self-start px-2">
-            Voir le planning
+            Voir le programme
           </Link>
         </div>
       </PageAuth>
@@ -67,7 +67,7 @@ export default async function PageAnnuler({ params, searchParams }: Props) {
         <div className="flex flex-col gap-4">
           <Alerte type="attention">Ce lien d&apos;annulation a déjà servi une fois. Ouvre l&apos;application pour annuler cette séance.</Alerte>
           <Link href="/planning" className="-ml-2 inline-flex min-h-11 items-center justify-center self-start px-2">
-            Voir le planning
+            Voir le programme
           </Link>
         </div>
       </PageAuth>

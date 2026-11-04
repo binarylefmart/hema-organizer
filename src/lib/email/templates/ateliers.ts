@@ -16,11 +16,11 @@ export function emailAtelierStatut(a: Args): { sujet: string; contenu: EmailCont
   const commentaire = a.commentaire ? [`Commentaire de l'instructeur : « ${a.commentaire} »`] : [];
   if (a.statut === "PLANIFIE" && a.seance) {
     return {
-      sujet: `Ton atelier « ${a.titre} » est dans le planning`,
+      sujet: `Ton atelier « ${a.titre} » est dans le programme`,
       contenu: {
         titre: `C'est prévu, ${a.prenom} !`,
         paragraphes: [
-          `Ton atelier « ${a.titre} » est placé dans le planning le ${formatDateLongue(a.seance.date)} à ${formatHeure(a.seance.heureDebut)} (${a.seance.lieu}).`,
+          `Ton atelier « ${a.titre} » est placé dans le programme le ${formatDateLongue(a.seance.date)} à ${formatHeure(a.seance.heureDebut)} (${a.seance.lieu}).`,
           ...commentaire,
           "Merci pour ta proposition, à très vite sur le pas d'armes.",
         ],

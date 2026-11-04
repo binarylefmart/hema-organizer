@@ -78,7 +78,7 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
     await expect(page.getByRole("dialog", { name: "Programmer « Jeu des trois touches »" })).toBeVisible();
   } else {
     await carte.getByRole("combobox", { name: "Que veux-tu faire ?" }).click();
-    await page.getByRole("option", { name: "Placer dans le planning" }).click();
+    await page.getByRole("option", { name: "Placer dans le programme" }).click();
   }
   const zone = telephone ? page.getByRole("dialog") : carte;
   await zone.getByLabel(/Un mot pour/).fill("Bonne idée, on programme ça vite.");
@@ -86,7 +86,7 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
   const options = page.getByRole("option");
   expect(await options.count(), "il faut au moins deux séances à venir pour placer un atelier").toBeGreaterThan(1);
   await options.nth(1).click();
-  await zone.getByRole("button", { name: telephone ? "Programmer" : "Placer dans le planning", exact: true }).click();
+  await zone.getByRole("button", { name: telephone ? "Programmer" : "Placer dans le programme", exact: true }).click();
   // La proposition quitte aussitôt la file « En attente » (la liste est revalidée)
   await expect(page.locator("section", { hasText: "Jeu des trois touches" })).toHaveCount(0, { timeout: 15_000 });
   await page.goto("/gestion/ateliers?statut=PLANIFIE");
@@ -115,7 +115,7 @@ test("proposition d'atelier → placement dans le planning", async ({ page }) =>
   await connecter(page, COMPTES.proposeur);
   await page.goto("/ateliers");
   const mienne = page.locator("section", { hasText: "Jeu des trois touches" }).first();
-  await expect(mienne.getByText("Dans le planning", { exact: true })).toBeVisible();
+  await expect(mienne.getByText("Dans le programme", { exact: true })).toBeVisible();
   await expect(mienne.getByText("Bonne idée, on programme ça vite.")).toBeVisible();
   await expect(mienne.getByRole("link", { name: "Modifier" })).toHaveCount(0);
 });

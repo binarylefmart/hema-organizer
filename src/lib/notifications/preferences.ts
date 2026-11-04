@@ -178,7 +178,7 @@ export const RAISON_API_EXCLUE: Partial<Record<TypeNotification, string>> = {
   desistement_tardif:
     "Ce message nomme le membre qui se retire d'un cours, à l'intention des seuls instructeurs du club. Aucun nom ne sort du club, et un site web n'a rien à décider deux heures avant un cours.",
   planning_modifie:
-    "Ce message nomme qui a modifié le planning et qui encadre chaque élément, à l'intention des seuls instructeurs du club. Le programme publiable sort déjà avec le cours, sans aucun nom.",
+    "Ce message nomme qui a modifié le programme et qui encadre chaque élément, à l'intention des seuls instructeurs du club. Le programme publiable sort déjà avec le cours, sans aucun nom.",
   atelier_statut: "Réponse à une proposition : le message nomme son auteur et répond à son écrit. Il n'a rien à faire sur une page publique.",
   periode_suivante: "Affaire de bureau : « le trimestre suivant n'existe pas encore » est un oubli d'administrateur, pas une information pour les visiteurs du site.",
   periode_non_activee: "Même famille, même raison : « personne n'a appuyé sur Activer » ne regarde que le bureau.",
@@ -264,12 +264,12 @@ export const DESCRIPTIONS: Record<TypeNotification, DescriptionNotification> = {
     quand: `À tous les instructeurs du club — sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être —, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans les ${libelleDelaiDesistement()} qui précèdent le cours — avec son nom et l'effectif mis à jour. Jamais sur les salons : le message nomme quelqu'un.`,
   },
   planning_modifie: {
-    titre: "Planning modifié",
-    quand: "À tous les instructeurs du club — sauf l'auteur du changement —, dès qu'un échauffement, un cours ou une option est ajouté, supprimé, ou change de thème ou d'instructeur principal dans le planning d'un cours à venir, à l'application des modifications : la date du cours, ce qui a été ajouté, changé ou supprimé, et qui l'a fait. Un email par enregistrement, une notification de téléphone par journée modifiée. Jamais sur les salons : le message nomme des personnes.",
+    titre: "Programme modifié",
+    quand: "À tous les instructeurs du club — sauf l'auteur du changement —, dès qu'un échauffement, un cours ou une option est ajouté, supprimé, ou change de thème ou d'instructeur principal dans le programme d'un cours à venir, à l'application des modifications : la date du cours, ce qui a été ajouté, changé ou supprimé, et qui l'a fait. Un email par enregistrement, une notification de téléphone par journée modifiée. Jamais sur les salons : le message nomme des personnes.",
   },
   atelier_statut: {
     titre: "Réponse à une proposition d'atelier",
-    quand: "À la personne qui a proposé l'atelier, dès que l'équipe le place dans le planning ou le refuse.",
+    quand: "À la personne qui a proposé l'atelier, dès que l'équipe le place dans le programme ou le refuse.",
   },
   evenement_nouveau: {
     titre: "Nouvel événement",
@@ -422,7 +422,7 @@ export const RAISON_ROUTAGE_FIXE: Partial<Record<TypeNotification, string>> = {
   desistement_tardif:
     "Elle nomme le membre qui se retire et ne vise que les instructeurs de la séance : sur la liste du club, ce serait afficher devant tout le monde qui a lâché le cours au dernier moment.",
   planning_modifie:
-    "Elle nomme qui a modifié le planning et qui encadre chaque élément, et ne vise que les instructeurs du club : la liste du club n'a pas à suivre les retouches du programme au fil de l'eau.",
+    "Elle nomme qui a modifié le programme et qui encadre chaque élément, et ne vise que les instructeurs du club : la liste du club n'a pas à suivre les retouches du programme au fil de l'eau.",
   atelier_statut:
     "Réponse à une proposition : le message nomme son auteur et répond à son écrit. Le publier sur une liste, c'est afficher le refus d'une idée devant tout le club.",
   periode_suivante: "Affaire de bureau : deux ou trois destinataires. Une liste n'économiserait rien et noierait le club sous des rappels qui ne le regardent pas.",
