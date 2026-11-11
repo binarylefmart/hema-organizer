@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.86.0
+
+### Nouveautés
+
+- **audit** : journal lisible — groupé par jour, en français, détails en clair
+
 ## 0.85.0
 
 ### Nouveautés

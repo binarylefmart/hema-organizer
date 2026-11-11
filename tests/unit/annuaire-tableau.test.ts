@@ -190,8 +190,8 @@ describe("l'annuaire range un tableau, sans second arbre", () => {
  * d'avant est donc le bon, et ce fichier garde qu'il n'a pas bougé.
  */
 describe("le palier de `Tableau` est un ajout : qui ne l'a pas demandé n'a rien senti", () => {
+  // Le journal d'audit n'est plus un tableau : une liste groupée par jour, plus lisible au téléphone.
   const AUTRES = [
-    "src/app/(app)/admin/audit/page.tsx",
     "src/app/(app)/admin/sessions/page.tsx",
     "src/app/(app)/gestion/evenements/page.tsx",
   ];

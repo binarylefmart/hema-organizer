@@ -1272,6 +1272,14 @@ function toutesLesScenes(): Scene[] {
       description: "Journal d'audit : une personne choisie, trié par personne, horodatage à la seconde",
       connexion: COMPTES.admin,
       chemin: "/admin/audit?q=connexion.&tri=personne",
+      pleinePage: true,
+    },
+    {
+      nom: "admin-audit-liste",
+      description: "Journal d'audit : entrées groupées par jour, en français, détails en clair",
+      connexion: COMPTES.admin,
+      chemin: "/admin/audit",
+      pleinePage: true,
     },
     { nom: "admin-audit", description: "Administration : journal d'audit (filtres, dates, export CSV, raccourcis)", connexion: COMPTES.admin, chemin: "/admin/audit" },
     /*
