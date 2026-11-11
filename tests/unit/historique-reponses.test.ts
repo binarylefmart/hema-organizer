@@ -1,0 +1,178 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * **Historique des réponses et délai réglable des désistements**.
+ */
+const faux = vi.hoisted(() => ({
+  reglage: null as string | null,
+  seances: [{ id: "s1", date: "2026-10-08", heureDebut: "20:00" }],
+  ecrits: [] as Array<Record<string, unknown>>,
+  lignes: [] as Array<{ sessionId: string; tardif: boolean }>,
+  panne: false,
+  audits: [] as unknown[][],
+}));
+
+vi.mock("@/lib/audit", () => ({ audit: vi.fn(async (...args: unknown[]) => faux.audits.push(args)) }));
+
+vi.mock("@/lib/db", () => ({
+  db: {
+    setting: { findUnique: vi.fn(async () => (faux.reglage === null ? null : { value: faux.reglage })) },
+    session: { findMany: vi.fn(async () => faux.seances) },
+    attendanceChange: {
+      createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+        if (faux.panne) throw new Error("base en panne");
+        faux.ecrits.push(...data);
+        return { count: data.length };
+      }),
+      findMany: vi.fn(async () => faux.lignes),
+    },
+  },
+}));
+
+const { lireDelaiDesistement, getDelaiDesistementMin } = await import("@/lib/settings");
+const { delaiDesistementSchema } = await import("@/lib/validation/gestion");
+const { dansFenetreDesistementTardif } = await import("@/lib/notifications/desistement");
+const { noterChangementsReponse, compterDesistements, calculerStatsDesistements, libelleAvantCours, minutesAvantCours } = await import("@/lib/historique-reponses");
+const { libelleDelaiDesistement } = await import("@/lib/constants");
+
+/** 20h00 à Paris le 8 octobre 2026 = 18:00 UTC. */
+const DEBUT = new Date("2026-10-08T18:00:00Z");
+const CHLOE = { id: "chloe", email: "chloe@club.fr" };
+const heuresAvant = (h: number) => new Date(DEBUT.getTime() - h * 3_600_000);
+
+beforeEach(() => {
+  faux.reglage = null;
+  faux.ecrits = [];
+  faux.lignes = [];
+  faux.panne = false;
+  faux.audits = [];
+});
+
+describe("délai des désistements", () => {
+  it("se saisit en heures entières, de 1 heure à 2 semaines, et se range en minutes", () => {
+    expect(delaiDesistementSchema.parse(24)).toBe(1440);
+    expect(delaiDesistementSchema.parse(336)).toBe(14 * 1440);
+    expect(delaiDesistementSchema.safeParse(0).success).toBe(false);
+    expect(delaiDesistementSchema.safeParse(337).success).toBe(false);
+    expect(delaiDesistementSchema.safeParse(1.5).success).toBe(false);
+  });
+
+  it("vaut deux heures tant que rien n'est réglé, ou si la valeur est illisible", async () => {
+    expect(lireDelaiDesistement(null)).toBe(120);
+    expect(lireDelaiDesistement("abc")).toBe(120);
+    expect(lireDelaiDesistement("90")).toBe(120);
+    expect(lireDelaiDesistement("99999")).toBe(120);
+    expect(lireDelaiDesistement("1440")).toBe(1440);
+    faux.reglage = "360";
+    expect(await getDelaiDesistementMin()).toBe(360);
+  });
+
+  it("élargit la fenêtre de l'alerte", () => {
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(5))).toBe(false);
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(5), 360)).toBe(true);
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(24), 1440)).toBe(true);
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(25), 1440)).toBe(false);
+  });
+});
+
+describe("noterChangementsReponse", () => {
+  it("note chaque vrai changement, marque les désistements et ceux du délai", async () => {
+    faux.reglage = "1440";
+    await noterChangementsReponse(
+      CHLOE,
+      [
+        { sessionId: "s1", userId: "chloe", avant: "PRESENT", apres: "ABSENT" },
+        { sessionId: "s1", userId: "chloe", avant: "ABSENT", apres: "ABSENT" },
+        { sessionId: "s1", userId: "m1", avant: null, apres: "ABSENT" },
+        { sessionId: "s1", userId: "m2", avant: "PEUT_ETRE", apres: null },
+      ],
+      heuresAvant(10),
+    );
+    expect(faux.ecrits.map((e) => [e.userId, e.desistement, e.tardif])).toEqual([
+      ["chloe", true, true],
+      ["m1", false, false],
+      ["m2", false, false],
+    ]);
+    // Le journal d'audit horodate les seuls gestes de la personne elle-même (ici, Chloé).
+    expect(faux.audits.map((a) => a[1])).toEqual(["presence.desistement"]);
+    expect(faux.audits[0][3]).toMatchObject({ sessionId: "s1", avant: "PRESENT", apres: "ABSENT", derniereMinute: true, avantCoursMin: 600 });
+  });
+
+  it("hors du délai : désistement noté, mais pas « de dernière minute »", async () => {
+    await noterChangementsReponse(CHLOE, [{ sessionId: "s1", userId: "chloe", avant: "PRESENT", apres: "PEUT_ETRE" }], heuresAvant(10));
+    expect(faux.ecrits[0]).toMatchObject({ desistement: true, tardif: false, auteurId: "chloe" });
+  });
+
+  it("ne lève jamais", async () => {
+    faux.panne = true;
+    const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(noterChangementsReponse({ id: "x", email: null }, [{ sessionId: "s1", userId: "x", avant: "PRESENT", apres: "ABSENT" }])).resolves.toBeUndefined();
+    erreur.mockRestore();
+  });
+});
+
+describe("compterDesistements", () => {
+  it("compte des séances distinctes", async () => {
+    faux.lignes = [
+      { sessionId: "s1", tardif: false },
+      { sessionId: "s1", tardif: true },
+      { sessionId: "s2", tardif: false },
+    ];
+    expect(await compterDesistements("chloe")).toEqual({ seances: 2, tardifs: 1 });
+  });
+});
+
+describe("libellés", () => {
+  it("dit le délai dans la plus grande unité juste", () => {
+    expect(libelleDelaiDesistement(120)).toBe("2 heures");
+    expect(libelleDelaiDesistement(1440)).toBe("1 jour");
+    expect(libelleDelaiDesistement(3 * 1440)).toBe("3 jours");
+    expect(libelleDelaiDesistement(14 * 1440)).toBe("2 semaines");
+    expect(libelleDelaiDesistement(30 * 60)).toBe("30 heures");
+  });
+
+  it("dit l'écart au cours", () => {
+    expect(libelleAvantCours(45)).toBe("45 min avant le cours");
+    expect(libelleAvantCours(200)).toBe("3 h 20 avant le cours");
+    expect(libelleAvantCours(180)).toBe("3 h avant le cours");
+    expect(libelleAvantCours(2 * 1440 + 240)).toBe("2 j 4 h avant le cours");
+    expect(libelleAvantCours(0)).toBe("après le début du cours");
+    expect(minutesAvantCours(heuresAvant(3), "2026-10-08", "20:00")).toBe(180);
+  });
+});
+
+describe("calculerStatsDesistements", () => {
+  const ligne = (id: string, userId: string, sessionId: string, h: number, tardif = false) => ({
+    id,
+    userId,
+    sessionId,
+    avant: "PRESENT",
+    apres: "ABSENT",
+    tardif,
+    createdAt: heuresAvant(h),
+    user: { prenom: userId, nom: "" },
+    session: { date: "2026-10-08", heureDebut: "20:00" },
+  });
+
+  it("compte personne × séance une fois, classe par délai et par personne", () => {
+    // Du plus récent au plus ancien, comme la lecture en base.
+    const st = calculerStatsDesistements(9, [
+      ligne("a", "chloe", "s1", 1, true),
+      ligne("b", "chloe", "s1", 50),
+      ligne("c", "charlie", "s1", 30),
+      ligne("d", "chloe", "s2", 200),
+    ]);
+    expect(st.desistements).toBe(3);
+    expect(st.tardifs).toBe(1);
+    expect(st.personnes).toBe(2);
+    expect(st.parMembre[0]).toMatchObject({ userId: "chloe", n: 2, tardifs: 1 });
+    expect(st.parSeance[0]).toMatchObject({ id: "s1", n: 2 });
+    expect(st.tranches.map((t) => t.n)).toEqual([1, 0, 1, 0, 1, 0]);
+    expect(st.medianeMin).toBe(30 * 60);
+    expect(st.derniers).toHaveLength(4);
+  });
+
+  it("rien à compter", () => {
+    expect(calculerStatsDesistements(0, [])).toMatchObject({ desistements: 0, medianeMin: null });
+  });
+});

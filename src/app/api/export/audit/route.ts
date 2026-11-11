@@ -4,7 +4,7 @@ import { assertPermission, type CurrentUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { csvAudit } from "@/lib/alertes";
-import { isIsoDate } from "@/lib/dates";
+import { lireFiltresAudit, orderByAudit, whereAudit } from "@/lib/audit-filtres";
 import { baseUrl } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -45,24 +45,10 @@ export async function GET(req: NextRequest) {
     return new NextResponse("Accès refusé", { status: 403 });
   }
   const p = req.nextUrl.searchParams;
-  const q = p.get("q") ?? "";
-  const du = p.get("du");
-  const au = p.get("au");
-  const where = {
-    ...(q ? { OR: [{ action: { contains: q } }, { acteurEmail: { contains: q } }, { cible: { contains: q } }] } : {}),
-    /*
-     * **Une date valide de FORME peut être fausse de CALENDRIER**. `^\d{4}-\d{2}-\d{2}$` accepte
-     * `2026-13-45`, dont `new Date` fait un `Invalid Date` : Prisma levait alors une
-     * `PrismaClientValidationError`, et l'export rendait une 500. `isIsoDate` vérifie la forme
-     * **et** que la date existe ; c'est le validateur du dépôt, il n'y avait pas à en écrire un
-     * second.
-     */
-    ...(isIsoDate(du ?? "") || isIsoDate(au ?? "")
-      ? { date: { ...(isIsoDate(du ?? "") ? { gte: new Date(`${du}T00:00:00Z`) } : {}), ...(isIsoDate(au ?? "") ? { lte: new Date(`${au}T23:59:59Z`) } : {}) } }
-      : {}),
-  };
-  const lignes = await db.auditLog.findMany({ where, orderBy: { date: "desc" }, take: 50_000 });
-  await audit(user, "export.audit", null, { q, du, au, lignes: lignes.length });
+  // Le même lecteur que l'écran : raccourcis, personne, dates et tri compris.
+  const f = lireFiltresAudit({ q: p.get("q"), du: p.get("du"), au: p.get("au"), personne: p.get("personne"), tri: p.get("tri") });
+  const lignes = await db.auditLog.findMany({ where: whereAudit(f), orderBy: orderByAudit(f.tri), take: 50_000 });
+  await audit(user, "export.audit", null, { ...f, lignes: lignes.length });
   return new NextResponse("﻿" + csvAudit(lignes), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",

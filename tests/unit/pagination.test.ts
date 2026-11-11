@@ -35,8 +35,9 @@ describe("pagination des listes d'administration", () => {
       expect(code).toContain("← Plus récent");
       expect(code).toContain("Plus ancien →");
       expect(code).toMatch(/Page \{p\} \/ \{pages\}/);
-      expect(code).toMatch(/page=\$\{p - 1\}/);
-      expect(code).toMatch(/page=\$\{p \+ 1\}/);
+      // Le journal d'audit passe par `lien()`, qui reconduit filtres et tri (`paramsAudit`).
+      expect(code).toMatch(fichier === AUDIT ? /lien\(\{\}, p - 1\)/ : /page=\$\{p - 1\}/);
+      expect(code).toMatch(fichier === AUDIT ? /lien\(\{\}, p \+ 1\)/ : /page=\$\{p \+ 1\}/);
     }
   });
 

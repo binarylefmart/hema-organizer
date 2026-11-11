@@ -261,11 +261,25 @@ export const PART_EFFECTIF_LIVREE = 20;
  */
 export const DELAI_DESISTEMENT_TARDIF_MIN = 120;
 
-/** « 2 heures » : la fenêtre ci-dessus, dite en clair dans les phrases de réglage et les emails. */
+/**
+ * **Le délai se règle par le club** (demande de Delta) : `Setting "desistement.delaiMinutes"`,
+ * en heures entières de {@link DELAI_DESISTEMENT_HEURES_MIN} à {@link DELAI_DESISTEMENT_HEURES_MAX}
+ * — deux semaines au plus, demandé par Delta —, saisi en heures ou en jours (carte « Désistements de dernière minute » de *Notifications*). La constante ci-dessus reste le défaut,
+ * tant que rien n'est enregistré. Lu par `getDelaiDesistementMin` (`src/lib/settings.ts`).
+ */
+export const DELAI_DESISTEMENT_HEURES_MIN = 1;
+export const DELAI_DESISTEMENT_HEURES_MAX = 14 * 24;
+
+/**
+ * « 2 heures », « 3 jours », « 2 semaines » : la fenêtre ci-dessus, dite en clair dans les phrases de
+ * réglage et les emails — dans la plus grande unité qui tombe juste.
+ */
 export function libelleDelaiDesistement(minutes = DELAI_DESISTEMENT_TARDIF_MIN): string {
-  if (minutes % 60 !== 0) return `${minutes} minutes`;
-  const heures = minutes / 60;
-  return `${heures} heure${heures > 1 ? "s" : ""}`;
+  const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
+  if (minutes % (7 * 1440) === 0) return pluriel(minutes / (7 * 1440), "semaine");
+  if (minutes % 1440 === 0) return pluriel(minutes / 1440, "jour");
+  if (minutes % 60 === 0) return pluriel(minutes / 60, "heure");
+  return `${minutes} minutes`;
 }
 
 /**

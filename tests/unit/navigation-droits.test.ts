@@ -71,12 +71,15 @@ describe("journal d'audit : des adresses propres", () => {
   it("ne concatène les filtres que s'il y en a", () => {
     // `?page=2&` (ou un `q=&du=&au=` sans objet) au bout de chaque lien de pagination
     expect(code).not.toContain("&${params}");
-    expect(code).toContain("params ?");
-    expect(code).toContain("avecFiltres(");
+    expect(code).toContain("suite ? `?${suite}` : \"\"");
   });
 
-  it("n'emporte que les filtres remplis", () => {
-    expect(code).toMatch(/new URLSearchParams\(Object\.entries\(\{ q, du, au \}\)\.filter/);
+  it("n'emporte que les filtres remplis (et pas le tri par défaut)", async () => {
+    const { lireFiltresAudit, paramsAudit } = await import("@/lib/audit-filtres");
+    expect(paramsAudit(lireFiltresAudit({})).toString()).toBe("");
+    expect(paramsAudit(lireFiltresAudit({ q: "presence.", du: "2026-13-45", tri: "recent" })).toString()).toBe("q=presence.");
+    expect(paramsAudit(lireFiltresAudit({ personne: "abc", tri: "personne" })).toString()).toBe("personne=abc&tri=personne");
+    expect(paramsAudit(lireFiltresAudit({ personne: "x'; drop", tri: "n'importe" })).toString()).toBe("");
   });
 });
 

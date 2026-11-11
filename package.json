@@ -1,6 +1,6 @@
 {
   "name": "hema-organizer",
-  "version": "0.84.1",
+  "version": "0.85.0",
   "description": "Présences, planning et ateliers d'un club d'AMHE (HEMA) — application web auto-hébergée",
   "scripts": {
     "dev": "next dev",

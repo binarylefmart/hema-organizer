@@ -23,6 +23,7 @@ import {
 import { lignesNotificationsMembre } from "@/lib/notifications/membre";
 import { aDejaUnAcces, periodeDuLien } from "@/lib/membres";
 import { Carte } from "@/components/ui/Carte";
+import { compterDesistements } from "@/lib/historique-reponses";
 import { Case, Champ } from "@/components/ui/Champ";
 import { ChampListe } from "@/components/ui/ChampListe";
 import { FormulaireAction } from "@/components/ui/FormulaireAction";
@@ -58,6 +59,12 @@ export default async function PageMembre({ params }: Props) {
     },
   });
   if (!m) notFound();
+  // Les désistements notés depuis l'historique des réponses (v0.85.0) : séances distinctes, non annulées.
+  const desistements = await compterDesistements(m.id);
+  const phraseDesistements =
+    desistements.seances === 0
+      ? "aucun désistement"
+      : `${desistements.seances}\u00a0désistement${desistements.seances > 1 ? "s" : ""}${desistements.tardifs > 0 ? ` (dont ${desistements.tardifs} de dernière minute)` : ""}`;
   // Compte de connexion du portail : ce n'est pas une personne du club (ni lien personnel, ni présence)
   const portail = estCompteDeService(m);
   const modifiable = canEditUser(acteur, m);
@@ -365,7 +372,7 @@ export default async function PageMembre({ params }: Props) {
           <p className="text-texte-secondaire tel:hidden">
             {portail
               ? `${m.email ?? "sans adresse email"}\u00a0· compte de connexion du portail`
-              : `${m.email ?? "sans adresse email"}\u00a0· ${m._count.invitations > 0 || m.passwordHash ? "a déjà ouvert l'application" : aUnEmail ? "n'a encore jamais ouvert son lien" : "pas de lien personnel"}\u00a0· ${m._count.attendances}\u00a0réponses\u00a0· ${m._count.ateliers}\u00a0ateliers`}
+              : `${m.email ?? "sans adresse email"}\u00a0· ${m._count.invitations > 0 || m.passwordHash ? "a déjà ouvert l'application" : aUnEmail ? "n'a encore jamais ouvert son lien" : "pas de lien personnel"}\u00a0· ${m._count.attendances}\u00a0réponses\u00a0· ${phraseDesistements}\u00a0· ${m._count.ateliers}\u00a0ateliers`}
           </p>
           {/* **Au téléphone, sous le nom : l'adresse, puis l'état du lien** — ce que la ligne de
               l'annuaire ne montre plus. Les chiffres de la personne suivent, en plus petit. */}
@@ -377,7 +384,7 @@ export default async function PageMembre({ params }: Props) {
               <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <Pastille ton={etatLien.ton}>{etatLien.libelle}</Pastille>
                 <span className="text-texte-secondaire">
-                  {m._count.attendances}&nbsp;réponse{m._count.attendances > 1 ? "s" : ""}&nbsp;· {m._count.ateliers}&nbsp;atelier{m._count.ateliers > 1 ? "s" : ""}
+                  {m._count.attendances}&nbsp;réponse{m._count.attendances > 1 ? "s" : ""}&nbsp;· {phraseDesistements}&nbsp;· {m._count.ateliers}&nbsp;atelier{m._count.ateliers > 1 ? "s" : ""}
                 </span>
               </p>
             )}

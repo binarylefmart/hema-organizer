@@ -28,6 +28,8 @@ import { chargerPlanning } from "@/lib/planning";
 import { Pastille } from "@/components/ui/Pastille";
 import { PLEINE_LARGEUR } from "@/components/ui/pleine-largeur";
 import { Icone } from "@/components/ui/Icone";
+import { HistoriqueReponses } from "@/components/seances/HistoriqueReponses";
+import { historiqueSeance } from "@/lib/historique-reponses";
 
 export const metadata: Metadata = { title: "Séance" };
 
@@ -48,7 +50,7 @@ export default async function PageSeance({ params, searchParams }: Props) {
    * un seul endroit où l'on règle les parties, avec son brouillon et ses deux boutons.
    */
   const enEdition = modeEditionDemande((await searchParams).modifier);
-  const [carte, brut, periodes, lieux, club] = await Promise.all([
+  const [carte, brut, periodes, lieux, club, historique] = await Promise.all([
     seanceCarte(id, user),
     db.session.findUnique({ where: { id }, include: { ateliers: { include: { proposePar: true } } } }),
     db.period.findMany({ orderBy: { dateDebut: "desc" }, select: { id: true, nom: true } }),
@@ -57,6 +59,7 @@ export default async function PageSeance({ params, searchParams }: Props) {
     // peut pas la lire lui-même (voir `src/lib/constants.ts`). Lecture mise en cache pour la durée
     // de la requête.
     identite(),
+    historiqueSeance(id),
   ]);
   if (!carte || !brut) notFound();
   const planning = await chargerPlanning(carte.periodId, user);
@@ -203,6 +206,10 @@ export default async function PageSeance({ params, searchParams }: Props) {
           )}
         </Carte>
       </div>
+
+      <Carte titre="Historique des réponses">
+        <HistoriqueReponses lignes={historique} />
+      </Carte>
 
       {brut.ateliers.length > 0 && (
         <Carte titre="Ateliers rattachés">

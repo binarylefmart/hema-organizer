@@ -1,7 +1,8 @@
 import { db } from "./db";
 import { env } from "./env";
 import { chiffrer, dechiffrer } from "./crypto";
-import { jalonsRappelSchema } from "./validation/gestion";
+import { delaiDesistementSchema, jalonsRappelSchema } from "./validation/gestion";
+import { DELAI_DESISTEMENT_TARDIF_MIN } from "./constants";
 
 /**
  * Paramètres modifiables dans l'app (table Setting, clé/valeur).
@@ -48,6 +49,7 @@ export const CLES = {
   lieux: "lieux",
   telegram: "telegram",
   rappelsJalons: "rappels.jalons",
+  desistementDelai: "desistement.delaiMinutes",
   choixCours: "presences.choixCours",
 } as const;
 
@@ -99,6 +101,34 @@ export async function getJalonsRappel(): Promise<number[]> {
 
 export async function setJalonsRappel(jalons: readonly number[]): Promise<void> {
   await setSetting(CLES.rappelsJalons, jalons.join(","));
+}
+
+/**
+ * **Lit `desistement.delaiMinutes`** : le délai, en minutes, dans lequel un désistement prévient les
+ * instructeurs. Une valeur illisible ou hors bornes retombe sur le défaut (deux heures).
+ */
+export function lireDelaiDesistement(valeur: string | null): number {
+  if (valeur === null || !/^\d+$/.test(valeur.trim())) return DELAI_DESISTEMENT_TARDIF_MIN;
+  const minutes = Number(valeur.trim());
+  if (minutes % 60 !== 0) return DELAI_DESISTEMENT_TARDIF_MIN;
+  const lu = delaiDesistementSchema.safeParse(minutes / 60);
+  return lu.success ? lu.data : DELAI_DESISTEMENT_TARDIF_MIN;
+}
+
+/**
+ * Le délai réglé par le club. **Ne lève jamais** : il est lu sur le chemin de la réponse d'un membre
+ * (alerte et historique), et une lecture qui échoue vaut le défaut, jamais une réponse refusée.
+ */
+export async function getDelaiDesistementMin(): Promise<number> {
+  try {
+    return lireDelaiDesistement(await getSetting(CLES.desistementDelai));
+  } catch {
+    return DELAI_DESISTEMENT_TARDIF_MIN;
+  }
+}
+
+export async function setDelaiDesistementMin(minutes: number): Promise<void> {
+  await setSetting(CLES.desistementDelai, String(minutes));
 }
 
 /**

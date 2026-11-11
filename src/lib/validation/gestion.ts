@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { joursAvant } from "@/lib/dates";
-import { ATELIER_STATUTS, FORME_WEBHOOK_DISCORD, NATURES_ELEMENT, NIVEAU_DEFAUT, NIVEAUX, PARTIE_DESCRIPTION_MAX, ROLES, THEME_MAX } from "@/lib/constants";
+import { ATELIER_STATUTS, DELAI_DESISTEMENT_HEURES_MAX, DELAI_DESISTEMENT_HEURES_MIN, FORME_WEBHOOK_DISCORD, NATURES_ELEMENT, NIVEAU_DEFAUT, NIVEAUX, PARTIE_DESCRIPTION_MAX, ROLES, THEME_MAX } from "@/lib/constants";
 import { dateDepuisSaison, saisonsProposees } from "@/lib/blasons";
 import { isHHMM, isIsoDate } from "@/lib/dates";
 import { emailSchema } from "./auth";
@@ -354,6 +354,17 @@ export const decisionAtelierSchema = z.object({
 });
 
 export const recapHourSchema = z.object({ recapHour: heureSchema });
+
+/**
+ * **Le délai d'alerte des désistements** (`desistement.delaiMinutes`) : un nombre entier d'heures avant
+ * le cours, saisi en heures, rangé en minutes.
+ */
+export const delaiDesistementSchema = z
+  .number({ error: "Indique un nombre d'heures." })
+  .int("Un nombre d'heures entier.")
+  .min(DELAI_DESISTEMENT_HEURES_MIN, `Au moins ${DELAI_DESISTEMENT_HEURES_MIN} heure avant le cours.`)
+  .max(DELAI_DESISTEMENT_HEURES_MAX, "Au plus 2 semaines (14 jours) avant le cours.")
+  .transform((h) => h * 60);
 
 /** Plafonds des délais de rappel (réglage `rappels.jalons`). */
 export const JALONS_RAPPEL_MAX = 3;

@@ -13,7 +13,8 @@ import { enregistrerCodesSecours, genererCodesSecours } from "@/lib/auth/codes-s
 import { CHEMIN_ACTIVATION_ADMIN, compteAcces, deuxFaActive, ouvrirReglage2fa } from "@/lib/auth/acces-admin";
 import { CHEMIN_MA_DEUX_FA } from "@/lib/auth/demande-deux-fa";
 import { redirect } from "next/navigation";
-import { getDiscordWebhookUrl, setDiscordWebhookUrl, setJalonsRappel, setSetting, CLES } from "@/lib/settings";
+import { getDiscordWebhookUrl, setDelaiDesistementMin, setDiscordWebhookUrl, setJalonsRappel, setSetting, CLES } from "@/lib/settings";
+import { libelleDelaiDesistement } from "@/lib/constants";
 import { phraseJalons } from "@/lib/notifications/planification";
 import { estTypeDiscord, salonPour, setSalonDiscord } from "@/lib/notifications/webhooks";
 import { setAlertesActivees, setRetentionAuditJours } from "@/lib/alertes";
@@ -49,7 +50,7 @@ import {
 import { sendEmailNow } from "@/lib/email/mailer";
 import { emailTest } from "@/lib/email/templates/ateliers";
 import { caseCochee, champ, zodToFormState, type FormState } from "@/lib/form";
-import { alertesSecuriteSchema, jalonsRappelSchema, publicationCoursSchema, recapHourSchema, retentionAuditSchema, webhookDiscordSchema } from "@/lib/validation/gestion";
+import { alertesSecuriteSchema, delaiDesistementSchema, jalonsRappelSchema, publicationCoursSchema, recapHourSchema, retentionAuditSchema, webhookDiscordSchema } from "@/lib/validation/gestion";
 import { z } from "zod";
 import { formatDateHeure } from "@/lib/dates";
 import { identite } from "@/lib/identite";
@@ -91,6 +92,25 @@ export async function definirJalonsRappel(_prev: FormState, fd: FormData): Promi
   revalidatePath("/admin/notifications");
   revalidatePath("/admin/notifications/email");
   return { succes: parsed.data.length === 0 ? "Plus aucun rappel ne part." : `Rappels envoyés ${phraseJalons(parsed.data)}.` };
+}
+
+/**
+ * **Le délai d'alerte des désistements** (`desistement.delaiMinutes`) : un nombre et son
+ * unité (heures ou jours), de 1 heure à 2 semaines avant le cours. Un désistement plus tôt ne prévient personne, mais reste noté dans l'historique de la séance.
+ * Même serrure que les délais de rappel, sur le même écran.
+ */
+export async function definirDelaiDesistement(_prev: FormState, fd: FormData): Promise<FormState> {
+  const user = await assertPermission("settings.technical");
+  const saisi = champ(fd, "delaiValeur").trim();
+  const enJours = champ(fd, "delaiUnite") === "jours";
+  const nombre = /^\d+$/.test(saisi) ? Number(saisi) : Number.NaN;
+  const parsed = delaiDesistementSchema.safeParse(enJours ? nombre * 24 : nombre);
+  if (!parsed.success) return { erreur: parsed.error.issues[0]?.message ?? "Délai invalide." };
+  await exigerReauth(user, "/admin/notifications");
+  await setDelaiDesistementMin(parsed.data);
+  await audit(user, "parametres.delai_desistement", null, { minutes: parsed.data });
+  revalidatePath("/admin/notifications");
+  return { succes: `Les instructeurs sont prévenus d'un désistement dans les ${libelleDelaiDesistement(parsed.data)} qui précèdent le cours.` };
 }
 
 /**

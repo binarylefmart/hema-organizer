@@ -11,12 +11,14 @@ import { contenuDesistementTardif, type StatutDesistement } from "./contenu";
 import { clesDejaEnvoyees, journaliser, marquerEchec, notifierParPush, pushPossible } from "./journal";
 import { empreinteCreneau } from "./planification";
 import { destinataireRetenu, getPreferencesNotifications } from "./preferences";
+import { getDelaiDesistementMin } from "@/lib/settings";
 import type { ChargePush } from "./push";
 import { CHAMPS_DESTINATAIRE, chiffresEffectif, equipeJoignable, type InstructeurAlerte } from "./seances";
 
 /**
- * **Désistement de dernière minute** (`desistement_tardif`) : un membre retire sa réponse dans les
- * {@link DELAI_DESISTEMENT_TARDIF_MIN} minutes qui précèdent le cours, et l'encadrement de la séance
+ * **Désistement de dernière minute** (`desistement_tardif`) : un membre retire sa réponse dans le délai
+ * réglé par le club (`desistement.delaiMinutes`, {@link DELAI_DESISTEMENT_TARDIF_MIN} minutes à défaut)
+ * qui précède le cours, et l'encadrement de la séance
  * l'apprend tout de suite — son nom, sa nouvelle réponse, l'effectif mis à jour.
  *
  * ## Ce qui déclenche
@@ -71,15 +73,15 @@ export function estDesistement(avant: string | null, apres: string): StatutDesis
 }
 
 /**
- * Sommes-nous dans les {@link DELAI_DESISTEMENT_TARDIF_MIN} minutes qui précèdent le début ?
- * (fonction pure)
+ * Sommes-nous dans le délai qui précède le début ? (fonction pure) — `delaiMin` est le réglage du
+ * club (`getDelaiDesistementMin`), {@link DELAI_DESISTEMENT_TARDIF_MIN} à défaut.
  *
  * Borne comprise (pile deux heures avant, l'alerte part) ; le début lui-même exclu — un cours
  * commencé ne prend plus de réponse, et le même instant que `seanceCommencee` le dit.
  */
-export function dansFenetreDesistementTardif(date: string, heureDebut: string, now = new Date()): boolean {
+export function dansFenetreDesistementTardif(date: string, heureDebut: string, now = new Date(), delaiMin = DELAI_DESISTEMENT_TARDIF_MIN): boolean {
   const reste = parisDateTime(date, heureDebut).getTime() - now.getTime();
-  return reste > 0 && reste <= DELAI_DESISTEMENT_TARDIF_MIN * 60_000;
+  return reste > 0 && reste <= delaiMin * 60_000;
 }
 
 /**
@@ -129,8 +131,11 @@ async function signaler({ sessionId, userId, avant, apres, now = new Date() }: S
   // **La fenêtre d'abord, par une lecture légère** : se désister trois jours avant est le cas courant,
   // et il ne doit coûter à la réponse du membre ni la lecture des réglages ni celle de la séance
   // entière (présences, encadrement, période).
-  const creneau = await db.session.findUnique({ where: { id: sessionId }, select: { date: true, heureDebut: true, annulee: true } });
-  if (!creneau || creneau.annulee || !dansFenetreDesistementTardif(creneau.date, creneau.heureDebut, now)) return 0;
+  const [creneau, delaiMin] = await Promise.all([
+    db.session.findUnique({ where: { id: sessionId }, select: { date: true, heureDebut: true, annulee: true } }),
+    getDelaiDesistementMin(),
+  ]);
+  if (!creneau || creneau.annulee || !dansFenetreDesistementTardif(creneau.date, creneau.heureDebut, now, delaiMin)) return 0;
   const [parEmail, parPush] = await Promise.all([envoiPossible("desistement_tardif", "email"), pushPossible("desistement_tardif")]);
   if (!parEmail && !parPush) return 0;
 
@@ -149,7 +154,7 @@ async function signaler({ sessionId, userId, avant, apres, now = new Date() }: S
     },
   });
   if (!s || s.annulee || ecritureFermee(s.period.statut)) return 0;
-  if (!dansFenetreDesistementTardif(s.date, s.heureDebut, now)) return 0;
+  if (!dansFenetreDesistementTardif(s.date, s.heureDebut, now, delaiMin)) return 0;
 
   const membre = await db.user.findUnique({ where: { id: userId }, select: { prenom: true, nom: true } });
   if (!membre) return 0;
@@ -178,7 +183,7 @@ async function signaler({ sessionId, userId, avant, apres, now = new Date() }: S
       const dedupKey = cle(u);
       if (deja.has(dedupKey)) continue;
       // Le message d'abord : une mise en forme qui lève ne laisse pas de clé derrière elle.
-      const { sujet, contenu } = emailDesistementTardif({ prenom: u.prenom, membre: nom, statut, seance, presents: chiffres.presents, invites: chiffres.invites, aujourdHui });
+      const { sujet, contenu } = emailDesistementTardif({ prenom: u.prenom, membre: nom, statut, seance, presents: chiffres.presents, invites: chiffres.invites, aujourdHui, delaiMin });
       // La clé **avant** l'envoi : c'est la contrainte d'unicité qui tranche entre deux passages.
       if (!(await journaliser({ type: TYPE_JOURNAL_DESISTEMENT, canal: "EMAIL", sessionId: s.id, userId: u.id, dedupKey, statut: "ENVOYE" }))) continue;
       try {

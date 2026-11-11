@@ -76,7 +76,7 @@ export function emailEffectifFaible(args: {
 
 /**
  * **Désistement de dernière minute** : un instructeur de la séance apprend qu'un membre retire sa
- * réponse dans les deux heures qui précèdent le cours. Le texte vient de `contenuDesistementTardif`
+ * réponse dans le délai réglé par le club (deux heures à défaut) avant le cours. Le texte vient de `contenuDesistementTardif`
  * (`notifications/contenu.ts`), le même que la notification sur le téléphone.
  *
  * Un email **par instructeur** (aucun destinataire visible des autres), jamais routé vers la liste du
@@ -91,6 +91,8 @@ export function emailDesistementTardif(args: {
   presents: number;
   invites: number;
   aujourdHui: string;
+  /** Le délai réglé par le club, en minutes (deux heures à défaut). */
+  delaiMin?: number;
 }): { sujet: string; contenu: EmailContenu } {
   const c = contenuDesistementTardif({ membre: args.membre, statut: args.statut, seance: args.seance, chiffres: { presents: args.presents, invites: args.invites }, aujourdHui: args.aujourdHui });
   const url = `${baseUrl()}${c.chemin}`;
@@ -103,7 +105,7 @@ export function emailDesistementTardif(args: {
       piedDePage: [
         "Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :",
         url,
-        `Message automatique envoyé aux instructeurs du club (sauf ceux qui ne viennent pas eux-mêmes) quand un membre se désiste dans les ${libelleDelaiDesistement()} qui précèdent le cours.`,
+        `Message automatique envoyé aux instructeurs du club (sauf ceux qui ne viennent pas eux-mêmes) quand un membre se désiste dans les ${libelleDelaiDesistement(args.delaiMin)} qui précèdent le cours.`,
       ],
     },
   };

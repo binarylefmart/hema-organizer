@@ -261,7 +261,7 @@ export const DESCRIPTIONS: Record<TypeNotification, DescriptionNotification> = {
   },
   desistement_tardif: {
     titre: "Désistement de dernière minute",
-    quand: `À tous les instructeurs du club — sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être —, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans les ${libelleDelaiDesistement()} qui précèdent le cours — avec son nom et l'effectif mis à jour. Jamais sur les salons : le message nomme quelqu'un.`,
+    quand: `À tous les instructeurs du club — sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être —, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans le délai réglé par le bureau avant le cours (${libelleDelaiDesistement()} tant qu'il n'a rien changé) — avec son nom et l'effectif mis à jour. Jamais sur les salons : le message nomme quelqu'un.`,
   },
   planning_modifie: {
     titre: "Programme modifié",

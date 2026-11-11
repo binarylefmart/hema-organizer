@@ -22,7 +22,10 @@ import { DeuxPiles } from "@/components/ui/DeuxPiles";
 import { getChoixCoursActif } from "@/lib/settings";
 import { choixDesPresents } from "@/lib/choix-cours";
 import { statsChoix, type LigneStat } from "@/components/seances/choix-cours";
-import { libelleNiveau } from "@/lib/constants";
+import { libelleDelaiDesistement, libelleNiveau } from "@/lib/constants";
+import { statsDesistements } from "@/lib/historique-reponses";
+import { getDelaiDesistementMin } from "@/lib/settings";
+import { CarteDesistements } from "./Desistements";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
 
@@ -244,6 +247,13 @@ async function ChoixDesCours({ stats }: IlotProps) {
   );
 }
 
+async function Desistements({ stats }: IlotProps) {
+  const s = await stats;
+  if (!s) return null;
+  const [st, delai] = await Promise.all([statsDesistements(s.seances.map((x) => x.id)), getDelaiDesistementMin()]);
+  return <CarteDesistements st={st} delaiLibelle={libelleDelaiDesistement(delai)} />;
+}
+
 export default async function PageTableauDeBord({ searchParams }: Props) {
   const user = await requirePermission("dashboard.view");
   const { periode, h, tri: triBrut } = await searchParams;
@@ -322,6 +332,9 @@ export default async function PageTableauDeBord({ searchParams }: Props) {
           </Suspense>
         }
       />
+      <Suspense fallback={<CarteSquelette lignes={4} />}>
+        <Desistements stats={stats} />
+      </Suspense>
       <Suspense fallback={null}>
         <ChoixDesCours stats={stats} />
       </Suspense>

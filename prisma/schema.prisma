@@ -103,6 +103,8 @@ model User {
   templatesAssistes   CoursTemplateElement[] @relation("TemplateInstructeurSecond")
   attendances         Attendance[]
   choixCours          AttendanceChoix[]
+  historiqueReponses  AttendanceChange[]  @relation("HistoriqueReponseDe")
+  reponsesEcrites     AttendanceChange[]  @relation("HistoriqueReponseAuteur")
   ateliers            Atelier[]
   ateliersAnimes      Atelier[]              @relation("AtelierAnimateur")
   ateliersSeconde     Atelier[]              @relation("AtelierAnimateurSecond")
@@ -249,6 +251,7 @@ model Session {
   instructeurs  SessionInstructeur[]
   parties       SessionPartie[]
   attendances   Attendance[]
+  historiqueReponses AttendanceChange[]
   ateliers      Atelier[]
   notifications NotificationLog[]
 
@@ -360,6 +363,31 @@ model Attendance {
 
   @@id([userId, sessionId])
   @@index([sessionId])
+}
+
+/// **L'historique des réponses** : une ligne par changement de réponse d'une personne à une séance
+/// (Présent, Absent, Peut-être, sans réponse = null), quel que soit le chemin — la personne elle-même,
+/// sa réponse pour toute la période, ou une correction du bureau (`auteurId` ≠ `userId`). Écrit par
+/// `noterChangementsReponse` (src/lib/historique-reponses.ts), jamais bloquant. `desistement` : la
+/// transition retire une présence (`estDesistement`) ; `tardif` : elle tombe dans le délai d'alerte
+/// des désistements réglé à ce moment-là. Rien avant la v0.85.0 : l'historique commence à sa mise en place.
+model AttendanceChange {
+  id          String   @id @default(cuid())
+  sessionId   String
+  userId      String
+  auteurId    String?
+  avant       String?
+  apres       String?
+  desistement Boolean  @default(false)
+  tardif      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation("HistoriqueReponseDe", fields: [userId], references: [id], onDelete: Cascade)
+  auteur  User?   @relation("HistoriqueReponseAuteur", fields: [auteurId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId, createdAt])
+  @@index([userId, desistement])
 }
 
 /// **Le cours qu'un membre présent choisit de suivre** (retours du club d'Arras) : facultatif, un

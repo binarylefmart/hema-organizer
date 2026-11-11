@@ -286,10 +286,11 @@ describe("écrans d'administration", () => {
   });
 
   it("les raccourcis du journal d'audit filtrent sur un préfixe d'action", () => {
-    const source = lire("src/app/(app)/admin/audit/page.tsx");
+    // Les filtres vivent dans `src/lib/audit-filtres.ts`, lus par l'écran et par l'export CSV.
+    const source = lire("src/lib/audit-filtres.ts");
     expect(source).toContain("action: { startsWith: prefixe }");
     // La recherche libre, elle, reste un `contains` sur les trois colonnes
-    expect(source).toContain("{ action: { contains: q } }, { acteurEmail: { contains: q } }, { cible: { contains: q } }");
+    expect(source).toContain("{ action: { contains: f.q } }, { acteurEmail: { contains: f.q } }, { cible: { contains: f.q } }");
     // Le raccourci « 2FA » couvre aussi les actions de l'administration : sinon il en perdrait
     expect(source).toContain('prefixes: ["deux_fa", "admin.deux_fa"]');
   });

@@ -198,3 +198,13 @@ export function lienCarte(lieu: string, adresse: string): string {
   const requete = adresse ? `${lieu}, ${adresse}` : lieu;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(requete)}`;
 }
+
+/** « JJ/MM/AAAA à HH:MM:SS » : l'horodatage complet (journal d'audit), dans le fuseau du club, à la seconde. */
+export function formatHorodatage(d: Date): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("fr-FR", { timeZone: fuseauCourant(), day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return `${p.day}/${p.month}/${p.year} à ${p.hour}:${p.minute}:${p.second}`;
+}

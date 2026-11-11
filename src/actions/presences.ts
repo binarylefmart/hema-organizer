@@ -10,6 +10,7 @@ import { audit } from "@/lib/audit";
 import { ATTENDANCE_STATUTS, ecritureFermee, REFUS_PERIODE_CLOSE } from "@/lib/constants";
 import { seanceCommencee } from "@/lib/dates";
 import { signalerDesistementTardif } from "@/lib/notifications/desistement";
+import { noterChangementsReponse } from "@/lib/historique-reponses";
 import { can } from "@/lib/permissions";
 import { presenceAutruiSchema, presencesEnMasseSchema } from "@/lib/validation/presences";
 import { phraseCours, planReponse, seancesPresentesApres, succesReponse } from "@/components/seances/reponse-periode";
@@ -70,6 +71,7 @@ export async function indiquerPresence(input: { sessionId: string; statut: strin
     update: { statut },
   });
   await effacerChoixSiAbsent([user.id], [sessionId], statut);
+  await noterChangementsReponse(user, [{ sessionId, userId: user.id, avant, apres: statut }]);
   /*
    * **Après l'écriture, et sans pouvoir la défaire** : `signalerDesistementTardif` ne lève jamais,
    * et décide seul (transition, fenêtre de deux heures, séance, préférences). Seul ce chemin — le
@@ -168,6 +170,10 @@ export async function repondrePourLaPeriode(input: {
         cours.map((partieId) => db.attendanceChoix.upsert({ where: { userId_partieId: { userId: user.id, partieId } }, create: { userId: user.id, partieId }, update: {} })),
       );
     const avant = new Map(lues.map((s) => [s.id, s.monStatut]));
+    await noterChangementsReponse(
+      user,
+      plan.aEcrire.map((sessionId) => ({ sessionId, userId: user.id, avant: avant.get(sessionId) ?? null, apres: statut })),
+    );
     for (const sessionId of plan.aEcrire) {
       const precedent = avant.get(sessionId) ?? null;
       if (precedent !== null) await signalerDesistementTardif({ sessionId, userId: user.id, avant: precedent, apres: statut });
@@ -315,6 +321,7 @@ export async function modifierPresenceMembre(input: {
     });
   }
   await effacerChoixSiAbsent([userId], [sessionId], statut);
+  await noterChangementsReponse(user, [{ sessionId, userId, avant, apres: statut }]);
   // Écrire à la place de quelqu'un se justifie toujours après coup : la trace nomme l'acteur,
   // la personne visée et ce qui a été remplacé.
   await audit(user, "presence.modifiee_par_admin", userId, { sessionId, avant, apres: statut });
@@ -469,6 +476,10 @@ export async function modifierPresencesEnMasse(input: {
   }
 
   await effacerChoixSiAbsent(aEcrire, [sessionId], statut);
+  await noterChangementsReponse(
+    user,
+    aEcrire.map((userId) => ({ sessionId, userId, avant: avantParUser.get(userId) ?? null, apres: statut })),
+  );
   for (const userId of aEcrire) {
     await audit(user, "presence.modifiee_par_admin", userId, { sessionId, avant: avantParUser.get(userId) ?? null, apres: statut, enMasse: true });
   }

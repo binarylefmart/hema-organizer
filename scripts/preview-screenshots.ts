@@ -1267,6 +1267,12 @@ function toutesLesScenes(): Scene[] {
     },
     { nom: "admin-apropos", description: "Administration → À propos : version, contenu de la base, sauvegardes, API publique", connexion: COMPTES.admin, chemin: "/admin/apropos", pleinePage: true },
     { nom: "admin-sessions", description: "Administration : sessions de connexion", connexion: COMPTES.admin, chemin: "/admin/sessions" },
+    {
+      nom: "admin-audit-tri",
+      description: "Journal d'audit : une personne choisie, trié par personne, horodatage à la seconde",
+      connexion: COMPTES.admin,
+      chemin: "/admin/audit?q=connexion.&tri=personne",
+    },
     { nom: "admin-audit", description: "Administration : journal d'audit (filtres, dates, export CSV, raccourcis)", connexion: COMPTES.admin, chemin: "/admin/audit" },
     /*
      * **Les scènes d'action** : chaque geste de l'interface photographié au moment où il se fait —
@@ -1512,6 +1518,54 @@ function toutesLesScenes(): Scene[] {
         });
       },
       apres: () => definirChoixCoursDemo(false),
+    },
+    {
+      nom: "tableau-de-bord-desistements",
+      description: "Tableau de bord : les désistements de la période, horodatés",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances",
+      avant: async (page) => {
+        await historiqueReponsesDemo(true);
+        await allerA(page, `${BASE}/gestion/tableau-de-bord`);
+        await page.getByText(/^Derniers désistements/).first().click();
+        await page.getByRole("heading", { name: /^Désistements/ }).first().evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -110);
+        });
+      },
+      apres: async () => {
+        await historiqueReponsesDemo(false);
+      },
+    },
+    {
+      nom: "reglage-desistements",
+      description: "Espace admin → Notifications : le délai d'alerte des désistements (heures ou jours, 2 semaines au plus)",
+      connexion: COMPTES.admin,
+      chemin: "/admin/notifications",
+      avant: async (page) => {
+        await page.locator("#desistements").evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -110);
+        });
+      },
+    },
+    {
+      nom: "seance-historique",
+      description: "Fiche d'une séance : l'historique des réponses, désistements signalés",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances",
+      avant: async (page) => {
+        const id = await historiqueReponsesDemo(true);
+        await allerA(page, `${BASE}/seances/${id}`);
+        await page.getByText(/changements? de réponse/).first().click();
+        await page.getByRole("heading", { name: "Historique des réponses" }).first().evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -110);
+        });
+      },
+      apres: async () => {
+        await historiqueReponsesDemo(false);
+      },
     },
     {
       nom: "lisibilite-fiche-seance",
@@ -2497,6 +2551,41 @@ async function descriptionMultiligneDemo(poser: boolean): Promise<string | null>
       data: { description: "Échauffement des poignets, puis garde haute.\nTravail à deux sur les coupes montantes.\\nFin : assauts libres, 3 minutes chacun." },
     });
     return partie.sessionId;
+  } finally {
+    await db.$disconnect();
+  }
+}
+
+/**
+ * Pose (ou retire) un petit historique de réponses sur la prochaine séance, et quelques désistements
+ * à India : la scène « seance-historique » et la fiche de membre les montrent.
+ */
+async function historiqueReponsesDemo(poser: boolean): Promise<string | null> {
+  const db = new PrismaClient();
+  try {
+    await db.attendanceChange.deleteMany({ where: { id: { startsWith: "demo-historique-" } } });
+    if (!poser) return null;
+    const seance = await db.session.findFirst({
+      where: { annulee: false, date: { gte: todayIso() }, period: { statut: "ACTIVE" } },
+      orderBy: { date: "asc" },
+      include: { period: { include: { membres: { where: { user: { service: false } }, take: 4, select: { userId: true } } } } },
+    });
+    if (!seance) return null;
+    const [a, b, c, d] = seance.period.membres.map((m) => m.userId);
+    const india = await db.user.findFirst({ where: { email: COMPTES.nouveau }, select: { id: true } });
+    const ilYa = (h: number) => new Date(Date.now() - h * 3_600_000);
+    const lignes = [
+      { userId: a, avant: null, apres: "PRESENT", desistement: false, tardif: false, createdAt: ilYa(120) },
+      { userId: b, avant: null, apres: "PRESENT", desistement: false, tardif: false, createdAt: ilYa(100) },
+      { userId: a, avant: "PRESENT", apres: "PEUT_ETRE", desistement: true, tardif: false, createdAt: ilYa(50) },
+      { userId: c ?? a, avant: null, apres: "ABSENT", desistement: false, tardif: false, createdAt: ilYa(30), auteurId: d ?? null },
+      { userId: b, avant: "PRESENT", apres: "ABSENT", desistement: true, tardif: true, createdAt: ilYa(1) },
+      ...(india ? [{ userId: india.id, avant: "PRESENT", apres: "ABSENT", desistement: true, tardif: true, createdAt: ilYa(2) }] : []),
+    ];
+    await db.attendanceChange.createMany({
+      data: lignes.filter((l) => l.userId).map((l, i) => ({ id: `demo-historique-${i}`, sessionId: seance.id, auteurId: "auteurId" in l ? l.auteurId : l.userId, ...l })),
+    });
+    return seance.id;
   } finally {
     await db.$disconnect();
   }

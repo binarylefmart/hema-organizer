@@ -2,6 +2,15 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.85.0
+
+### Nouveautés
+
+- **audit** : filtrer le journal par personne, trier par date ou par personne
+- **desistements** : l'horodatage dans le journal d'audit, pas sur les écrans
+- **desistements** : délai jusqu'à 2 semaines, horodatage, stats au tableau de bord
+- **presences** : historique des réponses, désistements sur la fiche, délai d'alerte réglable
+
 ## 0.84.1
 
 ### Nouveautés
