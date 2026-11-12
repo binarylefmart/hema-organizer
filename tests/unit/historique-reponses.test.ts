@@ -126,6 +126,8 @@ describe("noterChangementsReponse", () => {
   it("hors du délai : désistement noté, mais pas « de dernière minute »", async () => {
     await noterChangementsReponse(CHLOE, [{ sessionId: "s1", userId: "chloe", avant: "PRESENT", apres: "PEUT_ETRE" }], heuresAvant(72));
     expect(faux.ecrits[0]).toMatchObject({ desistement: true, tardif: false, auteurId: "chloe" });
+    // Anticipé : il n'apparaît qu'au journal, sous son nom à lui.
+    expect(faux.audits.map((a) => a[1])).toEqual(["presence.desistement_anticipe"]);
   });
 
   it("ne lève jamais", async () => {

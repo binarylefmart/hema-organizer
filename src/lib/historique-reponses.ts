@@ -63,7 +63,16 @@ export async function noterChangementsReponse(auteur: NonNullable<AuditActeur>, 
       const s = parId.get(l.sessionId);
       // Trois actions, un préfixe commun (`presence.desistement`) : le raccourci « désistements » du
       // journal les retrouve toutes, « désistements de dernière minute » la seule qui le dit.
-      const action = !l.desistement ? "presence.reponse" : l.derniereMinute ? "presence.desistement_derniere_minute" : "presence.desistement";
+      // **Le désistement anticipé ne vit que dans le journal** (Delta : « fais apparaître les désistements
+      // anticipés, mais que dans les logs ») : un retrait avant le délai d'alerte n'est compté nulle part
+      // ailleurs, il garde ici son nom à lui.
+      const action = !l.desistement
+        ? "presence.reponse"
+        : l.derniereMinute
+          ? "presence.desistement_derniere_minute"
+          : l.tardif
+            ? "presence.desistement"
+            : "presence.desistement_anticipe";
       await audit(auteur, action, l.userId, {
         sessionId: l.sessionId,
         seance: s ? `${s.date} ${s.heureDebut}` : null,

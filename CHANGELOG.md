@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.91.0
+
+### Nouveautés
+
+- **audit** : filtres par types multiples, séance et adresse IP ; anticipés au journal
+
+### Autres changements
+
+- état v0.91.0
+
 ## 0.90.1
 
 ### Corrections

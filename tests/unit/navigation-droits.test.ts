@@ -77,7 +77,9 @@ describe("journal d'audit : des adresses propres", () => {
   it("n'emporte que les filtres remplis (et pas le tri par défaut)", async () => {
     const { lireFiltresAudit, paramsAudit } = await import("@/lib/audit-filtres");
     expect(paramsAudit(lireFiltresAudit({})).toString()).toBe("");
-    expect(paramsAudit(lireFiltresAudit({ q: "presence.", du: "2026-13-45", tri: "recent" })).toString()).toBe("q=presence.");
+    expect(paramsAudit(lireFiltresAudit({ q: "presence.", du: "2026-13-45", tri: "recent" })).toString()).toBe("types=presence.");
+    // Un ancien `q=<famille>` devient une case cochée ; un mot quelconque reste une recherche.
+    expect(paramsAudit(lireFiltresAudit({ q: "dupont" })).toString()).toBe("q=dupont");
     expect(paramsAudit(lireFiltresAudit({ personne: "abc", tri: "personne" })).toString()).toBe("personne=abc&tri=personne");
     expect(paramsAudit(lireFiltresAudit({ personne: "x'; drop", tri: "n'importe" })).toString()).toBe("");
   });

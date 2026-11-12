@@ -47,6 +47,7 @@ const ACTIONS: Record<string, string> = {
   "mot_de_passe.change": "a changé son mot de passe",
   "presence.reponse": "a changé sa réponse",
   "presence.desistement": "s'est désisté(e)",
+  "presence.desistement_anticipe": "désistement anticipé (avant le délai d'alerte, non compté)",
   "presence.desistement_derniere_minute": "désistement de dernière minute",
   "presence.desistement_non_signale": "a noté un désistement non signalé (inscrit Présent, pas venu)",
   "presence.desistement_non_signale_retire": "a retiré un désistement non signalé",

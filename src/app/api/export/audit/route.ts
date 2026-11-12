@@ -4,7 +4,7 @@ import { assertPermission, type CurrentUser } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { csvAudit } from "@/lib/alertes";
-import { lireFiltresAudit, orderByAudit, whereAudit } from "@/lib/audit-filtres";
+import { lireFiltresAuditDepuis, orderByAudit, whereAudit } from "@/lib/audit-filtres";
 import { baseUrl } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
   }
   const p = req.nextUrl.searchParams;
   // Le même lecteur que l'écran : raccourcis, personne, dates et tri compris.
-  const f = lireFiltresAudit({ q: p.get("q"), du: p.get("du"), au: p.get("au"), personne: p.get("personne"), tri: p.get("tri") });
+  const f = lireFiltresAuditDepuis(p);
   const lignes = await db.auditLog.findMany({ where: whereAudit(f), orderBy: orderByAudit(f.tri), take: 50_000 });
   await audit(user, "export.audit", null, { ...f, lignes: lignes.length });
   return new NextResponse("﻿" + csvAudit(lignes), {

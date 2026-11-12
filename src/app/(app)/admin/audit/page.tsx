@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { formatDateLongue, formatHorodatage, todayIso } from "@/lib/dates";
+import { formatDateCourte, formatDateLongue, formatHeure, formatHorodatage, todayIso } from "@/lib/dates";
 import {
   detailsLisibles,
   libelleAction,
@@ -18,6 +18,7 @@ import {
   orderByAudit,
   paramsAudit,
   RACCOURCIS_AUDIT,
+  basculerType,
   TRIS_AUDIT,
   whereAudit,
   type TriAudit,
@@ -34,6 +35,9 @@ type Props = {
     au?: string;
     personne?: string;
     tri?: string;
+    types?: string;
+    seance?: string;
+    ip?: string;
   }>;
 };
 
@@ -61,7 +65,7 @@ export default async function PageAudit({ searchParams }: Props) {
     return `/admin/audit${suite ? `?${suite}` : ""}`;
   };
   const exportParams = paramsAudit(f).toString();
-  const [retention, total, lignes, personnes] = await Promise.all([
+  const [retention, total, lignes, personnes, seancesListe] = await Promise.all([
     getRetentionAuditJours(),
     db.auditLog.count({ where }),
     db.auditLog.findMany({
@@ -74,6 +78,12 @@ export default async function PageAudit({ searchParams }: Props) {
     db.user.findMany({
       select: { id: true, prenom: true, nom: true, email: true },
       orderBy: [{ nom: "asc" }, { prenom: "asc" }],
+    }),
+    // Les cours qu'on peut filtrer : les plus récents d'abord (le journal est conservé un temps limité).
+    db.session.findMany({
+      orderBy: [{ date: "desc" }, { heureDebut: "desc" }],
+      take: 300,
+      select: { id: true, date: true, heureDebut: true, lieu: true },
     }),
   ]);
   const nomDe = new Map(
@@ -122,7 +132,7 @@ export default async function PageAudit({ searchParams }: Props) {
       });
   }
   const filtresActifs = Boolean(
-    f.q || f.personne || f.du || f.au || f.tri !== "recent",
+    f.q || f.personne || f.du || f.au || f.tri !== "recent" || f.types.length > 0 || f.seance || f.ip,
   );
   const puce = (actif: boolean) =>
     `${CLASSES_PUCE} ${actif ? "border-primaire bg-primaire text-primaire-texte" : "border-bordure bg-surface text-texte hover:bg-surface-douce"}`;
@@ -189,6 +199,37 @@ export default async function PageAudit({ searchParams }: Props) {
               </label>
             </div>
           </div>
+          {/* Le cours et l'adresse IP : deux filtres de plus, sur leur propre ligne. */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[4fr_2fr]">
+            <ChampListe
+              key={`seance-${f.seance}`}
+              label="Séance"
+              name="seance"
+              valeur={f.seance}
+              entrees={[
+                { valeur: "", libelle: "Toutes les séances" },
+                ...seancesListe.map((x) => ({
+                  valeur: x.id,
+                  libelle: `${formatDateCourte(x.date)} · ${formatHeure(x.heureDebut)} — ${x.lieu}`,
+                })),
+              ]}
+            />
+            <label className="flex flex-col gap-1 font-semibold">
+              Adresse IP
+              <input
+                key={`ip-${f.ip}`}
+                type="search"
+                name="ip"
+                defaultValue={f.ip}
+                inputMode="decimal"
+                placeholder="ex. 192.168. (le début suffit)"
+                className={`${controle} font-normal`}
+              />
+            </label>
+          </div>
+          {f.types.length > 0 && (
+            <input type="hidden" name="types" value={f.types.join(",")} />
+          )}
           {f.tri !== "recent" && (
             <input type="hidden" name="tri" value={f.tri} />
           )}
@@ -222,25 +263,29 @@ export default async function PageAudit({ searchParams }: Props) {
             aria-label="Type d'entrée"
             className="flex flex-wrap items-center gap-2"
           >
-            <span className="w-14 text-sm text-texte-secondaire">Type</span>
+            <span className="w-14 text-sm text-texte-secondaire">Types</span>
+            {/* **Plusieurs à la fois** : toucher une puce l'ajoute ou la retire ; « tout » les vide. */}
             <Link
-              href={lien({
-                q: RACCOURCIS_AUDIT.some((r) => r.q === f.q) ? "" : f.q,
-              })}
-              className={puce(!RACCOURCIS_AUDIT.some((r) => r.q === f.q))}
+              href={lien({ types: [] })}
+              aria-current={f.types.length === 0 ? "true" : undefined}
+              className={puce(f.types.length === 0)}
             >
               tout
             </Link>
-            {RACCOURCIS_AUDIT.map((r) => (
-              <Link
-                key={r.q}
-                href={lien({ q: r.q })}
-                aria-current={f.q === r.q ? "true" : undefined}
-                className={puce(f.q === r.q)}
-              >
-                {r.label}
-              </Link>
-            ))}
+            {RACCOURCIS_AUDIT.map((r) => {
+              const coche = f.types.includes(r.q);
+              return (
+                <Link
+                  key={r.q}
+                  href={lien({ types: basculerType(f.types, r.q) })}
+                  aria-current={coche ? "true" : undefined}
+                  className={`${puce(coche)} gap-1`}
+                >
+                  {coche && <span aria-hidden>✓</span>}
+                  {r.label}
+                </Link>
+              );
+            })}
           </nav>
           <nav
             aria-label="Trier le journal"
@@ -340,7 +385,17 @@ export default async function PageAudit({ searchParams }: Props) {
                         {acteurNom && l.acteurEmail
                           ? ` · ${l.acteurEmail}`
                           : ""}
-                        {l.ip ? ` · IP ${l.ip}` : ""}
+                        {l.ip ? (
+                          <>
+                            {" · IP "}
+                            {/* Toucher l'adresse ne montre que ce qui vient d'elle. */}
+                            <Link href={lien({ ip: l.ip })} title="Ne voir que cette adresse IP">
+                              {l.ip}
+                            </Link>
+                          </>
+                        ) : (
+                          ""
+                        )}
                       </p>
                     </div>
                   </li>
