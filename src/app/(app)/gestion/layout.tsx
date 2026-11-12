@@ -51,9 +51,10 @@ export default async function GestionLayout({ children }: { children: React.Reac
    * la séance elle-même, là où c'est utile.
    */
   const sujets: Sujet[] = [
+    // Le tableau de bord en premier (demande de Delta) : c'est l'écran qu'on vient lire le plus souvent.
+    { href: "/gestion/tableau-de-bord", label: "Tableau de bord" },
     // La pastille arrive en différé : le comptage ne doit retarder ni les onglets, ni la page
     { href: "/gestion/ateliers", label: "Ateliers", badge: <Suspense fallback={null}><BadgeAteliers /></Suspense> },
-    { href: "/gestion/tableau-de-bord", label: "Tableau de bord" },
     // Les annonces sont revenues à l'encadrement entier : l'instructeur voit donc cet onglet lui aussi.
     { href: "/gestion/evenements", label: "Événements" },
   ];

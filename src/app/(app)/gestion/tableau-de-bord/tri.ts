@@ -11,9 +11,9 @@
  * dans `searchParams`, l'écran reste un composant serveur, et le retour du navigateur ramène le
  * classement précédent.
  */
-export type TriMembres = "nom" | "taux" | "sansReponse";
+export type TriMembres = "nom" | "taux" | "sansReponse" | "desistements";
 
-const TRIS: readonly TriMembres[] = ["nom", "taux", "sansReponse"];
+const TRIS: readonly TriMembres[] = ["nom", "taux", "sansReponse", "desistements"];
 
 /** Libellés des trois entrées, dans l'ordre où elles sont proposées. */
 export const TRI_LABELS: Record<TriMembres, string> = {
@@ -23,6 +23,7 @@ export const TRI_LABELS: Record<TriMembres, string> = {
   nom: "Alphabétique",
   taux: "Taux le plus bas",
   sansReponse: "Sans réponse",
+  desistements: "Le plus de désistements",
 };
 
 /** Un paramètre d'URL inconnu — ou absent — retombe sur l'ordre alphabétique. */
@@ -30,7 +31,7 @@ export function lireTri(valeur: string | undefined): TriMembres {
   return TRIS.find((t) => t === valeur) ?? "nom";
 }
 
-type Assiduite = { prenom: string; nom: string; pourcentage: number; sansReponse: number };
+type Assiduite = { prenom: string; nom: string; pourcentage: number; sansReponse: number; desistements?: number; derniereMinute?: number };
 
 /**
  * **Le classement alphabétique porte sur ce que la ligne affiche : « Prénom Nom ».**
@@ -66,5 +67,6 @@ export function trierMembres<T extends Assiduite>(membres: readonly T[], tri: Tr
   // Les deux autres tris partent de l'ordre alphabétique : le tri étant **stable**, deux membres à
   // 50 % restent classés par prénom, et non dans l'ordre où la base les a rendus.
   if (tri === "taux") return alphabetique.sort((a, b) => a.pourcentage - b.pourcentage);
+  if (tri === "desistements") return alphabetique.sort((a, b) => (b.desistements ?? 0) - (a.desistements ?? 0) || (b.derniereMinute ?? 0) - (a.derniereMinute ?? 0));
   return alphabetique.sort((a, b) => b.sansReponse - a.sansReponse);
 }

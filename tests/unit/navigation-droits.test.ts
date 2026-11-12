@@ -38,7 +38,7 @@ describe("une page qui redirige garde, ou assume de ne pas garder", () => {
     expect(admin.indexOf("requirePermission")).toBeLessThan(admin.indexOf('<VersRubriqueSurOrdinateur vers="/admin/periodes" />'));
     const gestion = lire(PAGE_GESTION);
     expect(gestion).toContain('requirePermission("sessions.manage")');
-    expect(gestion.indexOf("requirePermission")).toBeLessThan(gestion.indexOf('redirect("/gestion/ateliers")'));
+    expect(gestion.indexOf("requirePermission")).toBeLessThan(gestion.indexOf('redirect("/gestion/tableau-de-bord")'));
   });
 
   it("les six relais d'anciennes adresses ne gardent rien : la destination s'en charge", () => {

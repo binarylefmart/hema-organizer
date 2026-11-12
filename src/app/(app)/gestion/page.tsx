@@ -25,5 +25,5 @@ import { requirePermission } from "@/lib/auth/current-user";
  */
 export default async function PageGestion() {
   await requirePermission("sessions.manage");
-  redirect("/gestion/ateliers");
+  redirect("/gestion/tableau-de-bord");
 }

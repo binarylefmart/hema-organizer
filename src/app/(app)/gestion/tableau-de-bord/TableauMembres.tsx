@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useDevoilement } from "@/components/seances/ListeRepliee";
 import { libelleAfficher, libelleCompteur, LIBELLE_REPLIER, LIGNES_VISIBLES } from "@/components/seances/listes";
@@ -17,58 +18,57 @@ export type MembreAssiduite = {
   sansReponse: number;
   seances: number;
   pourcentage: number;
+  /** Désistements de la personne sur ces séances (couple personne × séance), dont de dernière minute */
+  desistements: number;
+  derniereMinute: number;
 };
 
 /** Les quatre compteurs, écrits une fois : l'en-tête de colonne et l'intitulé de téléphone sont le même mot. */
-const COMPTEURS = [
-  { cle: "presents", libelle: "Présent" },
-  { cle: "absents", libelle: "Absent" },
-  { cle: "peutEtre", libelle: "Peut-être" },
-  { cle: "sansReponse", libelle: "Sans réponse" },
-] as const satisfies readonly { cle: keyof MembreAssiduite; libelle: string }[];
+/**
+ * **La présence en une barre** : présent, peut-être, absent, sans réponse, dans cet ordre et dans les
+ * couleurs des boutons de réponse. Elle se lit d'un coup d'œil ; les chiffres exacts sont écrits à côté
+ * (jamais la couleur seule : contraste et daltonisme).
+ */
+const PARTS = [
+  { cle: "presents", classe: "bg-vert", un: "présent", plusieurs: "présents" },
+  { cle: "peutEtre", classe: "bg-ocre", un: "peut-être", plusieurs: "peut-être" },
+  { cle: "absents", classe: "bg-rouge", un: "absent", plusieurs: "absents" },
+  { cle: "sansReponse", classe: "bg-bordure", un: "sans réponse", plusieurs: "sans réponse" },
+] as const satisfies readonly { cle: keyof MembreAssiduite; classe: string; un: string; plusieurs: string }[];
+
+function BarrePresence({ m }: { m: MembreAssiduite }) {
+  const total = PARTS.reduce((t, p) => t + m[p.cle], 0);
+  const texte = PARTS.filter((p) => m[p.cle] > 0)
+    .map((p) => `${m[p.cle]} ${m[p.cle] > 1 ? p.plusieurs : p.un}`)
+    .join(" · ");
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex h-3 w-full overflow-hidden rounded bg-surface-douce" aria-hidden>
+        {total > 0 && PARTS.map((p) => (m[p.cle] > 0 ? <div key={p.cle} className={p.classe} style={{ width: `${(m[p.cle] / total) * 100}%` }} /> : null))}
+      </div>
+      <span className="text-sm text-texte-secondaire">{texte || "aucun cours compté"}</span>
+    </div>
+  );
+}
 
 /**
- * **Le tableau « Taux par membre », tenable à quatre-vingts lignes.**
- *
- * Les captures d'un club de quatre-vingts ont montré trois choses, et ce composant répond aux
- * trois :
- *
- * - **Tout sortait d'un coup** : 4 600 px de tableau sur PC, et sur téléphone une fiche par
- *   personne d'environ 240 px — vingt-trois écrans de défilement. D'où la **recherche** (le champ
- *   de `PresencesEquipe`, même patron, filtrage dans le navigateur puisque tout est déjà chargé) et
- *   le **dévoilement par tranches** des listes de l'application (`LIGNES_VISIBLES` : vingt lignes de
- *   plus par appui, « Afficher les 20 suivantes », un compteur « 20 sur 80 », « Replier » qui
- *   ramène aux vingt premières). Les deux n'apparaissent **qu'au-delà du seuil** : un club de douze
- *   retrouve son tableau entier, sans champ ni bouton.
- * - **L'en-tête ne collait pas** : passé la dixième ligne, les colonnes n'étaient plus que des
- *   chiffres sans titre. Il colle désormais sous l'en-tête de l'application (`md:top-20`, la
- *   hauteur de la barre `h-20`).
- * - **La fiche de téléphone était verbeuse** : cinq lignes « intitulé / valeur », dont quatre
- *   pleines de zéros. Ici, la ligne de téléphone tient en deux lignes — le nom, puis les compteurs
- *   et le taux à la suite.
- *
- * **Pourquoi un tableau écrit ici plutôt que `<Tableau>`** : la brique partagée enferme le tableau
- * dans un conteneur `md:overflow-x-auto`, qui est un conteneur de défilement — un `<thead>` collant
- * y colle au haut d'une boîte qui ne défile pas, c'est-à-dire nulle part. Et sa retombée de
- * téléphone est justement la fiche à cinq lignes qu'on veut resserrer. Les lignes restent des
- * `<tr>` de tableau : c'est bien un tableau, avec ses en-têtes de colonnes et ses six colonnes sur
- * PC.
+ * `lienDesistements` est la **base** de l'adresse du détail, à laquelle on ajoute l'identifiant : une
+ * chaîne et non une fonction, un composant client ne recevant du serveur que des données.
  */
-export function TableauMembres({ membres }: { membres: MembreAssiduite[] }) {
+export function TableauMembres({ membres, lienDesistements }: { membres: MembreAssiduite[]; lienDesistements: string }) {
   // Ce qu'on cherche. Le nombre de lignes dévoilées, lui, est tenu par le crochet partagé.
   const [filtre, setFiltre] = useState("");
+  const [seulementDesistes, setSeulementDesistes] = useState(false);
 
   /**
-   * **Ni recherche ni repli tant que le tableau se lit d'un coup d'œil.** C'est la règle de toute
-   * l'application, et le seuil est le même partout : un club de douze ne doit rien voir changer.
+   * **La recherche est toujours là**, même sous le seuil des vingt lignes (Delta : « simple, visible
+   * et filtrable ») : c'est l'exception assumée à la règle du repli — le repli, lui, garde son seuil.
    */
-  const longue = membres.length > LIGNES_VISIBLES;
-
   const trouves = useMemo(() => {
     const q = filtre.trim().toLowerCase();
-    if (!q) return membres;
-    return membres.filter((m) => `${m.prenom} ${m.nom}`.toLowerCase().includes(q));
-  }, [membres, filtre]);
+    return membres.filter((m) => (!q || `${m.prenom} ${m.nom}`.toLowerCase().includes(q)) && (!seulementDesistes || m.desistements > 0));
+  }, [membres, filtre, seulementDesistes]);
+  const filtreActif = Boolean(filtre.trim()) || seulementDesistes;
 
   /*
    * **Le dévoilement porte sur ce qui est affiché**, c'est-à-dire sur le résultat de la recherche :
@@ -84,30 +84,33 @@ export function TableauMembres({ membres }: { membres: MembreAssiduite[] }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {longue && (
-        <div>
-          <label className="sr-only" htmlFor="recherche-assiduite">
-            Chercher une personne
-          </label>
-          <input
-            id="recherche-assiduite"
-            type="search"
-            value={filtre}
-            onChange={(e) => setFiltre(e.target.value)}
-            placeholder="Chercher un nom"
-            autoComplete="off"
-            className="min-h-12 w-full rounded-xl border-2 border-bordure bg-surface px-4 text-base shadow-champ focus:border-primaire"
-          />
-          <p className="mt-1 text-sm text-texte-secondaire" aria-live="polite">
-            {filtre.trim() ? `${trouves.length} personne${trouves.length > 1 ? "s" : ""} sur ${membres.length}` : `${membres.length} personnes`}
-          </p>
-        </div>
-      )}
+      {/* **Toujours là**, même pour un club de douze (Delta : « simple, visible et filtrable »). */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+        <label className="sr-only" htmlFor="recherche-assiduite">
+          Chercher une personne
+        </label>
+        <input
+          id="recherche-assiduite"
+          type="search"
+          value={filtre}
+          onChange={(e) => setFiltre(e.target.value)}
+          placeholder="Chercher un nom"
+          autoComplete="off"
+          className="min-h-12 w-full rounded-xl border-2 border-bordure bg-surface px-4 text-base shadow-champ focus:border-primaire sm:max-w-xs"
+        />
+        <label htmlFor="seulement-desistes" className="flex min-h-12 cursor-pointer items-center gap-3">
+          <input id="seulement-desistes" type="checkbox" checked={seulementDesistes} onChange={(e) => setSeulementDesistes(e.target.checked)} className="size-6 shrink-0 accent-primaire" />
+          <span>Seulement les personnes qui se sont désistées</span>
+        </label>
+      </div>
+      <p className="-mt-1 text-sm text-texte-secondaire" aria-live="polite">
+        {filtreActif ? `${trouves.length} personne${trouves.length > 1 ? "s" : ""} sur ${membres.length}` : `${membres.length} personne${membres.length > 1 ? "s" : ""}`}
+      </p>
 
       {membres.length === 0 ? (
         <p className="text-texte-secondaire">Personne n&apos;est invité sur cette période.</p>
       ) : trouves.length === 0 ? (
-        <p className="text-texte-secondaire">Aucun nom ne correspond à cette recherche.</p>
+        <p className="text-texte-secondaire">Personne ne correspond à ces filtres.</p>
       ) : (
         <div className="rounded-xl border border-bordure/60">
           <table className="block w-full border-collapse text-left md:table">
@@ -120,13 +123,14 @@ export function TableauMembres({ membres }: { membres: MembreAssiduite[] }) {
                 <th scope="col" className="sticky top-20 z-[1] bg-surface-douce px-3 py-2 font-semibold">
                   Membre
                 </th>
-                {COMPTEURS.map((c) => (
-                  <th key={c.cle} scope="col" className="sticky top-20 z-[1] bg-surface-douce px-3 py-2 font-semibold">
-                    {c.libelle}
-                  </th>
-                ))}
+                <th scope="col" className="sticky top-20 z-[1] bg-surface-douce px-3 py-2 font-semibold">
+                  Présence
+                </th>
                 <th scope="col" className="sticky top-20 z-[1] bg-surface-douce px-3 py-2 text-right font-semibold">
                   Taux
+                </th>
+                <th scope="col" className="sticky top-20 z-[1] bg-surface-douce px-3 py-2 text-right font-semibold">
+                  Désistements
                 </th>
               </tr>
             </thead>
@@ -142,19 +146,24 @@ export function TableauMembres({ membres }: { membres: MembreAssiduite[] }) {
                   <td className="basis-full font-semibold md:table-cell md:basis-auto md:px-3 md:py-2.5 md:align-middle">
                     {m.prenom} {m.nom}
                   </td>
-                  {COMPTEURS.map((c) => (
-                    <td key={c.cle} className="text-sm md:table-cell md:px-3 md:py-2.5 md:align-middle md:text-base">
-                      {/* L'intitulé n'existe que sur téléphone, où il n'y a pas d'en-tête de colonne :
-                          « présents 9 absents 2 » se lit d'un trait, là où cinq lignes
-                          « intitulé / valeur » prenaient un quart d'écran par personne. */}
-                      <span className="text-texte-secondaire md:hidden">{c.libelle.toLowerCase()} </span>
-                      <span className="tabular-nums">{m[c.cle]}</span>
-                    </td>
-                  ))}
+                  <td className="basis-full md:table-cell md:w-1/2 md:px-3 md:py-2.5 md:align-middle">
+                    <BarrePresence m={m} />
+                  </td>
                   {/* `whitespace-nowrap` : sans lui, « 100 % / 12 » passait à la ligne quand
                       « 0 % / 12 » tenait, et les lignes ondulaient sur toute la hauteur du tableau. */}
                   <td className="whitespace-nowrap tabular-nums md:table-cell md:px-3 md:py-2.5 md:text-right md:align-middle">
                     <strong>{m.pourcentage}&nbsp;%</strong> <span className="text-sm text-texte-secondaire">/ {m.seances}</span>
+                  </td>
+                  <td className="ml-auto whitespace-nowrap md:table-cell md:px-3 md:py-2.5 md:text-right md:align-middle">
+                    {m.desistements === 0 ? (
+                      <span className="text-sm text-texte-secondaire">aucun désistement</span>
+                    ) : (
+                      // Le nombre mène au détail de cette personne (page Désistements, filtres prêts).
+                      <Link href={`${lienDesistements}${m.id}`} className="inline-flex min-h-11 items-center gap-1 font-semibold">
+                        {m.desistements} désistement{m.desistements > 1 ? "s" : ""}
+                        {m.derniereMinute > 0 && <span className="font-normal text-ocre">(dont {m.derniereMinute} de dernière minute)</span>}
+                      </Link>
+                    )}
                   </td>
                 </tr>
               ))}

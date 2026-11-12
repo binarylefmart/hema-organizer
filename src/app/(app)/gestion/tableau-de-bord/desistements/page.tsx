@@ -2,14 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/current-user";
 import { db } from "@/lib/db";
-import { formatDateCourte, formatHeure, isIsoDate } from "@/lib/dates";
-import { libelleDelaiDesistement, type AttendanceStatut } from "@/lib/constants";
-import { STATUT_LABELS } from "@/lib/presences";
-import { detailDesistements, libelleAvantCours, type FiltresDesistements, type TypeDesistementFiltre } from "@/lib/historique-reponses";
+import { isIsoDate } from "@/lib/dates";
+import { libelleDelaiDesistement } from "@/lib/constants";
+import { detailDesistements, type FiltresDesistements, type TypeDesistementFiltre } from "@/lib/historique-reponses";
 import { getDelaisDesistement } from "@/lib/settings";
 import { Carte } from "@/components/ui/Carte";
 import { ChampListe } from "@/components/ui/ChampListe";
-import { Pastille } from "@/components/ui/Pastille";
+import { ListesDesistements } from "@/components/desistements/ListesDesistements";
 
 export const metadata: Metadata = { title: "Désistements" };
 
@@ -19,7 +18,6 @@ const TYPES: Record<TypeDesistementFiltre, string> = { tous: "Tous", signales: "
 /** Au-delà, le détail se tronque (le tableau par personne, lui, compte tout) : il se resserre par les filtres. */
 const LIGNES_MAX = 300;
 
-const libelle = (s: string | null) => (s === null ? "Sans réponse" : (STATUT_LABELS[s as AttendanceStatut] ?? s));
 const identifiant = (v?: string) => (v && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : "");
 const CONTROLE = "min-h-12 w-full rounded-xl border-2 border-bordure bg-surface px-3 text-base font-normal";
 const PUCE = "flex min-h-12 items-center rounded-full border-2 px-4 text-sm font-semibold no-underline";
@@ -65,7 +63,6 @@ export default async function PageDesistements({ searchParams }: Props) {
   };
   const filtres = Boolean(f.du || f.au || f.personne || f.type !== "tous" || brut.periode);
   const puce = (actif: boolean) => `${PUCE} ${actif ? "border-primaire bg-primaire text-primaire-texte" : "border-bordure bg-surface text-texte hover:bg-surface-douce"}`;
-  const affichees = detail.lignes.slice(0, LIGNES_MAX);
 
   return (
     <div className="flex flex-col gap-5">
@@ -141,63 +138,7 @@ export default async function PageDesistements({ searchParams }: Props) {
         </Carte>
       ) : (
         <>
-          <Carte titre={`Par personne — ${detail.personnes}`}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="text-sm text-texte-secondaire">
-                    <th className="py-2 pr-3 font-normal">Personne</th>
-                    <th className="py-2 pr-3 text-right font-normal">Désistements</th>
-                    <th className="py-2 pr-3 text-right font-normal">dont de dernière minute</th>
-                    <th className="py-2 font-normal">Dernier cours concerné</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.parPersonne.map((p) => (
-                    <tr key={p.userId} className="border-t border-bordure/60">
-                      <td className="py-1 pr-3">
-                        {/* Un nom mène à son seul détail, filtres gardés. */}
-                        <Link href={lien({ personne: p.userId })} className="inline-flex min-h-11 items-center">
-                          {p.nom}
-                        </Link>
-                      </td>
-                      <td className="py-1 pr-3 text-right tabular-nums">{p.n}</td>
-                      <td className="py-1 pr-3 text-right tabular-nums">{p.derniereMinute}</td>
-                      <td className="py-1">{formatDateCourte(p.dernierCours)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Carte>
-
-          <Carte titre={`Détail — ${detail.total}`}>
-            <ul className="flex flex-col divide-y divide-bordure">
-              {affichees.map((l) => (
-                <li key={l.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                  <span>
-                    <Link href={`/seances/${l.sessionId}`} className="font-semibold">
-                      {formatDateCourte(l.date)} · {formatHeure(l.heureDebut)}
-                    </Link>{" "}
-                    <span className="text-texte-secondaire">— {l.lieu}</span>
-                    <br />
-                    <strong>{l.nom}</strong> : {libelle(l.avant)} → <strong>{libelle(l.apres)}</strong>{" "}
-                    {l.derniereMinute ? (
-                      <Pastille ton="ocre">désistement de dernière minute</Pastille>
-                    ) : l.signale ? (
-                      <Pastille ton="neutre">désistement signalé</Pastille>
-                    ) : null}
-                  </span>
-                  <span className="shrink-0 text-texte-secondaire">{libelleAvantCours(l.avantCoursMin)}</span>
-                </li>
-              ))}
-            </ul>
-            {detail.total > affichees.length && (
-              <p className="mt-3 text-sm text-texte-secondaire">
-                Les {affichees.length} plus récents sont affichés sur {detail.total} : resserre les dates ou choisis une personne pour voir le reste.
-              </p>
-            )}
-          </Carte>
+          <ListesDesistements detail={detail} lienPersonne={(id) => lien({ personne: id })} max={LIGNES_MAX} />
         </>
       )}
     </div>

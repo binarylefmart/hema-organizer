@@ -175,6 +175,8 @@ export type StatsDesistements = {
   medianeMin: number | null;
   tranches: Array<{ libelle: string; n: number }>;
   parMembre: Array<{ userId: string; nom: string; n: number; tardifs: number; derniereMinute: number }>;
+  /** Le compte de **chacun** (pas seulement les dix premiers), pour le tableau des membres */
+  compteParMembre: Record<string, { n: number; derniereMinute: number }>;
   parSeance: Array<{ id: string; date: string; heureDebut: string; n: number; derniereMinute: number }>;
   derniers: Array<{ id: string; quand: Date; nom: string; avant: string | null; apres: string | null; tardif: boolean; derniereMinute: boolean; avantCoursMin: number; sessionId: string; date: string }>;
 };
@@ -259,6 +261,7 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
     personnes: membres.size,
     medianeMin: mediane,
     tranches,
+    compteParMembre: Object.fromEntries([...membres.values()].map((m) => [m.userId, { n: m.n, derniereMinute: m.derniereMinute }])),
     parMembre: [...membres.values()].sort((a, b) => parNombre(a, b) || b.derniereMinute - a.derniereMinute || b.tardifs - a.tardifs || a.nom.localeCompare(b.nom, "fr")).slice(0, 10),
     parSeance: [...seances.values()].sort((a, b) => parNombre(a, b) || a.date.localeCompare(b.date)).slice(0, 5),
     derniers: lignes.slice(0, 15).map((l) => ({
@@ -391,4 +394,68 @@ export async function detailDesistements(f: FiltresDesistements): Promise<Detail
     include: { user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true, lieu: true } } },
   });
   return calculerDetailDesistements(brutes, f.type);
+}
+
+/** Les mêmes listes, sur un ensemble de séances (onglet Désistements du tableau de bord). */
+export async function detailDesistementsSeances(sessionIds: readonly string[]): Promise<DetailDesistements> {
+  const brutes = await db.attendanceChange.findMany({
+    where: { desistement: true, sessionId: { in: [...sessionIds] }, session: { annulee: false } },
+    orderBy: { createdAt: "desc" },
+    include: { user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true, lieu: true } } },
+  });
+  return calculerDetailDesistements(brutes);
+}
+
+const NOMS_JOURS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"] as const;
+/** L'ordre de la semaine du club : lundi d'abord, dimanche en dernier (`getUTCDay` met dimanche à 0). */
+const RANG_JOUR = [6, 0, 1, 2, 3, 4, 5];
+
+export type CreneauDesistements = {
+  cle: string;
+  /** « Mardi », ou « Mardi · 19h00 » quand ce jour a plusieurs horaires */
+  libelle: string;
+  /** Nombre de cours de ce créneau dans la fenêtre (annulés exclus) */
+  cours: number;
+  desistements: number;
+  derniereMinute: number;
+  signales: number;
+};
+
+/**
+ * **Les désistements par jour de cours** (Delta : « par séance, mardi, vendredi ou autre, de manière
+ * générale, pas à date précise ») — fonction pure. Un créneau = jour de la semaine × heure de début ;
+ * l'heure ne s'écrit que si ce jour en a plusieurs. Le jour se lit sur la date de calendrier
+ * (`AAAA-MM-JJ` à midi UTC : aucun fuseau ne la fait changer de jour). Le nombre de cours voyage avec
+ * le compte : trois désistements sur douze mardis ne pèsent pas comme trois sur deux vendredis.
+ */
+export function desistementsParCreneau(
+  seances: ReadonlyArray<{ id: string; date: string; heureDebut: string }>,
+  lignes: ReadonlyArray<Pick<LigneDesistement, "sessionId" | "signale" | "derniereMinute">>,
+): CreneauDesistements[] {
+  const jour = (iso: string) => new Date(`${iso}T12:00:00Z`).getUTCDay();
+  const heuresParJour = new Map<number, Set<string>>();
+  for (const s of seances) heuresParJour.set(jour(s.date), (heuresParJour.get(jour(s.date)) ?? new Set()).add(s.heureDebut));
+  const creneauDe = new Map<string, string>();
+  const creneaux = new Map<string, CreneauDesistements & { j: number; h: string }>();
+  for (const s of seances) {
+    const j = jour(s.date);
+    const plusieurs = (heuresParJour.get(j)?.size ?? 0) > 1;
+    const cle = plusieurs ? `${j}-${s.heureDebut}` : `${j}`;
+    creneauDe.set(s.id, cle);
+    const h = s.heureDebut.replace(":", "h");
+    const c = creneaux.get(cle) ?? { cle, libelle: plusieurs ? `${NOMS_JOURS[j]} · ${h}` : NOMS_JOURS[j], cours: 0, desistements: 0, derniereMinute: 0, signales: 0, j, h: s.heureDebut };
+    c.cours += 1;
+    creneaux.set(cle, c);
+  }
+  for (const l of lignes) {
+    const c = creneaux.get(creneauDe.get(l.sessionId) ?? "");
+    if (!c) continue;
+    c.desistements += 1;
+    if (l.derniereMinute) c.derniereMinute += 1;
+    else if (l.signale) c.signales += 1;
+  }
+  // Le plus touché d'abord (c'est un « top ») ; à égalité, l'ordre de la semaine.
+  return [...creneaux.values()]
+    .sort((a, b) => b.desistements - a.desistements || b.derniereMinute - a.derniereMinute || RANG_JOUR[a.j] - RANG_JOUR[b.j] || a.h.localeCompare(b.h))
+    .map((c) => ({ cle: c.cle, libelle: c.libelle, cours: c.cours, desistements: c.desistements, derniereMinute: c.derniereMinute, signales: c.signales }));
 }

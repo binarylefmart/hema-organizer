@@ -371,7 +371,7 @@ describe("l'administration ne s'ouvre que depuis le profil", () => {
  * `/gestion/seances`, parce que des liens existants y mènent encore (l'onglet « Espace instructeur »
  * de l'en-tête, le cookie de reprise après connexion).
  */
-describe("la gestion s'ouvre sur les ateliers", () => {
+describe("la gestion s'ouvre sur le tableau de bord", () => {
   const PAGE_GESTION = "src/app/(app)/gestion/page.tsx";
 
   it("la sous-navigation de gestion n'a plus d'entrée « Aperçu »", () => {
@@ -394,7 +394,7 @@ describe("la gestion s'ouvre sur les ateliers", () => {
     expect(nav).not.toContain('label: "Périodes"');
     // …ni « Membres » : l'annuaire a suivi le trimestre dans l'espace admin.
     expect(nav).not.toContain('label: "Membres"');
-    expect(nav.slice(nav.indexOf("const sujets"))).toMatch(/^const sujets: Sujet\[\] = \[\n\s+\/\/[^\n]*\n\s+\{ href: "\/gestion\/ateliers", label: "Ateliers"/);
+    expect(nav.slice(nav.indexOf("const sujets"))).toMatch(/^const sujets: Sujet\[\] = \[\n\s+\/\/[^\n]*\n\s+\{ href: "\/gestion\/tableau-de-bord", label: "Tableau de bord"/);
   });
 
   it("l'onglet principal s'appelle « Séances » et mène à l'écran commun", () => {
@@ -403,13 +403,13 @@ describe("la gestion s'ouvre sur les ateliers", () => {
     expect(entete).not.toContain('label: "Présences"');
   });
 
-  it("/gestion existe encore, mais redirige vers les ateliers", () => {
+  it("/gestion existe encore, mais redirige vers le tableau de bord (le premier onglet)", () => {
     // Supprimer le fichier donnerait un 404 sur les liens qui pointent toujours vers /gestion
     expect(existe(PAGE_GESTION)).toBe(true);
     const code = lire(PAGE_GESTION);
     // Les membres sont partis dans l'espace admin : la section s'ouvre sur la porte qui reste, et
     // qui ne suppose aucune élévation.
-    expect(code).toContain('redirect("/gestion/ateliers")');
+    expect(code).toContain('redirect("/gestion/tableau-de-bord")');
     // La permission est vérifiée ici : on n'envoie pas un visiteur sans droits se faire refouler ailleurs
     expect(code).toContain('requirePermission("sessions.manage")');
   });

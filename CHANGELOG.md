@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.89.0
+
+### Nouveautés
+
+- **tableau-de-bord** : trois onglets, désistements en graphiques
+
+### Autres changements
+
+- état v0.89.0
+
 ## 0.88.0
 
 ### Nouveautés

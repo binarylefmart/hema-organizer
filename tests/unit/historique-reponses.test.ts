@@ -39,7 +39,7 @@ vi.mock("@/lib/db", () => ({
 const { lireDelaiDesistement, getDelaiDesistementMin } = await import("@/lib/settings");
 const { delaiDesistementSchema } = await import("@/lib/validation/gestion");
 const { dansFenetreDesistementTardif } = await import("@/lib/notifications/desistement");
-const { noterChangementsReponse, compterDesistements, calculerStatsDesistements, calculerDetailDesistements, libelleAvantCours, minutesAvantCours } = await import("@/lib/historique-reponses");
+const { noterChangementsReponse, compterDesistements, calculerStatsDesistements, calculerDetailDesistements, desistementsParCreneau, libelleAvantCours, minutesAvantCours } = await import("@/lib/historique-reponses");
 const { libelleDelaiDesistement } = await import("@/lib/constants");
 
 /** 20h00 à Paris le 8 octobre 2026 = 18:00 UTC. */
@@ -192,6 +192,8 @@ describe("calculerStatsDesistements", () => {
     expect(st.tranches.map((t) => t.n)).toEqual([1, 0, 1, 0, 1, 0]);
     expect(st.medianeMin).toBe(30 * 60);
     expect(st.derniers).toHaveLength(4);
+    // Le compte de chacun, pour le tableau des membres (pas seulement les dix premiers)
+    expect(st.compteParMembre).toEqual({ chloe: { n: 2, derniereMinute: 0 }, charlie: { n: 1, derniereMinute: 0 } });
   });
 
   it("rien à compter", () => {
@@ -246,5 +248,29 @@ describe("calculerDetailDesistements (page Désistements)", () => {
     const l = calculerDetailDesistements(brutes).lignes.find((x) => x.id === "c3")!;
     expect(l.avantCoursMin).toBe(120);
     expect(l).not.toHaveProperty("quand");
+  });
+});
+
+describe("desistementsParCreneau (par jour de cours)", () => {
+  // 2026-11-17 et 2026-11-24 sont des mardis, 2026-11-20 un vendredi.
+  const seances = [
+    { id: "m1", date: "2026-11-17", heureDebut: "19:00" },
+    { id: "v1", date: "2026-11-20", heureDebut: "19:00" },
+    { id: "m2", date: "2026-11-24", heureDebut: "19:00" },
+  ];
+  it("regroupe par jour de la semaine, compte les cours, le plus touché d'abord", () => {
+    const c = desistementsParCreneau(seances, [
+      { sessionId: "v1", signale: true, derniereMinute: true },
+      { sessionId: "v1", signale: true, derniereMinute: false },
+      { sessionId: "m1", signale: false, derniereMinute: false },
+    ]);
+    expect(c).toEqual([
+      { cle: "5", libelle: "Vendredi", cours: 1, desistements: 2, derniereMinute: 1, signales: 1 },
+      { cle: "2", libelle: "Mardi", cours: 2, desistements: 1, derniereMinute: 0, signales: 0 },
+    ]);
+  });
+  it("sépare les horaires d'un même jour seulement quand il en a plusieurs", () => {
+    const c = desistementsParCreneau([...seances, { id: "m3", date: "2026-11-24", heureDebut: "20:30" }], []);
+    expect(c.map((x) => x.libelle)).toEqual(["Mardi · 19h00", "Mardi · 20h30", "Vendredi"]);
   });
 });

@@ -1543,17 +1543,41 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "tableau-de-bord-desistements",
-      description: "Tableau de bord : les désistements de la période, horodatés",
+      description: "Tableau de bord — onglet Désistements (par défaut) : nom par nom, sur la période",
       connexion: COMPTES.instructeur,
       chemin: "/seances",
+      pleinePage: true,
       avant: async (page) => {
         await historiqueReponsesDemo(true);
         await allerA(page, `${BASE}/gestion/tableau-de-bord`);
-        await page.getByText(/^Derniers désistements/).first().click();
-        await page.getByRole("heading", { name: /^Désistements/ }).first().evaluate((el) => {
-          el.scrollIntoView({ block: "start" });
-          window.scrollBy(0, -110);
-        });
+      },
+      apres: async () => {
+        await historiqueReponsesDemo(false);
+      },
+    },
+    {
+      nom: "tableau-de-bord-personnes",
+      description: "Tableau de bord — onglet Personnes : présence et désistements sur une ligne, recherche et tri",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances",
+      pleinePage: true,
+      avant: async (page) => {
+        await historiqueReponsesDemo(true);
+        await allerA(page, `${BASE}/gestion/tableau-de-bord?vue=personnes`);
+      },
+      apres: async () => {
+        await historiqueReponsesDemo(false);
+      },
+    },
+    {
+      nom: "tableau-de-bord-seances",
+      description: "Tableau de bord — onglet Séances : taux par séance et choix des cours",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances",
+      pleinePage: true,
+      avant: async (page) => {
+        await historiqueReponsesDemo(true);
+        await allerA(page, `${BASE}/gestion/tableau-de-bord?vue=seances`);
       },
       apres: async () => {
         await historiqueReponsesDemo(false);

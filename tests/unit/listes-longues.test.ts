@@ -371,6 +371,14 @@ describe("tableau de bord — on l'ouvre pour trouver les décrocheurs", () => {
     expect(lireTri(undefined)).toBe("nom");
     expect(lireTri("n'importe quoi")).toBe("nom");
     expect(lireTri("taux")).toBe("taux");
+    expect(lireTri("desistements")).toBe("desistements");
+    const liste = [
+      { prenom: "Alix", nom: "A", pourcentage: 50, sansReponse: 0, desistements: 1, derniereMinute: 0 },
+      { prenom: "Charlie", nom: "B", pourcentage: 50, sansReponse: 0, desistements: 3, derniereMinute: 1 },
+      { prenom: "Chloé", nom: "C", pourcentage: 50, sansReponse: 0, desistements: 1, derniereMinute: 1 },
+    ];
+    // Le plus de désistements d'abord, puis le plus de dernière minute, puis l'alphabet.
+    expect(trierMembres(liste, "desistements").map((m) => m.prenom)).toEqual(["Charlie", "Chloé", "Alix"]);
     expect(lireTri("sansReponse")).toBe("sansReponse");
   });
 
