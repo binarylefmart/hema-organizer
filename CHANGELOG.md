@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.88.0
+
+### Nouveautés
+
+- **desistements** : page détaillée, nom par nom, filtrable par date et personne
+
+### Autres changements
+
+- état v0.88.0
+
 ## 0.87.0
 
 ### Nouveautés

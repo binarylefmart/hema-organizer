@@ -39,7 +39,7 @@ vi.mock("@/lib/db", () => ({
 const { lireDelaiDesistement, getDelaiDesistementMin } = await import("@/lib/settings");
 const { delaiDesistementSchema } = await import("@/lib/validation/gestion");
 const { dansFenetreDesistementTardif } = await import("@/lib/notifications/desistement");
-const { noterChangementsReponse, compterDesistements, calculerStatsDesistements, libelleAvantCours, minutesAvantCours } = await import("@/lib/historique-reponses");
+const { noterChangementsReponse, compterDesistements, calculerStatsDesistements, calculerDetailDesistements, libelleAvantCours, minutesAvantCours } = await import("@/lib/historique-reponses");
 const { libelleDelaiDesistement } = await import("@/lib/constants");
 
 /** 20h00 à Paris le 8 octobre 2026 = 18:00 UTC. */
@@ -177,7 +177,7 @@ describe("calculerStatsDesistements", () => {
   });
 
   it("compte personne × séance une fois, classe par délai et par personne", () => {
-    // Du plus récent au plus ancien, comme la lecture en base.
+    // Du plus récent au plus ancien, comme la lecture en base. 20 h à Paris en novembre = 19:00 UTC.
     const st = calculerStatsDesistements(9, [
       ligne("a", "chloe", "s1", 1, true),
       ligne("b", "chloe", "s1", 50),
@@ -196,5 +196,55 @@ describe("calculerStatsDesistements", () => {
 
   it("rien à compter", () => {
     expect(calculerStatsDesistements(0, [])).toMatchObject({ desistements: 0, medianeMin: null });
+  });
+});
+
+describe("calculerDetailDesistements (page Désistements)", () => {
+  const ligne = (id: string, userId: string, prenom: string, sessionId: string, date: string, extra: { tardif?: boolean; derniereMinute?: boolean; heures?: number } = {}) => ({
+    id,
+    sessionId,
+    userId,
+    avant: "PRESENT",
+    apres: "ABSENT",
+    tardif: extra.tardif ?? false,
+    derniereMinute: extra.derniereMinute ?? false,
+    createdAt: new Date(new Date(`${date}T19:00:00Z`).getTime() - (extra.heures ?? 30) * 3_600_000),
+    user: { prenom, nom: "Test" },
+    session: { date, heureDebut: "20:00", lieu: "Gymnase" },
+  });
+  // Du plus récent au plus ancien, comme la lecture en base. 20 h à Paris en novembre = 19:00 UTC.
+  const brutes = [
+    ligne("c3", "chloe", "Chloé", "s2", "2026-11-19", { tardif: true, derniereMinute: true, heures: 2 }),
+    ligne("b1", "charlie", "Charlie", "s2", "2026-11-19", { tardif: true }),
+    ligne("c2", "chloe", "Chloé", "s1", "2026-11-12"),
+    ligne("c1", "chloe", "Chloé", "s1", "2026-11-12", { tardif: true }),
+  ];
+
+  it("une ligne par personne et par séance, le dernier retrait, qualifié par les plus anciens", () => {
+    const d = calculerDetailDesistements(brutes);
+    expect(d.total).toBe(3);
+    expect(d.lignes.map((l) => l.id)).toEqual(["b1", "c3", "c2"]);
+    expect(d.lignes.find((l) => l.id === "c2")).toMatchObject({ signale: true, derniereMinute: false });
+    expect(d.derniereMinute).toBe(1);
+  });
+
+  it("compte par personne, le plus de désistements d'abord, avec le dernier cours concerné", () => {
+    const d = calculerDetailDesistements(brutes);
+    expect(d.parPersonne).toEqual([
+      { userId: "chloe", nom: "Chloé Test", n: 2, derniereMinute: 1, signales: 1, dernierCours: "2026-11-19" },
+      { userId: "charlie", nom: "Charlie Test", n: 1, derniereMinute: 0, signales: 1, dernierCours: "2026-11-19" },
+    ]);
+    expect(d.personnes).toBe(2);
+  });
+
+  it("filtre par type : de dernière minute, ou signalés seulement", () => {
+    expect(calculerDetailDesistements(brutes, "derniere_minute").lignes.map((l) => l.id)).toEqual(["c3"]);
+    expect(calculerDetailDesistements(brutes, "signales").lignes.map((l) => l.id).sort()).toEqual(["b1", "c2"]);
+  });
+
+  it("dit l'écart au cours, pas l'instant du retrait", () => {
+    const l = calculerDetailDesistements(brutes).lignes.find((x) => x.id === "c3")!;
+    expect(l.avantCoursMin).toBe(120);
+    expect(l).not.toHaveProperty("quand");
   });
 });

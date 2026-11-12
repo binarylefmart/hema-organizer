@@ -275,3 +275,120 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
     })),
   };
 }
+
+/* ───────────────────── Le détail des désistements, filtrable (page dédiée) ─────────────────────
+ *
+ * Demande de Delta : « savoir qui exactement, avec le nombre de désistements sur la période, les
+ * dates, et un filtrage par date et par nom ». Même règle de compte que la carte du tableau de bord :
+ * un désistement = une personne × une séance (le dernier retrait), séances annulées exclues.
+ * **Pas d'horodatage** : l'écran dit la date du cours et l'écart au cours, l'instant exact reste au
+ * journal d'audit.
+ */
+
+export type TypeDesistementFiltre = "tous" | "signales" | "derniere_minute";
+
+export type FiltresDesistements = {
+  /** Identifiant de période, ou "" pour toutes */
+  periodId: string;
+  /** Date du cours, bornes comprises (AAAA-MM-JJ), "" = sans borne */
+  du: string;
+  au: string;
+  /** Identifiant de la personne, "" = tout le monde */
+  personne: string;
+  type: TypeDesistementFiltre;
+};
+
+export type LigneDesistement = {
+  id: string;
+  userId: string;
+  nom: string;
+  sessionId: string;
+  date: string;
+  heureDebut: string;
+  lieu: string;
+  avant: string | null;
+  apres: string | null;
+  /** Les instructeurs ont été prévenus (une fenêtre d'alerte) */
+  signale: boolean;
+  derniereMinute: boolean;
+  avantCoursMin: number;
+};
+
+export type PersonneDesistements = { userId: string; nom: string; n: number; derniereMinute: number; signales: number; dernierCours: string };
+
+export type DetailDesistements = { lignes: LigneDesistement[]; parPersonne: PersonneDesistements[]; total: number; derniereMinute: number; personnes: number };
+
+type LigneDetailBrute = {
+  id: string;
+  sessionId: string;
+  userId: string;
+  avant: string | null;
+  apres: string | null;
+  tardif: boolean;
+  derniereMinute: boolean;
+  createdAt: Date;
+  user: { prenom: string; nom: string };
+  session: { date: string; heureDebut: string; lieu: string };
+};
+
+/** Le calcul seul (fonction pure) : lignes lues du plus récent au plus ancien. */
+export function calculerDetailDesistements(brutes: readonly LigneDetailBrute[], type: TypeDesistementFiltre = "tous"): DetailDesistements {
+  const couples = new Map<string, LigneDesistement>();
+  for (const l of brutes) {
+    const cle = `${l.userId}|${l.sessionId}`;
+    const deja = couples.get(cle);
+    if (deja) {
+      // Un aller-retour sur la même séance : le dernier retrait fait la ligne, un retrait signalé ou de
+      // dernière minute plus ancien la qualifie quand même.
+      deja.signale ||= l.tardif;
+      deja.derniereMinute ||= l.derniereMinute;
+      continue;
+    }
+    couples.set(cle, {
+      id: l.id,
+      userId: l.userId,
+      nom: `${l.user.prenom} ${l.user.nom}`.trim(),
+      sessionId: l.sessionId,
+      date: l.session.date,
+      heureDebut: l.session.heureDebut,
+      lieu: l.session.lieu,
+      avant: l.avant,
+      apres: l.apres,
+      signale: l.tardif,
+      derniereMinute: l.derniereMinute,
+      avantCoursMin: minutesAvantCours(l.createdAt, l.session.date, l.session.heureDebut),
+    });
+  }
+  const garder = (l: LigneDesistement) => (type === "derniere_minute" ? l.derniereMinute : type === "signales" ? l.signale && !l.derniereMinute : true);
+  // Le plus récent cours d'abord, puis l'heure, puis le nom : l'ordre de lecture d'un registre.
+  const lignes = [...couples.values()].filter(garder).sort((a, b) => b.date.localeCompare(a.date) || b.heureDebut.localeCompare(a.heureDebut) || a.nom.localeCompare(b.nom, "fr"));
+  const parId = new Map<string, PersonneDesistements>();
+  for (const l of lignes) {
+    const p = parId.get(l.userId) ?? { userId: l.userId, nom: l.nom, n: 0, derniereMinute: 0, signales: 0, dernierCours: l.date };
+    p.n += 1;
+    if (l.derniereMinute) p.derniereMinute += 1;
+    else if (l.signale) p.signales += 1;
+    if (l.date > p.dernierCours) p.dernierCours = l.date;
+    parId.set(l.userId, p);
+  }
+  const parPersonne = [...parId.values()].sort((a, b) => b.n - a.n || b.derniereMinute - a.derniereMinute || a.nom.localeCompare(b.nom, "fr"));
+  return { lignes, parPersonne, total: lignes.length, derniereMinute: lignes.filter((l) => l.derniereMinute).length, personnes: parPersonne.length };
+}
+
+/** Les désistements selon les filtres de la page (une seule lecture). */
+export async function detailDesistements(f: FiltresDesistements): Promise<DetailDesistements> {
+  const brutes = await db.attendanceChange.findMany({
+    where: {
+      desistement: true,
+      ...(f.personne ? { userId: f.personne } : {}),
+      session: {
+        annulee: false,
+        ...(f.periodId ? { periodId: f.periodId } : {}),
+        ...(f.du || f.au ? { date: { ...(f.du ? { gte: f.du } : {}), ...(f.au ? { lte: f.au } : {}) } } : {}),
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    include: { user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true, lieu: true } } },
+  });
+  return calculerDetailDesistements(brutes, f.type);
+}

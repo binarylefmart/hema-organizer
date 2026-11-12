@@ -247,11 +247,18 @@ async function ChoixDesCours({ stats }: IlotProps) {
   );
 }
 
-async function Desistements({ stats }: IlotProps) {
-  const s = await stats;
+async function Desistements({ stats, choisie }: IlotProps & { choisie: Promise<string | undefined> }) {
+  const [s, id] = await Promise.all([stats, choisie]);
   if (!s) return null;
   const [st, delais] = await Promise.all([statsDesistements(s.seances.map((x) => x.id)), getDelaisDesistement()]);
-  return <CarteDesistements st={st} delaiLibelle={libelleDelaiDesistement(delais.delaiMin)} derniereMinuteLibelle={libelleDelaiDesistement(delais.derniereMinuteMin)} />;
+  return (
+    <CarteDesistements
+      st={st}
+      delaiLibelle={libelleDelaiDesistement(delais.delaiMin)}
+      derniereMinuteLibelle={libelleDelaiDesistement(delais.derniereMinuteMin)}
+      lienDetail={`/gestion/tableau-de-bord/desistements${id ? `?periode=${id}` : ""}`}
+    />
+  );
 }
 
 export default async function PageTableauDeBord({ searchParams }: Props) {
@@ -333,7 +340,7 @@ export default async function PageTableauDeBord({ searchParams }: Props) {
         }
       />
       <Suspense fallback={<CarteSquelette lignes={4} />}>
-        <Desistements stats={stats} />
+        <Desistements stats={stats} choisie={choisie} />
       </Suspense>
       <Suspense fallback={null}>
         <ChoixDesCours stats={stats} />

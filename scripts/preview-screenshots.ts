@@ -1528,6 +1528,20 @@ function toutesLesScenes(): Scene[] {
       apres: () => definirChoixCoursDemo(false),
     },
     {
+      nom: "gestion-desistements",
+      description: "Désistements, nom par nom : filtres (période, dates du cours, personne, type), compte par personne, détail",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances",
+      pleinePage: true,
+      avant: async (page) => {
+        await historiqueReponsesDemo(true);
+        await allerA(page, `${BASE}/gestion/tableau-de-bord/desistements?periode=toutes`);
+      },
+      apres: async () => {
+        await historiqueReponsesDemo(false);
+      },
+    },
+    {
       nom: "tableau-de-bord-desistements",
       description: "Tableau de bord : les désistements de la période, horodatés",
       connexion: COMPTES.instructeur,

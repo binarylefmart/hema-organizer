@@ -23,7 +23,7 @@ function Chiffre({ valeur, legende }: { valeur: string | number; legende: string
  * séances que le reste de l'écran (période et fenêtre de temps choisies). Les chiffres viennent de
  * l'historique des réponses : rien avant sa mise en place.
  */
-export function CarteDesistements({ st, delaiLibelle, derniereMinuteLibelle }: { st: StatsDesistements; delaiLibelle: string; derniereMinuteLibelle: string }) {
+export function CarteDesistements({ st, delaiLibelle, derniereMinuteLibelle, lienDetail }: { st: StatsDesistements; delaiLibelle: string; derniereMinuteLibelle: string; lienDetail: string }) {
   const max = Math.max(1, ...st.tranches.map((t) => t.n));
   return (
     <Carte titre={`Désistements — ${st.desistements}`}>
@@ -113,6 +113,9 @@ export function CarteDesistements({ st, delaiLibelle, derniereMinuteLibelle }: {
               </ul>
             </details>
           )}
+          <Link href={lienDetail} className="inline-flex min-h-12 items-center font-semibold">
+            Voir tous les désistements, nom par nom, avec filtres par date et par personne ›
+          </Link>
           <p className="text-sm text-texte-secondaire">
             Un désistement : Présent → Absent ou Peut-être, ou Peut-être → Absent, compté une fois par personne et par séance. Séances annulées exclues.
             Signalé : les instructeurs ont été prévenus. De dernière minute : dans la fenêtre réglée par le bureau, il prend le pas sur le désistement
