@@ -215,7 +215,7 @@ async function desister(userId: string, avant: string | null, apres: string, now
 describe("registre : le patron de l'alerte « peu de monde », sans les salons", () => {
   it("est déclaré partout où le registre l'attend", () => {
     expect(TYPES_NOTIFICATION).toContain("desistement_tardif");
-    expect(DESCRIPTIONS.desistement_tardif.titre).toBe("Désistement de dernière minute");
+    expect(DESCRIPTIONS.desistement_tardif.titre).toBe("Désistement avant un cours");
     expect(DESCRIPTIONS.desistement_tardif.quand).toContain("2 heures");
     // Personnel : il nomme quelqu'un. Ni salon, ni site du club, ni liste.
     expect(CANAUX_PAR_NOTIFICATION.desistement_tardif).toEqual(["email", "push"]);
@@ -238,9 +238,21 @@ describe("registre : le patron de l'alerte « peu de monde », sans les salons",
       chiffres: { presents: 1, invites: 4 },
       aujourdHui: "2026-10-08",
     });
-    expect(c.ligne).toBe("⚠️ Désistement de dernière minute — Chloé Delta ne vient plus (Absent) au cours de ce soir 20h00 — Gymnase municipal");
+    expect(c.ligne).toBe("⚠️ Désistement — Chloé Delta ne vient plus (Absent) au cours de ce soir 20h00 — Gymnase municipal");
     expect(c.chiffres).toBe("✅ 1 présent / 4 — 25 %");
     expect(c.chemin).toBe("/seances/s1");
+  });
+  it("un cours dans plusieurs jours (délai réglé en jours) : la date en toutes lettres, pas « dernière minute »", () => {
+    const c = contenuDesistementTardif({
+      membre: "Chloé Delta",
+      statut: "PEUT_ETRE",
+      seance: { id: "s1", date: "2026-10-15", heureDebut: "20:00", lieu: "Gymnase municipal" },
+      chiffres: { presents: 1, invites: 4 },
+      aujourdHui: "2026-10-08",
+    });
+    expect(c.titre).toBe("⚠️ Désistement");
+    expect(c.phrase).toMatch(/^Chloé Delta ne vient plus \(Peut-être\) au cours du \S+ 15 octobre/);
+    expect(c.ligne).not.toContain("dernière minute");
   });
 });
 
@@ -321,11 +333,11 @@ describe("destinataires et canaux", () => {
     await desister("chloe", "PRESENT", "ABSENT");
     expect(faux.emails.map((e) => e.to).sort()).toEqual(["alix@club.fr", "charlie@club.fr"]);
     const email = faux.emails[0];
-    expect(email.sujet).toBe("⚠️ Désistement de dernière minute — Chloé Delta ne vient plus (Absent) au cours de ce soir 20h00 — Gymnase municipal");
+    expect(email.sujet).toBe("⚠️ Désistement — Chloé Delta ne vient plus (Absent) au cours de ce soir 20h00 — Gymnase municipal");
     // Chloé est passée Absent : il reste m1 Présent, sur quatre invités.
     expect(email.contenu.paragraphes.join("\n")).toContain("✅ 1 présent / 4 — 25 %");
     expect(faux.push.map((p) => p.userId).sort()).toEqual(["alix", "charlie"]);
-    expect(faux.push[0]).toMatchObject({ titre: "Désistement de dernière minute", url: "/seances/s1" });
+    expect(faux.push[0]).toMatchObject({ titre: "Désistement", url: "/seances/s1" });
   });
 
   it("retombe sur l'équipe de la période quand la séance n'a pas d'instructeur", async () => {

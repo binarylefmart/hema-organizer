@@ -379,14 +379,18 @@ export function embedEffectifFaible(s: SeanceResume, c: ChiffresSeance, sansRepo
   };
 }
 
-/* ─────────────────────── Désistement de dernière minute (message nominatif) ───────────────────────
+/* ─────────────────────── Désistement avant le cours (message nominatif) ───────────────────────
  *
  * **La seule mise en forme de ce module qui nomme quelqu'un**, et c'est pour cela qu'elle ne
  * produit pas d'embed : le type `desistement_tardif` n'a ni colonne Discord ni colonne Telegram
  * (`CANAUX_PAR_NOTIFICATION`). L'email de l'encadrement et la notification sur le téléphone lisent
  * tous deux cette fonction-ci : un seul texte, deux débouchés.
  */
-export const TITRE_DESISTEMENT = "⚠️ Désistement de dernière minute";
+/**
+ * « Désistement », sans « de dernière minute » : le délai se règle jusqu'à deux semaines
+ * (`DELAI_DESISTEMENT_HEURES_MAX`), le mot ne tenait plus pour un cours dans cinq jours.
+ */
+export const TITRE_DESISTEMENT = "⚠️ Désistement";
 
 /** Ce que le membre vient de répondre, et qui fait l'objet de l'alerte. */
 export type StatutDesistement = "ABSENT" | "PEUT_ETRE";
@@ -394,9 +398,8 @@ export type StatutDesistement = "ABSENT" | "PEUT_ETRE";
 export const LIBELLES_STATUT_DESISTEMENT: Record<StatutDesistement, string> = { ABSENT: "Absent", PEUT_ETRE: "Peut-être" };
 
 /**
- * « de ce soir », « d'aujourd'hui », « de demain » : la fenêtre est de deux heures, le cours est donc
- * presque toujours le jour même. Le lendemain ne se présente que pour un cours qui commence peu
- * après minuit ; au-delà, la date en toutes lettres.
+ * « de ce soir », « d'aujourd'hui », « de demain » ; au-delà, la date en toutes lettres
+ * (« du jeudi 14 novembre ») — le délai réglé par le club peut aller jusqu'à deux semaines.
  */
 export function quandCoursProche(date: string, heureDebut: string, aujourdHui: string): string {
   if (date === aujourdHui) return heureDebut >= "17:00" ? "de ce soir" : "d'aujourd'hui";
@@ -405,7 +408,7 @@ export function quandCoursProche(date: string, heureDebut: string, aujourdHui: s
 }
 
 export type ContenuDesistement = {
-  /** « ⚠️ Désistement de dernière minute » */
+  /** « ⚠️ Désistement » */
   titre: string;
   /** « Prénom Nom ne vient plus (Absent) au cours de ce soir 20h00 — Gymnase » */
   phrase: string;

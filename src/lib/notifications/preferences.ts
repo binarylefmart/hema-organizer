@@ -260,7 +260,7 @@ export const DESCRIPTIONS: Record<TypeNotification, DescriptionNotification> = {
     quand: `Chaque matin à 7h et avec les envois du soir, aux instructeurs, dans les ${HORIZON_ALERTE_EFFECTIF} jours qui précèdent un cours ${REGLE_SEUIL_EFFECTIF} — le nombre de personnes correspondant est affiché sur l'écran Club (sur le salon Discord seulement si la case est cochée).`,
   },
   desistement_tardif: {
-    titre: "Désistement de dernière minute",
+    titre: "Désistement avant un cours",
     quand: `À tous les instructeurs du club — sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être —, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans le délai réglé par le bureau avant le cours (${libelleDelaiDesistement()} tant qu'il n'a rien changé) — avec son nom et l'effectif mis à jour. Jamais sur les salons : le message nomme quelqu'un.`,
   },
   planning_modifie: {

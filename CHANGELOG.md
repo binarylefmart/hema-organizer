@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.86.1
+
+### Nouveautés
+
+- **desistements** : notification « Désistement », plus « de dernière minute »
+
 ## 0.86.0
 
 ### Nouveautés

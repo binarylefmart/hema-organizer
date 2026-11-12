@@ -81,7 +81,7 @@ export function emailEffectifFaible(args: {
  *
  * Un email **par instructeur** (aucun destinataire visible des autres), jamais routé vers la liste du
  * club : il nomme le membre (`RAISON_ROUTAGE_FIXE.desistement_tardif`). Pas de bouton d'annulation —
- * deux heures avant le cours, la décision se prend sur la fiche, en connaissance de cause.
+ * la décision se prend sur la fiche, en connaissance de cause.
  */
 export function emailDesistementTardif(args: {
   prenom: string;

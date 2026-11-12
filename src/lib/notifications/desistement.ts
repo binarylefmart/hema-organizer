@@ -222,7 +222,7 @@ export function chargeDesistementPush(args: {
 }): ChargePush {
   const c = contenuDesistementTardif({ membre: args.membre, statut: args.statut, seance: args.seance, chiffres: args.chiffres, aujourdHui: args.aujourdHui });
   return {
-    titre: "Désistement de dernière minute",
+    titre: "Désistement",
     corps: `${c.phrase}. ${c.chiffres}`,
     url: c.chemin,
     // Un tag par membre : deux désistements sur la même séance ne s'écrasent pas sur l'écran verrouillé.
