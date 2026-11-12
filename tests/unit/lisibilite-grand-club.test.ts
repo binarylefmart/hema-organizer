@@ -123,8 +123,8 @@ describe("tableau de bord — la légende ne nomme plus de couleur", () => {
     const code = source(GRAPHIQUES_ONGLETS);
     expect(code).not.toMatch(/bleu clair|vert clair :|en or/i);
     // Des pastilles décoratives (donc `aria-hidden`), suivies de leur libellé en texte
-    expect(code).toMatch(/aria-hidden[^]{0,160}background: VERT \}\}[^]{0,40}\/>\s*présents/);
-    expect(code).toMatch(/aria-hidden[^]{0,160}background: VERT_CLAIR \}\}[^]{0,40}\/>\s*peut-être/);
+    expect(code).toMatch(/aria-hidden[^]{0,160}background: PRESENT \}\}[^]{0,40}\/>\s*présents/);
+    expect(code).toMatch(/aria-hidden[^]{0,160}background: PEUT_ETRE \}\}[^]{0,40}\/>\s*peut-être/);
   });
 
   it("sur téléphone, les colonnes défilent de côté au lieu de s'écraser", () => {

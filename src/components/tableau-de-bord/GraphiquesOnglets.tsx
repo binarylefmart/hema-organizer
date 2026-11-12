@@ -6,16 +6,18 @@ import { extremesSeances, repartitionTaux, tauxParCreneau, topsPersonnes } from 
 import { Carte } from "@/components/ui/Carte";
 
 /**
- * **Les graphiques des onglets Séances et Personnes** (maquettes validées par Delta). Présence : une
- * seule teinte verte du thème, présents plein et peut-être à 50 % mêlé à la surface (validé : gamme
- * ordinale, daltonisme, clair et sombre). « Les moins présents » ressortent en rouge (une seule série,
- * mise en avant) ; « sans réponse » reste en gris. Chaque barre porte son nom accessible ; les chiffres
- * exacts sont écrits à côté, jamais la couleur seule.
+ * **Les graphiques des onglets Séances et Personnes** (maquettes validées par Delta). Présence : vert
+ * pour les présents, ambre pour les peut-être (`--viz-*` de `globals.css`, validés pour les daltoniens
+ * en clair et en sombre). « Les moins présents » ressortent en rouge (une seule série, mise en avant) ;
+ * « sans réponse » reste en gris. Chaque barre porte son nom accessible ; les chiffres exacts sont
+ * écrits à côté, jamais la couleur seule.
  */
-const VERT = "var(--vert)";
-const VERT_CLAIR = "color-mix(in srgb, var(--vert) 50%, var(--surface))";
+// Présents en vert, peut-être en ambre (`--viz-present`, `--viz-peut-etre`) : un vert clair sur un vert
+// foncé se distinguait mal. Validés pour les daltoniens, clair et sombre.
+const PRESENT = "var(--viz-present)";
+const PEUT_ETRE = "var(--viz-peut-etre)";
 
-function Ligne({ libelle, sous, part, valeur, couleur = VERT, href }: { libelle: string; sous?: string; part: number; valeur: string; couleur?: string; href?: string }) {
+function Ligne({ libelle, sous, part, valeur, couleur = PRESENT, href }: { libelle: string; sous?: string; part: number; valeur: string; couleur?: string; href?: string }) {
   const contenu = (
     <>
       <span className="flex min-w-0 flex-col leading-tight">
@@ -69,11 +71,11 @@ export function GraphiquesSeances({ seances, partEffectifMin }: { seances: reado
         <div className="flex flex-col gap-3">
           <ul className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-texte-secondaire" aria-label="Légende">
             <li className="inline-flex items-center gap-2">
-              <span aria-hidden className="inline-block size-3 rounded-sm" style={{ background: VERT }} />
+              <span aria-hidden className="inline-block size-3 rounded-sm" style={{ background: PRESENT }} />
               présents
             </li>
             <li className="inline-flex items-center gap-2">
-              <span aria-hidden className="inline-block size-3 rounded-sm" style={{ background: VERT_CLAIR }} />
+              <span aria-hidden className="inline-block size-3 rounded-sm" style={{ background: PEUT_ETRE }} />
               peut-être
             </li>
             <li className="inline-flex items-center gap-2">
@@ -100,8 +102,8 @@ export function GraphiquesSeances({ seances, partEffectifMin }: { seances: reado
                 return (
                   <Link key={s.id} href={`/seances/${s.id}`} title={nom} aria-label={nom} className="group flex w-9 shrink-0 flex-col items-center gap-1 no-underline">
                     <div className={`relative flex h-40 w-5 flex-col justify-end gap-[2px] group-hover:opacity-80 ${s.passee ? "" : "opacity-60"}`}>
-                      {c.peutEtre > 0 && <div className="rounded-t" style={{ height: `${(c.peutEtre / invitesMax) * 100}%`, background: VERT_CLAIR }} />}
-                      {c.presents > 0 && <div className={c.peutEtre > 0 ? "" : "rounded-t"} style={{ height: `${(c.presents / invitesMax) * 100}%`, background: VERT }} />}
+                      {c.peutEtre > 0 && <div className="rounded-t" style={{ height: `${(c.peutEtre / invitesMax) * 100}%`, background: PEUT_ETRE }} />}
+                      {c.presents > 0 && <div className={c.peutEtre > 0 ? "" : "rounded-t"} style={{ height: `${(c.presents / invitesMax) * 100}%`, background: PRESENT }} />}
                     </div>
                     <span className="text-xs tabular-nums text-texte-secondaire">
                       {s.date.slice(8, 10)}/{s.date.slice(5, 7)}

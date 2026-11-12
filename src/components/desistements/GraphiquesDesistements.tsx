@@ -11,26 +11,25 @@ import { Carte } from "@/components/ui/Carte";
 /**
  * **Les désistements en graphiques** (Delta : « je veux du graph, que ce soit visuel »).
  *
- * Quatre types ordonnés — anticipé, signalé, de dernière minute, non signalé (inscrit Présent, pas
- * venu) — donc **une seule teinte** : le rouge du thème, mêlé à la surface pour les plus légers (45 %,
- * 72 %), plein pour la dernière minute, mêlé au texte pour le non signalé — le plus contrasté dans les
- * deux modes (il fonce en clair, s'éclaircit en sombre). Validé : gamme ordinale, daltonisme, clair et
- * sombre, contraste ≥ 2:1 au plus léger. Rouge et ocre, essayés d'abord, se confondaient. La légende
- * est toujours là, chaque barre porte son nom accessible, et le détail, dessous, en est le tableau.
+ * Trois types comptés — signalé, de dernière minute, non signalé (inscrit Présent, pas venu) ; un
+ * retrait anticipé n'est pas un désistement — en **trois teintes franches** (`--viz-*`, `globals.css`) :
+ * violet, ambre, framboise, du calme à l'alerte. Une seule gamme de rouge, d'abord, passait les contrôles mais ne se voyait pas. Validées
+ * pour les daltoniens en clair et en sombre ; la légende est toujours là, chaque barre porte son nom
+ * accessible et ses chiffres, et le détail, dessous, en est le tableau.
  */
 
-type Type = "nonsignale" | "derniere" | "signale" | "anticipe";
+type Type = "nonsignale" | "derniere" | "signale";
 /** Du plus grave au moins grave : l'ordre de la légende, et le haut d'une colonne. */
 const TYPES: ReadonlyArray<{ cle: Type; libelle: string; pluriel: string; fond: string }> = [
-  { cle: "nonsignale", libelle: "désistement non signalé", pluriel: "désistements non signalés", fond: "color-mix(in srgb, var(--rouge) 65%, var(--texte))" },
-  { cle: "derniere", libelle: "désistement de dernière minute", pluriel: "désistements de dernière minute", fond: "var(--rouge)" },
-  { cle: "signale", libelle: "désistement signalé", pluriel: "désistements signalés", fond: "color-mix(in srgb, var(--rouge) 72%, var(--surface))" },
-  { cle: "anticipe", libelle: "désistement anticipé", pluriel: "désistements anticipés", fond: "color-mix(in srgb, var(--rouge) 45%, var(--surface))" },
+  { cle: "nonsignale", libelle: "désistement non signalé", pluriel: "désistements non signalés", fond: "var(--viz-non-signale)" },
+  { cle: "derniere", libelle: "désistement de dernière minute", pluriel: "désistements de dernière minute", fond: "var(--viz-derniere-minute)" },
+  { cle: "signale", libelle: "désistement signalé", pluriel: "désistements signalés", fond: "var(--viz-signale)" },
 ];
-const typeDe = (l: LigneDesistement): Type => (l.nonSignale ? "nonsignale" : l.derniereMinute ? "derniere" : l.signale ? "signale" : "anticipe");
+// Un retrait anticipé n'arrive jamais ici : `calculerDetailDesistements` l'a déjà écarté.
+const typeDe = (l: LigneDesistement): Type => (l.nonSignale ? "nonsignale" : l.derniereMinute ? "derniere" : "signale");
 type Compte = Record<Type, number>;
-const vide = (): Compte => ({ nonsignale: 0, derniere: 0, signale: 0, anticipe: 0 });
-const total = (c: Compte) => c.nonsignale + c.derniere + c.signale + c.anticipe;
+const vide = (): Compte => ({ nonsignale: 0, derniere: 0, signale: 0 });
+const total = (c: Compte) => c.nonsignale + c.derniere + c.signale;
 const phrase = (c: Compte) =>
   TYPES.filter((t) => c[t.cle] > 0)
     .map((t) => `${c[t.cle]} ${c[t.cle] > 1 ? t.pluriel : t.libelle}`)
@@ -286,7 +285,7 @@ export function GraphiquesDesistements({
                     >
                       <span className="truncate text-sm text-texte">{b.nom}</span>
                       <span className="flex h-4 items-stretch">
-                        <span className="h-full rounded-r" style={{ width: `${(b.n / maxDm) * 100}%`, background: "var(--rouge)" }} />
+                        <span className="h-full rounded-r" style={{ width: `${(b.n / maxDm) * 100}%`, background: "var(--viz-derniere-minute)" }} />
                       </span>
                       <span className="text-right text-sm font-semibold tabular-nums text-texte">{b.n}</span>
                     </Link>
@@ -309,7 +308,6 @@ export function GraphiquesDesistements({
                     nonsignale: c.nonSignales,
                     derniere: c.derniereMinute,
                     signale: c.signales,
-                    anticipe: c.desistements - c.nonSignales - c.derniereMinute - c.signales,
                   };
                   const moyenne = c.cours > 0 ? (c.desistements / c.cours).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : "0";
                   const nom = `${c.libelle} : ${c.desistements === 0 ? "aucun désistement" : phrase(compte)} sur ${c.cours} cours (${moyenne} par cours)`;

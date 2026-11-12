@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.90.1
+
+### Corrections
+
+- **desistements** : couleurs franches, anticipés retirés, icône « Pas venu »
+
+### Autres changements
+
+- état v0.90.1
+
 ## 0.90.0
 
 ### Nouveautés

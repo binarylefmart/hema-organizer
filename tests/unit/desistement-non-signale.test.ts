@@ -28,10 +28,11 @@ describe("noterDesistementNonSignale", () => {
 
 describe("le registre", () => {
   const registre = readFileSync(path.join(process.cwd(), "src/components/gestion/PresencesEquipe.tsx"), "utf8");
-  it("propose « Pas venu » sur une ligne Présent seulement : un bouton en toutes lettres, à l'écart des réponses", () => {
+  it("propose « Pas venu » sur une ligne Présent seulement : un bouton à icône, nommé, à l'écart des réponses", () => {
     expect(registre).toMatch(/nonSignales\?\.possible && \(statut === "PRESENT"/);
     expect(registre).toMatch(/aria-pressed=\{pasVenus\.has\(p\.id\)\}/);
     expect(registre).toMatch(/border-l-2 border-bordure pl-3/);
-    expect(registre).toMatch(/>\s*Pas venu\s*<\/button>/);
+    expect(registre).toContain('<Icone nom="personneBarree"');
+    expect(registre).toMatch(/aria-label=\{`\$\{p\.prenom\} \$\{p\.nom\} : pas venu/);
   });
 });

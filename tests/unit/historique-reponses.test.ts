@@ -143,7 +143,8 @@ describe("compterDesistements", () => {
       { sessionId: "s1", tardif: true, derniereMinute: true },
       { sessionId: "s2", tardif: false },
     ];
-    expect(await compterDesistements("chloe")).toEqual({ seances: 2, tardifs: 1, derniereMinute: 1, nonSignales: 0 });
+    // s2 n'a qu'un retrait anticipé (hors délai d'alerte) : ce n'est pas un désistement.
+    expect(await compterDesistements("chloe")).toEqual({ seances: 1, tardifs: 1, derniereMinute: 1, nonSignales: 0 });
   });
 
   it("compte un désistement non signalé, et il l'emporte sur un retrait de la même séance", async () => {
@@ -190,17 +191,20 @@ describe("calculerStatsDesistements", () => {
     const st = calculerStatsDesistements(9, [
       ligne("a", "chloe", "s1", 1, true),
       ligne("b", "chloe", "s1", 50),
-      ligne("c", "charlie", "s1", 30),
-      ligne("d", "chloe", "s2", 200),
+      ligne("c", "charlie", "s1", 30, true),
+      ligne("d", "chloe", "s2", 200, true),
+      ligne("e", "alix", "s2", 400),
     ]);
+    // Alix n'a qu'un retrait anticipé : ni compté, ni nommé.
     expect(st.desistements).toBe(3);
-    expect(st.tardifs).toBe(1);
+    expect(st.tardifs).toBe(3);
     expect(st.personnes).toBe(2);
-    expect(st.parMembre[0]).toMatchObject({ userId: "chloe", n: 2, tardifs: 1 });
+    expect(st.compteParMembre.alix).toBeUndefined();
+    expect(st.parMembre[0]).toMatchObject({ userId: "chloe", n: 2, tardifs: 2 });
     expect(st.parSeance[0]).toMatchObject({ id: "s1", n: 2 });
     expect(st.tranches.map((t) => t.n)).toEqual([1, 0, 1, 0, 1, 0]);
     expect(st.medianeMin).toBe(30 * 60);
-    expect(st.derniers).toHaveLength(4);
+    expect(st.derniers).toHaveLength(3);
     // Le compte de chacun, pour le tableau des membres (pas seulement les dix premiers)
     expect(st.compteParMembre).toEqual({ chloe: { n: 2, derniereMinute: 0, nonSignales: 0 }, charlie: { n: 1, derniereMinute: 0, nonSignales: 0 } });
   });
@@ -308,16 +312,19 @@ describe("désistement non signalé (inscrit Présent, pas venu)", () => {
 
   it("entre dans le détail, sans délai, et l'emporte sur un retrait de la même séance", () => {
     const d = calculerDetailDesistements([retrait("r1", "alix", "s1", true, true), retrait("r2", "charlie", "s1")], "tous", [ns("n1", "alix", "s1"), ns("n2", "chloe", "s1")]);
-    expect(d.total).toBe(3);
+    // Charlie n'a qu'un retrait anticipé : il ne paraît pas.
+    expect(d.total).toBe(2);
+    expect(d.lignes.some((l) => l.userId === "charlie")).toBe(false);
     expect(d.nonSignales).toBe(2);
     expect(d.derniereMinute).toBe(0);
     expect(d.lignes.find((l) => l.userId === "alix")).toMatchObject({ nonSignale: true, avantCoursMin: 0 });
-    expect(calculerDetailDesistements([retrait("r2", "charlie", "s1")], "anticipes", [ns("n2", "chloe", "s1")]).lignes.map((l) => l.userId)).toEqual(["charlie"]);
+    // Un retrait anticipé (hors délai) n'est pas un désistement : il ne paraît pas.
+    expect(calculerDetailDesistements([retrait("r2", "charlie", "s1")], "tous", []).lignes).toEqual([]);
     expect(calculerDetailDesistements([retrait("r2", "charlie", "s1")], "non_signales", [ns("n2", "chloe", "s1")]).lignes.map((l) => l.userId)).toEqual(["chloe"]);
   });
 
   it("entre dans les chiffres, mais ni dans le délai médian ni dans les tranches", () => {
-    const st = calculerStatsDesistements(1, [retrait("r2", "charlie", "s1")], [ns("n2", "chloe", "s1")]);
+    const st = calculerStatsDesistements(1, [retrait("r2", "charlie", "s1", true)], [ns("n2", "chloe", "s1")]);
     expect(st.desistements).toBe(2);
     expect(st.nonSignales).toBe(1);
     expect(st.tranches.reduce((t, x) => t + x.n, 0)).toBe(1);

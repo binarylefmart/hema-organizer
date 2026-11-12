@@ -71,6 +71,21 @@
    Fond parchemin #F4F0EE / #E8E1D8, tan #CAB8A2, encre #282828, gris chaud #928781,
    accent rouille #AF4B2F. Or de l'écu réservé à la jauge et au focus.
    Vert = uniquement « Présent » ; rouille = « Absent », annulations, erreurs ; ocre = « Peut-être ». */
+/* **Les couleurs des graphiques du tableau de bord** : trois teintes franches, dans l'ordre de gravité
+   des désistements (signalé, de dernière minute, non signalé), et deux pour la présence. Elles
+   ne viennent **pas** du thème — un code couleur doit se lire pareil chez tout le monde — et sont
+   validées pour les daltoniens (script de la compétence de graphiques : séparation des voisines, vision
+   normale) en clair et en sombre. L'ambre passe sous 3:1 sur le fond clair : les chiffres
+   sont toujours écrits à côté, et la légende est toujours là. Une seule gamme de rouge, essayée d'abord,
+   validait mais ne se voyait pas (Delta : « pas très visible »). */
+:root {
+  --viz-signale: #6250d6;
+  --viz-derniere-minute: #eda100;
+  --viz-non-signale: #d55181;
+  --viz-present: #29703e;
+  --viz-peut-etre: #eda100;
+}
+
 :root {
   --fond: #f4f0ee;
   --fond-haut: #ece6de;
@@ -682,6 +697,12 @@
 :root {
   @variant sombre {
     color-scheme: dark;
+    /* Les couleurs des graphiques du tableau de bord, en sombre (voir leur bloc en clair). */
+    --viz-signale: #9085e9;
+    --viz-derniere-minute: #c98500;
+    --viz-non-signale: #d55181;
+    --viz-present: #43a463;
+    --viz-peut-etre: #c98500;
     /* **Les huit teintes du programme en mode sombre** : les mêmes familles, éclaircies, et le texte
        de l'aplat passe à l'encre. Posées ici une seule fois — elles ne viennent pas du thème (voir leur
        bloc en clair). */

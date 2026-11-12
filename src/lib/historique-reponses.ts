@@ -93,7 +93,9 @@ export async function compterDesistements(userId: string): Promise<{ seances: nu
     db.desistementNonSignale.findMany({ where: { userId, session: { annulee: false } }, select: { sessionId: true } }),
   ]);
   const nonSignales = new Set(pasVenus.map((p) => p.sessionId));
-  const seances = new Set([...lignes.map((l) => l.sessionId), ...nonSignales]);
+  // **Un retrait anticipé n'est pas un désistement** (Delta : « ne fais pas apparaître les désistements
+  // anticipés ») : seuls comptent ceux qui tombent dans une fenêtre d'alerte, et les non signalés.
+  const seances = new Set([...lignes.filter((l) => l.tardif).map((l) => l.sessionId), ...nonSignales]);
   // Un non signalé l'emporte sur un retrait de la même séance : il n'est compté qu'une fois, comme tel.
   const tardifs = new Set(lignes.filter((l) => l.tardif && !nonSignales.has(l.sessionId)).map((l) => l.sessionId));
   const derniereMinute = new Set(lignes.filter((l) => l.derniereMinute && !nonSignales.has(l.sessionId)).map((l) => l.sessionId));
@@ -256,7 +258,8 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
       nonSignaleCouple: true,
     });
   }
-  const liste = [...couples.values()];
+  // Un retrait anticipé (hors de toute fenêtre d'alerte) n'est pas un désistement : il sort des chiffres.
+  const liste = [...couples.values()].filter((c) => c.tardifCouple || c.derniereMinuteCouple || c.nonSignaleCouple);
   // Un non signalé n'a pas de délai : il sort du délai médian et des tranches.
   const delais = liste.filter((c) => !c.nonSignaleCouple).map((c) => minutesAvantCours(c.createdAt, c.session.date, c.session.heureDebut)).sort((a, b) => a - b);
   const mediane = delais.length === 0 ? null : delais.length % 2 ? delais[(delais.length - 1) / 2] : Math.round((delais[delais.length / 2 - 1] + delais[delais.length / 2]) / 2);
@@ -297,7 +300,7 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
     compteParMembre: Object.fromEntries([...membres.values()].map((m) => [m.userId, { n: m.n, derniereMinute: m.derniereMinute, nonSignales: m.nonSignales }])),
     parMembre: [...membres.values()].sort((a, b) => parNombre(a, b) || b.derniereMinute - a.derniereMinute || b.tardifs - a.tardifs || a.nom.localeCompare(b.nom, "fr")).slice(0, 10),
     parSeance: [...seances.values()].sort((a, b) => parNombre(a, b) || a.date.localeCompare(b.date)).slice(0, 5),
-    derniers: lignes.slice(0, 15).map((l) => ({
+    derniers: lignes.filter((l) => l.tardif).slice(0, 15).map((l) => ({
       id: l.id,
       quand: l.createdAt,
       nom: `${l.user.prenom} ${l.user.nom}`.trim(),
@@ -321,8 +324,8 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
  * journal d'audit.
  */
 
-/** Les quatre types, du moins grave au plus grave, et « tous ». */
-export type TypeDesistementFiltre = "tous" | "anticipes" | "signales" | "derniere_minute" | "non_signales";
+/** Les trois types comptés, du moins grave au plus grave, et « tous ». (Un retrait anticipé n'est pas compté.) */
+export type TypeDesistementFiltre = "tous" | "signales" | "derniere_minute" | "non_signales";
 
 export type FiltresDesistements = {
   /** Identifiant de période, ou "" pour toutes */
@@ -423,8 +426,9 @@ export function calculerDetailDesistements(brutes: readonly LigneDetailBrute[], 
       avantCoursMin: 0,
     });
   }
-  const VISE: Record<Exclude<TypeDesistementFiltre, "tous">, TypeDesistement> = { anticipes: "anticipe", signales: "signale", derniere_minute: "derniere_minute", non_signales: "non_signale" };
-  const garder = (l: LigneDesistement) => type === "tous" || typeDesistement(l) === VISE[type];
+  const VISE: Record<Exclude<TypeDesistementFiltre, "tous">, TypeDesistement> = { signales: "signale", derniere_minute: "derniere_minute", non_signales: "non_signale" };
+  // Un retrait anticipé n'est pas un désistement : il ne paraît nulle part dans ces listes.
+  const garder = (l: LigneDesistement) => typeDesistement(l) !== "anticipe" && (type === "tous" || typeDesistement(l) === VISE[type]);
   // Le plus récent cours d'abord, puis l'heure, puis le nom : l'ordre de lecture d'un registre.
   const lignes = [...couples.values()].filter(garder).sort((a, b) => b.date.localeCompare(a.date) || b.heureDebut.localeCompare(a.heureDebut) || a.nom.localeCompare(b.nom, "fr"));
   const parId = new Map<string, PersonneDesistements>();

@@ -137,12 +137,11 @@ async function OngletDesistements({ stats, choisie }: IlotProps & { choisie: Pro
   const detail = await detailDesistementsSeances(s.seances.map((x) => x.id));
   const base = `/gestion/tableau-de-bord/desistements?${id ? `periode=${id}&` : ""}`;
   const signales = detail.lignes.filter((l) => l.signale && !l.derniereMinute && !l.nonSignale).length;
-  const anticipes = detail.lignes.filter((l) => !l.signale && !l.derniereMinute && !l.nonSignale).length;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p>
-          <strong>{detail.total}</strong> désistement{detail.total > 1 ? "s" : ""} · <strong>{anticipes}</strong> anticipé{anticipes > 1 ? "s" : ""} ·{" "}
+          <strong>{detail.total}</strong> désistement{detail.total > 1 ? "s" : ""} ·{" "}
           <strong>{signales}</strong> signalé{signales > 1 ? "s" : ""} (délai : {libelleDelaiDesistement(delais.delaiMin)}) · <strong>{detail.derniereMinute}</strong> de
           dernière minute (moins de {libelleDelaiDesistement(delais.derniereMinuteMin)}) · <strong>{detail.nonSignales}</strong> non signalé
           {detail.nonSignales > 1 ? "s" : ""} · <strong>{detail.personnes}</strong> personne{detail.personnes > 1 ? "s" : ""}

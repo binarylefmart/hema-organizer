@@ -14,6 +14,9 @@ const TRACES = {
   lieu: "M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10zM12 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
   livre: "M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5zM4 19a2 2 0 0 1 2-2h13",
   personne: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
+  // La même silhouette, barrée : « pas venu » (désistement non signalé). Une barre en biais, pas une croix,
+  // pour ne jamais ressembler au ✕ de « Absent » posé juste à côté.
+  personneBarree: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0M3 3l18 18",
   groupe: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M16 4.5a4 4 0 0 1 0 7M22 21a7 7 0 0 0-5-6.7",
   outil: "M14.5 6.5a3.5 3.5 0 0 0 4.7 4.7L21 13l-8 8-2-2 6-6-1.8-1.8-6 6-2-2 8-8 1.8 1.8a3.5 3.5 0 0 0-4.5-4.5L14.5 6.5zM3 21l3-3",
   epee: "M20 4l-2.5 6L9 18.5M20 4l-6 2.5L5.5 15M6 12l6 6M7.5 16.5L4 20",

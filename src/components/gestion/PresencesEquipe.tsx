@@ -846,8 +846,9 @@ export function PresencesEquipe({
                     </>
                   )}
                   {/* **« Pas venu »** (désistement non signalé) : un vrai bouton, **à l'écart** des trois
-                      réponses — un trait et de l'air entre eux — et **en toutes lettres** : à côté de ✕
-                      (Absent), une icône de plus se confondrait. Seulement sur une ligne « Présent », une
+                      réponses — un trait et de l'air entre eux —, rond et non carré, avec une silhouette
+                      barrée (Delta : « une icône à la place du texte ») qui ne ressemble pas au ✕ d'Absent.
+                      Son nom complet est lu par les lecteurs d'écran et affiché au survol. Seulement sur une ligne « Présent », une
                       fois le cours commencé. `aria-pressed` : enfoncé, il se relâche (la note s'efface). */}
                   {nonSignales?.possible && (statut === "PRESENT" || pasVenus.has(p.id)) && (
                     <div className="flex shrink-0 items-center gap-3 border-l-2 border-bordure pl-3">
@@ -859,12 +860,12 @@ export function PresencesEquipe({
                         disabled={occupe}
                         onClick={() => basculerPasVenu(p, !pasVenus.has(p.id))}
                         className={[
-                          "min-h-12 rounded-full border-2 px-4 text-sm font-semibold shadow-champ transition active:scale-[0.97]",
+                          "grid size-12 place-items-center rounded-full border-2 shadow-champ transition active:scale-[0.97]",
                           "disabled:cursor-wait disabled:opacity-60",
                           pasVenus.has(p.id) ? "border-texte bg-texte text-surface" : "border-bordure bg-surface text-texte-secondaire hover:border-texte",
                         ].join(" ")}
                       >
-                        Pas venu
+                        <Icone nom="personneBarree" taille={22} />
                       </button>
                     </div>
                   )}

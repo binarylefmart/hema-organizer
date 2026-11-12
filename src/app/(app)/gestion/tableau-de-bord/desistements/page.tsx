@@ -16,7 +16,6 @@ type Props = { searchParams: Promise<{ periode?: string; du?: string; au?: strin
 
 const TYPES: Record<TypeDesistementFiltre, string> = {
   tous: "Tous",
-  anticipes: "Désistements anticipés",
   signales: "Désistements signalés",
   derniere_minute: "Désistements de dernière minute",
   non_signales: "Désistements non signalés",
@@ -133,7 +132,7 @@ export default async function PageDesistements({ searchParams }: Props) {
           ))}
         </nav>
         <p className="mt-3 text-sm text-texte-secondaire">
-          Anticipé : avant le délai d&apos;alerte. Signalé : dans le délai d&apos;alerte ({libelleDelaiDesistement(delais.delaiMin)}). De dernière minute : dans les{" "}
+          Seuls comptent les retraits dans le délai d&apos;alerte et les absences non prévenues. Signalé : dans le délai d&apos;alerte ({libelleDelaiDesistement(delais.delaiMin)}). De dernière minute : dans les{" "}
           {libelleDelaiDesistement(delais.derniereMinuteMin)} qui précèdent le cours (compté depuis la v0.87.0). Non signalé : inscrit Présent, pas venu, noté par le
           bureau sur le registre du cours. Les dates portent sur le jour du cours.
         </p>
