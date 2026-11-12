@@ -41,10 +41,12 @@ const faux = vi.hoisted(() => ({
   echecEmail: null as Error | null,
   canaux: { email: true, push: true, discord: true, telegram: true } as Record<string, boolean>,
   reglages: null as string | null,
+  /** `desistement.delaiMinutes` et `desistement.derniereMinuteMinutes`, en minutes (null : défaut). */
+  delais: { delai: null as string | null, derniereMinute: null as string | null, actif: null as string | null, derniereMinuteActif: null as string | null },
   /** Toute lecture de séance lève : simule une base qui hoquette juste après l'écriture */
   basePanne: false,
   connecte: null as null | { id: string; role: string; estAdmin?: boolean; actif: boolean; sessionId?: string },
-  audits: [] as Array<unknown>,
+  audits: [] as unknown[][],
 }));
 
 function utilisateur(id: string): Record<string, unknown> {
@@ -55,7 +57,18 @@ function utilisateur(id: string): Record<string, unknown> {
 
 vi.mock("@/lib/db", () => ({
   db: {
-    setting: { findUnique: vi.fn(async () => (faux.reglages ? { value: faux.reglages } : null)) },
+    setting: {
+      findUnique: vi.fn(async ({ where }: { where: { key: string } }) => {
+        const parCle: Record<string, string | null> = {
+          "desistement.delaiMinutes": faux.delais.delai,
+          "desistement.derniereMinuteMinutes": faux.delais.derniereMinute,
+          "desistement.actif": faux.delais.actif,
+          "desistement.derniereMinuteActif": faux.delais.derniereMinuteActif,
+        };
+        const v = where.key in parCle ? parCle[where.key] : faux.reglages;
+        return v ? { value: v } : null;
+      }),
+    },
     session: {
       findUnique: vi.fn(async (args: { where: { id: string }; include?: { period?: { include?: { membres?: { where?: { userId?: string } } } } } }) => {
         if (faux.basePanne) throw new Error("base indisponible");
@@ -148,7 +161,7 @@ vi.mock("@/lib/auth/elevation", () => ({ toucherElevation: vi.fn(async () => {})
 vi.mock("@/lib/audit", () => ({ audit: vi.fn(async (...args: unknown[]) => faux.audits.push(args)) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn(() => {}) }));
 
-const { cleDesistement, dansFenetreDesistementTardif, estDesistement, signalerDesistementTardif } = await import("@/lib/notifications/desistement");
+const { cleDesistement, dansFenetreDesistementTardif, desistementRecouvert, estDesistement, fenetreDesistement, signalerDesistementTardif } = await import("@/lib/notifications/desistement");
 const { CANAUX_PAR_NOTIFICATION, COUPLES_EMIS, DESCRIPTIONS, RAISON_API_EXCLUE, RAISON_ROUTAGE_FIXE, TYPES_NOTIFICATION, estRoutable, preferencesDefaut, serialiserPreferences } = await import(
   "@/lib/notifications/preferences"
 );
@@ -159,8 +172,13 @@ const { indiquerPresence, modifierPresenceMembre, modifierPresencesEnMasse } = a
 /** Jeudi 8 octobre 2026, 20h00 à Paris (heure d'été, UTC+2) : le début est à 18:00 UTC. */
 const DEBUT = new Date("2026-10-08T18:00:00Z");
 const minutesAvant = (m: number) => new Date(DEBUT.getTime() - m * 60_000);
-/** 19h30 à Paris : une demi-heure avant le cours. */
-const PEU_AVANT = minutesAvant(30);
+/**
+ * 18h30 à Paris : une heure et demie avant le cours — dans le délai du désistement (2 h), hors de la
+ * fenêtre de dernière minute que les tests règlent à 1 h (`faux.delais`).
+ */
+const PEU_AVANT = minutesAvant(90);
+/** 19h30 : une demi-heure avant, dans la fenêtre de dernière minute. */
+const TRES_PEU_AVANT = minutesAvant(30);
 
 function personne(id: string, prenom: string, nom: string, extra: Partial<Personne> = {}): Personne {
   return { id, prenom, nom, email: `${id}@club.fr`, actif: true, rappelEmail: true, preferencesNotifications: null, service: false, ...extra };
@@ -192,6 +210,7 @@ beforeEach(() => {
   faux.echecEmail = null;
   faux.canaux = { email: true, push: true, discord: true, telegram: true };
   faux.reglages = null;
+  faux.delais = { delai: "120", derniereMinute: "60", actif: null, derniereMinuteActif: null };
   faux.instructeursClub = [];
   faux.basePanne = false;
   faux.connecte = { id: "chloe", role: "MEMBRE", actif: true, sessionId: "sess" };
@@ -216,7 +235,8 @@ describe("registre : le patron de l'alerte « peu de monde », sans les salons",
   it("est déclaré partout où le registre l'attend", () => {
     expect(TYPES_NOTIFICATION).toContain("desistement_tardif");
     expect(DESCRIPTIONS.desistement_tardif.titre).toBe("Désistement avant un cours");
-    expect(DESCRIPTIONS.desistement_tardif.quand).toContain("2 heures");
+    expect(DESCRIPTIONS.desistement_tardif.quand).toContain("2 jours");
+    expect(DESCRIPTIONS.desistement_derniere_minute.quand).toContain("4 heures");
     // Personnel : il nomme quelqu'un. Ni salon, ni site du club, ni liste.
     expect(CANAUX_PAR_NOTIFICATION.desistement_tardif).toEqual(["email", "push"]);
     expect(COUPLES_EMIS.desistement_tardif).toEqual(["email", "push"]);
@@ -226,8 +246,8 @@ describe("registre : le patron de l'alerte « peu de monde », sans les salons",
     expect(preferencesDefaut().notifications.desistement_tardif).toEqual({ email: true, push: true });
   });
 
-  it("a sa constante, et le délai vaut deux heures", () => {
-    expect(DELAI_DESISTEMENT_TARDIF_MIN).toBe(120);
+  it("a sa constante, et le délai vaut deux jours", () => {
+    expect(DELAI_DESISTEMENT_TARDIF_MIN).toBe(2880);
   });
 
   it("met en forme une seule fois : nom, nouvelle réponse, heure, lieu, effectif", () => {
@@ -285,8 +305,8 @@ describe("transitions", () => {
 
 describe("la fenêtre des deux heures, dans le fuseau du club", () => {
   it("part pile à la borne, pas une milliseconde avant", () => {
-    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", minutesAvant(120))).toBe(true);
-    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", new Date(minutesAvant(120).getTime() - 1))).toBe(false);
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", minutesAvant(120), 120)).toBe(true);
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", new Date(minutesAvant(120).getTime() - 1), 120)).toBe(false);
   });
 
   it("ne part plus une fois le cours commencé", () => {
@@ -297,8 +317,8 @@ describe("la fenêtre des deux heures, dans le fuseau du club", () => {
   it("lit l'heure du cours dans le fuseau du club, pas dans un fuseau écrit en dur", () => {
     // 20h00 à Montréal (UTC-4 en octobre) = 00:00 UTC le lendemain : 18:30 UTC n'y est pas dans la fenêtre.
     globalThis.__fuseauClub = "America/Montreal";
-    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", PEU_AVANT)).toBe(false);
-    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", new Date("2026-10-08T23:30:00Z"))).toBe(true);
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", PEU_AVANT, 120)).toBe(false);
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", new Date("2026-10-08T23:30:00Z"), 120)).toBe(true);
   });
 
   it("juste avant la borne : rien ne part ; juste après : l'alerte part", async () => {
@@ -511,9 +531,142 @@ describe("invariant du dossier, relu dans la source", () => {
     expect(code.indexOf("enqueueEmail(")).toBeGreaterThan(code.indexOf("journaliser({"));
     expect(code).toMatch(/marquerEchec\(dedupKey/);
     expect(code).toMatch(/notifierParPush\(\{/);
-    expect(code).toMatch(/destinataireRetenu\(prefs, "desistement_tardif", "email"/);
-    expect(code).toMatch(/destinataireRetenu\(prefs, "desistement_tardif", "push"/);
-    expect(code).toMatch(/envoiPossible\("desistement_tardif", "email"\)/);
-    expect(code).toMatch(/pushPossible\("desistement_tardif"\)/);
+    expect(code).toMatch(/destinataireRetenu\(prefs, type, "email"/);
+    expect(code).toMatch(/destinataireRetenu\(prefs, type, "push"/);
+    expect(code).toMatch(/envoiPossible\(type, "email"\)/);
+    expect(code).toMatch(/pushPossible\(type\)/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+
+describe("désistement de dernière minute : la seconde fenêtre prend le pas", () => {
+  const delais = { delaiMin: 120, derniereMinuteMin: 60 };
+
+  it("dernière minute d'abord, puis désistement, sinon rien", () => {
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(30), delais)).toBe("derniere_minute");
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(60), delais)).toBe("derniere_minute");
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(61), delais)).toBe("desistement");
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(121), delais)).toBeNull();
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(-1), delais)).toBeNull();
+  });
+
+  it("les deux fenêtres sont indépendantes : une dernière minute plus longue que le désistement l'emporte quand même", () => {
+    const inverses = { delaiMin: 120, derniereMinuteMin: 240 };
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(180), inverses)).toBe("derniere_minute");
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(241), inverses)).toBeNull();
+  });
+
+  it("les défauts du produit : désistement 2 jours, dernière minute 4 heures", () => {
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(240))).toBe("derniere_minute");
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(241))).toBe("desistement");
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(2880))).toBe("desistement");
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(2881))).toBeNull();
+  });
+
+  it("dans la fenêtre : titre, objet, téléphone, clés et journal propres à la dernière minute", async () => {
+    await desister("chloe", "PRESENT", "ABSENT", TRES_PEU_AVANT);
+    expect(faux.emails[0].sujet).toBe("🚨 Désistement de dernière minute — Chloé Delta ne vient plus (Absent) au cours de ce soir 20h00 — Gymnase municipal");
+    expect(faux.push[0]).toMatchObject({ titre: "Désistement de dernière minute" });
+    expect(faux.logs.every((l) => l.type === "DESISTEMENT_DERNIERE_MINUTE")).toBe(true);
+    expect(faux.logs.map((l) => l.dedupKey).sort()[0]).toBe("desistement_dm_email_s1_2026-10-08-2000_chloe_ABSENT_alix");
+  });
+
+  it("hors de la fenêtre courte : le désistement classique, sans « dernière minute »", async () => {
+    await desister("chloe", "PRESENT", "ABSENT", PEU_AVANT);
+    expect(faux.emails[0].sujet.startsWith("⚠️ Désistement — ")).toBe(true);
+    expect(faux.logs.every((l) => l.type === "DESISTEMENT")).toBe(true);
+  });
+
+  it("un désistement classique, puis un retour, puis un retrait de dernière minute : deux nouvelles", async () => {
+    await desister("chloe", "PRESENT", "ABSENT", PEU_AVANT);
+    await desister("chloe", "ABSENT", "PRESENT", minutesAvant(45));
+    await desister("chloe", "PRESENT", "ABSENT", TRES_PEU_AVANT);
+    expect(faux.emails.map((e) => e.sujet.slice(0, 6))).toEqual(["⚠️ Dés", "⚠️ Dés", "🚨 Dés", "🚨 Dés"]);
+  });
+
+  it("se coupe séparément : couper la dernière minute ne coupe pas le désistement, et inversement", async () => {
+    faux.personnes.get("charlie")!.preferencesNotifications = JSON.stringify({ desistement_derniere_minute: { email: false, push: false } });
+    await desister("chloe", "PRESENT", "ABSENT", TRES_PEU_AVANT);
+    expect(faux.emails.map((e) => e.to)).toEqual(["alix@club.fr"]);
+    faux.emails = [];
+    faux.reponses.set("m1", "PRESENT");
+    await desister("m1", "PRESENT", "ABSENT", PEU_AVANT);
+    expect(faux.emails.map((e) => e.to).sort()).toEqual(["alix@club.fr", "charlie@club.fr"]);
+  });
+
+  it("le réglage du club décide de la fenêtre", async () => {
+    faux.delais = { ...faux.delais, delai: "120", derniereMinute: "120" };
+    await desister("chloe", "PRESENT", "ABSENT", PEU_AVANT);
+    expect(faux.logs.every((l) => l.type === "DESISTEMENT_DERNIERE_MINUTE")).toBe(true);
+  });
+});
+
+describe("journal d'audit des alertes", () => {
+  it("une ligne par alerte envoyée : le membre en acteur, le nombre d'emails et de téléphones", async () => {
+    await desister("chloe", "PRESENT", "ABSENT", TRES_PEU_AVANT);
+    const ligne = faux.audits.find((a) => a[1] === "notification.desistement_derniere_minute");
+    expect(ligne).toBeDefined();
+    expect((ligne![0] as { id: string }).id).toBe("chloe");
+    expect(ligne![3]).toMatchObject({ sessionId: "s1", nouvelleReponse: "ABSENT", emails: 2, telephones: 2, delaiMin: 60 });
+  });
+
+  it("le désistement classique a la sienne", async () => {
+    await desister("chloe", "PRESENT", "ABSENT", PEU_AVANT);
+    expect(faux.audits.some((a) => a[1] === "notification.desistement")).toBe(true);
+    expect(faux.audits.some((a) => a[1] === "notification.desistement_derniere_minute")).toBe(false);
+  });
+
+  it("un email non remis est noté, destinataire en cible", async () => {
+    faux.echecEmail = new Error("SMTP indisponible");
+    await desister("chloe", "PRESENT", "ABSENT", PEU_AVANT);
+    const echecs = faux.audits.filter((a) => a[1] === "notification.desistement_echec");
+    expect(echecs.map((a) => a[2]).sort()).toEqual(["alix", "charlie"]);
+    expect(echecs[0][3]).toMatchObject({ canal: "email", erreur: "SMTP indisponible" });
+  });
+
+  it("rien n'est noté quand rien ne part", async () => {
+    await desister("chloe", "PRESENT", "ABSENT", minutesAvant(600));
+    expect(faux.audits.filter((a) => String(a[1]).startsWith("notification."))).toHaveLength(0);
+  });
+});
+
+describe("chaque alerte s'active à part, et la dernière minute peut recouvrir le désistement", () => {
+  it("une dernière minute au moins aussi longue recouvre le désistement : il ne part plus jamais", () => {
+    const d = { delaiMin: 240, derniereMinuteMin: 240 };
+    expect(desistementRecouvert(d)).toBe(true);
+    expect(desistementRecouvert({ delaiMin: 240, derniereMinuteMin: 300 })).toBe(true);
+    expect(desistementRecouvert({ delaiMin: 2880, derniereMinuteMin: 240 })).toBe(false);
+    for (const m of [1, 60, 239, 240]) expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(m), d)).toBe("derniere_minute");
+  });
+
+  it("une dernière minute coupée ne recouvre rien, et rend sa fenêtre au désistement", () => {
+    const d = { delaiMin: 120, derniereMinuteMin: 60, derniereMinuteActif: false };
+    expect(desistementRecouvert({ ...d, derniereMinuteMin: 600 })).toBe(false);
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(30), d)).toBe("desistement");
+  });
+
+  it("un désistement coupé : seule la dernière minute part", () => {
+    const d = { delaiMin: 120, derniereMinuteMin: 60, actif: false };
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(30), d)).toBe("derniere_minute");
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(90), d)).toBeNull();
+  });
+
+  it("les deux coupées : rien ne part", () => {
+    expect(fenetreDesistement("2026-10-08", "20:00", minutesAvant(30), { delaiMin: 120, derniereMinuteMin: 60, actif: false, derniereMinuteActif: false })).toBeNull();
+  });
+
+  it("le réglage du bureau est lu : désistement coupé, aucun envoi hors dernière minute", async () => {
+    faux.delais = { ...faux.delais, actif: "0" };
+    expect(await desister("chloe", "PRESENT", "ABSENT", PEU_AVANT)).toBe(0);
+    expect(faux.emails).toHaveLength(0);
+    faux.reponses.set("m1", "PRESENT");
+    expect(await desister("m1", "PRESENT", "ABSENT", TRES_PEU_AVANT)).toBeGreaterThan(0);
+  });
+
+  it("le réglage du bureau est lu : dernière minute coupée, le désistement classique part à sa place", async () => {
+    faux.delais = { ...faux.delais, derniereMinuteActif: "0" };
+    await desister("chloe", "PRESENT", "ABSENT", TRES_PEU_AVANT);
+    expect(faux.emails[0].sujet.startsWith("⚠️ Désistement — ")).toBe(true);
   });
 });

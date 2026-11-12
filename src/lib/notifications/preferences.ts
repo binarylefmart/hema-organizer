@@ -1,4 +1,4 @@
-import { libelleDelaiDesistement } from "@/lib/constants";
+import { DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN, libelleDelaiDesistement } from "@/lib/constants";
 import { CLES, getSetting, setSetting } from "@/lib/settings";
 // La fenêtre de l'alerte « peu de monde » se lit là où elle est définie (module pur, sans base) :
 // la phrase du panneau ne recopie pas « 3 jours ».
@@ -98,6 +98,7 @@ export const TYPES_NOTIFICATION = [
   "seance_annulee",
   "effectif_faible",
   "desistement_tardif",
+  "desistement_derniere_minute",
   "planning_modifie",
   "atelier_statut",
   "evenement_nouveau",
@@ -126,10 +127,12 @@ export const CANAUX_PAR_NOTIFICATION: Record<TypeNotification, readonly Canal[]>
   // et elle vaut d'autant plus pour qui ne lit ni le salon ni ses emails.
   seance_annulee: ["email", "push", "discord", "telegram", "whatsapp", "api"],
   effectif_faible: ["email", "push", "discord", "telegram", "whatsapp"],
-  // Désistement de dernière minute : le message **nomme le membre** qui se retire. Il s'adresse à
+  // Désistement (et sa version « dernière minute ») : le message **nomme le membre** qui se retire. Il s'adresse à
   // l'encadrement de la séance, donc aux canaux personnels seulement — un salon Discord ou un groupe
   // Telegram est public, et « untel ne vient plus » n'a rien à y faire.
   desistement_tardif: ["email", "push"],
+  // Même message, plus pressant : même raison, mêmes canaux.
+  desistement_derniere_minute: ["email", "push"],
   // Planning modifié : le message nomme l'auteur du changement et les instructeurs posés sur les
   // éléments. Il s'adresse aux instructeurs du club : email et téléphone, jamais un salon.
   planning_modifie: ["email", "push"],
@@ -167,7 +170,7 @@ export const CANAUX_PAR_NOTIFICATION: Record<TypeNotification, readonly Canal[]>
  *    qu'un pourcentage affiché à côté d'un cours. C'est déjà la raison pour laquelle sa case Discord
  *    est décochée par défaut (`preferencesDefaut`) et pour laquelle elle n'est pas routable vers la
  *    liste. Une case ne doit pas pouvoir défaire ce choix.
- * 2. **Tout ce qui nomme quelqu'un** (`rappel_sans_reponse`, `desistement_tardif`, `planning_modifie`, `atelier_statut`) ou **ne regarde que le
+ * 2. **Tout ce qui nomme quelqu'un** (`rappel_sans_reponse`, `desistement_tardif`, `desistement_derniere_minute`, `planning_modifie`, `atelier_statut`) ou **ne regarde que le
  *    bureau** (`periode_suivante`, `periode_non_activee`) : sans discussion. Le dossier n'a qu'une
  *    garantie, et c'est celle-là — aucun nom ne sort du club, jamais.
  */
@@ -176,7 +179,9 @@ export const RAISON_API_EXCLUE: Partial<Record<TypeNotification, string>> = {
   effectif_faible:
     "C'est une alerte aux instructeurs — « faut-il annuler ? » —, pas une nouvelle du club. Elle porte un lien d'annulation signé au nom de son destinataire, qui n'a rien à faire sur une page web ; et le taux du cours, lui, se publie déjà avec le cours. Ce qu'on refuse ici, c'est d'en faire un titre.",
   desistement_tardif:
-    "Ce message nomme le membre qui se retire d'un cours, à l'intention des seuls instructeurs du club. Aucun nom ne sort du club, et un site web n'a rien à décider deux heures avant un cours.",
+    "Ce message nomme le membre qui se retire d'un cours, à l'intention des seuls instructeurs du club. Aucun nom ne sort du club, et un site web n'a rien à décider avant un cours.",
+  desistement_derniere_minute:
+    "Ce message nomme le membre qui se retire d'un cours au dernier moment, à l'intention des seuls instructeurs du club. Aucun nom ne sort du club.",
   planning_modifie:
     "Ce message nomme qui a modifié le programme et qui encadre chaque élément, à l'intention des seuls instructeurs du club. Le programme publiable sort déjà avec le cours, sans aucun nom.",
   atelier_statut: "Réponse à une proposition : le message nomme son auteur et répond à son écrit. Il n'a rien à faire sur une page publique.",
@@ -187,7 +192,7 @@ export const RAISON_API_EXCLUE: Partial<Record<TypeNotification, string>> = {
 /**
  * Couples réellement émis aujourd'hui par le code (récap de la veille : `notifications/recap.ts` ;
  * rappels sans réponse : `notifications/rappels.ts` ; annulation et effectif faible :
- * `notifications/seances.ts` ; désistement de dernière minute : `notifications/desistement.ts` ; planning modifié : `notifications/planning-modifie.ts`). Les autres sont des réglages d'avance : l'interface les annonce
+ * `notifications/seances.ts` ; désistements (classique et dernière minute) : `notifications/desistement.ts` ; planning modifié : `notifications/planning-modifie.ts`). Les autres sont des réglages d'avance : l'interface les annonce
  * comme « prévu » tant que l'envoi correspondant n'existe pas — c'est le cas de WhatsApp, qui
  * attend un service d'envoi (`notifications/whatsapp.ts`).
  *
@@ -203,6 +208,7 @@ export const COUPLES_EMIS: Record<TypeNotification, readonly Canal[]> = {
   seance_annulee: ["email", "push", "discord", "telegram", "api"],
   effectif_faible: ["email", "push", "discord", "telegram"],
   desistement_tardif: ["email", "push"],
+  desistement_derniere_minute: ["email", "push"],
   planning_modifie: ["email", "push"],
   atelier_statut: ["email", "push"],
   evenement_nouveau: ["email", "push", "discord", "telegram", "api"],
@@ -261,7 +267,11 @@ export const DESCRIPTIONS: Record<TypeNotification, DescriptionNotification> = {
   },
   desistement_tardif: {
     titre: "Désistement avant un cours",
-    quand: `À tous les instructeurs du club — sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être —, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans le délai réglé par le bureau avant le cours (${libelleDelaiDesistement()} tant qu'il n'a rien changé) — avec son nom et l'effectif mis à jour. Jamais sur les salons : le message nomme quelqu'un.`,
+    quand: `À tous les instructeurs du club — sauf ceux qui ont eux-mêmes répondu Absent ou Peut-être —, dès qu'un membre retire son « Présent » (pour Absent ou Peut-être), ou son « Peut-être » pour Absent, dans le délai réglé par le bureau avant le cours (${libelleDelaiDesistement()} tant qu'il n'a rien changé) — avec son nom et l'effectif mis à jour. Dans la fenêtre de dernière minute, c'est l'alerte suivante qui part à la place. Jamais sur les salons : le message nomme quelqu'un.`,
+  },
+  desistement_derniere_minute: {
+    titre: "Désistement de dernière minute",
+    quand: `Comme le désistement, mais dans la fenêtre de dernière minute réglée par le bureau (${libelleDelaiDesistement(DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN)} avant le cours tant qu'il n'a rien changé) : elle prend alors la place du désistement classique. Mêmes destinataires, se coupe séparément. Jamais sur les salons : le message nomme quelqu'un.`,
   },
   planning_modifie: {
     titre: "Programme modifié",
@@ -420,7 +430,9 @@ export const RAISON_ROUTAGE_FIXE: Partial<Record<TypeNotification, string>> = {
   effectif_faible:
     "Elle ne vise que les deux ou trois personnes qui encadrent, et elle annonce que le cours se remplit mal : sur la liste du club, ce serait une publication, pas une alerte. Son lien d'annulation est signé au nom de son destinataire, et une clé donnée à une liste est donnée à tous.",
   desistement_tardif:
-    "Elle nomme le membre qui se retire et ne vise que les instructeurs de la séance : sur la liste du club, ce serait afficher devant tout le monde qui a lâché le cours au dernier moment.",
+    "Elle nomme le membre qui se retire et ne vise que les instructeurs du club : sur la liste du club, ce serait afficher devant tout le monde qui a lâché le cours.",
+  desistement_derniere_minute:
+    "Elle nomme le membre qui se retire et ne vise que les instructeurs du club : sur la liste du club, ce serait afficher devant tout le monde qui a lâché le cours au dernier moment.",
   planning_modifie:
     "Elle nomme qui a modifié le programme et qui encadre chaque élément, et ne vise que les instructeurs du club : la liste du club n'a pas à suivre les retouches du programme au fil de l'eau.",
   atelier_statut:
@@ -496,6 +508,7 @@ export function preferencesDefaut(): PreferencesNotifications {
       effectif_faible: { email: true, push: true, discord: false, telegram: false, whatsapp: false },
       // Personnel (il nomme le membre qui se retire) : email et téléphone, cochés d'office.
       desistement_tardif: { email: true, push: true },
+      desistement_derniere_minute: { email: true, push: true },
       // Personnel aussi (il nomme l'auteur du changement et les instructeurs) : email et téléphone.
       planning_modifie: { email: true, push: true },
       atelier_statut: { email: true, push: true },

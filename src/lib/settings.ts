@@ -2,7 +2,7 @@ import { db } from "./db";
 import { env } from "./env";
 import { chiffrer, dechiffrer } from "./crypto";
 import { delaiDesistementSchema, jalonsRappelSchema } from "./validation/gestion";
-import { DELAI_DESISTEMENT_TARDIF_MIN } from "./constants";
+import { DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN, DELAI_DESISTEMENT_TARDIF_MIN } from "./constants";
 
 /**
  * Paramètres modifiables dans l'app (table Setting, clé/valeur).
@@ -50,6 +50,9 @@ export const CLES = {
   telegram: "telegram",
   rappelsJalons: "rappels.jalons",
   desistementDelai: "desistement.delaiMinutes",
+  desistementDerniereMinute: "desistement.derniereMinuteMinutes",
+  desistementActif: "desistement.actif",
+  desistementDerniereMinuteActif: "desistement.derniereMinuteActif",
   choixCours: "presences.choixCours",
 } as const;
 
@@ -104,15 +107,16 @@ export async function setJalonsRappel(jalons: readonly number[]): Promise<void> 
 }
 
 /**
- * **Lit `desistement.delaiMinutes`** : le délai, en minutes, dans lequel un désistement prévient les
- * instructeurs. Une valeur illisible ou hors bornes retombe sur le défaut (deux heures).
+ * **Lit un délai de désistement** (`desistement.delaiMinutes`, `desistement.derniereMinuteMinutes`) :
+ * des minutes, en heures entières dans les bornes. Une valeur illisible ou hors bornes retombe sur
+ * `defaut` (deux jours pour le désistement, quatre heures pour la dernière minute).
  */
-export function lireDelaiDesistement(valeur: string | null): number {
-  if (valeur === null || !/^\d+$/.test(valeur.trim())) return DELAI_DESISTEMENT_TARDIF_MIN;
+export function lireDelaiDesistement(valeur: string | null, defaut = DELAI_DESISTEMENT_TARDIF_MIN): number {
+  if (valeur === null || !/^\d+$/.test(valeur.trim())) return defaut;
   const minutes = Number(valeur.trim());
-  if (minutes % 60 !== 0) return DELAI_DESISTEMENT_TARDIF_MIN;
+  if (minutes % 60 !== 0) return defaut;
   const lu = delaiDesistementSchema.safeParse(minutes / 60);
-  return lu.success ? lu.data : DELAI_DESISTEMENT_TARDIF_MIN;
+  return lu.success ? lu.data : defaut;
 }
 
 /**
@@ -129,6 +133,54 @@ export async function getDelaiDesistementMin(): Promise<number> {
 
 export async function setDelaiDesistementMin(minutes: number): Promise<void> {
   await setSetting(CLES.desistementDelai, String(minutes));
+}
+
+/** Le délai « dernière minute » réglé par le club ({@link DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN} à défaut). Ne lève jamais. */
+export async function getDelaiDerniereMinuteMin(): Promise<number> {
+  try {
+    return lireDelaiDesistement(await getSetting(CLES.desistementDerniereMinute), DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN);
+  } catch {
+    return DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN;
+  }
+}
+
+export async function setDelaiDerniereMinuteMin(minutes: number): Promise<void> {
+  await setSetting(CLES.desistementDerniereMinute, String(minutes));
+}
+
+/**
+ * **Chaque alerte s'active à part** (Delta : « une coche pour activer l'une et l'autre en
+ * fonction de ce qui est voulu par l'admin »). Allumées tant que rien n'est enregistré : seul `"0"` éteint.
+ */
+export function lireActivation(valeur: string | null): boolean {
+  return valeur?.trim() !== "0";
+}
+
+async function lireActivationSure(cle: string): Promise<boolean> {
+  try {
+    return lireActivation(await getSetting(cle));
+  } catch {
+    return true;
+  }
+}
+
+export async function setActivationDesistement(quoi: "desistement" | "derniere_minute", actif: boolean): Promise<void> {
+  await setSetting(quoi === "derniere_minute" ? CLES.desistementDerniereMinuteActif : CLES.desistementActif, actif ? "1" : "0");
+}
+
+export async function getActivationDesistement(quoi: "desistement" | "derniere_minute"): Promise<boolean> {
+  return lireActivationSure(quoi === "derniere_minute" ? CLES.desistementDerniereMinuteActif : CLES.desistementActif);
+}
+
+/** Les deux délais et leurs interrupteurs, lus ensemble (alerte, historique, écrans). Ne lève jamais. */
+export async function getDelaisDesistement(): Promise<{ delaiMin: number; derniereMinuteMin: number; actif: boolean; derniereMinuteActif: boolean }> {
+  const [delaiMin, derniereMinuteMin, actif, derniereMinuteActif] = await Promise.all([
+    getDelaiDesistementMin(),
+    getDelaiDerniereMinuteMin(),
+    getActivationDesistement("desistement"),
+    getActivationDesistement("derniere_minute"),
+  ]);
+  return { delaiMin, derniereMinuteMin, actif, derniereMinuteActif };
 }
 
 /**

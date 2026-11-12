@@ -7,7 +7,9 @@ const faux = vi.hoisted(() => ({
   reglage: null as string | null,
   seances: [{ id: "s1", date: "2026-10-08", heureDebut: "20:00" }],
   ecrits: [] as Array<Record<string, unknown>>,
-  lignes: [] as Array<{ sessionId: string; tardif: boolean }>,
+  lignes: [] as Array<{ sessionId: string; tardif: boolean; derniereMinute?: boolean }>,
+  /** `desistement.derniereMinuteMinutes` (null : défaut, 4 h). */
+  reglageDerniereMinute: null as string | null,
   panne: false,
   audits: [] as unknown[][],
 }));
@@ -16,7 +18,12 @@ vi.mock("@/lib/audit", () => ({ audit: vi.fn(async (...args: unknown[]) => faux.
 
 vi.mock("@/lib/db", () => ({
   db: {
-    setting: { findUnique: vi.fn(async () => (faux.reglage === null ? null : { value: faux.reglage })) },
+    setting: {
+      findUnique: vi.fn(async ({ where }: { where: { key: string } }) => {
+        const v = where.key === "desistement.derniereMinuteMinutes" ? faux.reglageDerniereMinute : faux.reglage;
+        return v === null ? null : { value: v };
+      }),
+    },
     session: { findMany: vi.fn(async () => faux.seances) },
     attendanceChange: {
       createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
@@ -42,6 +49,7 @@ const heuresAvant = (h: number) => new Date(DEBUT.getTime() - h * 3_600_000);
 
 beforeEach(() => {
   faux.reglage = null;
+  faux.reglageDerniereMinute = null;
   faux.ecrits = [];
   faux.lignes = [];
   faux.panne = false;
@@ -57,18 +65,18 @@ describe("délai des désistements", () => {
     expect(delaiDesistementSchema.safeParse(1.5).success).toBe(false);
   });
 
-  it("vaut deux heures tant que rien n'est réglé, ou si la valeur est illisible", async () => {
-    expect(lireDelaiDesistement(null)).toBe(120);
-    expect(lireDelaiDesistement("abc")).toBe(120);
-    expect(lireDelaiDesistement("90")).toBe(120);
-    expect(lireDelaiDesistement("99999")).toBe(120);
+  it("vaut deux jours tant que rien n'est réglé, ou si la valeur est illisible", async () => {
+    expect(lireDelaiDesistement(null)).toBe(2880);
+    expect(lireDelaiDesistement("abc")).toBe(2880);
+    expect(lireDelaiDesistement("90")).toBe(2880);
+    expect(lireDelaiDesistement("99999")).toBe(2880);
     expect(lireDelaiDesistement("1440")).toBe(1440);
     faux.reglage = "360";
     expect(await getDelaiDesistementMin()).toBe(360);
   });
 
   it("élargit la fenêtre de l'alerte", () => {
-    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(5))).toBe(false);
+    expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(5), 120)).toBe(false);
     expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(5), 360)).toBe(true);
     expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(24), 1440)).toBe(true);
     expect(dansFenetreDesistementTardif("2026-10-08", "20:00", heuresAvant(25), 1440)).toBe(false);
@@ -95,11 +103,25 @@ describe("noterChangementsReponse", () => {
     ]);
     // Le journal d'audit horodate les seuls gestes de la personne elle-même (ici, Chloé).
     expect(faux.audits.map((a) => a[1])).toEqual(["presence.desistement"]);
-    expect(faux.audits[0][3]).toMatchObject({ sessionId: "s1", avant: "PRESENT", apres: "ABSENT", derniereMinute: true, avantCoursMin: 600 });
+    expect(faux.audits[0][3]).toMatchObject({ sessionId: "s1", avant: "PRESENT", apres: "ABSENT", derniereMinute: false, signale: true, avantCoursMin: 600 });
+    expect(faux.ecrits[0]).toMatchObject({ derniereMinute: false });
+  });
+
+  it("dans la fenêtre de dernière minute : marqué, et une action à part au journal", async () => {
+    await noterChangementsReponse(CHLOE, [{ sessionId: "s1", userId: "chloe", avant: "PRESENT", apres: "ABSENT" }], heuresAvant(3));
+    expect(faux.ecrits[0]).toMatchObject({ desistement: true, tardif: true, derniereMinute: true });
+    expect(faux.audits.map((a) => a[1])).toEqual(["presence.desistement_derniere_minute"]);
+    expect(faux.audits[0][3]).toMatchObject({ derniereMinute: true, signale: true, avantCoursMin: 180 });
+  });
+
+  it("le délai de dernière minute réglé par le club fait foi", async () => {
+    faux.reglageDerniereMinute = "60";
+    await noterChangementsReponse(CHLOE, [{ sessionId: "s1", userId: "chloe", avant: "PRESENT", apres: "ABSENT" }], heuresAvant(1.5));
+    expect(faux.ecrits[0]).toMatchObject({ tardif: true, derniereMinute: false });
   });
 
   it("hors du délai : désistement noté, mais pas « de dernière minute »", async () => {
-    await noterChangementsReponse(CHLOE, [{ sessionId: "s1", userId: "chloe", avant: "PRESENT", apres: "PEUT_ETRE" }], heuresAvant(10));
+    await noterChangementsReponse(CHLOE, [{ sessionId: "s1", userId: "chloe", avant: "PRESENT", apres: "PEUT_ETRE" }], heuresAvant(72));
     expect(faux.ecrits[0]).toMatchObject({ desistement: true, tardif: false, auteurId: "chloe" });
   });
 
@@ -115,10 +137,10 @@ describe("compterDesistements", () => {
   it("compte des séances distinctes", async () => {
     faux.lignes = [
       { sessionId: "s1", tardif: false },
-      { sessionId: "s1", tardif: true },
+      { sessionId: "s1", tardif: true, derniereMinute: true },
       { sessionId: "s2", tardif: false },
     ];
-    expect(await compterDesistements("chloe")).toEqual({ seances: 2, tardifs: 1 });
+    expect(await compterDesistements("chloe")).toEqual({ seances: 2, tardifs: 1, derniereMinute: 1 });
   });
 });
 

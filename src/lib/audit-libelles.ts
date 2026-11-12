@@ -1,4 +1,5 @@
 import { formatDateCourte, formatHeure } from "@/lib/dates";
+import { libelleDelaiDesistement } from "@/lib/constants";
 import { libelleAvantCours } from "@/lib/historique-reponses";
 
 /**
@@ -46,6 +47,11 @@ const ACTIONS: Record<string, string> = {
   "mot_de_passe.change": "a changé son mot de passe",
   "presence.reponse": "a changé sa réponse",
   "presence.desistement": "s'est désisté(e)",
+  "presence.desistement_derniere_minute": "désistement de dernière minute",
+  "notification.desistement": "alerte « désistement » envoyée aux instructeurs",
+  "notification.desistement_echec": "alerte « désistement » non remise",
+  "notification.desistement_derniere_minute": "alerte « désistement de dernière minute » envoyée aux instructeurs",
+  "notification.desistement_derniere_minute_echec": "alerte « désistement de dernière minute » non remise",
   "presence.modifiee_par_admin": "a corrigé une réponse",
   "rappels.desinscrit": "s'est désinscrit(e) des rappels",
   "rappels.reactives": "a réactivé les rappels",
@@ -96,6 +102,7 @@ const ACTIONS: Record<string, string> = {
   "parametres.recap_hour": "a changé l'heure du récap",
   "parametres.rappels_jalons": "a changé les délais des rappels",
   "parametres.delai_desistement": "a changé le délai des désistements",
+  "parametres.delai_derniere_minute": "a changé le délai des désistements de dernière minute",
   "parametres.publication_cours": "a réglé la publication des cours",
   "parametres.alertes_securite": "a réglé les alertes de sécurité",
   "parametres.retention_audit": "a changé la durée du journal",
@@ -111,7 +118,8 @@ export function libelleAction(action: string): string {
 /** La couleur d'une action : refus en rouge, désistement en ocre, gestes du bureau en primaire. */
 export function tonAction(action: string): TonAudit {
   if (/echec|refus|inconnu/.test(action)) return "rouge";
-  if (action === "presence.desistement") return "ocre";
+  if (action.startsWith("presence.desistement")) return "ocre";
+  if (action.startsWith("notification.desistement")) return "ocre";
   // Ouvrir ou quitter l'espace admin revient sans cesse : en couleur, il noierait ce qui compte.
   if (action === "admin.espace_ouvert" || action === "admin.espace_quitte") return "neutre";
   if (action.startsWith("admin.") || action.startsWith("parametres.") || action.endsWith("supprime") || action.endsWith("supprimee")) return "primaire";
@@ -134,8 +142,13 @@ const CLES: Record<string, string> = {
   motif: "motif",
   email: "email",
   raison: "raison",
+  emails: "emails",
+  telephones: "téléphones",
+  canal: "canal",
+  destinataire: "destinataire",
+  erreur: "erreur",
 };
-const MASQUEES = new Set(["sessionId", "seance", "avant", "apres", "derniereMinute", "avantCoursMin", "periodId", "userId", "id"]);
+const MASQUEES = new Set(["sessionId", "seance", "avant", "apres", "derniereMinute", "signale", "avantCoursMin", "periodId", "userId", "id", "nouvelleReponse", "delaiMin", "ancienDelaiMin"]);
 
 function valeur(v: unknown): string {
   if (v === true) return "oui";
@@ -169,8 +182,20 @@ export function detailsLisibles(details: string | null, seances: ReadonlyMap<str
   else if (brute) morceaux.push(`séance du ${formatDateCourte(brute[1])} à ${formatHeure(brute[2])}`);
   if ("avant" in o || "apres" in o) morceaux.push(`${statut(o.avant)} → ${statut(o.apres)}`);
   if (typeof o.avantCoursMin === "number") morceaux.push(libelleAvantCours(o.avantCoursMin));
-  if (o.derniereMinute === true) morceaux.push("dernière minute");
+  if (o.derniereMinute === true) morceaux.push("désistement de dernière minute");
+  else if (o.signale === true) morceaux.push("instructeurs prévenus");
+  // Une alerte envoyée : la réponse qui l'a déclenchée (le statut seul, sans « avant »).
+  if (typeof o.nouvelleReponse === "string") morceaux.push(`nouvelle réponse : ${statut(o.nouvelleReponse)}`);
+  // Un délai changé : l'ancien et le nouveau, en clair (« 2 heures → 3 jours ») ; un délai seul, en clair aussi.
+  if (typeof o.delaiMin === "number") {
+    const change = typeof o.ancienDelaiMin === "number" && o.ancienDelaiMin !== o.delaiMin;
+    morceaux.push(change ? `${libelleDelaiDesistement(o.ancienDelaiMin as number)} → ${libelleDelaiDesistement(o.delaiMin)}` : `délai : ${libelleDelaiDesistement(o.delaiMin)}`);
+  }
+  // Une alerte allumée ou éteinte avec son délai : « activé → désactivé », ou l'état seul s'il n'a pas bougé.
+  const bascule = typeof o.ancienActif === "boolean" && typeof o.actif === "boolean";
+  if (bascule) morceaux.push(o.ancienActif === o.actif ? (o.actif ? "activé" : "désactivé") : `${o.ancienActif ? "activé" : "désactivé"} → ${o.actif ? "activé" : "désactivé"}`);
   for (const [k, v] of Object.entries(o)) {
+    if (bascule && (k === "actif" || k === "ancienActif")) continue;
     // Les champs vides n'apprennent rien : on les tait (le CSV les garde).
     if (MASQUEES.has(k) || v === null || v === undefined || v === "") continue;
     morceaux.push(`${CLES[k] ?? k} : ${valeur(v)}`);

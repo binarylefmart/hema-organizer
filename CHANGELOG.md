@@ -2,6 +2,12 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.87.0
+
+### Nouveautés
+
+- **desistements** : désistement de dernière minute, réglable et activable à part
+
 ## 0.86.1
 
 ### Nouveautés

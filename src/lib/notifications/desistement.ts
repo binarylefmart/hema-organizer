@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { DELAI_DESISTEMENT_TARDIF_MIN, ecritureFermee } from "@/lib/constants";
+import { DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN, DELAI_DESISTEMENT_TARDIF_MIN, ecritureFermee } from "@/lib/constants";
+import { audit } from "@/lib/audit";
 import { parisDateTime, todayIso } from "@/lib/dates";
 import { enqueueEmail } from "@/lib/email/mailer";
 import { emailDesistementTardif } from "@/lib/email/templates/seances";
@@ -11,15 +12,27 @@ import { contenuDesistementTardif, type StatutDesistement } from "./contenu";
 import { clesDejaEnvoyees, journaliser, marquerEchec, notifierParPush, pushPossible } from "./journal";
 import { empreinteCreneau } from "./planification";
 import { destinataireRetenu, getPreferencesNotifications } from "./preferences";
-import { getDelaiDesistementMin } from "@/lib/settings";
+import { getDelaisDesistement } from "@/lib/settings";
+import type { TypeNotification } from "./preferences";
 import type { ChargePush } from "./push";
 import { CHAMPS_DESTINATAIRE, chiffresEffectif, equipeJoignable, type InstructeurAlerte } from "./seances";
 
 /**
- * **Désistement de dernière minute** (`desistement_tardif`) : un membre retire sa réponse dans le délai
- * réglé par le club (`desistement.delaiMinutes`, {@link DELAI_DESISTEMENT_TARDIF_MIN} minutes à défaut)
- * qui précède le cours, et l'encadrement de la séance
+ * **Désistement** (`desistement_tardif`) et **désistement de dernière minute**
+ * (`desistement_derniere_minute`) : un membre retire sa réponse avant le cours, et l'encadrement
  * l'apprend tout de suite — son nom, sa nouvelle réponse, l'effectif mis à jour.
+ *
+ * ## Deux fenêtres, la plus pressante l'emporte
+ *
+ * - dans la fenêtre de **dernière minute** (`desistement.derniereMinuteMinutes`,
+ *   {@link DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN} minutes à défaut) : « Désistement de dernière minute » ;
+ * - sinon, dans le délai des **désistements** (`desistement.delaiMinutes`,
+ *   {@link DELAI_DESISTEMENT_TARDIF_MIN} minutes à défaut) : « Désistement ».
+ *
+ * Les deux fenêtres sont indépendantes : la dernière minute peut être plus
+ * longue que l'autre, elle prend le pas quand même. Un seul message par retrait ; chacune se coupe
+ * séparément dans « Mon profil ». Chaque envoi (et chaque échec) est noté au journal d'audit
+ * (`notification.desistement`, `notification.desistement_derniere_minute`, `…_echec`).
  *
  * ## Ce qui déclenche
  *
@@ -59,6 +72,44 @@ import { CHAMPS_DESTINATAIRE, chiffresEffectif, equipeJoignable, type Instructeu
 
 /** Type écrit dans `NotificationLog`. */
 export const TYPE_JOURNAL_DESISTEMENT = "DESISTEMENT";
+export const TYPE_JOURNAL_DESISTEMENT_DERNIERE_MINUTE = "DESISTEMENT_DERNIERE_MINUTE";
+
+/** Quelle alerte un retrait déclenche : la plus pressante des deux fenêtres, ou aucune. */
+export type FenetreDesistement = "derniere_minute" | "desistement";
+
+export type DelaisDesistement = {
+  delaiMin: number;
+  derniereMinuteMin: number;
+  /** Interrupteurs du bureau (`desistement.actif`, `desistement.derniereMinuteActif`) ; absents = allumés. */
+  actif?: boolean;
+  derniereMinuteActif?: boolean;
+};
+
+export const DELAIS_DESISTEMENT_DEFAUT: DelaisDesistement = { delaiMin: DELAI_DESISTEMENT_TARDIF_MIN, derniereMinuteMin: DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN };
+
+/**
+ * **La fenêtre d'un retrait** (fonction pure) : dernière minute d'abord — elle prend le pas —, puis
+ * désistement, sinon `null` (trop tôt, après le début, ou alerte coupée par le bureau).
+ *
+ * Deux conséquences voulues : une dernière minute **au moins aussi longue** que le
+ * désistement le recouvre entièrement — le désistement classique ne part alors plus jamais
+ * ({@link desistementRecouvert}) ; une dernière minute **coupée** rend sa fenêtre au désistement classique.
+ */
+export function fenetreDesistement(date: string, heureDebut: string, now = new Date(), delais: DelaisDesistement = DELAIS_DESISTEMENT_DEFAUT): FenetreDesistement | null {
+  if (delais.derniereMinuteActif !== false && dansFenetreDesistementTardif(date, heureDebut, now, delais.derniereMinuteMin)) return "derniere_minute";
+  if (delais.actif !== false && dansFenetreDesistementTardif(date, heureDebut, now, delais.delaiMin)) return "desistement";
+  return null;
+}
+
+/** Le désistement classique est-il entièrement recouvert par la dernière minute (donc inopérant) ? (fonction pure) */
+export function desistementRecouvert(delais: DelaisDesistement): boolean {
+  return delais.derniereMinuteActif !== false && delais.derniereMinuteMin >= delais.delaiMin;
+}
+
+/** Le type de notification (préférences, canaux) de chaque fenêtre. */
+export function typeNotificationDesistement(fenetre: FenetreDesistement): TypeNotification {
+  return fenetre === "derniere_minute" ? "desistement_derniere_minute" : "desistement_tardif";
+}
 
 /**
  * La transition retire-t-elle une présence sur laquelle l'équipe comptait ? (fonction pure)
@@ -76,7 +127,7 @@ export function estDesistement(avant: string | null, apres: string): StatutDesis
  * Sommes-nous dans le délai qui précède le début ? (fonction pure) — `delaiMin` est le réglage du
  * club (`getDelaiDesistementMin`), {@link DELAI_DESISTEMENT_TARDIF_MIN} à défaut.
  *
- * Borne comprise (pile deux heures avant, l'alerte part) ; le début lui-même exclu — un cours
+ * Borne comprise (pile au délai, l'alerte part) ; le début lui-même exclu — un cours
  * commencé ne prend plus de réponse, et le même instant que `seanceCommencee` le dit.
  */
 export function dansFenetreDesistementTardif(date: string, heureDebut: string, now = new Date(), delaiMin = DELAI_DESISTEMENT_TARDIF_MIN): boolean {
@@ -97,8 +148,10 @@ export function cleDesistement(args: {
   membreId: string;
   seance: { id: string; date: string; heureDebut: string };
   statut: StatutDesistement;
+  /** Une clé à part : un désistement classique suivi d'un retrait de dernière minute fait deux nouvelles. */
+  derniereMinute?: boolean;
 }): string {
-  return `desistement_${args.canal}_${args.seance.id}_${empreinteCreneau(args.seance)}_${args.membreId}_${args.statut}_${args.destinataireId}`;
+  return `desistement${args.derniereMinute ? "_dm" : ""}_${args.canal}_${args.seance.id}_${empreinteCreneau(args.seance)}_${args.membreId}_${args.statut}_${args.destinataireId}`;
 }
 
 export type SignalementDesistement = {
@@ -113,14 +166,14 @@ export type SignalementDesistement = {
 };
 
 /**
- * Prévient l'encadrement d'un désistement de dernière minute. Rend le nombre d'envois tentés (emails
+ * Prévient l'encadrement d'un désistement (ou d'un désistement de dernière minute). Rend le nombre d'envois tentés (emails
  * et notifications sur le téléphone confondus) — **ne lève jamais**.
  */
 export async function signalerDesistementTardif(signalement: SignalementDesistement): Promise<number> {
   try {
     return await signaler(signalement);
   } catch (e) {
-    console.error("[notifications] désistement de dernière minute : échec non bloquant", e);
+    console.error("[notifications] désistement : échec non bloquant", e);
     return 0;
   }
 }
@@ -131,12 +184,17 @@ async function signaler({ sessionId, userId, avant, apres, now = new Date() }: S
   // **La fenêtre d'abord, par une lecture légère** : se désister trois jours avant est le cas courant,
   // et il ne doit coûter à la réponse du membre ni la lecture des réglages ni celle de la séance
   // entière (présences, encadrement, période).
-  const [creneau, delaiMin] = await Promise.all([
+  const [creneau, delais] = await Promise.all([
     db.session.findUnique({ where: { id: sessionId }, select: { date: true, heureDebut: true, annulee: true } }),
-    getDelaiDesistementMin(),
+    getDelaisDesistement(),
   ]);
-  if (!creneau || creneau.annulee || !dansFenetreDesistementTardif(creneau.date, creneau.heureDebut, now, delaiMin)) return 0;
-  const [parEmail, parPush] = await Promise.all([envoiPossible("desistement_tardif", "email"), pushPossible("desistement_tardif")]);
+  const fenetre = creneau && !creneau.annulee ? fenetreDesistement(creneau.date, creneau.heureDebut, now, delais) : null;
+  if (!fenetre) return 0;
+  const derniereMinute = fenetre === "derniere_minute";
+  const type = typeNotificationDesistement(fenetre);
+  const typeJournal = derniereMinute ? TYPE_JOURNAL_DESISTEMENT_DERNIERE_MINUTE : TYPE_JOURNAL_DESISTEMENT;
+  const delaiMin = derniereMinute ? delais.derniereMinuteMin : delais.delaiMin;
+  const [parEmail, parPush] = await Promise.all([envoiPossible(type, "email"), pushPossible(type)]);
   if (!parEmail && !parPush) return 0;
 
   const s = await db.session.findUnique({
@@ -154,9 +212,9 @@ async function signaler({ sessionId, userId, avant, apres, now = new Date() }: S
     },
   });
   if (!s || s.annulee || ecritureFermee(s.period.statut)) return 0;
-  if (!dansFenetreDesistementTardif(s.date, s.heureDebut, now, delaiMin)) return 0;
+  if (fenetreDesistement(s.date, s.heureDebut, now, delais) !== fenetre) return 0;
 
-  const membre = await db.user.findUnique({ where: { id: userId }, select: { prenom: true, nom: true } });
+  const membre = await db.user.findUnique({ where: { id: userId }, select: { prenom: true, nom: true, email: true } });
   if (!membre) return 0;
   const nom = `${membre.prenom} ${membre.nom}`.trim();
 
@@ -174,40 +232,58 @@ async function signaler({ sessionId, userId, avant, apres, now = new Date() }: S
   const aujourdHui = todayIso(now);
   const seance = { id: s.id, date: s.date, heureDebut: s.heureDebut, heureFin: s.heureFin, lieu: s.lieu };
   let tentes = 0;
+  let emails = 0;
+  // **Le journal d'audit** : qui a été prévenu, par où, et ce qui a échoué. Le membre est l'acteur — c'est
+  // sa réponse qui déclenche — ; le destinataire d'un échec en est la cible.
+  const acteur = { id: userId, email: membre.email };
+  const action = derniereMinute ? "notification.desistement_derniere_minute" : "notification.desistement";
+  const reperes = { sessionId: s.id, seance: `${s.date} ${s.heureDebut}`, nouvelleReponse: statut };
+  const noterEchec = (u: InstructeurAlerte, canal: "email" | "push", erreur: string) =>
+    audit(acteur, `${action}_echec`, u.id, { ...reperes, canal, destinataire: u.prenom, erreur: erreur.slice(0, 200) });
 
   if (parEmail) {
-    const destinataires = equipe.filter((u): u is InstructeurAlerte & { email: string } => aUnEmail(u) && destinataireRetenu(prefs, "desistement_tardif", "email", u));
-    const cle = (u: InstructeurAlerte) => cleDesistement({ canal: "email", destinataireId: u.id, membreId: userId, seance, statut });
+    const destinataires = equipe.filter((u): u is InstructeurAlerte & { email: string } => aUnEmail(u) && destinataireRetenu(prefs, type, "email", u));
+    const cle = (u: InstructeurAlerte) => cleDesistement({ canal: "email", destinataireId: u.id, membreId: userId, seance, statut, derniereMinute });
     const deja = await clesDejaEnvoyees(destinataires.map(cle));
     for (const u of destinataires) {
       const dedupKey = cle(u);
       if (deja.has(dedupKey)) continue;
       // Le message d'abord : une mise en forme qui lève ne laisse pas de clé derrière elle.
-      const { sujet, contenu } = emailDesistementTardif({ prenom: u.prenom, membre: nom, statut, seance, presents: chiffres.presents, invites: chiffres.invites, aujourdHui, delaiMin });
+      const { sujet, contenu } = emailDesistementTardif({ prenom: u.prenom, membre: nom, statut, seance, presents: chiffres.presents, invites: chiffres.invites, aujourdHui, delaiMin, derniereMinute });
       // La clé **avant** l'envoi : c'est la contrainte d'unicité qui tranche entre deux passages.
-      if (!(await journaliser({ type: TYPE_JOURNAL_DESISTEMENT, canal: "EMAIL", sessionId: s.id, userId: u.id, dedupKey, statut: "ENVOYE" }))) continue;
+      if (!(await journaliser({ type: typeJournal, canal: "EMAIL", sessionId: s.id, userId: u.id, dedupKey, statut: "ENVOYE" }))) continue;
       try {
         enqueueEmail({ to: u.email, sujet, contenu, ref: dedupKey }, (err) => {
-          if (err) void marquerEchec(dedupKey, err.message);
+          if (err) {
+            void marquerEchec(dedupKey, err.message);
+            void noterEchec(u, "email", err.message);
+          }
         });
         tentes += 1;
+        emails += 1;
       } catch (e) {
         // Une file qui refuse le message ne doit pas garder la clé : elle passerait pour « envoyé ».
-        await marquerEchec(dedupKey, e instanceof Error ? e.message : String(e));
+        const message = e instanceof Error ? e.message : String(e);
+        await marquerEchec(dedupKey, message);
+        await noterEchec(u, "email", message);
       }
     }
   }
 
+  let telephones = 0;
   if (parPush) {
-    const destinataires = equipe.filter((u) => destinataireRetenu(prefs, "desistement_tardif", "push", u));
-    tentes += await notifierParPush({
-      type: TYPE_JOURNAL_DESISTEMENT,
+    const destinataires = equipe.filter((u) => destinataireRetenu(prefs, type, "push", u));
+    telephones = await notifierParPush({
+      type: typeJournal,
       sessionId: s.id,
       destinataires,
-      cle: (u) => cleDesistement({ canal: "push", destinataireId: u.id, membreId: userId, seance, statut }),
-      charge: () => chargeDesistementPush({ membre: nom, membreId: userId, statut, seance, chiffres, aujourdHui }),
+      cle: (u) => cleDesistement({ canal: "push", destinataireId: u.id, membreId: userId, seance, statut, derniereMinute }),
+      charge: () => chargeDesistementPush({ membre: nom, membreId: userId, statut, seance, chiffres, aujourdHui, derniereMinute }),
+      surEchec: (u) => noterEchec(u, "push", "aucun appareil atteint"),
     });
+    tentes += telephones;
   }
+  if (tentes > 0) await audit(acteur, action, null, { ...reperes, emails, telephones, delaiMin });
   return tentes;
 }
 
@@ -219,10 +295,11 @@ export function chargeDesistementPush(args: {
   seance: { id: string; date: string; heureDebut: string; lieu: string };
   chiffres: { presents: number; invites: number };
   aujourdHui: string;
+  derniereMinute?: boolean;
 }): ChargePush {
-  const c = contenuDesistementTardif({ membre: args.membre, statut: args.statut, seance: args.seance, chiffres: args.chiffres, aujourdHui: args.aujourdHui });
+  const c = contenuDesistementTardif({ membre: args.membre, statut: args.statut, seance: args.seance, chiffres: args.chiffres, aujourdHui: args.aujourdHui, derniereMinute: args.derniereMinute });
   return {
-    titre: "Désistement",
+    titre: args.derniereMinute ? "Désistement de dernière minute" : "Désistement",
     corps: `${c.phrase}. ${c.chiffres}`,
     url: c.chemin,
     // Un tag par membre : deux désistements sur la même séance ne s'écrasent pas sur l'écran verrouillé.

@@ -210,6 +210,8 @@ export type EnvoiPush<T> = {
   /** Ce que l'appareil affichera : titre court, corps court, et le lien de l'écran utile */
   charge: (personne: T) => ChargePush;
   sessionId?: string | null;
+  /** Prévenu quand une personne a des appareils mais qu'aucun n'a été atteint (journal d'audit). Ne doit pas lever. */
+  surEchec?: (personne: T) => void | Promise<void>;
 };
 
 /**
@@ -221,7 +223,7 @@ export type EnvoiPush<T> = {
  * (elle n'est simplement atteinte sur aucun appareil, ce n'est pas une erreur) — sinon chaque
  * passage du cron repartirait à sa recherche jusqu'à la fin des temps.
  */
-export async function notifierParPush<T extends { id: string }>({ type, destinataires, cle, charge, sessionId = null }: EnvoiPush<T>): Promise<number> {
+export async function notifierParPush<T extends { id: string }>({ type, destinataires, cle, charge, sessionId = null, surEchec }: EnvoiPush<T>): Promise<number> {
   if (destinataires.length === 0) return 0;
   try {
     // Une seule requête pour toute la liste, comme côté email.
@@ -262,6 +264,11 @@ export async function notifierParPush<T extends { id: string }>({ type, destinat
       if (!b || b.appareils === 0 || b.atteints > 0) continue;
       await marquerEchec(cle(personne), "aucun appareil atteint", new Date());
       perdus += 1;
+      try {
+        await surEchec?.(personne);
+      } catch (e) {
+        console.error(`[notifications] ${type} push : échec non signalé`, e);
+      }
     }
     return aPrevenir.length - perdus;
   } catch (e) {

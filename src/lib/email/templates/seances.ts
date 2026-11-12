@@ -75,8 +75,8 @@ export function emailEffectifFaible(args: {
 }
 
 /**
- * **Désistement de dernière minute** : un instructeur de la séance apprend qu'un membre retire sa
- * réponse dans le délai réglé par le club (deux heures à défaut) avant le cours. Le texte vient de `contenuDesistementTardif`
+ * **Désistement** (ou **désistement de dernière minute**) : un instructeur apprend qu'un membre retire sa
+ * réponse dans le délai réglé par le club avant le cours — ou dans la fenêtre de dernière minute, plus courte. Le texte vient de `contenuDesistementTardif`
  * (`notifications/contenu.ts`), le même que la notification sur le téléphone.
  *
  * Un email **par instructeur** (aucun destinataire visible des autres), jamais routé vers la liste du
@@ -91,10 +91,12 @@ export function emailDesistementTardif(args: {
   presents: number;
   invites: number;
   aujourdHui: string;
-  /** Le délai réglé par le club, en minutes (deux heures à défaut). */
+  /** Le délai de la fenêtre qui a déclenché l'alerte, en minutes (deux jours pour le désistement, quatre heures pour la dernière minute, à défaut). */
   delaiMin?: number;
+  /** Fenêtre de dernière minute : titre et pied de page le disent. */
+  derniereMinute?: boolean;
 }): { sujet: string; contenu: EmailContenu } {
-  const c = contenuDesistementTardif({ membre: args.membre, statut: args.statut, seance: args.seance, chiffres: { presents: args.presents, invites: args.invites }, aujourdHui: args.aujourdHui });
+  const c = contenuDesistementTardif({ membre: args.membre, statut: args.statut, seance: args.seance, chiffres: { presents: args.presents, invites: args.invites }, aujourdHui: args.aujourdHui, derniereMinute: args.derniereMinute });
   const url = `${baseUrl()}${c.chemin}`;
   return {
     sujet: c.ligne,
@@ -105,7 +107,7 @@ export function emailDesistementTardif(args: {
       piedDePage: [
         "Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :",
         url,
-        `Message automatique envoyé aux instructeurs du club (sauf ceux qui ne viennent pas eux-mêmes) quand un membre se désiste dans les ${libelleDelaiDesistement(args.delaiMin)} qui précèdent le cours.`,
+        `Message automatique envoyé aux instructeurs du club (sauf ceux qui ne viennent pas eux-mêmes) quand un membre se désiste dans les ${libelleDelaiDesistement(args.delaiMin)} qui précèdent le cours${args.derniereMinute ? " (désistement de dernière minute)" : ""}.`,
       ],
     },
   };

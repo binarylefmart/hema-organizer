@@ -103,8 +103,8 @@ model User {
   templatesAssistes   CoursTemplateElement[] @relation("TemplateInstructeurSecond")
   attendances         Attendance[]
   choixCours          AttendanceChoix[]
-  historiqueReponses  AttendanceChange[]  @relation("HistoriqueReponseDe")
-  reponsesEcrites     AttendanceChange[]  @relation("HistoriqueReponseAuteur")
+  historiqueReponses  AttendanceChange[]     @relation("HistoriqueReponseDe")
+  reponsesEcrites     AttendanceChange[]     @relation("HistoriqueReponseAuteur")
   ateliers            Atelier[]
   ateliersAnimes      Atelier[]              @relation("AtelierAnimateur")
   ateliersSeconde     Atelier[]              @relation("AtelierAnimateurSecond")
@@ -247,13 +247,13 @@ model Session {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  period        Period               @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  instructeurs  SessionInstructeur[]
-  parties       SessionPartie[]
-  attendances   Attendance[]
+  period             Period               @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  instructeurs       SessionInstructeur[]
+  parties            SessionPartie[]
+  attendances        Attendance[]
   historiqueReponses AttendanceChange[]
-  ateliers      Atelier[]
-  notifications NotificationLog[]
+  ateliers           Atelier[]
+  notifications      NotificationLog[]
 
   @@index([periodId, date])
   @@index([date])
@@ -331,11 +331,11 @@ model SessionPartie {
   modifieParId        String?
   updatedAt           DateTime @updatedAt
 
-  session           Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  instructeur       User?    @relation("PartieInstructeur", fields: [instructeurId], references: [id], onDelete: SetNull)
-  instructeurSecond User?    @relation("PartieInstructeurSecond", fields: [instructeurSecondId], references: [id], onDelete: SetNull)
-  atelier           Atelier? @relation(fields: [atelierId], references: [id], onDelete: SetNull)
-  modifiePar        User?    @relation("PartieModifiePar", fields: [modifieParId], references: [id], onDelete: SetNull)
+  session           Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  instructeur       User?             @relation("PartieInstructeur", fields: [instructeurId], references: [id], onDelete: SetNull)
+  instructeurSecond User?             @relation("PartieInstructeurSecond", fields: [instructeurSecondId], references: [id], onDelete: SetNull)
+  atelier           Atelier?          @relation(fields: [atelierId], references: [id], onDelete: SetNull)
+  modifiePar        User?             @relation("PartieModifiePar", fields: [modifieParId], references: [id], onDelete: SetNull)
   choix             AttendanceChoix[]
 
   @@index([sessionId, ordre])
@@ -369,18 +369,20 @@ model Attendance {
 /// (Présent, Absent, Peut-être, sans réponse = null), quel que soit le chemin — la personne elle-même,
 /// sa réponse pour toute la période, ou une correction du bureau (`auteurId` ≠ `userId`). Écrit par
 /// `noterChangementsReponse` (src/lib/historique-reponses.ts), jamais bloquant. `desistement` : la
-/// transition retire une présence (`estDesistement`) ; `tardif` : elle tombe dans le délai d'alerte
-/// des désistements réglé à ce moment-là. Rien avant la v0.85.0 : l'historique commence à sa mise en place.
+/// transition retire une présence (`estDesistement`) ; `tardif` : elle tombe dans une fenêtre d'alerte
+/// (désistement ou dernière minute) réglée à ce moment-là, donc une alerte est partie ; `derniereMinute` :
+/// dans la fenêtre de dernière minute (depuis la v0.87.0). Rien avant la v0.85.0.
 model AttendanceChange {
-  id          String   @id @default(cuid())
-  sessionId   String
-  userId      String
-  auteurId    String?
-  avant       String?
-  apres       String?
-  desistement Boolean  @default(false)
-  tardif      Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  sessionId      String
+  userId         String
+  auteurId       String?
+  avant          String?
+  apres          String?
+  desistement    Boolean  @default(false)
+  tardif         Boolean  @default(false)
+  derniereMinute Boolean  @default(false)
+  createdAt      DateTime @default(now())
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user    User    @relation("HistoriqueReponseDe", fields: [userId], references: [id], onDelete: Cascade)

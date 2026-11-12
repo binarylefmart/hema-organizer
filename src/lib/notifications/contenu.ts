@@ -379,7 +379,7 @@ export function embedEffectifFaible(s: SeanceResume, c: ChiffresSeance, sansRepo
   };
 }
 
-/* ─────────────────────── Désistement avant le cours (message nominatif) ───────────────────────
+/* ──────────────── Désistement, et désistement de dernière minute (message nominatif) ────────────────
  *
  * **La seule mise en forme de ce module qui nomme quelqu'un**, et c'est pour cela qu'elle ne
  * produit pas d'embed : le type `desistement_tardif` n'a ni colonne Discord ni colonne Telegram
@@ -387,10 +387,12 @@ export function embedEffectifFaible(s: SeanceResume, c: ChiffresSeance, sansRepo
  * tous deux cette fonction-ci : un seul texte, deux débouchés.
  */
 /**
- * « Désistement », sans « de dernière minute » : le délai se règle jusqu'à deux semaines
- * (`DELAI_DESISTEMENT_HEURES_MAX`), le mot ne tenait plus pour un cours dans cinq jours.
+ * Deux titres, deux fenêtres : « Désistement » dans le délai réglé (jusqu'à deux semaines), et
+ * « Désistement de dernière minute » dans la fenêtre courte qui prend le pas sur lui
+ * (`DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN`, réglable).
  */
 export const TITRE_DESISTEMENT = "⚠️ Désistement";
+export const TITRE_DESISTEMENT_DERNIERE_MINUTE = "🚨 Désistement de dernière minute";
 
 /** Ce que le membre vient de répondre, et qui fait l'objet de l'alerte. */
 export type StatutDesistement = "ABSENT" | "PEUT_ETRE";
@@ -408,7 +410,7 @@ export function quandCoursProche(date: string, heureDebut: string, aujourdHui: s
 }
 
 export type ContenuDesistement = {
-  /** « ⚠️ Désistement » */
+  /** « ⚠️ Désistement », ou « 🚨 Désistement de dernière minute » */
   titre: string;
   /** « Prénom Nom ne vient plus (Absent) au cours de ce soir 20h00 — Gymnase » */
   phrase: string;
@@ -433,14 +435,17 @@ export function contenuDesistementTardif(args: {
   seance: { id: string; date: string; heureDebut: string; lieu: string };
   chiffres: ChiffresSeance;
   aujourdHui: string;
+  /** Dans la fenêtre de dernière minute : le titre le dit. */
+  derniereMinute?: boolean;
 }): ContenuDesistement {
   const { membre, statut, seance } = args;
+  const titre = args.derniereMinute ? TITRE_DESISTEMENT_DERNIERE_MINUTE : TITRE_DESISTEMENT;
   const phrase = `${membre} ne vient plus (${LIBELLES_STATUT_DESISTEMENT[statut]}) au cours ${quandCoursProche(seance.date, seance.heureDebut, args.aujourdHui)} ${formatHeure(seance.heureDebut)} — ${seance.lieu}`;
   return {
-    titre: TITRE_DESISTEMENT,
+    titre,
     phrase,
     chiffres: ligneChiffres(args.chiffres),
     chemin: `/seances/${seance.id}`,
-    ligne: `${TITRE_DESISTEMENT} — ${phrase}`,
+    ligne: `${titre} — ${phrase}`,
   };
 }

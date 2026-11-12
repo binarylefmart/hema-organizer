@@ -13,7 +13,7 @@ import { enregistrerCodesSecours, genererCodesSecours } from "@/lib/auth/codes-s
 import { CHEMIN_ACTIVATION_ADMIN, compteAcces, deuxFaActive, ouvrirReglage2fa } from "@/lib/auth/acces-admin";
 import { CHEMIN_MA_DEUX_FA } from "@/lib/auth/demande-deux-fa";
 import { redirect } from "next/navigation";
-import { getDiscordWebhookUrl, setDelaiDesistementMin, setDiscordWebhookUrl, setJalonsRappel, setSetting, CLES } from "@/lib/settings";
+import { getActivationDesistement, getDelaiDerniereMinuteMin, getDelaiDesistementMin, getDiscordWebhookUrl, setActivationDesistement, setDelaiDerniereMinuteMin, setDelaiDesistementMin, setDiscordWebhookUrl, setJalonsRappel, setSetting, CLES } from "@/lib/settings";
 import { libelleDelaiDesistement } from "@/lib/constants";
 import { phraseJalons } from "@/lib/notifications/planification";
 import { estTypeDiscord, salonPour, setSalonDiscord } from "@/lib/notifications/webhooks";
@@ -95,11 +95,13 @@ export async function definirJalonsRappel(_prev: FormState, fd: FormData): Promi
 }
 
 /**
- * **Le délai d'alerte des désistements** (`desistement.delaiMinutes`) : un nombre et son
- * unité (heures ou jours), de 1 heure à 2 semaines avant le cours. Un désistement plus tôt ne prévient personne, mais reste noté dans l'historique de la séance.
- * Même serrure que les délais de rappel, sur le même écran.
+ * **Les délais d'alerte des désistements** : un nombre et son unité (heures ou jours), de 1 heure à
+ * 2 semaines avant le cours — `desistement.delaiMinutes` (désistement) ou
+ * `desistement.derniereMinuteMinutes` (dernière minute), selon le formulaire. Un désistement plus tôt
+ * ne prévient personne, mais reste noté dans l'historique de la séance. Même serrure que les délais de
+ * rappel, sur le même écran ; le journal garde l'ancienne et la nouvelle valeur.
  */
-export async function definirDelaiDesistement(_prev: FormState, fd: FormData): Promise<FormState> {
+async function definirUnDelai(fd: FormData, quoi: "desistement" | "derniere_minute"): Promise<FormState> {
   const user = await assertPermission("settings.technical");
   const saisi = champ(fd, "delaiValeur").trim();
   const enJours = champ(fd, "delaiUnite") === "jours";
@@ -107,10 +109,30 @@ export async function definirDelaiDesistement(_prev: FormState, fd: FormData): P
   const parsed = delaiDesistementSchema.safeParse(enJours ? nombre * 24 : nombre);
   if (!parsed.success) return { erreur: parsed.error.issues[0]?.message ?? "Délai invalide." };
   await exigerReauth(user, "/admin/notifications");
-  await setDelaiDesistementMin(parsed.data);
-  await audit(user, "parametres.delai_desistement", null, { minutes: parsed.data });
+  const derniereMinute = quoi === "derniere_minute";
+  // La case « Activer » : cochée = "on" dans le formulaire, absente = décochée.
+  const actif = champ(fd, "actif") === "on";
+  const [ancien, ancienActif] = await Promise.all([derniereMinute ? getDelaiDerniereMinuteMin() : getDelaiDesistementMin(), getActivationDesistement(quoi)]);
+  if (derniereMinute) await setDelaiDerniereMinuteMin(parsed.data);
+  else await setDelaiDesistementMin(parsed.data);
+  await setActivationDesistement(quoi, actif);
+  await audit(user, derniereMinute ? "parametres.delai_derniere_minute" : "parametres.delai_desistement", null, { ancienDelaiMin: ancien, delaiMin: parsed.data, ancienActif, actif });
   revalidatePath("/admin/notifications");
-  return { succes: `Les instructeurs sont prévenus d'un désistement dans les ${libelleDelaiDesistement(parsed.data)} qui précèdent le cours.` };
+  const nom = derniereMinute ? "Le désistement de dernière minute" : "Le désistement";
+  if (!actif) return { succes: `${nom} est désactivé : aucune alerte de ce type ne part plus (délai gardé : ${libelleDelaiDesistement(parsed.data)}).` };
+  return {
+    succes: derniereMinute
+      ? `Dans les ${libelleDelaiDesistement(parsed.data)} qui précèdent le cours, un retrait part en « désistement de dernière minute ».`
+      : `Les instructeurs sont prévenus d'un désistement dans les ${libelleDelaiDesistement(parsed.data)} qui précèdent le cours.`,
+  };
+}
+
+export async function definirDelaiDesistement(_prev: FormState, fd: FormData): Promise<FormState> {
+  return definirUnDelai(fd, "desistement");
+}
+
+export async function definirDelaiDerniereMinute(_prev: FormState, fd: FormData): Promise<FormState> {
+  return definirUnDelai(fd, "derniere_minute");
 }
 
 /**

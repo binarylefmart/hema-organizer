@@ -24,7 +24,7 @@ import { choixDesPresents } from "@/lib/choix-cours";
 import { statsChoix, type LigneStat } from "@/components/seances/choix-cours";
 import { libelleDelaiDesistement, libelleNiveau } from "@/lib/constants";
 import { statsDesistements } from "@/lib/historique-reponses";
-import { getDelaiDesistementMin } from "@/lib/settings";
+import { getDelaisDesistement } from "@/lib/settings";
 import { CarteDesistements } from "./Desistements";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
@@ -250,8 +250,8 @@ async function ChoixDesCours({ stats }: IlotProps) {
 async function Desistements({ stats }: IlotProps) {
   const s = await stats;
   if (!s) return null;
-  const [st, delai] = await Promise.all([statsDesistements(s.seances.map((x) => x.id)), getDelaiDesistementMin()]);
-  return <CarteDesistements st={st} delaiLibelle={libelleDelaiDesistement(delai)} />;
+  const [st, delais] = await Promise.all([statsDesistements(s.seances.map((x) => x.id)), getDelaisDesistement()]);
+  return <CarteDesistements st={st} delaiLibelle={libelleDelaiDesistement(delais.delaiMin)} derniereMinuteLibelle={libelleDelaiDesistement(delais.derniereMinuteMin)} />;
 }
 
 export default async function PageTableauDeBord({ searchParams }: Props) {

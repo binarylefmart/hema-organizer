@@ -251,7 +251,8 @@ export const MOT_DE_PASSE_MIN = 10;
 export const PART_EFFECTIF_LIVREE = 20;
 
 /**
- * **La fenêtre du « désistement de dernière minute » : les 120 minutes qui précèdent le début.**
+ * **La fenêtre du « désistement » : les 2 jours qui précèdent le début, à défaut** (Delta ;
+ * c'était 2 heures quand il n'existait qu'une alerte, dite « de dernière minute »).
  *
  * Un membre qui retire son « Présent » (vers Absent ou Peut-être), ou son « Peut-être » (vers
  * Absent), dans cette fenêtre fait partir une alerte nominative à l'encadrement de la séance
@@ -259,16 +260,28 @@ export const PART_EFFECTIF_LIVREE = 20;
  * suffisent ; après le début, le membre ne peut de toute façon plus répondre. Le début se calcule
  * dans le fuseau du club (`parisDateTime`), jamais dans un fuseau écrit en dur.
  */
-export const DELAI_DESISTEMENT_TARDIF_MIN = 120;
+export const DELAI_DESISTEMENT_TARDIF_MIN = 2 * 1440;
 
 /**
  * **Le délai se règle par le club** (demande de Delta) : `Setting "desistement.delaiMinutes"`,
  * en heures entières de {@link DELAI_DESISTEMENT_HEURES_MIN} à {@link DELAI_DESISTEMENT_HEURES_MAX}
- * — deux semaines au plus, demandé par Delta —, saisi en heures ou en jours (carte « Désistements de dernière minute » de *Notifications*). La constante ci-dessus reste le défaut,
+ * — deux semaines au plus, demandé par Delta —, saisi en heures ou en jours (carte « Désistements et désistements de dernière minute » de *Notifications*). La constante ci-dessus reste le défaut,
  * tant que rien n'est enregistré. Lu par `getDelaiDesistementMin` (`src/lib/settings.ts`).
  */
 export const DELAI_DESISTEMENT_HEURES_MIN = 1;
 export const DELAI_DESISTEMENT_HEURES_MAX = 14 * 24;
+
+/**
+ * **La fenêtre du « désistement de dernière minute » : 4 heures avant le début, à défaut.**
+ *
+ * Une seconde alerte, distincte de la première (Delta : « d'abord les désistements, et si
+ * on passe dans la fenêtre de dernière minute, cela prend le pas sur le désistement classique ») :
+ * dans ce délai, c'est elle qui part (type `desistement_derniere_minute`, désactivable à part) ; plus
+ * tôt mais dans {@link DELAI_DESISTEMENT_TARDIF_MIN} (ou son réglage), c'est le désistement classique.
+ * Les deux fenêtres sont indépendantes : celle-ci peut être plus longue que l'autre. Réglable par le
+ * club (`Setting "desistement.derniereMinuteMinutes"`), mêmes bornes que le délai des désistements.
+ */
+export const DELAI_DESISTEMENT_DERNIERE_MINUTE_MIN = 240;
 
 /**
  * « 2 heures », « 3 jours », « 2 semaines » : la fenêtre ci-dessus, dite en clair dans les phrases de

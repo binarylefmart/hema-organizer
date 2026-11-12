@@ -23,7 +23,7 @@ function Chiffre({ valeur, legende }: { valeur: string | number; legende: string
  * séances que le reste de l'écran (période et fenêtre de temps choisies). Les chiffres viennent de
  * l'historique des réponses : rien avant sa mise en place.
  */
-export function CarteDesistements({ st, delaiLibelle }: { st: StatsDesistements; delaiLibelle: string }) {
+export function CarteDesistements({ st, delaiLibelle, derniereMinuteLibelle }: { st: StatsDesistements; delaiLibelle: string; derniereMinuteLibelle: string }) {
   const max = Math.max(1, ...st.tranches.map((t) => t.n));
   return (
     <Carte titre={`Désistements — ${st.desistements}`}>
@@ -31,9 +31,10 @@ export function CarteDesistements({ st, delaiLibelle }: { st: StatsDesistements;
         <p className="text-texte-secondaire">Aucun changement de réponse noté sur ces séances pour l&apos;instant.</p>
       ) : (
         <div className="flex flex-col gap-5">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <Chiffre valeur={st.desistements} legende="désistements" />
-            <Chiffre valeur={st.tardifs} legende={`dans le délai d'alerte (aujourd'hui ${delaiLibelle})`} />
+            <Chiffre valeur={st.tardifs - st.derniereMinute} legende={`désistements signalés (délai d'alerte : ${delaiLibelle})`} />
+            <Chiffre valeur={st.derniereMinute} legende={`désistements de dernière minute (moins de ${derniereMinuteLibelle} avant)`} />
             <Chiffre valeur={st.personnes} legende={st.personnes > 1 ? "personnes concernées" : "personne concernée"} />
             <Chiffre valeur={st.medianeMin === null ? "—" : libelleAvantCours(st.medianeMin).replace(" avant le cours", "")} legende="délai médian avant le cours" />
             <Chiffre valeur={st.changements} legende="changements de réponse" />
@@ -61,8 +62,8 @@ export function CarteDesistements({ st, delaiLibelle }: { st: StatsDesistements;
                   <thead>
                     <tr className="text-left text-texte-secondaire">
                       <th className="py-1 pr-2 font-normal">Personne</th>
-                      <th className="py-1 pr-2 text-right font-normal">Désist.</th>
-                      <th className="py-1 text-right font-normal">Dern. minute</th>
+                      <th className="py-1 pr-2 text-right font-normal">Désistements</th>
+                      <th className="py-1 text-right font-normal">dont de dernière minute</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -70,7 +71,7 @@ export function CarteDesistements({ st, delaiLibelle }: { st: StatsDesistements;
                       <tr key={m.userId} className="border-t border-bordure/50">
                         <td className="py-1 pr-2">{m.nom}</td>
                         <td className="py-1 pr-2 text-right tabular-nums">{m.n}</td>
-                        <td className="py-1 text-right tabular-nums">{m.tardifs}</td>
+                        <td className="py-1 text-right tabular-nums">{m.derniereMinute}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -84,7 +85,10 @@ export function CarteDesistements({ st, delaiLibelle }: { st: StatsDesistements;
                       <Link href={`/seances/${s.id}`} className="inline-flex min-h-11 items-center">
                         {formatDateCourte(s.date)} · {formatHeure(s.heureDebut)}
                       </Link>
-                      <span className="tabular-nums">{s.n}</span>
+                      <span className="tabular-nums">
+                        {s.n}
+                        {s.derniereMinute > 0 && <span className="text-texte-secondaire"> (dont {s.derniereMinute} de dernière minute)</span>}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -101,7 +105,7 @@ export function CarteDesistements({ st, delaiLibelle }: { st: StatsDesistements;
                     <span>
                       <strong>{d.nom}</strong> : {libelle(d.avant)} → <strong>{libelle(d.apres)}</strong> —{" "}
                       <Link href={`/seances/${d.sessionId}`}>{formatDateCourte(d.date)}</Link>{" "}
-                      {d.tardif && <Pastille ton="ocre">dernière minute</Pastille>}
+                      {d.derniereMinute ? <Pastille ton="ocre">désistement de dernière minute</Pastille> : d.tardif ? <Pastille ton="neutre">désistement signalé</Pastille> : null}
                     </span>
                     <span className="text-texte-secondaire">{libelleAvantCours(d.avantCoursMin)}</span>
                   </li>
@@ -111,7 +115,8 @@ export function CarteDesistements({ st, delaiLibelle }: { st: StatsDesistements;
           )}
           <p className="text-sm text-texte-secondaire">
             Un désistement : Présent → Absent ou Peut-être, ou Peut-être → Absent, compté une fois par personne et par séance. Séances annulées exclues.
-            Les chiffres commencent à la mise en place de l&apos;historique.
+            Signalé : les instructeurs ont été prévenus. De dernière minute : dans la fenêtre réglée par le bureau, il prend le pas sur le désistement
+            signalé (compté depuis la v0.87.0). Les chiffres commencent à la mise en place de l&apos;historique.
           </p>
         </div>
       )}

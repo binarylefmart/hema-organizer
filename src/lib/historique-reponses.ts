@@ -1,8 +1,8 @@
 import { db } from "@/lib/db";
 import { parisDateTime } from "@/lib/dates";
 import { audit, type AuditActeur } from "@/lib/audit";
-import { estDesistement, dansFenetreDesistementTardif } from "@/lib/notifications/desistement";
-import { getDelaiDesistementMin } from "@/lib/settings";
+import { estDesistement, fenetreDesistement } from "@/lib/notifications/desistement";
+import { getDelaisDesistement } from "@/lib/settings";
 
 /**
  * **L'historique des réponses** (`AttendanceChange`, demande de Delta : « un log sur les
@@ -14,7 +14,9 @@ import { getDelaiDesistementMin } from "@/lib/settings";
  *
  * - `desistement` : la transition retire une présence (`estDesistement` : Présent → Absent ou
  *   Peut-être, Peut-être → Absent), la même règle que l'alerte aux instructeurs ;
- * - `tardif` : elle tombe dans le délai d'alerte réglé **à ce moment-là** (`desistement.delaiMinutes`).
+ * - `tardif` : elle tombe dans une fenêtre d'alerte réglée **à ce moment-là** (désistement ou dernière
+ *   minute) — une alerte est partie aux instructeurs ;
+ * - `derniereMinute` : dans la fenêtre du **désistement de dernière minute** (`desistement.derniereMinuteMinutes`).
  *
  * **Ne lève jamais**, comme `audit()` : la réponse est déjà écrite quand on note, et un historique qui
  * hoquette ne doit ni la défaire ni l'afficher en erreur.
@@ -27,14 +29,15 @@ export async function noterChangementsReponse(auteur: NonNullable<AuditActeur>, 
   if (utiles.length === 0) return;
   try {
     const ids = [...new Set(utiles.map((c) => c.sessionId))];
-    const [seances, delaiMin] = await Promise.all([
+    const [seances, delais] = await Promise.all([
       db.session.findMany({ where: { id: { in: ids } }, select: { id: true, date: true, heureDebut: true } }),
-      getDelaiDesistementMin(),
+      getDelaisDesistement(),
     ]);
     const parId = new Map(seances.map((s) => [s.id, s]));
     const lignes = utiles.map((c) => {
       const desistement = c.apres !== null && estDesistement(c.avant, c.apres) !== null;
       const s = parId.get(c.sessionId);
+      const fenetre = desistement && s ? fenetreDesistement(s.date, s.heureDebut, now, delais) : null;
       return {
         sessionId: c.sessionId,
         userId: c.userId,
@@ -42,7 +45,8 @@ export async function noterChangementsReponse(auteur: NonNullable<AuditActeur>, 
         avant: c.avant,
         apres: c.apres,
         desistement,
-        tardif: desistement && !!s && dansFenetreDesistementTardif(s.date, s.heureDebut, now, delaiMin),
+        tardif: fenetre !== null,
+        derniereMinute: fenetre === "derniere_minute",
         createdAt: now,
       };
     });
@@ -56,12 +60,15 @@ export async function noterChangementsReponse(auteur: NonNullable<AuditActeur>, 
     for (const l of lignes) {
       if (l.userId !== auteurId) continue;
       const s = parId.get(l.sessionId);
-      await audit(auteur, l.desistement ? "presence.desistement" : "presence.reponse", l.userId, {
+      // Trois actions, un préfixe commun (`presence.desistement`) : le raccourci « désistements » du
+      // journal les retrouve toutes, « désistements de dernière minute » la seule qui le dit.
+      const action = !l.desistement ? "presence.reponse" : l.derniereMinute ? "presence.desistement_derniere_minute" : "presence.desistement";
+      await audit(auteur, action, l.userId, {
         sessionId: l.sessionId,
         seance: s ? `${s.date} ${s.heureDebut}` : null,
         avant: l.avant,
         apres: l.apres,
-        ...(l.desistement ? { derniereMinute: l.tardif } : {}),
+        ...(l.desistement ? { derniereMinute: l.derniereMinute, signale: l.tardif } : {}),
         avantCoursMin: s ? minutesAvantCours(now, s.date, s.heureDebut) : null,
       });
     }
@@ -76,14 +83,15 @@ export async function noterChangementsReponse(auteur: NonNullable<AuditActeur>, 
  * elles celles où le retrait est tombé dans le délai d'alerte. Les séances annulées ne comptent pas :
  * se retirer d'un cours qui n'a pas lieu n'est pas un désistement.
  */
-export async function compterDesistements(userId: string): Promise<{ seances: number; tardifs: number }> {
+export async function compterDesistements(userId: string): Promise<{ seances: number; tardifs: number; derniereMinute: number }> {
   const lignes = await db.attendanceChange.findMany({
     where: { userId, desistement: true, session: { annulee: false } },
-    select: { sessionId: true, tardif: true },
+    select: { sessionId: true, tardif: true, derniereMinute: true },
   });
   const seances = new Set(lignes.map((l) => l.sessionId));
   const tardifs = new Set(lignes.filter((l) => l.tardif).map((l) => l.sessionId));
-  return { seances: seances.size, tardifs: tardifs.size };
+  const derniereMinute = new Set(lignes.filter((l) => l.derniereMinute).map((l) => l.sessionId));
+  return { seances: seances.size, tardifs: tardifs.size, derniereMinute: derniereMinute.size };
 }
 
 export type LigneHistorique = {
@@ -96,6 +104,7 @@ export type LigneHistorique = {
   apres: string | null;
   desistement: boolean;
   tardif: boolean;
+  derniereMinute: boolean;
   /** Minutes entre le changement et le début du cours (négatif : après le début) */
   avantCoursMin: number;
 };
@@ -136,6 +145,7 @@ export async function historiqueSeance(sessionId: string, limite = 200): Promise
     apres: l.apres,
     desistement: l.desistement,
     tardif: l.tardif,
+    derniereMinute: l.derniereMinute,
     avantCoursMin: minutesAvantCours(l.createdAt, l.session.date, l.session.heureDebut),
   }));
 }
@@ -155,16 +165,18 @@ export type StatsDesistements = {
   changements: number;
   /** Désistements : couples personne × séance distincts */
   desistements: number;
-  /** Dont dans le délai d'alerte réglé au moment du désistement */
+  /** Dont signalés aux instructeurs (une fenêtre d'alerte, réglée au moment du désistement) */
   tardifs: number;
+  /** Dont désistements de dernière minute */
+  derniereMinute: number;
   /** Personnes qui se sont désistées au moins une fois */
   personnes: number;
   /** Délai médian entre le désistement et le cours, en minutes (null : aucun désistement) */
   medianeMin: number | null;
   tranches: Array<{ libelle: string; n: number }>;
-  parMembre: Array<{ userId: string; nom: string; n: number; tardifs: number }>;
-  parSeance: Array<{ id: string; date: string; heureDebut: string; n: number }>;
-  derniers: Array<{ id: string; quand: Date; nom: string; avant: string | null; apres: string | null; tardif: boolean; avantCoursMin: number; sessionId: string; date: string }>;
+  parMembre: Array<{ userId: string; nom: string; n: number; tardifs: number; derniereMinute: number }>;
+  parSeance: Array<{ id: string; date: string; heureDebut: string; n: number; derniereMinute: number }>;
+  derniers: Array<{ id: string; quand: Date; nom: string; avant: string | null; apres: string | null; tardif: boolean; derniereMinute: boolean; avantCoursMin: number; sessionId: string; date: string }>;
 };
 
 /**
@@ -192,6 +204,8 @@ type LigneStat = {
   avant: string | null;
   apres: string | null;
   tardif: boolean;
+  /** Absent des lignes écrites avant la v0.87.0 dans les tests : vaut faux. */
+  derniereMinute?: boolean;
   createdAt: Date;
   user: { prenom: string; nom: string };
   session: { date: string; heureDebut: string };
@@ -200,12 +214,15 @@ type LigneStat = {
 /** Le calcul seul, sur des lignes déjà lues (les plus récentes d'abord) — fonction pure. */
 export function calculerStatsDesistements(changements: number, lignes: readonly LigneStat[]): StatsDesistements {
   // Le dernier retrait de chaque couple personne × séance (les lignes arrivent du plus récent au plus ancien).
-  const couples = new Map<string, LigneStat & { tardifCouple: boolean }>();
+  const couples = new Map<string, LigneStat & { tardifCouple: boolean; derniereMinuteCouple: boolean }>();
   for (const l of lignes) {
     const cle = `${l.userId}|${l.sessionId}`;
     const deja = couples.get(cle);
-    if (!deja) couples.set(cle, { ...l, tardifCouple: l.tardif });
-    else if (l.tardif) deja.tardifCouple = true;
+    if (!deja) couples.set(cle, { ...l, tardifCouple: l.tardif, derniereMinuteCouple: l.derniereMinute === true });
+    else {
+      if (l.tardif) deja.tardifCouple = true;
+      if (l.derniereMinute) deja.derniereMinuteCouple = true;
+    }
   }
   const liste = [...couples.values()];
   const delais = liste.map((c) => minutesAvantCours(c.createdAt, c.session.date, c.session.heureDebut)).sort((a, b) => a - b);
@@ -219,15 +236,17 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
     tranches[i].n += 1;
   }
 
-  const membres = new Map<string, { userId: string; nom: string; n: number; tardifs: number }>();
-  const seances = new Map<string, { id: string; date: string; heureDebut: string; n: number }>();
+  const membres = new Map<string, { userId: string; nom: string; n: number; tardifs: number; derniereMinute: number }>();
+  const seances = new Map<string, { id: string; date: string; heureDebut: string; n: number; derniereMinute: number }>();
   for (const c of liste) {
-    const m = membres.get(c.userId) ?? { userId: c.userId, nom: `${c.user.prenom} ${c.user.nom}`.trim(), n: 0, tardifs: 0 };
+    const m = membres.get(c.userId) ?? { userId: c.userId, nom: `${c.user.prenom} ${c.user.nom}`.trim(), n: 0, tardifs: 0, derniereMinute: 0 };
     m.n += 1;
     if (c.tardifCouple) m.tardifs += 1;
+    if (c.derniereMinuteCouple) m.derniereMinute += 1;
     membres.set(c.userId, m);
-    const s = seances.get(c.sessionId) ?? { id: c.sessionId, date: c.session.date, heureDebut: c.session.heureDebut, n: 0 };
+    const s = seances.get(c.sessionId) ?? { id: c.sessionId, date: c.session.date, heureDebut: c.session.heureDebut, n: 0, derniereMinute: 0 };
     s.n += 1;
+    if (c.derniereMinuteCouple) s.derniereMinute += 1;
     seances.set(c.sessionId, s);
   }
   const parNombre = <T extends { n: number }>(a: T, b: T) => b.n - a.n;
@@ -236,10 +255,11 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
     changements,
     desistements: liste.length,
     tardifs: liste.filter((c) => c.tardifCouple).length,
+    derniereMinute: liste.filter((c) => c.derniereMinuteCouple).length,
     personnes: membres.size,
     medianeMin: mediane,
     tranches,
-    parMembre: [...membres.values()].sort((a, b) => parNombre(a, b) || b.tardifs - a.tardifs || a.nom.localeCompare(b.nom, "fr")).slice(0, 10),
+    parMembre: [...membres.values()].sort((a, b) => parNombre(a, b) || b.derniereMinute - a.derniereMinute || b.tardifs - a.tardifs || a.nom.localeCompare(b.nom, "fr")).slice(0, 10),
     parSeance: [...seances.values()].sort((a, b) => parNombre(a, b) || a.date.localeCompare(b.date)).slice(0, 5),
     derniers: lignes.slice(0, 15).map((l) => ({
       id: l.id,
@@ -248,6 +268,7 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
       avant: l.avant,
       apres: l.apres,
       tardif: l.tardif,
+      derniereMinute: l.derniereMinute === true,
       avantCoursMin: minutesAvantCours(l.createdAt, l.session.date, l.session.heureDebut),
       sessionId: l.sessionId,
       date: l.session.date,

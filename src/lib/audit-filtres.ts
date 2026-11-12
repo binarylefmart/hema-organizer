@@ -22,6 +22,9 @@ export const RACCOURCIS_AUDIT = [
   // Réponses aux séances : chaque changement, horodaté, et les corrections du bureau.
   { q: "presence.", label: "présences", prefixes: ["presence."] },
   { q: "presence.desistement", label: "désistements", prefixes: ["presence.desistement"] },
+  { q: "presence.desistement_derniere_minute", label: "désistements de dernière minute", prefixes: ["presence.desistement_derniere_minute"] },
+  // Les alertes envoyées aux instructeurs (et celles qui n'ont pas été remises), les deux fenêtres.
+  { q: "notification.desistement", label: "alertes de désistement", prefixes: ["notification.desistement"] },
 ] as const;
 
 export const TRIS_AUDIT = { recent: "Plus récent d'abord", ancien: "Plus ancien d'abord", personne: "Par personne" } as const;

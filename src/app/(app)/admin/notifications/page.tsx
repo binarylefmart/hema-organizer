@@ -2,10 +2,11 @@ import { Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth/current-user";
-import { getDelaiDesistementMin, getJalonsRappel, getRecapHour, isPublicApiEnabled } from "@/lib/settings";
+import { getDelaisDesistement, getJalonsRappel, getRecapHour, isPublicApiEnabled } from "@/lib/settings";
 import { DELAI_DESISTEMENT_HEURES_MAX, DELAI_DESISTEMENT_HEURES_MIN, libelleDelaiDesistement } from "@/lib/constants";
+import { desistementRecouvert } from "@/lib/notifications/desistement";
 import { phraseJalons } from "@/lib/notifications/planification";
-import { definirDelaiDesistement, definirHeureRecap, definirJalonsRappel, enregistrerAlertesSecurite, enregistrerNotifications, enregistrerPublicationCours } from "@/actions/admin";
+import { definirDelaiDerniereMinute, definirDelaiDesistement, definirHeureRecap, definirJalonsRappel, enregistrerAlertesSecurite, enregistrerNotifications, enregistrerPublicationCours } from "@/actions/admin";
 import { etatsCanaux, raisonCanalIndisponible } from "@/lib/notifications/canaux";
 import { alertesActivees } from "@/lib/alertes";
 import {
@@ -80,10 +81,10 @@ const CSS_CANAL_COUPE = CANAUX.map(
  */
 export default async function PageNotifications() {
   await requirePermission("settings.technical");
-  const [recapHour, jalonsRappel, delaiDesistement, prefs, etats, apiActive, alertesSecurite, chiffres] = await Promise.all([
+  const [recapHour, jalonsRappel, delais, prefs, etats, apiActive, alertesSecurite, chiffres] = await Promise.all([
     getRecapHour(),
     getJalonsRappel(),
-    getDelaiDesistementMin(),
+    getDelaisDesistement(),
     getPreferencesNotifications(),
     etatsCanaux(),
     isPublicApiEnabled(),
@@ -91,7 +92,8 @@ export default async function PageNotifications() {
     chiffresDuClub(),
   ]);
   const volume = estimerEnvois({ ...chiffres, prefs, jalonsRappel });
-  const delaiEnJours = delaiDesistement % 1440 === 0;
+  const { delaiMin: delaiDesistement, derniereMinuteMin: delaiDerniereMinute } = delais;
+  const recouvert = delais.actif && desistementRecouvert(delais);
   /**
    * **Ce qui est armé derrière la porte fermée** : les annonces dont la case « Site du club » est
    * cochée en base alors que la publication ne l'est pas. Figées et non éteintes (c'est la
@@ -109,7 +111,7 @@ export default async function PageNotifications() {
   const sections: SectionSommaire[] = [
     { ancre: "recap", titre: "Récap de la veille" },
     { ancre: "rappels", titre: "Rappels aux personnes sans réponse" },
-    { ancre: "desistements", titre: "Désistements de dernière minute" },
+    { ancre: "desistements", titre: "Désistements et désistements de dernière minute" },
     { ancre: "volume", titre: "Combien d'emails partent" },
     { ancre: "canaux", titre: "Canaux et notifications" },
     { ancre: "publication", titre: "Publication des cours sur le site du club" },
@@ -187,38 +189,50 @@ export default async function PageNotifications() {
           </p>
         </FormulaireAction>
       </Carte>
-      {/* **Le délai des désistements**, avec les autres réglages de *quand* : au-delà, rien ne part,
+      {/* **Les deux délais des désistements**, avec les autres réglages de *quand* : au-delà, rien ne part,
           mais le changement reste noté dans l'historique de la séance. */}
-      <Carte id="desistements" titre="Désistements de dernière minute">
+      <Carte id="desistements" titre="Désistements et désistements de dernière minute">
         <p className="mb-3 text-texte-secondaire">
-          Aujourd&apos;hui : les instructeurs sont prévenus quand un membre retire sa présence dans les{" "}
-          <strong className="font-semibold text-texte">{libelleDelaiDesistement(delaiDesistement)}</strong> qui précèdent le cours. Chacun peut couper
-          cette notification dans « Mon profil ».
+          Aujourd&apos;hui :{" "}
+          {delais.actif && !recouvert ? (
+            <>
+              les instructeurs sont prévenus d&apos;un <strong className="font-semibold text-texte">désistement</strong> quand un membre retire sa présence dans
+              les <strong className="font-semibold text-texte">{libelleDelaiDesistement(delaiDesistement)}</strong> qui précèdent le cours
+            </>
+          ) : (
+            <>
+              le <strong className="font-semibold text-texte">désistement</strong> ne part pas{recouvert ? " (recouvert par le désistement de dernière minute)" : " (désactivé)"}
+            </>
+          )}
+          {" ; "}
+          {delais.derniereMinuteActif ? (
+            <>
+              le <strong className="font-semibold text-texte">désistement de dernière minute</strong> part dans les{" "}
+              <strong className="font-semibold text-texte">{libelleDelaiDesistement(delaiDerniereMinute)}</strong> qui précèdent le cours, et prend alors le pas sur le
+              désistement
+            </>
+          ) : (
+            <>
+              le <strong className="font-semibold text-texte">désistement de dernière minute</strong> est désactivé
+            </>
+          )}
+          . Chacun peut couper l&apos;une ou l&apos;autre de ces notifications dans « Mon profil ».
         </p>
-        <FormulaireAction action={definirDelaiDesistement} bouton="Enregistrer le délai">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="max-w-40">
-              <Champ
-                label="Délai"
-                name="delaiValeur"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={DELAI_DESISTEMENT_HEURES_MAX}
-                defaultValue={String(delaiEnJours ? delaiDesistement / 1440 : delaiDesistement / 60)}
-              />
-            </div>
-            <fieldset className="flex gap-4">
-              <legend className="sr-only">Unité du délai</legend>
-              <Case label="heures" name="delaiUnite" id="delaiUnite-heures" type="radio" value="heures" defaultChecked={!delaiEnJours} />
-              <Case label="jours" name="delaiUnite" id="delaiUnite-jours" type="radio" value="jours" defaultChecked={delaiEnJours} />
-            </fieldset>
-          </div>
-          <p className="text-sm text-texte-secondaire">
-            De {DELAI_DESISTEMENT_HEURES_MIN} heure à 2 semaines (14 jours) avant le cours. 1 jour = la veille à la même heure. Plus tôt, personne n&apos;est
-            prévenu, mais le changement reste visible dans l&apos;historique de la séance et dans le tableau de bord.
+        {recouvert && (
+          <p className="mb-3 rounded-xl border border-bordure bg-surface-douce px-4 py-3 text-sm" role="status">
+            Le délai du désistement de dernière minute ({libelleDelaiDesistement(delaiDerniereMinute)}) est au moins aussi long que celui du désistement (
+            {libelleDelaiDesistement(delaiDesistement)}) : le désistement classique ne part donc plus. Allonge le délai du désistement pour qu&apos;il reprenne
+            avant la dernière minute.
           </p>
-        </FormulaireAction>
+        )}
+        <div className="flex flex-col gap-6">
+          <ReglageDelai action={definirDelaiDesistement} nom="désistement" prefixe="desistement" minutes={delaiDesistement} actif={delais.actif} />
+          <ReglageDelai action={definirDelaiDerniereMinute} nom="désistement de dernière minute" prefixe="derniere-minute" minutes={delaiDerniereMinute} actif={delais.derniereMinuteActif} />
+        </div>
+        <p className="mt-3 text-sm text-texte-secondaire">
+          De {DELAI_DESISTEMENT_HEURES_MIN} heure à 2 semaines (14 jours) avant le cours, pour chacun. 1 jour = la veille à la même heure. Plus tôt, personne
+          n&apos;est prévenu, mais le changement reste visible dans l&apos;historique de la séance et dans le tableau de bord.
+        </p>
       </Carte>
       {/* **Annoncer le volume, avant le mur.** Un SMTP gratuit coupe au milieu de la liste : les
           derniers ne reçoivent rien, en silence, et le club ne s'en aperçoit qu'à un cours vide.
@@ -437,5 +451,37 @@ export default async function PageNotifications() {
         </FormulaireAction>
       </Carte>
     </PageAvecSommaire>
+  );
+}
+
+/**
+ * **Un délai de désistement** : un nombre et son unité, dans son propre formulaire (deux formulaires
+ * sur la carte, un par fenêtre). Le préfixe distingue les identifiants des boutons radio.
+ */
+function ReglageDelai({ action, nom, prefixe, minutes, actif }: { action: typeof definirDelaiDesistement; nom: string; prefixe: string; minutes: number; actif: boolean }) {
+  const enJours = minutes % 1440 === 0;
+  const titre = `Délai du ${nom}`;
+  return (
+    <FormulaireAction action={action} bouton={`Enregistrer le ${nom}`}>
+      <Case label={`Activer le ${nom}`} name="actif" id={`${prefixe}-actif`} defaultChecked={actif} />
+      <div className="flex flex-wrap items-end gap-4">
+        <div className="max-w-56">
+          <Champ
+            label={titre}
+            name="delaiValeur"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={DELAI_DESISTEMENT_HEURES_MAX}
+            defaultValue={String(enJours ? minutes / 1440 : minutes / 60)}
+          />
+        </div>
+        <fieldset className="flex gap-4">
+          <legend className="sr-only">Unité — {titre}</legend>
+          <Case label="heures" name="delaiUnite" id={`${prefixe}-unite-heures`} type="radio" value="heures" defaultChecked={!enJours} />
+          <Case label="jours" name="delaiUnite" id={`${prefixe}-unite-jours`} type="radio" value="jours" defaultChecked={enJours} />
+        </fieldset>
+      </div>
+    </FormulaireAction>
   );
 }

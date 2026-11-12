@@ -64,7 +64,7 @@ export default async function PageMembre({ params }: Props) {
   const phraseDesistements =
     desistements.seances === 0
       ? "aucun désistement"
-      : `${desistements.seances}\u00a0désistement${desistements.seances > 1 ? "s" : ""}${desistements.tardifs > 0 ? ` (dont ${desistements.tardifs} de dernière minute)` : ""}`;
+      : `${desistements.seances}\u00a0désistement${desistements.seances > 1 ? "s" : ""}${desistements.derniereMinute > 0 ? ` (dont ${desistements.derniereMinute} désistement${desistements.derniereMinute > 1 ? "s" : ""} de dernière minute)` : ""}`;
   // Compte de connexion du portail : ce n'est pas une personne du club (ni lien personnel, ni présence)
   const portail = estCompteDeService(m);
   const modifiable = canEditUser(acteur, m);
