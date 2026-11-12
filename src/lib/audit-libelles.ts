@@ -48,6 +48,8 @@ const ACTIONS: Record<string, string> = {
   "presence.reponse": "a changé sa réponse",
   "presence.desistement": "s'est désisté(e)",
   "presence.desistement_derniere_minute": "désistement de dernière minute",
+  "presence.desistement_non_signale": "a noté un désistement non signalé (inscrit Présent, pas venu)",
+  "presence.desistement_non_signale_retire": "a retiré un désistement non signalé",
   "notification.desistement": "alerte « désistement » envoyée aux instructeurs",
   "notification.desistement_echec": "alerte « désistement » non remise",
   "notification.desistement_derniere_minute": "alerte « désistement de dernière minute » envoyée aux instructeurs",

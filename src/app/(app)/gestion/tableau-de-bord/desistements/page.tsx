@@ -14,7 +14,13 @@ export const metadata: Metadata = { title: "Désistements" };
 
 type Props = { searchParams: Promise<{ periode?: string; du?: string; au?: string; personne?: string; type?: string }> };
 
-const TYPES: Record<TypeDesistementFiltre, string> = { tous: "Tous", signales: "Désistements signalés", derniere_minute: "Désistements de dernière minute" };
+const TYPES: Record<TypeDesistementFiltre, string> = {
+  tous: "Tous",
+  anticipes: "Désistements anticipés",
+  signales: "Désistements signalés",
+  derniere_minute: "Désistements de dernière minute",
+  non_signales: "Désistements non signalés",
+};
 /** Au-delà, le détail se tronque (le tableau par personne, lui, compte tout) : il se resserre par les filtres. */
 const LIGNES_MAX = 300;
 
@@ -127,8 +133,9 @@ export default async function PageDesistements({ searchParams }: Props) {
           ))}
         </nav>
         <p className="mt-3 text-sm text-texte-secondaire">
-          Signalé : les instructeurs ont été prévenus (délai : {libelleDelaiDesistement(delais.delaiMin)}). De dernière minute : dans les{" "}
-          {libelleDelaiDesistement(delais.derniereMinuteMin)} qui précèdent le cours (compté depuis la v0.87.0). Les dates portent sur le jour du cours.
+          Anticipé : avant le délai d&apos;alerte. Signalé : dans le délai d&apos;alerte ({libelleDelaiDesistement(delais.delaiMin)}). De dernière minute : dans les{" "}
+          {libelleDelaiDesistement(delais.derniereMinuteMin)} qui précèdent le cours (compté depuis la v0.87.0). Non signalé : inscrit Présent, pas venu, noté par le
+          bureau sur le registre du cours. Les dates portent sur le jour du cours.
         </p>
       </Carte>
 

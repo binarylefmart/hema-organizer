@@ -191,7 +191,14 @@ export default async function PageSeance({ params, searchParams }: Props) {
               {enEdition &&
                 can(user, "attendances.autrui") &&
                 (user.sessionForte ? (
-                  <PresencesEquipe sessionId={id} participants={trierParActionnabilite(participantsAPlat(carte.participants))} />
+                  <PresencesEquipe
+                    sessionId={id}
+                    participants={trierParActionnabilite(participantsAPlat(carte.participants))}
+                    nonSignales={{
+                      ids: (await db.desistementNonSignale.findMany({ where: { sessionId: id }, select: { userId: true } })).map((n) => n.userId),
+                      possible: commencee,
+                    }}
+                  />
                 ) : (
                   <p className="text-sm text-texte-secondaire">
                     Pour corriger la réponse de quelqu&apos;un,{" "}

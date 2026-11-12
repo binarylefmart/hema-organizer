@@ -28,6 +28,7 @@ import { trierMembres } from "@/app/(app)/gestion/tableau-de-bord/tri";
 
 const source = (f: string) => readFileSync(path.join(process.cwd(), f), "utf8");
 
+const GRAPHIQUES_ONGLETS = "src/components/tableau-de-bord/GraphiquesOnglets.tsx";
 const TABLEAU_DE_BORD = "src/app/(app)/gestion/tableau-de-bord/page.tsx";
 const TABLEAU_MEMBRES = "src/app/(app)/gestion/tableau-de-bord/TableauMembres.tsx";
 const ADMIN_MEMBRES = "src/app/(app)/admin/membres/page.tsx";
@@ -116,18 +117,21 @@ describe("tableau de bord — la légende ne nomme plus de couleur", () => {
     expect(code).not.toMatch(/Or\s*:\s*séances/i);
   });
 
+  // Depuis les onglets, le taux par séance est un graphique en colonnes (`GraphiquesOnglets.tsx`) :
+  // les deux règles restent, elles se vérifient là.
   it("montre la couleur au lieu de la nommer, et le texte porte le sens", () => {
-    const code = source(TABLEAU_DE_BORD);
-    // Deux pastilles décoratives (donc `aria-hidden`) suivies de leur libellé
-    expect(code).toMatch(/aria-hidden[^]{0,120}bg-jauge/);
-    expect(code).toMatch(/aria-hidden[^]{0,120}bg-primaire/);
+    const code = source(GRAPHIQUES_ONGLETS);
+    expect(code).not.toMatch(/bleu clair|vert clair :|en or/i);
+    // Des pastilles décoratives (donc `aria-hidden`), suivies de leur libellé en texte
+    expect(code).toMatch(/aria-hidden[^]{0,160}background: VERT \}\}[^]{0,40}\/>\s*présents/);
+    expect(code).toMatch(/aria-hidden[^]{0,160}background: VERT_CLAIR \}\}[^]{0,40}\/>\s*peut-être/);
   });
 
-  it("donne toute la largeur à la barre sur téléphone : 21 % et 28 % doivent se distinguer", () => {
-    const code = source(TABLEAU_DE_BORD);
-    // La grille à trois colonnes fixes n'existe plus qu'à partir de `md`
-    expect(code).not.toMatch(/grid-cols-\[7\.5rem_1fr_4\.5rem\](?!.*md:)/);
-    expect(code).toMatch(/md:grid-cols-\[/);
+  it("sur téléphone, les colonnes défilent de côté au lieu de s'écraser", () => {
+    const code = source(GRAPHIQUES_ONGLETS);
+    expect(code).toContain('overflow-x-auto');
+    expect(code).toMatch(/min-w-max/);
+    expect(code).toMatch(/w-9 shrink-0/);
   });
 });
 

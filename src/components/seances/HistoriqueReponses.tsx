@@ -31,7 +31,11 @@ export function HistoriqueReponses({ lignes }: { lignes: LigneHistorique[] }) {
             <span>
               <strong>{l.personne}</strong> : {libelle(l.avant)} → <strong>{libelle(l.apres)}</strong>
               {l.par && <span className="text-texte-secondaire"> (corrigé par {l.par})</span>}{" "}
-              {l.desistement && <Pastille ton={l.derniereMinute ? "ocre" : "neutre"}>{l.derniereMinute ? "désistement de dernière minute" : "désistement"}</Pastille>}
+              {l.desistement && (
+                <Pastille ton={l.derniereMinute ? "ocre" : "neutre"}>
+                  {l.derniereMinute ? "désistement de dernière minute" : l.tardif ? "désistement signalé" : "désistement anticipé"}
+                </Pastille>
+              )}
             </span>
             {/* Pas d'horodatage ici : il vit dans le journal d'audit (bureau). L'écart au cours suffit. */}
             <span className="text-sm text-texte-secondaire">{libelleAvantCours(l.avantCoursMin)}</span>

@@ -4,14 +4,12 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/auth/current-user";
 import { can } from "@/lib/permissions";
 import { db } from "@/lib/db";
-import { formatDateCourte } from "@/lib/dates";
 import { statsPeriode, type StatsPeriode } from "@/lib/tableau-de-bord";
 import { Carte } from "@/components/ui/Carte";
 import { LienBouton } from "@/components/ui/Bouton";
 import { Alerte } from "@/components/ui/Alerte";
 import { SelecteurHorizon } from "@/components/ui/SelecteurHorizon";
 import { CarteSquelette, SelecteurHorizonSquelette, SelecteurPeriodeSquelette, TableauSquelette } from "@/components/ui/Squelette";
-import { EnCours } from "@/components/layout/EnCours";
 import { SelecteurPeriode, type PeriodeOption } from "@/components/filtres/SelecteurPeriode";
 import { todayIso } from "@/lib/dates";
 import { lireHorizon, type Horizon } from "@/lib/horizon";
@@ -27,6 +25,7 @@ import { identite } from "@/lib/identite";
 import { seanceCommencee } from "@/lib/dates";
 import { getDelaisDesistement } from "@/lib/settings";
 import { ListesDesistements } from "@/components/desistements/ListesDesistements";
+import { GraphiquesPersonnes, GraphiquesSeances } from "@/components/tableau-de-bord/GraphiquesOnglets";
 import { GraphiquesDesistements } from "@/components/desistements/GraphiquesDesistements";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
@@ -34,16 +33,15 @@ export const metadata: Metadata = { title: "Tableau de bord" };
 type Props = { searchParams: Promise<{ periode?: string; h?: string; tri?: string; vue?: string }> };
 
 /**
- * **Trois onglets, une vue à la fois** (Delta, sur maquettes : « la A, mais montre d'abord la page
- * désistement »). Désistements d'abord — c'est la vue par défaut —, puis les personnes, puis les
- * séances. L'onglet vit dans l'adresse (`?vue=`), comme la période et la fenêtre de temps : le retour
+ * **Trois onglets, une vue à la fois** (maquette A choisie par Delta). Dans l'ordre qu'il a demandé
+ * ensuite : Séances — la vue par défaut, le premier onglet —, puis Personnes, puis Désistements. L'onglet vit dans l'adresse (`?vue=`), comme la période et la fenêtre de temps : le retour
  * du navigateur le ramène, un lien le garde.
  */
-const VUES = { desistements: "Désistements", personnes: "Personnes", seances: "Séances" } as const;
+const VUES = { seances: "Séances", personnes: "Personnes", desistements: "Désistements" } as const;
 type Vue = keyof typeof VUES;
-const lireVue = (v?: string): Vue => (v && v in VUES ? (v as Vue) : "desistements");
-/** Les paramètres que tout lien de l'écran garde, l'onglet compris (« desistements » est le défaut, il ne s'écrit pas). */
-const paramVue = (vue: Vue): Record<string, string> => (vue === "desistements" ? {} : { vue });
+const lireVue = (v?: string): Vue => (v && v in VUES ? (v as Vue) : "seances");
+/** Les paramètres que tout lien de l'écran garde, l'onglet compris (« seances » est le défaut, il ne s'écrit pas). */
+const paramVue = (vue: Vue): Record<string, string> => (vue === "seances" ? {} : { vue });
 
 type IlotProps = { stats: Promise<StatsPeriode | null> };
 
@@ -98,7 +96,7 @@ async function BoutonExport({ choisie, horizon }: { choisie: Promise<string | un
 async function BarreHorizon({ stats, choisie, horizon, vue }: IlotProps & { choisie: Promise<string | undefined>; horizon: Horizon; vue: Vue }) {
   const [s, id] = await Promise.all([stats, choisie]);
   if (!s) return null;
-  const suite = vue === "desistements" ? "" : `&vue=${vue}`;
+  const suite = vue === "seances" ? "" : `&vue=${vue}`;
   return <SelecteurHorizon horizon={horizon} passe href={(x) => `/gestion/tableau-de-bord?periode=${id}${x === "periode" ? "" : `&h=${x}`}${suite}`} compte={s.seances.length} />;
 }
 
@@ -138,14 +136,16 @@ async function OngletDesistements({ stats, choisie }: IlotProps & { choisie: Pro
   if (!s) return <Alerte type="info">Aucune période.</Alerte>;
   const detail = await detailDesistementsSeances(s.seances.map((x) => x.id));
   const base = `/gestion/tableau-de-bord/desistements?${id ? `periode=${id}&` : ""}`;
-  const signales = detail.lignes.filter((l) => l.signale && !l.derniereMinute).length;
+  const signales = detail.lignes.filter((l) => l.signale && !l.derniereMinute && !l.nonSignale).length;
+  const anticipes = detail.lignes.filter((l) => !l.signale && !l.derniereMinute && !l.nonSignale).length;
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p>
-          <strong>{detail.total}</strong> désistement{detail.total > 1 ? "s" : ""} · <strong>{signales}</strong> signalé{signales > 1 ? "s" : ""} (délai :{" "}
-          {libelleDelaiDesistement(delais.delaiMin)}) · <strong>{detail.derniereMinute}</strong> de dernière minute (moins de {libelleDelaiDesistement(delais.derniereMinuteMin)}) ·{" "}
-          <strong>{detail.personnes}</strong> personne{detail.personnes > 1 ? "s" : ""}
+          <strong>{detail.total}</strong> désistement{detail.total > 1 ? "s" : ""} · <strong>{anticipes}</strong> anticipé{anticipes > 1 ? "s" : ""} ·{" "}
+          <strong>{signales}</strong> signalé{signales > 1 ? "s" : ""} (délai : {libelleDelaiDesistement(delais.delaiMin)}) · <strong>{detail.derniereMinute}</strong> de
+          dernière minute (moins de {libelleDelaiDesistement(delais.derniereMinuteMin)}) · <strong>{detail.nonSignales}</strong> non signalé
+          {detail.nonSignales > 1 ? "s" : ""} · <strong>{detail.personnes}</strong> personne{detail.personnes > 1 ? "s" : ""}
         </p>
         <LienBouton href={base.replace(/[?&]$/, "")} variante="secondaire" enCours className="shrink-0">
           Filtrer par dates et par personne
@@ -169,55 +169,18 @@ async function OngletDesistements({ stats, choisie }: IlotProps & { choisie: Pro
   );
 }
 
-/** Première lecture : le taux de chaque séance, une barre par ligne. */
-async function TauxParSeance({ stats }: IlotProps) {
-  const s = await stats;
+/** Onglet Séances : présence par cours, par jour de cours, les mieux et les moins remplis. */
+async function OngletSeancesGraphiques({ stats }: IlotProps) {
+  const [s, club] = await Promise.all([stats, identite()]);
   if (!s) return <Alerte type="info">Aucune période.</Alerte>;
-  return (
-    <Carte titre={`Taux par séance — moyenne ${s.moyenne}\u00a0%`}>
-      {s.seances.length === 0 ? (
-        <p className="text-texte-secondaire">Aucune séance.</p>
-      ) : (
-        <ol className="flex flex-col gap-1.5" aria-label="Taux de présence par séance">
-          {s.seances.map((seance) => (
-            /* **Sur téléphone, la barre prend toute la largeur.** À trois colonnes fixes, il lui
-               restait environ 130 px : 21 % et 28 % y dessinaient le même trait. La date et le
-               pourcentage tiennent donc la première ligne, la barre la seconde ; à partir de `md`,
-               la place existe et les trois colonnes reviennent (l'ordre y remet la barre au milieu). */
-            <li key={seance.id} className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-1 py-0.5 text-sm md:grid-cols-[7.5rem_1fr_4.5rem] md:gap-2 md:py-0">
-              <Link href={`/seances/${seance.id}`} className={`inline-flex min-w-0 items-center gap-1.5 ${seance.annulee ? "text-texte-secondaire line-through" : ""}`}>
-                {/* La date garde sa coupure propre : c'est elle qui est tronquée, pas le témoin d'attente */}
-                <span className="truncate">{formatDateCourte(seance.date)}</span>
-                <EnCours taille={12} />
-              </Link>
-              {/* `row-start-2` place la barre sur la deuxième ligne de la grille du téléphone ; le
-                  pourcentage, placé automatiquement, prend donc la place restée libre à droite de
-                  la date. À partir de `md`, les deux reviennent dans l'ordre du HTML. */}
-              <div className="col-span-2 row-start-2 h-4 overflow-hidden rounded bg-surface-douce md:col-span-1 md:row-start-auto" role="presentation">
-                {!seance.annulee && <div className={`h-full rounded ${seance.passee ? "bg-jauge" : "bg-primaire/70"}`} style={{ width: `${seance.compteurs.pourcentage}%` }} />}
-              </div>
-              <span className="text-right tabular-nums">{seance.annulee ? "annulée" : `${seance.compteurs.pourcentage}\u00a0%`}</span>
-            </li>
-          ))}
-        </ol>
-      )}
-      {/* **Une légende ne nomme jamais une couleur.** Celle-ci en nommait deux, dont la couleur
-          primaire ; depuis que le thème du club est un réglage (v0.51.0), cette primaire change
-          d'un thème à l'autre, et la phrase était donc fausse sur presque tous. On montre la
-          couleur au lieu de l'écrire : la pastille est décorative (`aria-hidden`), c'est le texte
-          à côté qui porte le sens, et il reste juste quel que soit le thème choisi. */}
-      <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-texte-secondaire">
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="h-3 w-6 shrink-0 rounded bg-jauge" />
-          séances passées
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="h-3 w-6 shrink-0 rounded bg-primaire/70" />
-          réponses déjà reçues pour les séances à venir
-        </span>
-      </p>
-    </Carte>
-  );
+  return <GraphiquesSeances seances={s.seances} partEffectifMin={club.partEffectifMin} />;
+}
+
+/** Onglet Personnes, au-dessus du tableau : répartition, tops, sans réponse. */
+async function OngletPersonnesGraphiques({ stats }: IlotProps) {
+  const s = await stats;
+  if (!s) return null;
+  return <GraphiquesPersonnes membres={s.membres} />;
 }
 
 /**
@@ -296,8 +259,8 @@ async function Resume({ stats, desistements, choisie }: IlotProps & { desistemen
   const tuiles: Array<{ valeur: string; legende: string; href?: string; alerte?: boolean }> = [
     { valeur: `${s.moyenne} %`, legende: "taux de présence moyen" },
     { valeur: String(danger), legende: "cours à venir sous le seuil", alerte: danger > 0 },
-    { valeur: String(d?.desistements ?? 0), legende: (d?.desistements ?? 0) > 1 ? "désistements" : "désistement", href: detail },
-    { valeur: String(d?.derniereMinute ?? 0), legende: "de dernière minute", href: `${detail}${id ? "&" : "?"}type=derniere_minute`, alerte: (d?.derniereMinute ?? 0) > 0 },
+    { valeur: String(d?.desistements ?? 0), legende: (d?.desistements ?? 0) > 1 ? "désistements sur ces cours" : "désistement sur ces cours", href: detail },
+    { valeur: String(d?.derniereMinute ?? 0), legende: (d?.derniereMinute ?? 0) > 1 ? "désistements de dernière minute" : "désistement de dernière minute", href: `${detail}${id ? "&" : "?"}type=derniere_minute`, alerte: (d?.derniereMinute ?? 0) > 0 },
   ];
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -431,15 +394,17 @@ export default async function PageTableauDeBord({ searchParams }: Props) {
         <BarreHorizon stats={stats} choisie={choisie} horizon={horizon} vue={vue} />
       </Suspense>
       <Suspense fallback={null}>
-        <Resume stats={stats} desistements={desistements} choisie={choisie} />
-      </Suspense>
-      <Suspense fallback={null}>
         <Onglets choisie={choisie} horizon={horizon} vue={vue} />
       </Suspense>
       {/* Une vue à la fois : seul l'onglet ouvert lit ce dont il a besoin. */}
       {vue === "desistements" && (
         <Suspense fallback={<CarteSquelette lignes={6} />}>
           <OngletDesistements stats={stats} choisie={choisie} />
+        </Suspense>
+      )}
+      {vue === "personnes" && (
+        <Suspense fallback={<CarteSquelette lignes={6} />}>
+          <OngletPersonnesGraphiques stats={stats} />
         </Suspense>
       )}
       {vue === "personnes" && (
@@ -470,8 +435,12 @@ export default async function PageTableauDeBord({ searchParams }: Props) {
       )}
       {vue === "seances" && (
         <>
+          {/* Les quatre chiffres clés vivent dans cet onglet (Delta : « mets plutôt ça dans séances »). */}
+          <Suspense fallback={null}>
+            <Resume stats={stats} desistements={desistements} choisie={choisie} />
+          </Suspense>
           <Suspense fallback={<CarteSquelette lignes={8} />}>
-            <TauxParSeance stats={stats} />
+            <OngletSeancesGraphiques stats={stats} />
           </Suspense>
           <Suspense fallback={null}>
             <ChoixDesCours stats={stats} />

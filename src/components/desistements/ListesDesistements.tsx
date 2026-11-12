@@ -2,12 +2,17 @@ import Link from "next/link";
 import { formatDateCourte, formatHeure } from "@/lib/dates";
 import type { AttendanceStatut } from "@/lib/constants";
 import { STATUT_LABELS } from "@/lib/presences";
-import {
-  libelleAvantCours,
-  type DetailDesistements,
-} from "@/lib/historique-reponses";
+import { libelleAvantCours, typeDesistement, type DetailDesistements, type TypeDesistement } from "@/lib/historique-reponses";
 import { Carte } from "@/components/ui/Carte";
 import { Pastille } from "@/components/ui/Pastille";
+
+/** Le nom de chaque type, en entier (Delta : jamais « dernière minute » tout seul). */
+export const LIBELLES_TYPE: Record<TypeDesistement, string> = {
+  anticipe: "désistement anticipé",
+  signale: "désistement signalé",
+  derniere_minute: "désistement de dernière minute",
+  non_signale: "désistement non signalé",
+};
 
 const libelle = (s: string | null) =>
   s === null ? "Sans réponse" : (STATUT_LABELS[s as AttendanceStatut] ?? s);
@@ -90,16 +95,20 @@ export function ListesDesistements({
                 </Link>{" "}
                 <span className="text-texte-secondaire">— {l.lieu}</span>
                 <br />
-                <strong>{l.nom}</strong> : {libelle(l.avant)} →{" "}
-                <strong>{libelle(l.apres)}</strong>{" "}
-                {l.derniereMinute ? (
-                  <Pastille ton="ocre">désistement de dernière minute</Pastille>
-                ) : l.signale ? (
-                  <Pastille ton="neutre">désistement signalé</Pastille>
-                ) : null}
+                {l.nonSignale ? (
+                  // Pas de retrait : la personne était inscrite et n'est pas venue.
+                  <>
+                    <strong>{l.nom}</strong> : inscrit Présent, <strong>pas venu</strong>{" "}
+                  </>
+                ) : (
+                  <>
+                    <strong>{l.nom}</strong> : {libelle(l.avant)} → <strong>{libelle(l.apres)}</strong>{" "}
+                  </>
+                )}
+                <Pastille ton={l.nonSignale || l.derniereMinute ? "rouge" : "neutre"}>{LIBELLES_TYPE[typeDesistement(l)]}</Pastille>
               </span>
               <span className="shrink-0 text-texte-secondaire">
-                {libelleAvantCours(l.avantCoursMin)}
+                {l.nonSignale ? "sans prévenir" : libelleAvantCours(l.avantCoursMin)}
               </span>
             </li>
           ))}

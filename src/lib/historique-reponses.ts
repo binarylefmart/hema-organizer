@@ -3,6 +3,7 @@ import { parisDateTime } from "@/lib/dates";
 import { audit, type AuditActeur } from "@/lib/audit";
 import { estDesistement, fenetreDesistement } from "@/lib/notifications/desistement";
 import { getDelaisDesistement } from "@/lib/settings";
+import { creneauxDesSeances } from "@/lib/creneaux";
 
 /**
  * **L'historique des réponses** (`AttendanceChange`, demande de Delta : « un log sur les
@@ -83,15 +84,20 @@ export async function noterChangementsReponse(auteur: NonNullable<AuditActeur>, 
  * elles celles où le retrait est tombé dans le délai d'alerte. Les séances annulées ne comptent pas :
  * se retirer d'un cours qui n'a pas lieu n'est pas un désistement.
  */
-export async function compterDesistements(userId: string): Promise<{ seances: number; tardifs: number; derniereMinute: number }> {
-  const lignes = await db.attendanceChange.findMany({
-    where: { userId, desistement: true, session: { annulee: false } },
-    select: { sessionId: true, tardif: true, derniereMinute: true },
-  });
-  const seances = new Set(lignes.map((l) => l.sessionId));
-  const tardifs = new Set(lignes.filter((l) => l.tardif).map((l) => l.sessionId));
-  const derniereMinute = new Set(lignes.filter((l) => l.derniereMinute).map((l) => l.sessionId));
-  return { seances: seances.size, tardifs: tardifs.size, derniereMinute: derniereMinute.size };
+export async function compterDesistements(userId: string): Promise<{ seances: number; tardifs: number; derniereMinute: number; nonSignales: number }> {
+  const [lignes, pasVenus] = await Promise.all([
+    db.attendanceChange.findMany({
+      where: { userId, desistement: true, session: { annulee: false } },
+      select: { sessionId: true, tardif: true, derniereMinute: true },
+    }),
+    db.desistementNonSignale.findMany({ where: { userId, session: { annulee: false } }, select: { sessionId: true } }),
+  ]);
+  const nonSignales = new Set(pasVenus.map((p) => p.sessionId));
+  const seances = new Set([...lignes.map((l) => l.sessionId), ...nonSignales]);
+  // Un non signalé l'emporte sur un retrait de la même séance : il n'est compté qu'une fois, comme tel.
+  const tardifs = new Set(lignes.filter((l) => l.tardif && !nonSignales.has(l.sessionId)).map((l) => l.sessionId));
+  const derniereMinute = new Set(lignes.filter((l) => l.derniereMinute && !nonSignales.has(l.sessionId)).map((l) => l.sessionId));
+  return { seances: seances.size, tardifs: tardifs.size, derniereMinute: derniereMinute.size, nonSignales: nonSignales.size };
 }
 
 export type LigneHistorique = {
@@ -150,6 +156,15 @@ export async function historiqueSeance(sessionId: string, limite = 200): Promise
   }));
 }
 
+/**
+ * **Un désistement non signalé, tel que la base le rend** (`DesistementNonSignale`) : une personne
+ * restée « Présent » qui n'est pas venue, notée par le bureau. Il n'a pas de délai — il n'y a pas eu de
+ * retrait — : il ne compte ni dans le délai médian ni dans « à quel moment ».
+ */
+export type NonSignaleBrut = { id: string; sessionId: string; userId: string; user: { prenom: string; nom: string }; session: { date: string; heureDebut: string; lieu: string } };
+
+const SELECT_NON_SIGNALE = { id: true, sessionId: true, userId: true, user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true, lieu: true } } } as const;
+
 /** Les tranches de délai du tableau de bord, de la plus tardive à la plus anticipée. */
 export const TRANCHES_DELAI: ReadonlyArray<{ libelle: string; maxMin: number }> = [
   { libelle: "Moins de 2 h avant", maxMin: 120 },
@@ -169,6 +184,8 @@ export type StatsDesistements = {
   tardifs: number;
   /** Dont désistements de dernière minute */
   derniereMinute: number;
+  /** Dont désistements non signalés (inscrit Présent, pas venu — noté par le bureau) */
+  nonSignales: number;
   /** Personnes qui se sont désistées au moins une fois */
   personnes: number;
   /** Délai médian entre le désistement et le cours, en minutes (null : aucun désistement) */
@@ -176,7 +193,7 @@ export type StatsDesistements = {
   tranches: Array<{ libelle: string; n: number }>;
   parMembre: Array<{ userId: string; nom: string; n: number; tardifs: number; derniereMinute: number }>;
   /** Le compte de **chacun** (pas seulement les dix premiers), pour le tableau des membres */
-  compteParMembre: Record<string, { n: number; derniereMinute: number }>;
+  compteParMembre: Record<string, { n: number; derniereMinute: number; nonSignales: number }>;
   parSeance: Array<{ id: string; date: string; heureDebut: string; n: number; derniereMinute: number }>;
   derniers: Array<{ id: string; quand: Date; nom: string; avant: string | null; apres: string | null; tardif: boolean; derniereMinute: boolean; avantCoursMin: number; sessionId: string; date: string }>;
 };
@@ -188,15 +205,16 @@ export type StatsDesistements = {
  */
 export async function statsDesistements(sessionIds: readonly string[]): Promise<StatsDesistements> {
   const ids = [...sessionIds];
-  const [changements, lignes] = await Promise.all([
+  const [changements, lignes, nonSignales] = await Promise.all([
     db.attendanceChange.count({ where: { sessionId: { in: ids }, session: { annulee: false } } }),
     db.attendanceChange.findMany({
       where: { sessionId: { in: ids }, desistement: true, session: { annulee: false } },
       orderBy: { createdAt: "desc" },
       include: { user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true } } },
     }),
+    db.desistementNonSignale.findMany({ where: { sessionId: { in: ids }, session: { annulee: false } }, select: SELECT_NON_SIGNALE }),
   ]);
-  return calculerStatsDesistements(changements, lignes);
+  return calculerStatsDesistements(changements, lignes, nonSignales);
 }
 
 type LigneStat = {
@@ -214,20 +232,33 @@ type LigneStat = {
 };
 
 /** Le calcul seul, sur des lignes déjà lues (les plus récentes d'abord) — fonction pure. */
-export function calculerStatsDesistements(changements: number, lignes: readonly LigneStat[]): StatsDesistements {
+export function calculerStatsDesistements(changements: number, lignes: readonly LigneStat[], nonSignales: ReadonlyArray<{ id: string; sessionId: string; userId: string; user: { prenom: string; nom: string }; session: { date: string; heureDebut: string } }> = []): StatsDesistements {
   // Le dernier retrait de chaque couple personne × séance (les lignes arrivent du plus récent au plus ancien).
-  const couples = new Map<string, LigneStat & { tardifCouple: boolean; derniereMinuteCouple: boolean }>();
+  type Couple = LigneStat & { tardifCouple: boolean; derniereMinuteCouple: boolean; nonSignaleCouple: boolean };
+  const couples = new Map<string, Couple>();
   for (const l of lignes) {
     const cle = `${l.userId}|${l.sessionId}`;
     const deja = couples.get(cle);
-    if (!deja) couples.set(cle, { ...l, tardifCouple: l.tardif, derniereMinuteCouple: l.derniereMinute === true });
+    if (!deja) couples.set(cle, { ...l, tardifCouple: l.tardif, derniereMinuteCouple: l.derniereMinute === true, nonSignaleCouple: false });
     else {
       if (l.tardif) deja.tardifCouple = true;
       if (l.derniereMinute) deja.derniereMinuteCouple = true;
     }
   }
+  // Un non signalé l'emporte : la personne était inscrite Présent au moment du cours, c'est ce qui compte.
+  for (const n of nonSignales) {
+    const cle = `${n.userId}|${n.sessionId}`;
+    const base = couples.get(cle);
+    couples.set(cle, {
+      ...(base ?? { id: n.id, sessionId: n.sessionId, userId: n.userId, avant: "PRESENT", apres: "PRESENT", tardif: false, createdAt: new Date(0), user: n.user, session: n.session }),
+      tardifCouple: false,
+      derniereMinuteCouple: false,
+      nonSignaleCouple: true,
+    });
+  }
   const liste = [...couples.values()];
-  const delais = liste.map((c) => minutesAvantCours(c.createdAt, c.session.date, c.session.heureDebut)).sort((a, b) => a - b);
+  // Un non signalé n'a pas de délai : il sort du délai médian et des tranches.
+  const delais = liste.filter((c) => !c.nonSignaleCouple).map((c) => minutesAvantCours(c.createdAt, c.session.date, c.session.heureDebut)).sort((a, b) => a - b);
   const mediane = delais.length === 0 ? null : delais.length % 2 ? delais[(delais.length - 1) / 2] : Math.round((delais[delais.length / 2 - 1] + delais[delais.length / 2]) / 2);
 
   const tranches = TRANCHES_DELAI.map((t) => ({ libelle: t.libelle, n: 0 }));
@@ -238,13 +269,14 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
     tranches[i].n += 1;
   }
 
-  const membres = new Map<string, { userId: string; nom: string; n: number; tardifs: number; derniereMinute: number }>();
+  const membres = new Map<string, { userId: string; nom: string; n: number; tardifs: number; derniereMinute: number; nonSignales: number }>();
   const seances = new Map<string, { id: string; date: string; heureDebut: string; n: number; derniereMinute: number }>();
   for (const c of liste) {
-    const m = membres.get(c.userId) ?? { userId: c.userId, nom: `${c.user.prenom} ${c.user.nom}`.trim(), n: 0, tardifs: 0, derniereMinute: 0 };
+    const m = membres.get(c.userId) ?? { userId: c.userId, nom: `${c.user.prenom} ${c.user.nom}`.trim(), n: 0, tardifs: 0, derniereMinute: 0, nonSignales: 0 };
     m.n += 1;
     if (c.tardifCouple) m.tardifs += 1;
     if (c.derniereMinuteCouple) m.derniereMinute += 1;
+    if (c.nonSignaleCouple) m.nonSignales += 1;
     membres.set(c.userId, m);
     const s = seances.get(c.sessionId) ?? { id: c.sessionId, date: c.session.date, heureDebut: c.session.heureDebut, n: 0, derniereMinute: 0 };
     s.n += 1;
@@ -258,10 +290,11 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
     desistements: liste.length,
     tardifs: liste.filter((c) => c.tardifCouple).length,
     derniereMinute: liste.filter((c) => c.derniereMinuteCouple).length,
+    nonSignales: liste.filter((c) => c.nonSignaleCouple).length,
     personnes: membres.size,
     medianeMin: mediane,
     tranches,
-    compteParMembre: Object.fromEntries([...membres.values()].map((m) => [m.userId, { n: m.n, derniereMinute: m.derniereMinute }])),
+    compteParMembre: Object.fromEntries([...membres.values()].map((m) => [m.userId, { n: m.n, derniereMinute: m.derniereMinute, nonSignales: m.nonSignales }])),
     parMembre: [...membres.values()].sort((a, b) => parNombre(a, b) || b.derniereMinute - a.derniereMinute || b.tardifs - a.tardifs || a.nom.localeCompare(b.nom, "fr")).slice(0, 10),
     parSeance: [...seances.values()].sort((a, b) => parNombre(a, b) || a.date.localeCompare(b.date)).slice(0, 5),
     derniers: lignes.slice(0, 15).map((l) => ({
@@ -288,7 +321,8 @@ export function calculerStatsDesistements(changements: number, lignes: readonly 
  * journal d'audit.
  */
 
-export type TypeDesistementFiltre = "tous" | "signales" | "derniere_minute";
+/** Les quatre types, du moins grave au plus grave, et « tous ». */
+export type TypeDesistementFiltre = "tous" | "anticipes" | "signales" | "derniere_minute" | "non_signales";
 
 export type FiltresDesistements = {
   /** Identifiant de période, ou "" pour toutes */
@@ -314,12 +348,20 @@ export type LigneDesistement = {
   /** Les instructeurs ont été prévenus (une fenêtre d'alerte) */
   signale: boolean;
   derniereMinute: boolean;
+  /** Inscrit Présent, pas venu, noté par le bureau : pas de délai (`avantCoursMin` vaut 0) */
+  nonSignale: boolean;
   avantCoursMin: number;
 };
 
-export type PersonneDesistements = { userId: string; nom: string; n: number; derniereMinute: number; signales: number; dernierCours: string };
+/** Le type d'une ligne, du moins grave au plus grave. */
+export type TypeDesistement = "anticipe" | "signale" | "derniere_minute" | "non_signale";
+export function typeDesistement(l: Pick<LigneDesistement, "signale" | "derniereMinute" | "nonSignale">): TypeDesistement {
+  return l.nonSignale ? "non_signale" : l.derniereMinute ? "derniere_minute" : l.signale ? "signale" : "anticipe";
+}
 
-export type DetailDesistements = { lignes: LigneDesistement[]; parPersonne: PersonneDesistements[]; total: number; derniereMinute: number; personnes: number };
+export type PersonneDesistements = { userId: string; nom: string; n: number; derniereMinute: number; signales: number; nonSignales: number; dernierCours: string };
+
+export type DetailDesistements = { lignes: LigneDesistement[]; parPersonne: PersonneDesistements[]; total: number; derniereMinute: number; nonSignales: number; personnes: number };
 
 type LigneDetailBrute = {
   id: string;
@@ -335,7 +377,7 @@ type LigneDetailBrute = {
 };
 
 /** Le calcul seul (fonction pure) : lignes lues du plus récent au plus ancien. */
-export function calculerDetailDesistements(brutes: readonly LigneDetailBrute[], type: TypeDesistementFiltre = "tous"): DetailDesistements {
+export function calculerDetailDesistements(brutes: readonly LigneDetailBrute[], type: TypeDesistementFiltre = "tous", nonSignales: readonly NonSignaleBrut[] = []): DetailDesistements {
   const couples = new Map<string, LigneDesistement>();
   for (const l of brutes) {
     const cle = `${l.userId}|${l.sessionId}`;
@@ -359,56 +401,86 @@ export function calculerDetailDesistements(brutes: readonly LigneDetailBrute[], 
       apres: l.apres,
       signale: l.tardif,
       derniereMinute: l.derniereMinute,
+      nonSignale: false,
       avantCoursMin: minutesAvantCours(l.createdAt, l.session.date, l.session.heureDebut),
     });
   }
-  const garder = (l: LigneDesistement) => (type === "derniere_minute" ? l.derniereMinute : type === "signales" ? l.signale && !l.derniereMinute : true);
+  // Un non signalé l'emporte sur un retrait de la même séance (voir `calculerStatsDesistements`).
+  for (const n of nonSignales) {
+    couples.set(`${n.userId}|${n.sessionId}`, {
+      id: `ns-${n.id}`,
+      userId: n.userId,
+      nom: `${n.user.prenom} ${n.user.nom}`.trim(),
+      sessionId: n.sessionId,
+      date: n.session.date,
+      heureDebut: n.session.heureDebut,
+      lieu: n.session.lieu,
+      avant: "PRESENT",
+      apres: "PRESENT",
+      signale: false,
+      derniereMinute: false,
+      nonSignale: true,
+      avantCoursMin: 0,
+    });
+  }
+  const VISE: Record<Exclude<TypeDesistementFiltre, "tous">, TypeDesistement> = { anticipes: "anticipe", signales: "signale", derniere_minute: "derniere_minute", non_signales: "non_signale" };
+  const garder = (l: LigneDesistement) => type === "tous" || typeDesistement(l) === VISE[type];
   // Le plus récent cours d'abord, puis l'heure, puis le nom : l'ordre de lecture d'un registre.
   const lignes = [...couples.values()].filter(garder).sort((a, b) => b.date.localeCompare(a.date) || b.heureDebut.localeCompare(a.heureDebut) || a.nom.localeCompare(b.nom, "fr"));
   const parId = new Map<string, PersonneDesistements>();
   for (const l of lignes) {
-    const p = parId.get(l.userId) ?? { userId: l.userId, nom: l.nom, n: 0, derniereMinute: 0, signales: 0, dernierCours: l.date };
+    const p = parId.get(l.userId) ?? { userId: l.userId, nom: l.nom, n: 0, derniereMinute: 0, signales: 0, nonSignales: 0, dernierCours: l.date };
     p.n += 1;
-    if (l.derniereMinute) p.derniereMinute += 1;
-    else if (l.signale) p.signales += 1;
+    const t = typeDesistement(l);
+    if (t === "non_signale") p.nonSignales += 1;
+    else if (t === "derniere_minute") p.derniereMinute += 1;
+    else if (t === "signale") p.signales += 1;
     if (l.date > p.dernierCours) p.dernierCours = l.date;
     parId.set(l.userId, p);
   }
   const parPersonne = [...parId.values()].sort((a, b) => b.n - a.n || b.derniereMinute - a.derniereMinute || a.nom.localeCompare(b.nom, "fr"));
-  return { lignes, parPersonne, total: lignes.length, derniereMinute: lignes.filter((l) => l.derniereMinute).length, personnes: parPersonne.length };
+  return {
+    lignes,
+    parPersonne,
+    total: lignes.length,
+    derniereMinute: lignes.filter((l) => typeDesistement(l) === "derniere_minute").length,
+    nonSignales: lignes.filter((l) => l.nonSignale).length,
+    personnes: parPersonne.length,
+  };
 }
 
 /** Les désistements selon les filtres de la page (une seule lecture). */
 export async function detailDesistements(f: FiltresDesistements): Promise<DetailDesistements> {
-  const brutes = await db.attendanceChange.findMany({
-    where: {
-      desistement: true,
-      ...(f.personne ? { userId: f.personne } : {}),
-      session: {
-        annulee: false,
-        ...(f.periodId ? { periodId: f.periodId } : {}),
-        ...(f.du || f.au ? { date: { ...(f.du ? { gte: f.du } : {}), ...(f.au ? { lte: f.au } : {}) } } : {}),
-      },
-    },
-    orderBy: { createdAt: "desc" },
-    include: { user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true, lieu: true } } },
-  });
-  return calculerDetailDesistements(brutes, f.type);
+  const session = {
+    annulee: false,
+    ...(f.periodId ? { periodId: f.periodId } : {}),
+    ...(f.du || f.au ? { date: { ...(f.du ? { gte: f.du } : {}), ...(f.au ? { lte: f.au } : {}) } } : {}),
+  };
+  const personne = f.personne ? { userId: f.personne } : {};
+  const [brutes, nonSignales] = await Promise.all([
+    db.attendanceChange.findMany({
+      where: { desistement: true, ...personne, session },
+      orderBy: { createdAt: "desc" },
+      include: { user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true, lieu: true } } },
+    }),
+    db.desistementNonSignale.findMany({ where: { ...personne, session }, select: SELECT_NON_SIGNALE }),
+  ]);
+  return calculerDetailDesistements(brutes, f.type, nonSignales);
 }
 
 /** Les mêmes listes, sur un ensemble de séances (onglet Désistements du tableau de bord). */
 export async function detailDesistementsSeances(sessionIds: readonly string[]): Promise<DetailDesistements> {
-  const brutes = await db.attendanceChange.findMany({
-    where: { desistement: true, sessionId: { in: [...sessionIds] }, session: { annulee: false } },
-    orderBy: { createdAt: "desc" },
-    include: { user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true, lieu: true } } },
-  });
-  return calculerDetailDesistements(brutes);
+  const ou = { sessionId: { in: [...sessionIds] }, session: { annulee: false } };
+  const [brutes, nonSignales] = await Promise.all([
+    db.attendanceChange.findMany({
+      where: { desistement: true, ...ou },
+      orderBy: { createdAt: "desc" },
+      include: { user: { select: { prenom: true, nom: true } }, session: { select: { date: true, heureDebut: true, lieu: true } } },
+    }),
+    db.desistementNonSignale.findMany({ where: ou, select: SELECT_NON_SIGNALE }),
+  ]);
+  return calculerDetailDesistements(brutes, "tous", nonSignales);
 }
-
-const NOMS_JOURS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"] as const;
-/** L'ordre de la semaine du club : lundi d'abord, dimanche en dernier (`getUTCDay` met dimanche à 0). */
-const RANG_JOUR = [6, 0, 1, 2, 3, 4, 5];
 
 export type CreneauDesistements = {
   cle: string;
@@ -419,6 +491,7 @@ export type CreneauDesistements = {
   desistements: number;
   derniereMinute: number;
   signales: number;
+  nonSignales: number;
 };
 
 /**
@@ -430,32 +503,26 @@ export type CreneauDesistements = {
  */
 export function desistementsParCreneau(
   seances: ReadonlyArray<{ id: string; date: string; heureDebut: string }>,
-  lignes: ReadonlyArray<Pick<LigneDesistement, "sessionId" | "signale" | "derniereMinute">>,
+  lignes: ReadonlyArray<Pick<LigneDesistement, "sessionId" | "signale" | "derniereMinute"> & { nonSignale?: boolean }>,
 ): CreneauDesistements[] {
-  const jour = (iso: string) => new Date(`${iso}T12:00:00Z`).getUTCDay();
-  const heuresParJour = new Map<number, Set<string>>();
-  for (const s of seances) heuresParJour.set(jour(s.date), (heuresParJour.get(jour(s.date)) ?? new Set()).add(s.heureDebut));
-  const creneauDe = new Map<string, string>();
-  const creneaux = new Map<string, CreneauDesistements & { j: number; h: string }>();
+  const creneauDe = creneauxDesSeances(seances);
+  const creneaux = new Map<string, CreneauDesistements & { rang: number }>();
   for (const s of seances) {
-    const j = jour(s.date);
-    const plusieurs = (heuresParJour.get(j)?.size ?? 0) > 1;
-    const cle = plusieurs ? `${j}-${s.heureDebut}` : `${j}`;
-    creneauDe.set(s.id, cle);
-    const h = s.heureDebut.replace(":", "h");
-    const c = creneaux.get(cle) ?? { cle, libelle: plusieurs ? `${NOMS_JOURS[j]} · ${h}` : NOMS_JOURS[j], cours: 0, desistements: 0, derniereMinute: 0, signales: 0, j, h: s.heureDebut };
+    const cr = creneauDe.get(s.id)!;
+    const c = creneaux.get(cr.cle) ?? { cle: cr.cle, libelle: cr.libelle, cours: 0, desistements: 0, derniereMinute: 0, signales: 0, nonSignales: 0, rang: cr.rang };
     c.cours += 1;
-    creneaux.set(cle, c);
+    creneaux.set(cr.cle, c);
   }
   for (const l of lignes) {
-    const c = creneaux.get(creneauDe.get(l.sessionId) ?? "");
+    const c = creneaux.get(creneauDe.get(l.sessionId)?.cle ?? "");
     if (!c) continue;
     c.desistements += 1;
-    if (l.derniereMinute) c.derniereMinute += 1;
+    if (l.nonSignale) c.nonSignales += 1;
+    else if (l.derniereMinute) c.derniereMinute += 1;
     else if (l.signale) c.signales += 1;
   }
   // Le plus touché d'abord (c'est un « top ») ; à égalité, l'ordre de la semaine.
   return [...creneaux.values()]
-    .sort((a, b) => b.desistements - a.desistements || b.derniereMinute - a.derniereMinute || RANG_JOUR[a.j] - RANG_JOUR[b.j] || a.h.localeCompare(b.h))
-    .map((c) => ({ cle: c.cle, libelle: c.libelle, cours: c.cours, desistements: c.desistements, derniereMinute: c.derniereMinute, signales: c.signales }));
+    .sort((a, b) => b.desistements - a.desistements || b.derniereMinute - a.derniereMinute || a.rang - b.rang)
+    .map((c) => ({ cle: c.cle, libelle: c.libelle, cours: c.cours, desistements: c.desistements, derniereMinute: c.derniereMinute, signales: c.signales, nonSignales: c.nonSignales }));
 }

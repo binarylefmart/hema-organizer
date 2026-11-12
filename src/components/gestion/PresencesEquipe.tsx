@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   modifierPresenceMembre,
   modifierPresencesEnMasse,
+  noterDesistementNonSignale,
 } from "@/actions/presences";
 import { ATTENDANCE_STATUTS, type AttendanceStatut } from "@/lib/constants";
 import { STATUT_LABELS } from "@/lib/presences";
@@ -73,6 +74,11 @@ type Props = {
   ouvert?: boolean;
   /** Le rappel du cadre légal du geste ; l'annuaire, qui l'a déjà écrit au-dessus, le coupe. */
   avertissement?: boolean;
+  /**
+   * **Les désistements non signalés** : qui est déjà noté « pas venu », et si la case se propose
+   * (le cours a commencé). Absent : pas de case (écran qui ne la porte pas).
+   */
+  nonSignales?: { ids: readonly string[]; possible: boolean };
 };
 
 /**
@@ -178,7 +184,17 @@ export function PresencesEquipe({
   participants,
   ouvert = false,
   avertissement = true,
+  nonSignales,
 }: Props) {
+  /** Les désistements non signalés à l'écran : ceux du serveur, corrigés le temps de l'aller-retour. */
+  const [pasVenus, setPasVenus] = useState<ReadonlySet<string>>(() => new Set(nonSignales?.ids ?? []));
+  const [vuDuServeurPasVenus, setVuDuServeurPasVenus] = useState(nonSignales?.ids.join(",") ?? "");
+  const clePasVenus = nonSignales?.ids.join(",") ?? "";
+  if (clePasVenus !== vuDuServeurPasVenus) {
+    // Miroir de la valeur du serveur (doctrine `vuDuServeur`) : des données fraîches reprennent la main.
+    setVuDuServeurPasVenus(clePasVenus);
+    setPasVenus(new Set(nonSignales?.ids ?? []));
+  }
   /**
    * **Réponses modifiées ici** : elles priment sur celles reçues du serveur **le temps de
    * l'aller-retour**, et pas une seconde de plus (voir `oublierCorrectionsArrivees` et l'effet de
@@ -417,6 +433,41 @@ export function PresencesEquipe({
           type: "erreur",
           texte: `${nom} : l'enregistrement n'a pas abouti. Vérifie ta connexion, puis réessaie.`,
         });
+      } finally {
+        fermerVol([p.id]);
+      }
+    });
+  };
+
+  /** Coche ou décoche « pas venu » (désistement non signalé). La réponse de la personne ne change pas. */
+  const basculerPasVenu = (p: ParticipantStatut, coche: boolean) => {
+    const nom = `${p.prenom} ${p.nom}`;
+    const rendre = () =>
+      setPasVenus((s) => {
+        const n = new Set(s);
+        if (coche) n.delete(p.id);
+        else n.add(p.id);
+        return n;
+      });
+    setPasVenus((s) => {
+      const n = new Set(s);
+      if (coche) n.add(p.id);
+      else n.delete(p.id);
+      return n;
+    });
+    ouvrirVol([p.id]);
+    startTransition(async () => {
+      try {
+        const res = await noterDesistementNonSignale({ sessionId, userId: p.id, coche });
+        if (res.ok) {
+          setMessage({ type: "ok", texte: coche ? `${nom} : désistement non signalé noté.` : `${nom} : désistement non signalé retiré.` });
+        } else {
+          rendre();
+          setMessage({ type: "erreur", texte: `${nom} : ${res.erreur}` });
+        }
+      } catch {
+        rendre();
+        setMessage({ type: "erreur", texte: `${nom} : l'enregistrement n'a pas abouti. Vérifie ta connexion, puis réessaie.` });
       } finally {
         fermerVol([p.id]);
       }
@@ -731,13 +782,17 @@ export function PresencesEquipe({
                       {p.prenom} {p.nom}
                     </span>
                   </label>
+                  {/* Les réponses et « Pas venu » **dans un même bloc**, calé à droite : quand la ligne
+                      manque de place, ils passent ensemble sous le nom, côte à côte — jamais « Pas venu »
+                      seul sur sa ligne, loin des réponses qu'il complète. */}
+                  <div className="ml-auto flex shrink-0 items-center gap-3">
                   {telephone ? (
                     /* **Effacer une réponse reste un geste du téléphone** : un appui sur le bouton déjà
                        plein le relâche, et la ligne retombe sur « sans réponse » — l'entrée que la liste
                        déroulante propose en dernier. C'est ce que dit `aria-pressed` : un bouton enfoncé
                        se relâche. Le même `changer` que la liste, donc les mêmes verrous côté serveur,
                        la même valeur optimiste et le même retour en cas d'erreur. */
-                    <div role="group" aria-label={`Réponse de ${p.prenom} ${p.nom}`} className="ml-auto flex shrink-0 gap-1">
+                    <div role="group" aria-label={`Réponse de ${p.prenom} ${p.nom}`} className="flex shrink-0 gap-1">
                       {BOUTONS_REPONSE.map((b) => {
                         const plein = statut === b.statut;
                         return (
@@ -790,6 +845,30 @@ export function PresencesEquipe({
                       </div>
                     </>
                   )}
+                  {/* **« Pas venu »** (désistement non signalé) : un vrai bouton, **à l'écart** des trois
+                      réponses — un trait et de l'air entre eux — et **en toutes lettres** : à côté de ✕
+                      (Absent), une icône de plus se confondrait. Seulement sur une ligne « Présent », une
+                      fois le cours commencé. `aria-pressed` : enfoncé, il se relâche (la note s'efface). */}
+                  {nonSignales?.possible && (statut === "PRESENT" || pasVenus.has(p.id)) && (
+                    <div className="flex shrink-0 items-center gap-3 border-l-2 border-bordure pl-3">
+                      <button
+                        type="button"
+                        aria-pressed={pasVenus.has(p.id)}
+                        aria-label={`${p.prenom} ${p.nom} : pas venu, sans prévenir (désistement non signalé)`}
+                        title="Inscrit Présent mais pas venu, sans prévenir : désistement non signalé"
+                        disabled={occupe}
+                        onClick={() => basculerPasVenu(p, !pasVenus.has(p.id))}
+                        className={[
+                          "min-h-12 rounded-full border-2 px-4 text-sm font-semibold shadow-champ transition active:scale-[0.97]",
+                          "disabled:cursor-wait disabled:opacity-60",
+                          pasVenus.has(p.id) ? "border-texte bg-texte text-surface" : "border-bordure bg-surface text-texte-secondaire hover:border-texte",
+                        ].join(" ")}
+                      >
+                        Pas venu
+                      </button>
+                    </div>
+                  )}
+                  </div>
                 </li>
               );
             })}

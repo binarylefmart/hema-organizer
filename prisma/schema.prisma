@@ -93,21 +93,23 @@ model User {
   periodes            PeriodMember[]
   periodesAnimees     PeriodInstructeur[]
   seancesAnimees      SessionInstructeur[]
-  partiesAnimees      SessionPartie[]        @relation("PartieInstructeur")
+  partiesAnimees      SessionPartie[]         @relation("PartieInstructeur")
   /// Les parties où la personne **assiste** celui qui mène (second instructeur) : une relation
   /// distincte de `partiesAnimees` parce que les deux colonnes pointent vers la même table et que
   /// Prisma exige alors un nom de relation de chaque côté.
-  partiesAssistees    SessionPartie[]        @relation("PartieInstructeurSecond")
-  partiesModifiees    SessionPartie[]        @relation("PartieModifiePar")
-  templatesMenes      CoursTemplateElement[] @relation("TemplateInstructeur")
-  templatesAssistes   CoursTemplateElement[] @relation("TemplateInstructeurSecond")
+  partiesAssistees    SessionPartie[]         @relation("PartieInstructeurSecond")
+  partiesModifiees    SessionPartie[]         @relation("PartieModifiePar")
+  templatesMenes      CoursTemplateElement[]  @relation("TemplateInstructeur")
+  templatesAssistes   CoursTemplateElement[]  @relation("TemplateInstructeurSecond")
   attendances         Attendance[]
   choixCours          AttendanceChoix[]
-  historiqueReponses  AttendanceChange[]     @relation("HistoriqueReponseDe")
-  reponsesEcrites     AttendanceChange[]     @relation("HistoriqueReponseAuteur")
+  historiqueReponses  AttendanceChange[]      @relation("HistoriqueReponseDe")
+  nonSignales         DesistementNonSignale[] @relation("NonSignaleDe")
+  nonSignalesNotes    DesistementNonSignale[] @relation("NonSignaleAuteur")
+  reponsesEcrites     AttendanceChange[]      @relation("HistoriqueReponseAuteur")
   ateliers            Atelier[]
-  ateliersAnimes      Atelier[]              @relation("AtelierAnimateur")
-  ateliersSeconde     Atelier[]              @relation("AtelierAnimateurSecond")
+  ateliersAnimes      Atelier[]               @relation("AtelierAnimateur")
+  ateliersSeconde     Atelier[]               @relation("AtelierAnimateurSecond")
   invitations         Invitation[]
   authSessions        AuthSession[]
   passwordResetTokens PasswordResetToken[]
@@ -247,11 +249,12 @@ model Session {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  period             Period               @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  period             Period                  @relation(fields: [periodId], references: [id], onDelete: Cascade)
   instructeurs       SessionInstructeur[]
   parties            SessionPartie[]
   attendances        Attendance[]
   historiqueReponses AttendanceChange[]
+  nonSignales        DesistementNonSignale[]
   ateliers           Atelier[]
   notifications      NotificationLog[]
 
@@ -558,6 +561,25 @@ model NotificationLog {
   user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([date])
+}
+
+/// **Désistement non signalé** : une personne restée « Présent » qui n'est pas venue, notée à la main
+/// par le bureau sur le registre du cours (`noterDesistementNonSignale`). La réponse ne change pas.
+/// Une ligne par personne et par séance ; décocher l'efface. Compté avec les désistements, comme le plus
+/// grave des quatre types (anticipé, signalé, de dernière minute, non signalé).
+model DesistementNonSignale {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  auteurId  String?
+  createdAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User    @relation("NonSignaleDe", fields: [userId], references: [id], onDelete: Cascade)
+  auteur  User?   @relation("NonSignaleAuteur", fields: [auteurId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, userId])
+  @@index([userId])
 }
 
 /// Journal d'audit des actions sensibles et des connexions

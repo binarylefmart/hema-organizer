@@ -2,6 +2,16 @@
 
 Ce que chaque version change, rédigé depuis l'historique du dépôt à chaque publication.
 
+## 0.90.0
+
+### Nouveautés
+
+- **desistements** : onglets Séances et Personnes en graphiques, désistement non signalé
+
+### Autres changements
+
+- état v0.90.0
+
 ## 0.89.0
 
 ### Nouveautés

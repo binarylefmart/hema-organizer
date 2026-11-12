@@ -1543,13 +1543,13 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "tableau-de-bord-desistements",
-      description: "Tableau de bord — onglet Désistements (par défaut) : nom par nom, sur la période",
+      description: "Tableau de bord — onglet Désistements  : nom par nom, sur la période",
       connexion: COMPTES.instructeur,
       chemin: "/seances",
       pleinePage: true,
       avant: async (page) => {
         await historiqueReponsesDemo(true);
-        await allerA(page, `${BASE}/gestion/tableau-de-bord`);
+        await allerA(page, `${BASE}/gestion/tableau-de-bord?vue=desistements`);
       },
       apres: async () => {
         await historiqueReponsesDemo(false);
@@ -1571,7 +1571,7 @@ function toutesLesScenes(): Scene[] {
     },
     {
       nom: "tableau-de-bord-seances",
-      description: "Tableau de bord — onglet Séances : taux par séance et choix des cours",
+      description: "Tableau de bord — onglet Séances (par défaut) : taux par séance et choix des cours",
       connexion: COMPTES.instructeur,
       chemin: "/seances",
       pleinePage: true,
@@ -1593,6 +1593,20 @@ function toutesLesScenes(): Scene[] {
           el.scrollIntoView({ block: "start" });
           window.scrollBy(0, -110);
         });
+      },
+    },
+    {
+      nom: "seance-fiche-equipe",
+      description: "Fiche d'une séance vue par l'encadrement, page entière, avec des désistements",
+      connexion: COMPTES.instructeur,
+      chemin: "/seances",
+      pleinePage: true,
+      avant: async (page) => {
+        const id = await historiqueReponsesDemo(true);
+        await allerA(page, `${BASE}/seances/${id}`);
+      },
+      apres: async () => {
+        await historiqueReponsesDemo(false);
       },
     },
     {

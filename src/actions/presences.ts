@@ -496,3 +496,62 @@ export async function modifierPresencesEnMasse(input: {
   rafraichirApresCorrection(sessionId);
   return { ok: true, statut, modifiees: aEcrire.length, inchangees };
 }
+
+const desistementNonSignaleSchema = z.object({
+  sessionId: z.string().min(1).max(64),
+  userId: z.string().min(1).max(64),
+  coche: z.boolean(),
+});
+
+/**
+ * **Noter un désistement non signalé** (Delta : « une personne qui s'est mise présente et qui ne
+ * vient pas », case manuelle sur le registre du bureau). Mêmes verrous que la correction du registre
+ * (`attendances.autrui`, donc espace admin ouvert ; période ouverte, séance non annulée, personne
+ * invitée), plus deux qui font le sens du geste : **le cours a commencé** — avant, rien ne permet de
+ * dire que quelqu'un « ne vient pas » — et la personne est **inscrite Présent**. Sa réponse ne change
+ * pas : la case ne fait que noter. Décocher efface la note. Une entrée d'audit à chaque geste.
+ */
+export async function noterDesistementNonSignale(input: { sessionId: string; userId: string; coche: boolean }): Promise<{ ok: true; coche: boolean } | { ok: false; erreur: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, erreur: "Ta session a expiré. Reconnecte-toi." };
+  try {
+    await assertPermission("attendances.autrui");
+  } catch (e) {
+    if (!(e instanceof AccesRefuse)) throw e;
+    return { ok: false, erreur: refusCorrection(user) };
+  }
+  const parsed = desistementNonSignaleSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, erreur: "Demande non reconnue." };
+  const { sessionId, userId, coche } = parsed.data;
+
+  const session = await db.session.findUnique({
+    where: { id: sessionId },
+    select: { periodId: true, annulee: true, date: true, heureDebut: true, period: { select: { statut: true } } },
+  });
+  if (!session) return { ok: false, erreur: "Cette séance n'existe plus." };
+  if (ecritureFermee(session.period.statut)) return { ok: false, erreur: REFUS_PERIODE_CLOSE.presences };
+  if (session.annulee) return { ok: false, erreur: "Cette séance est annulée : personne n'avait à venir." };
+  const invite = await db.periodMember.findFirst({ where: { periodId: session.periodId, userId, user: { service: false } }, select: { userId: true } });
+  if (!invite) return { ok: false, erreur: "Cette personne n'est pas invitée sur cette période." };
+
+  if (coche) {
+    if (!seanceCommencee(session.date, session.heureDebut)) return { ok: false, erreur: "Le cours n'a pas encore commencé : on ne peut pas encore dire qui n'est pas venu." };
+    const reponse = await db.attendance.findUnique({ where: { userId_sessionId: { userId, sessionId } }, select: { statut: true } });
+    if (reponse?.statut !== "PRESENT") return { ok: false, erreur: "Seule une personne inscrite « Présent » peut avoir un désistement non signalé." };
+    await db.desistementNonSignale.upsert({
+      where: { sessionId_userId: { sessionId, userId } },
+      create: { sessionId, userId, auteurId: user.id },
+      update: {},
+    });
+  } else {
+    await db.desistementNonSignale.deleteMany({ where: { sessionId, userId } });
+  }
+  await audit(user, coche ? "presence.desistement_non_signale" : "presence.desistement_non_signale_retire", userId, {
+    sessionId,
+    seance: `${session.date} ${session.heureDebut}`,
+  });
+  await touchSession();
+  await toucherElevation(user.sessionId);
+  rafraichirApresCorrection(sessionId);
+  return { ok: true, coche };
+}

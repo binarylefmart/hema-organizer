@@ -11,44 +11,26 @@ import { Carte } from "@/components/ui/Carte";
 /**
  * **Les désistements en graphiques** (Delta : « je veux du graph, que ce soit visuel »).
  *
- * Trois types ordonnés — non signalé, signalé, de dernière minute — donc **une seule teinte, du clair
- * au foncé** (le rouge du thème mêlé à la surface), et non trois couleurs : rouge et ocre se
- * confondaient pour un daltonien (validé : gamme ordinale, clair et sombre, contraste ≥ 2:1 au plus
- * clair). La légende est toujours là, chaque barre porte son nom accessible et une infobulle, et le
- * détail ligne par ligne, sous les graphiques, en est le tableau.
+ * Quatre types ordonnés — anticipé, signalé, de dernière minute, non signalé (inscrit Présent, pas
+ * venu) — donc **une seule teinte** : le rouge du thème, mêlé à la surface pour les plus légers (45 %,
+ * 72 %), plein pour la dernière minute, mêlé au texte pour le non signalé — le plus contrasté dans les
+ * deux modes (il fonce en clair, s'éclaircit en sombre). Validé : gamme ordinale, daltonisme, clair et
+ * sombre, contraste ≥ 2:1 au plus léger. Rouge et ocre, essayés d'abord, se confondaient. La légende
+ * est toujours là, chaque barre porte son nom accessible, et le détail, dessous, en est le tableau.
  */
 
-type Type = "derniere" | "signale" | "autre";
-const TYPES: ReadonlyArray<{
-  cle: Type;
-  libelle: string;
-  pluriel: string;
-  fond: string;
-}> = [
-  {
-    cle: "derniere",
-    libelle: "désistement de dernière minute",
-    pluriel: "désistements de dernière minute",
-    fond: "var(--rouge)",
-  },
-  {
-    cle: "signale",
-    libelle: "désistement signalé",
-    pluriel: "désistements signalés",
-    fond: "color-mix(in srgb, var(--rouge) 75%, var(--surface))",
-  },
-  {
-    cle: "autre",
-    libelle: "désistement non signalé",
-    pluriel: "désistements non signalés",
-    fond: "color-mix(in srgb, var(--rouge) 50%, var(--surface))",
-  },
+type Type = "nonsignale" | "derniere" | "signale" | "anticipe";
+/** Du plus grave au moins grave : l'ordre de la légende, et le haut d'une colonne. */
+const TYPES: ReadonlyArray<{ cle: Type; libelle: string; pluriel: string; fond: string }> = [
+  { cle: "nonsignale", libelle: "désistement non signalé", pluriel: "désistements non signalés", fond: "color-mix(in srgb, var(--rouge) 65%, var(--texte))" },
+  { cle: "derniere", libelle: "désistement de dernière minute", pluriel: "désistements de dernière minute", fond: "var(--rouge)" },
+  { cle: "signale", libelle: "désistement signalé", pluriel: "désistements signalés", fond: "color-mix(in srgb, var(--rouge) 72%, var(--surface))" },
+  { cle: "anticipe", libelle: "désistement anticipé", pluriel: "désistements anticipés", fond: "color-mix(in srgb, var(--rouge) 45%, var(--surface))" },
 ];
-const typeDe = (l: LigneDesistement): Type =>
-  l.derniereMinute ? "derniere" : l.signale ? "signale" : "autre";
+const typeDe = (l: LigneDesistement): Type => (l.nonSignale ? "nonsignale" : l.derniereMinute ? "derniere" : l.signale ? "signale" : "anticipe");
 type Compte = Record<Type, number>;
-const vide = (): Compte => ({ derniere: 0, signale: 0, autre: 0 });
-const total = (c: Compte) => c.derniere + c.signale + c.autre;
+const vide = (): Compte => ({ nonsignale: 0, derniere: 0, signale: 0, anticipe: 0 });
+const total = (c: Compte) => c.nonsignale + c.derniere + c.signale + c.anticipe;
 const phrase = (c: Compte) =>
   TYPES.filter((t) => c[t.cle] > 0)
     .map((t) => `${c[t.cle]} ${c[t.cle] > 1 ? t.pluriel : t.libelle}`)
@@ -167,16 +149,23 @@ export function GraphiquesDesistements({
   const maxCreneau = Math.max(1, ...creneaux.map((c) => c.desistements));
 
   // 3. À quel moment
+  // Un « pas venu » n'a pas de délai : sa ligne à lui, en tête (la plus tardive des situations).
+  const pasVenus = { libelle: "Pas venu, sans prévenir", c: vide() };
   const tranches = TRANCHES_DELAI.map((t) => ({
     libelle: t.libelle,
     c: vide(),
   }));
   for (const l of detail.lignes) {
+    if (l.nonSignale) {
+      pasVenus.c.nonsignale += 1;
+      continue;
+    }
     const i = TRANCHES_DELAI.findIndex((t, k) =>
       k === 0 ? l.avantCoursMin <= t.maxMin : l.avantCoursMin < t.maxMin,
     );
     tranches[i].c[typeDe(l)] += 1;
   }
+  tranches.unshift(pasVenus);
   const maxTranche = Math.max(1, ...tranches.map((t) => total(t.c)));
 
   return (
@@ -316,7 +305,12 @@ export function GraphiquesDesistements({
               <Legende />
               <ol className="flex flex-col gap-1.5">
                 {creneaux.map((c) => {
-                  const compte: Compte = { derniere: c.derniereMinute, signale: c.signales, autre: c.desistements - c.derniereMinute - c.signales };
+                  const compte: Compte = {
+                    nonsignale: c.nonSignales,
+                    derniere: c.derniereMinute,
+                    signale: c.signales,
+                    anticipe: c.desistements - c.nonSignales - c.derniereMinute - c.signales,
+                  };
                   const moyenne = c.cours > 0 ? (c.desistements / c.cours).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : "0";
                   const nom = `${c.libelle} : ${c.desistements === 0 ? "aucun désistement" : phrase(compte)} sur ${c.cours} cours (${moyenne} par cours)`;
                   return (

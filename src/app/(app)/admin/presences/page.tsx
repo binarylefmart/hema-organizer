@@ -42,7 +42,9 @@ export default async function PagePresencesAdmin({ searchParams }: Props) {
   });
   const derniereCommencee = seances.filter((s) => seanceCommencee(s.date, s.heureDebut)).at(-1);
   const choisie = seances.find((s) => s.id === seance) ?? derniereCommencee ?? seances[0];
-  const registre = choisie ? await seanceCarte(choisie.id, acteur) : null;
+  const [registre, nonSignales] = choisie
+    ? await Promise.all([seanceCarte(choisie.id, acteur), db.desistementNonSignale.findMany({ where: { sessionId: choisie.id }, select: { userId: true } })])
+    : [null, []];
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -80,6 +82,7 @@ export default async function PagePresencesAdmin({ searchParams }: Props) {
               participants={trierParActionnabilite(participantsAPlat(registre.participants))}
               ouvert
               avertissement={false}
+              nonSignales={{ ids: nonSignales.map((n) => n.userId), possible: seanceCommencee(choisie.date, choisie.heureDebut) }}
             />
             <Link href={`/seances/${choisie.id}`} className="text-sm">
               Ouvrir la fiche de cette séance

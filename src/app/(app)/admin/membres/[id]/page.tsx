@@ -61,10 +61,15 @@ export default async function PageMembre({ params }: Props) {
   if (!m) notFound();
   // Les désistements notés depuis l'historique des réponses (v0.85.0) : séances distinctes, non annulées.
   const desistements = await compterDesistements(m.id);
+  // « 4 désistements (dont 1 de dernière minute, 2 non signalés) » : les deux types graves, nommés.
+  const precisions = [
+    desistements.derniereMinute > 0 ? `${desistements.derniereMinute} de dernière minute` : "",
+    desistements.nonSignales > 0 ? `${desistements.nonSignales} non signalé${desistements.nonSignales > 1 ? "s" : ""}` : "",
+  ].filter(Boolean);
   const phraseDesistements =
     desistements.seances === 0
       ? "aucun désistement"
-      : `${desistements.seances}\u00a0désistement${desistements.seances > 1 ? "s" : ""}${desistements.derniereMinute > 0 ? ` (dont ${desistements.derniereMinute} désistement${desistements.derniereMinute > 1 ? "s" : ""} de dernière minute)` : ""}`;
+      : `${desistements.seances}\u00a0désistement${desistements.seances > 1 ? "s" : ""}${precisions.length > 0 ? ` (dont ${precisions.join(", ")})` : ""}`;
   // Compte de connexion du portail : ce n'est pas une personne du club (ni lien personnel, ni présence)
   const portail = estCompteDeService(m);
   const modifiable = canEditUser(acteur, m);
